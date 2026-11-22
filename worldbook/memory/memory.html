@@ -1366,6 +1366,10 @@ button:focus-visible,input:focus-visible,select:focus-visible{outline:1px solid 
     }
     function renderDedupPreview() {
         const box = document.getElementById('toolResult');
+        const dedupRoleId = currentMemId;
+        if (!dedupRoleId) return;
+        // The preview's numeric positions are valid only for this exact role/history revision.
+        const dedupSnapshot = JSON.stringify(loadMemories(dedupRoleId));
         const pairs = findDupes();
         if (!pairs.length) {
             box.innerHTML = '<div class="merge-est">未发现高度相似的重复记忆。</div>';
@@ -1397,9 +1401,19 @@ button:focus-visible,input:focus-visible,select:focus-visible{outline:1px solid 
                 if (!isNaN(idx) && pairs[idx]) delIdx.add(pairs[idx].dupe.i);
             });
             if (!delIdx.size) { alert('没有勾选任何条目'); return; }
-            let arr = loadMemories(currentMemId);
+            if (String(currentMemId) !== String(dedupRoleId)) {
+                alert('角色已切换，请重新检查重复记忆');
+                box.innerHTML = '';
+                return;
+            }
+            let arr = loadMemories(dedupRoleId);
+            if (JSON.stringify(arr) !== dedupSnapshot) {
+                alert('记忆已更新，请重新检查重复记忆');
+                box.innerHTML = '';
+                return;
+            }
             arr = arr.filter((m, i) => !delIdx.has(i));
-            saveMemories(currentMemId, arr);
+            if (!saveMemories(dedupRoleId, arr)) { alert('记忆保存失败，删除未完成，请检查存储空间'); return; }
             box.innerHTML = '';
             alert('已删除 ' + delIdx.size + ' 条重复记忆');
             renderLib();
@@ -1423,6 +1437,8 @@ button:focus-visible,input:focus-visible,select:focus-visible{outline:1px solid 
         return est;
     }
     async function doMerge() {
+        const mergeRoleId = currentMemId; // Stable target across AI requests and picker changes.
+        if (!mergeRoleId) return;
         const est = mergeEstimate();
         const box = document.getElementById('toolResult');
         if (!est.length) {
@@ -1450,7 +1466,7 @@ button:focus-visible,input:focus-visible,select:focus-visible{outline:1px solid 
             btn.textContent = '合并中...';
             try {
                 for (const e of est) {
-                    const mems = loadMemories(currentMemId);
+                    const mems = loadMemories(mergeRoleId);
                     const pool = mems.filter(m => m.status === 'confirmed' && m.category === e.cat
                         && m.category !== 'key' && m.category !== 'anniversary');
                     if (pool.length < 3) continue;
@@ -1479,7 +1495,7 @@ button:focus-visible,input:focus-visible,select:focus-visible{outline:1px solid 
                     let items = [];
                     if (jsonMatch) { try { items = JSON.parse(jsonMatch[0]); } catch (err2) {} }
                     if (!Array.isArray(items) || !items.length) continue;
-                    let arr = loadMemories(currentMemId);
+                    let arr = loadMemories(mergeRoleId);
                     // 删除该类原已确认记忆
                     arr = arr.filter(m => !(m.status === 'confirmed' && m.category === e.cat));
                     // 追加合并结果
@@ -1493,7 +1509,10 @@ button:focus-visible,input:focus-visible,select:focus-visible{outline:1px solid 
                             createdAt: Date.now()
                         });
                     });
-                    saveMemories(currentMemId, arr);
+                    if (!saveMemories(mergeRoleId, arr)) {
+                        alert('记忆保存失败，合并进度未继续。请检查存储空间后重试');
+                        return;
+                    }
                 }
                 box.innerHTML = '';
                 alert('合并完成');
