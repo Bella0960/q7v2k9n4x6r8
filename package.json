@@ -72,7 +72,10 @@
     "test:settings:regex": "node --test tests/regex-editor-ui.test.mjs",
     "test:role:avatars:browser": "node tests/chat-avatar-manager-browser.mjs",
     "test:role:avatars:acceptance": "npm run test:role:avatars && npm run build && npm run test:role:avatars:browser",
-    "test:storage:reliability": "node --test tests/storage-quota-reliability.test.mjs"
+    "test:storage:reliability": "node --test tests/storage-quota-reliability.test.mjs",
+    "test:eco:node": "node --test tests/world-events-contract.test.mjs tests/encounter-world-events-bridge.test.mjs tests/ecosystem-role-profile-navigation.test.mjs tests/world-events-memory-consent.test.mjs tests/encounter-reunion-confirmed.test.mjs tests/ecosystem-unified-contract.test.mjs",
+    "test:eco:browser": "node tests/ecosystem-unified-browser.mjs",
+    "gate:eco": "npm run build && node --test --test-concurrency=1 && npm run test:encounter:browser && npm run test:eco:browser"
   },
   "devDependencies": {
     "playwright": "^1.64.1",
