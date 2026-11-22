@@ -172,7 +172,7 @@ test('event projection preserves the original footprint DOM structure and local 
   assert.match(footprint,/eventDays\.has\(key\)/);
   assert.match(footprint,/t-eco-item/);
   assert.match(footprint,/showEncounter=1&returnDate=/);
-  assert.match(footprint,/roleId=' \+ id/);
+  assert.match(footprint,/encounterRole=' \+ id/);
   assert.match(footprint,/if \(ecoRouteRoleId\) return \[\]/);
   assert.doesNotMatch(footprint,/WorldEvents\.append\(/,'footprint must be a read-only projection');
 });
