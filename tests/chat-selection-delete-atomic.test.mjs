@@ -154,3 +154,169 @@ test('empty selection does not touch storage or image assets', async () => {
   assert.equal(s.get().map(x => x.mid).join(','), 'm1,m2');
   assert.equal(s.events.map(e => e.type).join(','), 'exit');
 });
+
+
+// Drive the real plus-menu clear handler through the same atomic history module
+// used by multi-select deletion. Synthetic messages only; no user data.
+const extras = readFileSync('chat/chat/js/chat-extras.js', 'utf8');
+const clearSourceStart = extras.indexOf('  var clearChatInFlight = false;');
+const clearSourceEnd = extras.indexOf('\n  function coreCopyLast()', clearSourceStart);
+assert.ok(clearSourceStart >= 0 && clearSourceEnd > clearSourceStart, 'plus-menu clear handler must exist');
+const clearSource = extras.slice(clearSourceStart, clearSourceEnd);
+
+function clearScenario(options = {}) {
+  const key = 'chat_history_role-1';
+  const original = [
+    { mid: 'pic-1', role: 'user', type: 'image', assetId: 'image-asset-1', text: '[图片]' },
+    { mid: 'text-2', role: 'assistant', text: '已保存的原消息' }
+  ];
+  const raw = new Map([
+    [key, options.corrupt ? '{broken' : JSON.stringify(original)],
+    ['chat_history_role-2', JSON.stringify([{ mid: 'untouched', role: 'user', text: '其他角色消息' }])]
+  ]);
+  let confirm;
+  let lockRequests = 0;
+  let concurrentlyUpdated = false;
+  const events = [];
+  const clearNo = {};
+  const clearYes = {};
+  const localStorage = {
+    getItem(k) { return raw.has(k) ? raw.get(k) : null; },
+    setItem(k, value) {
+      if (options.quota) {
+        const error = new Error('quota');
+        error.name = 'QuotaExceededError';
+        throw error;
+      }
+      raw.set(k, String(value));
+    }
+  };
+  const document = {
+    querySelector(selector) {
+      if (options.declaredAccount && selector === 'meta[name="mao-account-id"]') {
+        return { content: options.declaredAccount };
+      }
+      return null;
+    },
+    getElementById(id) {
+      if (id === 'clearNo') return clearNo;
+      if (id === 'clearYes') return clearYes;
+      throw new Error('unexpected button: ' + id);
+    }
+  };
+  const navigator = options.noLock ? {} : { locks: {
+    request(name, opts, callback) {
+      lockRequests++;
+      assert.equal(name, 'maomao:chat-history:role-1');
+      assert.equal(opts.mode, 'exclusive');
+      if (options.concurrent && !concurrentlyUpdated) {
+        concurrentlyUpdated = true;
+        const added = JSON.parse(raw.get(key));
+        added.push({ mid: 'another-tab', role: 'user', text: '另一窗口的新消息' });
+        raw.set(key, JSON.stringify(added));
+      }
+      return callback();
+    }
+  } };
+  const window = {
+    navigator, localStorage, document,
+    releaseDeletedChatImageReferences(list) {
+      events.push({ type: 'release', mids: list.map(msg => msg.mid), saved: raw.get(key) });
+      return options.cleanupReject ? Promise.reject(new Error('media busy')) : Promise.resolve();
+    }
+  };
+  if (options.scope) window.__MAO_ACCOUNT_SCOPE__ = options.scope;
+  const ctx = {
+    window, document, navigator, localStorage,
+    currentCharacter: { id: 'role-1' }, storageKey: key,
+    _chatHistoryUnreadable: false,
+    chatMessages: { innerHTML: 'old bubbles' },
+    loadMessages() { return JSON.parse(localStorage.getItem(key)); },
+    openModal(_title, html) {
+      assert.match(html, /确认清空/);
+      events.push({ type: 'modal' });
+    },
+    closeModal() { events.push({ type: 'close' }); },
+    renderAllMessages() { events.push({ type: 'render', saved: raw.get(key) }); },
+    showToast(message) { events.push({ type: 'toast', message }); },
+    console: { warn() {} }
+  };
+  runInNewContext(atomicSource, ctx, { timeout: 2000 });
+  runInNewContext(helper + '\n' + clearSource + '\nthis.openClear = coreClearChat;', ctx, { timeout: 2000 });
+  ctx.openClear();
+  confirm = clearYes.onclick;
+  assert.equal(typeof confirm, 'function');
+  return {
+    run: () => confirm(),
+    events,
+    raw,
+    initial: original,
+    get: () => JSON.parse(raw.get(key)),
+    other: () => JSON.parse(raw.get('chat_history_role-2')),
+    lockCount: () => lockRequests
+  };
+}
+
+test('plus-menu clear atomically commits empty history before image cleanup and render', async () => {
+  assert.doesNotMatch(clearSource, /saveMessages\s*\(\s*\[\s*\]\s*\)/);
+  assert.match(clearSource, /await replaceChatSafely\(previousMessages, \[\]\)/);
+  const s = clearScenario();
+  await s.run();
+  assert.deepEqual(s.get(), [], 'only the chosen conversation is cleared');
+  assert.equal(s.other()[0].mid, 'untouched', 'other roles are never cleared');
+  assert.equal(s.lockCount(), 1);
+  const release = s.events.find(e => e.type === 'release');
+  assert.deepEqual(Array.from(release.mids), ['pic-1', 'text-2']);
+  assert.equal(release.saved, '[]', 'image references are released only after verified persistence');
+  assert.equal(s.events.find(e => e.type === 'render').saved, '[]');
+  assert.match(s.events.filter(e => e.type === 'toast').at(-1).message, /当前聊天记录已清空/);
+});
+
+test('plus-menu clear resists double tap without duplicate atomic writes', async () => {
+  const s = clearScenario();
+  await Promise.all([s.run(), s.run()]);
+  assert.deepEqual(s.get(), []);
+  assert.equal(s.lockCount(), 1);
+  assert.equal(s.events.filter(e => e.type === 'release').length, 1);
+  assert.equal(s.events.filter(e => e.type === 'render').length, 1);
+});
+
+test('concurrent message refuses clear and retains all original media references', async () => {
+  const s = clearScenario({ concurrent: true });
+  await s.run();
+  assert.deepEqual(s.get().map(m => m.mid), ['pic-1', 'text-2', 'another-tab']);
+  assert.equal(s.events.some(e => e.type === 'release' || e.type === 'render'), false);
+  assert.equal(s.events.some(e => e.type === 'toast' && /其他窗口|刷新后重试/.test(e.message)), true);
+});
+
+test('quota and missing Web Locks fail closed and never release media', async () => {
+  for (const opts of [{ quota: true }, { noLock: true }]) {
+    const s = clearScenario(opts);
+    await s.run();
+    assert.deepEqual(s.get(), s.initial);
+    assert.equal(s.events.some(e => e.type === 'release' || e.type === 'render'), false);
+    assert.equal(s.events.some(e => e.type === 'toast'), true);
+  }
+});
+
+test('account scope mismatch and corrupt history cannot be cleared', async () => {
+  for (const opts of [
+    { declaredAccount: 'account-A', scope: { ready: true, accountId: 'account-B' } },
+    { corrupt: true }
+  ]) {
+    const s = clearScenario(opts);
+    await s.run();
+    assert.equal(s.events.some(e => e.type === 'release' || e.type === 'render'), false);
+    assert.notEqual(s.raw.get('chat_history_role-1'), '[]');
+    assert.equal(s.other()[0].mid, 'untouched');
+  }
+});
+
+test('image cleanup rejection does not misreport already committed clear as failed', async () => {
+  const s = clearScenario({ cleanupReject: true });
+  await s.run();
+  await Promise.resolve();
+  assert.deepEqual(s.get(), []);
+  assert.equal(s.events.filter(e => e.type === 'release').length, 1);
+  assert.match(s.events.filter(e => e.type === 'toast').at(-1).message, /已清空/);
+});
