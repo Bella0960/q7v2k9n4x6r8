@@ -5676,7 +5676,8 @@
                         isRegen: !!(opts && opts.isRegenerate),
                         isGroupFollowup: !!(opts && opts.groupFollowup),
                         groupAutoDepth: Math.max(0, parseInt(opts && opts.groupAutoDepth, 10) || 0),
-                        text: customText || input.value.trim()
+                        // Never treat an unsent draft as the user's latest message on retry/regen.
+                        text: customText || ((opts && (opts.contextOnly || opts.isRegenerate)) ? '' : input.value.trim())
                     };
                 })();
             const customText = sendState.customText;
