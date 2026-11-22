@@ -51,8 +51,8 @@ test('shared ledger script loads before character save handler', () => {
   assert.ok(ledger > 0 && managerScript > ledger);
 });
 
-test('event hook is strictly placed after the verified role save gate', () => {
-  const saved = manager.indexOf('if (!saveRoles(roles))', manager.indexOf('function handleSaveRole()'));
+test('event hook is strictly placed after verified role/worldbook binding transaction', () => {
+  const saved = manager.indexOf('if (!bindingSave || !bindingSave.ok)', manager.indexOf('function handleSaveRole()'));
   const hook = manager.indexOf('const createdEncounter = !roleId && activeEncounterDraftId', saved);
   assert.ok(saved > 0 && hook > saved);
   assert.ok(manager.slice(saved, hook).includes('return;'));
