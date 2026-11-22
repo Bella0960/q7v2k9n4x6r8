@@ -938,6 +938,72 @@
         }
         #listView .role-slim-bar .slim-meta { min-width:0; }
 
+        /* ROLE-LIST-V117: compact, consistently spaced rows. Scoped to the
+           archive list so the editor, profiles and group UI stay untouched. */
+        #listView .role-slim-bar {
+            grid-template-columns:96px minmax(0, 1fr);
+            grid-template-rows:minmax(0, 1fr) auto;
+            align-items:start;
+            column-gap:14px;
+            row-gap:0;
+            min-height:148px;
+            padding:13px 0;
+        }
+        #listView .role-slim-bar .slim-avatar {
+            grid-column:1;
+            grid-row:1 / span 2;
+            width:96px;
+            height:96px;
+            flex:none;
+            align-self:start;
+            justify-self:start;
+            object-fit:cover;
+        }
+        #listView .role-slim-bar .slim-meta {
+            grid-column:2;
+            grid-row:1;
+            min-width:0;
+            align-self:start;
+            padding-top:0;
+            gap:6px;
+            overflow:hidden;
+        }
+        #listView .role-slim-bar .slim-name {
+            display:-webkit-box;
+            -webkit-box-orient:vertical;
+            -webkit-line-clamp:2;
+            overflow:hidden;
+            overflow-wrap:anywhere;
+        }
+        #listView .role-slim-bar .slim-desc {
+            display:-webkit-box;
+            -webkit-box-orient:vertical;
+            -webkit-line-clamp:2;
+            overflow:hidden;
+            white-space:normal;
+            overflow-wrap:anywhere;
+            line-height:1.5;
+        }
+        #listView .role-slim-bar .bar-right {
+            grid-column:2;
+            grid-row:2;
+            align-self:end;
+            min-width:0;
+            margin-top:6px;
+            padding-top:7px;
+        }
+        @media (max-width:360px) {
+            #listView .role-slim-bar {
+                grid-template-columns:86px minmax(0, 1fr);
+                column-gap:12px;
+                min-height:140px;
+            }
+            #listView .role-slim-bar .slim-avatar {
+                width:86px;
+                height:86px;
+            }
+        }
+
 
     </style>
 <link rel="stylesheet" href="../../shared/css/mobile-fit.css">
