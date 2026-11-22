@@ -1,7 +1,7 @@
 /* 小手机 PWA Service Worker
  * 页面与静态资源均采用缓存优先+后台更新，断网/慢网时秒开。
  */
-const CACHE_NAME = 'phone-app-pwa-v300';
+const CACHE_NAME = 'phone-app-pwa-v301';
 const FONT_ASSET_CACHE = 'maomao-font-assets-v1';
 function cacheablePublicResponse(response) {
   return !!(response && response.ok && !response.redirected &&
@@ -110,6 +110,8 @@ const APP_SHELL = [
   './chat/chat/avatar-manager.js?v=20261117v1',
   './chat/chat/js/chat-extras.js?t=20261122cards4',
   './worldbook/characters/characters.html',
+  './chat/footprint/footprint.html',
+  './chat/footprint/footprint-ai.js?v=20261123-persona-json-v1',
   './shared/js/phone/character-card-client.js?v=20261122-neutral-v1',
   './worldbook/characters/js/characters-manager.js?v=20261122-inline-v2',
   './worldbook/characters/js/character-ai-json.js?v=20261122-json-v3',
