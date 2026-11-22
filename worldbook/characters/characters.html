@@ -883,6 +883,22 @@
         .avatar-library-empty-mark { color:#999; font:400 22px Georgia,serif; }
         @media (prefers-reduced-motion:reduce) { .avatar-library-photo img { transition:none; } }
 
+    
+        /* Avatar archive belongs after the editable character settings, folded by default. */
+        .avatar-library-section { margin:18px 0 0; padding:0; border:1px solid #E5E5E2; border-radius:12px; background:#FAFAF9; }
+        .avatar-library-trigger { display:flex; justify-content:space-between; align-items:center; gap:12px; padding:17px 16px; list-style:none; cursor:pointer; color:#222; font-size:14px; }
+        .avatar-library-trigger::-webkit-details-marker { display:none; }
+        .avatar-library-trigger span { color:#888; font-size:10px; font-weight:400; }
+        .avatar-library-section[open] .avatar-library-trigger { border-bottom:1px solid #E8E8E5; }
+        .avatar-library-section[open] .avatar-library-trigger span { font-size:0; }
+        .avatar-library-section[open] .avatar-library-trigger span::after { content:'收起';font-size:10px; }
+        .avatar-library-inner { padding:16px; }
+        .avatar-library-heading { align-items:center; flex-wrap:wrap; }
+        .avatar-library-heading h3 { font-size:19px; }
+        .avatar-library-heading p { margin-bottom:3px; }
+        .avatar-library-add { border-radius:7px; background:transparent; }
+        .avatar-pair-heading { margin-top:12px; }
+
     </style>
 <link rel="stylesheet" href="../../shared/css/mobile-fit.css">
 </head>
