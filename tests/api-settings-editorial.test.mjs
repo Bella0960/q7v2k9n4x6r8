@@ -24,7 +24,7 @@ test('API-UI-002 preserves each API control contract once',()=>{
  assert.match(migration,/btnApiImportProfiles/);
 });
 test('API-UI-003 hides management actions but preserves the complete API form',()=>{
- const root=api.slice(api.indexOf('class="api-profile-section"'));
+ const root=api;
  const head=root.split('<details class="api-tools-drawer"')[0];
  assert.ok(head.includes('id="profilePills"'),'active profile remains visible');
  for(const id of ['btnApiExportProfiles','btnApiImportProfiles','btnProfileNew','btnProfileDelete','presetChips'])
