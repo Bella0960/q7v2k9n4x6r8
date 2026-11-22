@@ -88,10 +88,12 @@ test('actual footprint page on Chromium 375/390/430px: two incompatible personas
         assert.equal(await page.locator('.timeline .t-item').count(),3);
         console.log('FP_PHASE width='+width+' step=first-generated');
         const first=await page.locator('.timeline').innerText();
+        console.log('FP_FLAGS width='+width+' hasAction='+/检查昨夜的构建日志/.test(first)+' hasThought='+/心声 ·/.test(first)+' hasStatus='+/状态 ·/.test(first)+' unexpected='+/祖师殿|御剑/.test(first));
         assert.match(first,/检查昨夜的构建日志/);
         assert.match(first,/心声 ·/);
         assert.match(first,/状态 ·/);
         assert.doesNotMatch(first,/祖师殿|御剑/);
+        console.log('FP_PHASE width='+width+' step=before-second-role-click');
         await page.locator('.role-item[data-role-id="cult-b"]').click();
         console.log('FP_PHASE width='+width+' step=role-switched');
         assert.equal(await page.locator('.timeline .t-item').count(),0,'new role must not see previous role timeline');
