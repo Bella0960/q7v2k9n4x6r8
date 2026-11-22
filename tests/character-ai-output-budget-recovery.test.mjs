@@ -183,3 +183,13 @@ test('a model may freely invent a fitting new name but never add the main role a
   x.nodes.btnAiRelationships.click();await settle();
   assert.deepEqual(x.role.npcCharacters.map(v=>v.name),['新邻居']);
 });
+
+test('infer relationship-network filters from brief AI relations without requesting more fields',async()=>{
+  const x=setup({apiKey:'mock',model:'mock',maxTokens:512},async()=>({
+    ok:true,data:{people:[{name:'林青',relation:'同事'},{name:'苏禾',relation:'朋友'}]}
+  }));
+  x.nodes.btnAiRelationships.click();await settle();
+  assert.equal(x.calls.length,1);
+  assert.equal(x.role.npcCharacters.find(v=>v.name==='林青').category,'work');
+  assert.equal(x.role.npcCharacters.find(v=>v.name==='苏禾').category,'friend');
+});
