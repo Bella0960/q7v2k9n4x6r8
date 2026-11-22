@@ -220,6 +220,14 @@ export function createAccountAuth({ store, env = {}, now = () => Date.now() }) {
     if (account.status !== 'active' || account.role !== 'super_admin') {
       throw new ApiError(403, 'ADMIN_ONLY', '仅超级管理员可以使用此功能');
     }
+    // Privileges are valid only for the exact founder ID configured on the
+    // trusted Worker; a client-provided UID or fabricated role has no authority.
+    if (delegated && usesExistingAccountAuthority(env)) {
+      const expectedFounderId = String(env.MAO_EXPECTED_FOUNDER_ID || '');
+      if (!ACCOUNT_ID_RE.test(expectedFounderId) || account.account_id !== expectedFounderId) {
+        throw new ApiError(403, 'QA_FOUNDER_MISMATCH', '管理员永久身份未通过校验');
+      }
+    }
     return account;
   }
 
