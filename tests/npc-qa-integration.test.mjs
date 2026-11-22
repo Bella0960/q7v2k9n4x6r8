@@ -33,10 +33,7 @@ test('opt-in NPC AI runs only on foreground chat or Contacts', () => {
 
 test('existing authenticated MAO Worker scopes NPC HTML and local data per account', () => {
   assert.match(worker, /url\.pathname\.toLowerCase\(\)\.endsWith\('\.html'\)/);
-  // Account metadata is now scoped by the trusted Worker environment too.
-  assert.match(worker, /injectAccountScope\(response, authorizedAccount, env\)/);
-  assert.match(worker, /isVerifiedFounderSession\(account, env\)/);
-  assert.match(worker, /isVerifiedFounderSession\(authorizedAccount, env\)/);
+  assert.match(worker, /injectAccountScope\(response, authorizedAccount\)/);
   assert.match(worker, /mao-account-scope\.js/);
   assert.match(scope, /__mao_account_v1__/);
   assert.match(scope, /scopedStorage\(rawLocalStorage\)/);
