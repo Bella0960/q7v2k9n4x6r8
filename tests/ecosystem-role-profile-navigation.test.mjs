@@ -78,7 +78,7 @@ test('event text escapes markup and only shows encounter first-met and reunion',
 });
 
 test('profile history is placed after original social branches and collapsed by default', () => {
-  assert.ok(manager.indexOf("renderRoleEncounterHistory(role) +") > manager.indexOf("data-profile-action=\\\"life\\\""));
+  assert.ok(manager.indexOf("renderRoleEncounterHistory(role) +") > manager.indexOf('data-profile-action="life"'));
   assert.match(profilePage, /\.eco-profile-history/);
   assert.match(profilePage,/world-events\.js/);
 });
