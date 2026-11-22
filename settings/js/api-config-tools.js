@@ -220,6 +220,11 @@
         }
     }
 
+    function clearModelCache() {
+        var options = el('model-list');
+        if (options) options.textContent = '';
+        if (typeof allModels !== 'undefined') allModels = null;
+    }
     function applyNormalizedUrl(quiet) {
         var urlInput = el('api-url');
         if (!urlInput) return;
@@ -227,6 +232,7 @@
         var normalized = normalizeBaseUrl(original);
         if (original !== normalized) {
             urlInput.value = normalized;
+            clearModelCache();
             if (!quiet) notify('已修正 API 地址格式');
         }
     }
@@ -249,6 +255,7 @@
         }
         var ctrl = new AbortController();
         var timeout = global.setTimeout(function () { ctrl.abort(); }, 15000);
+        clearModelCache();
         button.disabled = true; button.textContent = '拉取中…';
         message.textContent = '正在拉取模型列表…';
         try {
@@ -279,6 +286,7 @@
             message.textContent = aborted ? '拉取超时，请检查网络；也可以手动输入模型名' :
                 '拉取失败：' + (/Failed to fetch|NetworkError|TypeError/i.test(String(e.message || ''))
                     ? '网络异常或跨域限制，请手动输入模型名' : String(e.message || '网络异常'));
+            notify(message.textContent);
         } finally {
             global.clearTimeout(timeout);
             button.disabled = false;
@@ -293,7 +301,12 @@
         if (exportBtn) exportBtn.addEventListener('click', downloadBackup);
         if (importBtn && input) importBtn.addEventListener('click', function () { input.click(); });
         if (input) input.addEventListener('change', function () { importSelected(input); });
-        if (url) url.addEventListener('blur', function () { applyNormalizedUrl(false); });
+        if (url) {
+            url.addEventListener('blur', function () { applyNormalizedUrl(false); });
+            url.addEventListener('change', clearModelCache);
+        }
+        var keyInput = el('api-key');
+        if (keyInput) keyInput.addEventListener('change', clearModelCache);
         if (form) form.addEventListener('submit', function () { applyNormalizedUrl(true); }, true);
         var testBtn = el('btn-test-connection');
         if (testBtn) testBtn.addEventListener('click', function () { applyNormalizedUrl(true); }, true);
@@ -307,6 +320,7 @@
             if (provider) provider.value = 'gemini';
             if (url) url.value = 'https://generativelanguage.googleapis.com/v1beta/openai';
             if (model) model.value = 'gemini-2.5-flash';
+            clearModelCache();
         }
         if (provider) provider.addEventListener('change', function () {
             if (provider.value === 'gemini') useGeminiPreset();
