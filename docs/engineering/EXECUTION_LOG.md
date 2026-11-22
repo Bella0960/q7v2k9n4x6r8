@@ -158,3 +158,10 @@ On the next turn/session, read this file and the current `AGENTS.md` first. Cont
 - Actual V8 execution of integrated JS with test data: **15/15 passed**. Not native Node, Vite, Chromium, real login, SW or real phone; **all of those are NOT RUN**. Do not claim passing tests or deployment.
 - Blocking release: existing isolated public `web-runtime-lab` sealed runner requires `scripts/qa-direct-release.mjs`, `wrangler.qa.jsonc`, and approved exact candidate mapping; this main-based temporary branch lacks those and the account entry HTML. Rebase the small ECO delta onto a suitable *existing approved QA candidate* with original safety gates before running true tests. No private Actions triggered; no public workflow changed; no production/QA deployment.
 - Full integration contract, evidence boundaries and safe next steps: `docs/engineering/ECO_UNIFIED_QA_HANDOFF_20261123.md`. Do not deploy or invent v12x/UUID without real green receipts and matching QA SHA.
+
+### Follow-up main reconciliation (same session)
+
+- Main advanced again after the first merge to `e1ba4853baacd1719dd0afce5727e651ca05e37e` (25 more commits). Diff review found exactly 3 integration overlaps: `chat/chat/chat-detail.html`, `package.json`, and this execution log.
+- Chat: re-applied only 1,118 ECO bytes onto the newest main chat source, with a tested exact byte-recovery of the main version after removing ECO-specific insertion. Package: retained new main `test:chat:contract` and `test:storage:reliability` scripts along with ECO tests. Log: append-only merged both changes. All other new main files (`phone_storage.js`, quota reliability test, memory page) preserved byte-for-byte.
+- Non-force merge commit `827d7a82592b2fe95beceae0442f8170c3d40fe0` has parents previous integration `9995244b23eefbfcce22ac2ef001589e4850f962` and newer main `e1ba4853...`. Latest branch head may continue moving, so capture exact HEAD at test time.
+- Latest integration source: actual JS and inline HTML V8 syntax checks passed. Still **NOT RUN** native full Node/Vite/Chromium or Cloudflare QA. QA release blocked as documented above.
