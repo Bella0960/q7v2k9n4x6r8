@@ -118,13 +118,28 @@ test('silently dropped memory writes fail verification and preserve the legacy c
   assert.equal(events.at(-1).detail.error, 'WriteNotPersisted');
 });
 
-test('unreadable memory readback fails closed and retains legacy data', () => {
+test('unreadable primary memory preflight blocks write and preserves legacy data', () => {
   const { win, localStorage, events } = environment();
   const legacy = JSON.stringify({ a: { memories: { items: [{ content: 'old' }] } } });
   localStorage.setItem('phone_data_v2', legacy);
   const normalGet = localStorage.getItem;
   localStorage.getItem = key => {
-    if (key === 'chat_memories_a') throw new Error('storage read unavailable');
+    if (key === 'chat_memories_a') throw new Error('primary read unavailable');
+    return normalGet(key);
+  };
+  assert.equal(win.PhoneStorage.saveMemories('a', [{ content: 'new' }]), false);
+  assert.equal(localStorage.getItem('phone_data_v2'), legacy);
+  assert.equal(events.at(-1).detail.error, 'PrimaryUnavailable');
+});
+
+test('unreadable post-write memory readback blocks legacy cleanup', () => {
+  const { win, localStorage, events } = environment();
+  const legacy = JSON.stringify({ a: { memories: { items: [{ content: 'old' }] } } });
+  localStorage.setItem('phone_data_v2', legacy);
+  const normalGet = localStorage.getItem;
+  let reads = 0;
+  localStorage.getItem = key => {
+    if (key === 'chat_memories_a' && ++reads > 1) throw new Error('readback unavailable');
     return normalGet(key);
   };
   assert.equal(win.PhoneStorage.saveMemories('a', [{ content: 'new' }]), false);
