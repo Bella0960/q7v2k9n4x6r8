@@ -506,7 +506,8 @@ button { color: inherit; font: inherit; }
 
 .dock-bar {
   display: flex;
-  justify-content: space-evenly;
+  /* Keep one or two shortcuts together; the Dock supports up to five. */
+  justify-content: center;
   align-items: center;
   height: 66px;
   min-height: 66px;
@@ -518,7 +519,7 @@ button { color: inherit; font: inherit; }
   box-shadow: 0 4px 18px rgba(0, 0, 0, 0.06) !important;
   margin-bottom: 8px;
   padding: 0 8px;
-  gap: 8px;
+  gap: 12px;
   transition: all .2s ease;
 }
 
@@ -1853,7 +1854,7 @@ button { color: inherit; font: inherit; }
   text-shadow: 0 1px 8px rgba(0, 0, 0, 0.2);
 }
 
-/* Dock：默认只有商店，居中 */
+/* Dock：图标保留固定宽度；一至五个快捷应用整体居中 */
 .dock-bar .dock-item { flex: 0 0 auto; }
 
 /* ===== 桌面预览容器覆盖（删除旧内联 style 后补回） ===== */
