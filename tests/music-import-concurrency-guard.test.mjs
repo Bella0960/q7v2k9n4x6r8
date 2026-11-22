@@ -95,7 +95,10 @@ async function run(files, {
     },
     window: { alert() {} },
     Uint8Array,
+    ArrayBuffer,
     Blob,
+    setTimeout,
+    clearTimeout,
   };
   runInNewContext(
     'let musicMetaReadFailure = null;\n' + helperSource + '\n' + formatSource + '\n' + importSource,
