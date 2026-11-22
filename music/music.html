@@ -2461,8 +2461,26 @@
   document.getElementById('musicImport').addEventListener('change', async function(e) {
     var files = Array.from(e.target.files || []);
     e.target.value = '';
+    // Guard the original catalog before asynchronous Android picker/IndexedDB work.
+    // Never overwrite songs saved by another tab while import is running.
+    var catalogAtStart = null;
+    try {
+      catalogAtStart = localStorage.getItem(LOCAL_TRACKS_KEY);
+    } catch (readError) {
+      toast('无法读取音乐目录，已停止导入以保护原数据');
+      return;
+    }
     var localMeta = readLocalTracksMeta(), lastImported = null;
     var protectedFileNoticeShown = false;
+    try {
+      if (localStorage.getItem(LOCAL_TRACKS_KEY) !== catalogAtStart) {
+        toast('其他页面更新了音乐列表，请重新选择文件后导入');
+        return;
+      }
+    } catch (readError) {
+      toast('无法读取音乐目录，已停止导入以保护原数据');
+      return;
+    }
     if (musicMetaReadFailure) { toast('原歌曲列表读取失败，已停止导入，避免覆盖旧歌曲'); return; }
     for (var i = 0; i < files.length; i++) {
       var file = files[i];
@@ -2491,7 +2509,9 @@
         }
         continue;
       }
-      var tid = 'local_' + Date.now() + '_' + i + '_' + Math.random().toString(36).slice(2, 7);
+      var importEntropy = typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function'
+        ? crypto.randomUUID() : Math.random().toString(36).slice(2, 13);
+      var tid = 'local_' + Date.now() + '_' + i + '_' + importEntropy;
       var name = file.name.replace(/\.[^.]+$/, '');
       var track = { id: tid, name: name, artist: '未知歌手',
         dur: '--:--', durSec: 0, source: 'local', lyrics: [] };
@@ -2506,6 +2526,9 @@
         await putAudioBlob({ id: tid, name: name, artist: track.artist,
           mimeType: resolvedFormat.mimeType, size: audioBlob.size, blob: audioBlob });
         try {
+          if (localStorage.getItem(LOCAL_TRACKS_KEY) !== catalogAtStart) {
+            throw new Error('其他页面更新了音乐列表，已停止本次导入以防覆盖');
+          }
           saveLocalTracksMeta(localMeta.concat([track]));
         } catch (err) {
           try { await deleteAudioBlob(tid); }
@@ -2513,6 +2536,7 @@
           throw err;
         }
         localMeta.push(track);
+        catalogAtStart = JSON.stringify(localMeta);
         tracks.push(track);
         lastImported = track;
         musicScheduleLocalDuration(track, audioBlob);
