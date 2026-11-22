@@ -1284,7 +1284,7 @@
                 <!-- 6. 导入角色 JSON -->
                 <div class="editor-field-group">
                     <label class="field-label" style="color: #8E8E93;">导入角色</label>
-                    <button type="button" id="btnImportRole" class="import-json-btn">导入已签名 MAOMAO JSON / TXT</button>
+                    <button type="button" id="btnImportRole" class="import-json-btn">导入角色档案（JSON / TXT）</button>
                     <button type="button" id="btnExportRole" class="import-json-btn">导出当前角色 JSON</button>
                     <button type="button" id="btnExpandEncounterPersona" class="import-json-btn hidden">AI 完善人设 · 使用 API</button>
                     <input type="file" id="roleImportFile" accept=".json,.txt,application/json,text/plain" class="hidden">
@@ -1298,7 +1298,7 @@
 
         <!-- 沉浸式头像裁切页 -->
         <section class="portrait-studio hidden" id="portraitStudio" aria-label="头像照片编辑器">
-            <div class="studio-topline"><span>MAOMAO / IMAGE STUDIO</span><span>01 — PORTRAIT</span></div>
+            <div class="studio-topline"><span>头像编辑</span><span>01 — PORTRAIT</span></div>
             <h2 class="studio-heading">Portrait</h2>
             <p class="studio-subtitle">拖动照片调整构图，使用滑杆微调缩放。</p>
             <div class="studio-canvas-wrap"><canvas id="portraitCropCanvas" width="600" height="600" aria-label="拖动以调整头像裁切"></canvas></div>
@@ -1316,7 +1316,7 @@
         <!-- 草稿恢复提示 -->
         <div class="recovery-dialog-backdrop hidden" id="recoveryDialog" role="dialog" aria-modal="true" aria-labelledby="recoveryTitle">
             <div class="recovery-dialog">
-                <div class="recovery-kicker">MAOMAO / LOCAL ARCHIVE</div>
+                <div class="recovery-kicker">草稿恢复</div>
                 <h2 class="recovery-title" id="recoveryTitle">A moment left unfinished.</h2>
                 <p class="recovery-copy" id="recoveryCopy">检测到上次未正式保存的角色资料。要恢复这份草稿吗？</p>
                 <div class="recovery-actions">
@@ -1336,8 +1336,8 @@
     <script src="../../shared/js/phone/phone_api.js?v=20261115a"></script>
     <script src="../../encounter/encounter-engine.js?v=20261115v1"></script>
     <script src="../../shared/js/phone/role-worldbook-bindings.js?v=20261119-qa1"></script>
-    <script src="../../shared/js/phone/character-card-client.js?v=20261122-signed-v2"></script>
-    <script src="js/characters-manager.js?v=20261122-signed-v2"></script>
+    <script src="../../shared/js/phone/character-card-client.js?v=20261122-neutral-v1"></script>
+    <script src="js/characters-manager.js?v=20261122-neutral-v1"></script>
     <script src="../../shared/js/nav.js"></script>
 <script src="../../shared/js/statusbar-control.js"></script>
 </body>

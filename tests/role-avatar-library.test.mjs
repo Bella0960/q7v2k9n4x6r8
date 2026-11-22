@@ -671,7 +671,7 @@ test('deleting a character releases only its references and re-discovers interru
 
 test('PWA shell caches the role portrait archive and its runtime', () => {
   const currentCacheVersion = Number(serviceWorker.match(/^const CACHE_NAME = 'phone-app-pwa-v(\d+)'/m)?.[1] || 0);
-  assert.ok(currentCacheVersion >= 203, 'PWA app shell must not regress below feature minimum v203');
+  assert.ok(currentCacheVersion >= 286, 'profile text revisions must refresh pre-cached editor files (v286+)');
   assert.ok(serviceWorker.includes("'./worldbook/characters/characters.html'"));
   // Keep the PWA offline shell aligned to the exact runtime loaded by the profile.
   const managerTag = characterPage.match(/<script\s+src="(js\/characters-manager\.js\?v=[^"]+)"\s*><\/script>/);
@@ -681,7 +681,8 @@ test('PWA shell caches the role portrait archive and its runtime', () => {
     'signed card verification must be available before the profile editor');
   assert.ok(serviceWorker.includes("'./worldbook/characters/" + managerTag[1] + "'"),
     'the offline PWA shell must use the same versioned editor script');
-  assert.ok(serviceWorker.includes("'./shared/js/phone/character-card-client.js?v=20261122-signed-v2'"),
+  const shellSignerUrl = signerTag[1].replace(/^\.\.\/\.\.\//, './');
+  assert.ok(serviceWorker.includes("'" + shellSignerUrl + "'"),
     'signed import must work in the precached shell without reverting to the old editor');
   assert.ok(serviceWorker.includes("'./shared/js/phone/role-avatar-library.js?v=20261121avatar1'"));
 });
