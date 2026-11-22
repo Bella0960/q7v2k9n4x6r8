@@ -34,16 +34,21 @@
     while ((match = pattern.exec(source))) {
       var token = String(match[1] || '').trim().replace(/[，。！？!?；;：:、]+$/, '');
       if (!token) continue;
-      var target = null;
-      for (var i = 0; i < list.length; i++) {
-        var member = list[i];
-        var aliases = memberAliases(member);
-        if (aliases.some(function (alias) { return alias.toLocaleLowerCase() === token.toLocaleLowerCase(); })) {
-          target = member;
-          break;
-        }
-      }
-      if (!target || target.id == null) continue;
+      // Exact IDs are authoritative. For names/nicknames, require an unambiguous
+      // match: two members named alike must never be silently routed to the first.
+      var idMatches = list.filter(function (member) {
+        return member && member.id != null &&
+          asId(member.id).toLocaleLowerCase() === token.toLocaleLowerCase();
+      });
+      var namedMatches = idMatches.length ? [] : list.filter(function (member) {
+        return member && member.id != null &&
+          memberAliases(member).slice(0, 2).some(function (alias) {
+            return alias.toLocaleLowerCase() === token.toLocaleLowerCase();
+          });
+      });
+      var matches = idMatches.length ? idMatches : namedMatches;
+      var target = matches.length === 1 ? matches[0] : null;
+      if (!target) continue;
       var id = asId(target.id);
       if (!seen[id]) {
         seen[id] = true;
@@ -486,6 +491,12 @@
     var selected;
     var fallback = false;
 
+    if (!eligible.length && options.isFollowup && options.allowFallback !== true) {
+      // Autonomous chatter may naturally run out. Do not force a high-threshold
+      // quiet member to speak just to fill another round. Explicit mentions and
+      // deliberate manual continues have their own paths above.
+      return null;
+    }
     if (eligible.length) {
       selected = chooseWeighted(
         eligible,

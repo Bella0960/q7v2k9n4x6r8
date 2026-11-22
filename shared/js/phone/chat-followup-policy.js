@@ -133,7 +133,7 @@
     options = options || {};
     var round = Math.max(1, Math.min(3, Number(options.round) || 1));
     var name = String(options.name || '角色').slice(0, 40);
-    var persona = String(options.persona || '').slice(0, 1200);
+    var persona = String(options.persona || '');
     var context = String(options.context || '').slice(0, 3600);
     var relationship = String(options.relationship || '普通朋友').slice(0, 40);
     var tone = round === 1

@@ -10,15 +10,26 @@ const overlay = read('../chat/call/call-overlay.js');
 const styles = read('../chat/call/call-overlay.css');
 
 test('chat detail loads the call experience stylesheet and script', () => {
-  assert.match(detail, /call\/call-overlay\.css\?v=20261105v1/);
-  assert.match(detail, /call\/call-overlay\.js\?v=20261105v1/);
+  assert.match(detail, /call\/call-overlay\.css\?v=20261121call1/);
+  assert.match(detail, /call\/call-overlay\.js\?v=20261121call1/);
   assert.ok(detail.indexOf('js/chat-extras.js') < detail.indexOf('../call/call-overlay.js'));
 });
 
 test('voice and video actions open the shared in-chat call layer', () => {
   assert.match(extras, /MAOMAOCallExperience\.start\(mode,\s*currentCharacter\)/);
-  assert.match(extras, /call-ui\.html/);
-  assert.match(extras, /call\.html\?id=/);
+  assert.doesNotMatch(extras, /window\.location\.href\s*=\s*['"]\.\.\/call\//);
+  assert.match(extras, /通话暂不可用，请刷新后重试/);
+});
+
+test('AI incoming and group call entries use the unified in-chat engine', () => {
+  assert.match(detail, /calls\.invite\(currentCharacter\)/);
+  assert.match(detail, /calls\.start\('group', currentCharacter\)/);
+  assert.doesNotMatch(detail, /location\.href\s*=\s*['"]\.\.\/call\/call(?:-ui)?\.html/);
+  assert.match(overlay, /function invite\(character\)/);
+  assert.match(overlay, /data-invite-action="accept"/);
+  assert.match(overlay, /data-invite-action="decline"/);
+  assert.match(overlay, /action === 'accept' && !start\('voice', character\)/);
+  assert.match(styles, /\.maomao-call-invite-card/);
 });
 
 test('call messages go through the existing chat send pipeline and are recorded', () => {

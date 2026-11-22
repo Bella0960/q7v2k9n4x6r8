@@ -1,0 +1,81 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="theme-color" content="#F7F7F8">
+  <title>MAO · 账号管理</title>
+  <link rel="stylesheet" href="./manage.css?v=20261111-nav1">
+  <script src="./manage.js" defer></script>
+</head>
+<body>
+  <main class="manage-shell">
+    <header class="manage-header">
+      <a class="back-link" href="../settings/settings.html" aria-label="返回设置">返回设置</a>
+      <div><div class="eyebrow">ACCOUNT CENTER</div><h1>账号管理</h1></div>
+      <span class="header-mark">MAO</span>
+    </header>
+
+    <section class="identity-card">
+      <div class="identity-top">
+        <div class="avatar-mark" aria-hidden="true">M</div>
+        <div class="identity-copy">
+          <span>永久账号 ID</span>
+          <strong id="accountId">正在读取…</strong>
+        </div>
+        <button class="copy-id" id="copyId" type="button">复制</button>
+      </div>
+      <div class="identity-meta">
+        <span id="accountUsername">—</span>
+        <span class="status-dot"><i></i><b id="accountStatus">—</b></span>
+      </div>
+    </section>
+
+    <section class="manage-section">
+      <div class="section-heading"><h2>账号资料</h2><span>PROFILE</span></div>
+      <div class="info-card">
+        <div class="info-row"><span>永久 ID</span><strong id="profileId">—</strong></div>
+        <div class="info-row"><span>用户名</span><strong id="profileUsername">—</strong></div>
+        <div class="info-row"><span>QQ 邮箱</span><strong id="profileEmail">未绑定</strong></div>
+        <p class="helper-note">QQ 邮箱所有权验证功能正在完善，未验证邮箱暂不能用于邀请码授权。</p>
+      </div>
+    </section>
+
+    <section class="manage-section">
+      <div class="section-heading"><h2>登录设备</h2><span>DEVICES</span></div>
+      <div class="info-card" id="devicesList"><p class="empty-note">正在读取设备…</p></div>
+    </section>
+
+    <section class="manage-section">
+      <div class="section-heading"><h2>登录会话</h2><span>SESSIONS</span></div>
+      <div class="info-card" id="sessionsList"><p class="empty-note">正在读取会话…</p></div>
+    </section>
+
+    <section class="manage-section">
+      <div class="section-heading"><h2>账号安全</h2><span>SECURITY</span></div>
+      <form class="info-card password-form" id="passwordForm" novalidate>
+        <label>当前密码<input name="currentPassword" type="password" autocomplete="current-password" required></label>
+        <label>新密码<input name="newPassword" type="password" autocomplete="new-password" minlength="10" maxlength="128" required placeholder="至少 10 位"></label>
+        <label>确认新密码<input name="confirmPassword" type="password" autocomplete="new-password" minlength="10" maxlength="128" required></label>
+        <p class="helper-note">修改密码后，其他登录会话将退出；当前设备保持登录。</p>
+        <button class="dark-button" type="submit">更新密码</button>
+        <p class="inline-message" id="passwordMessage" role="status" aria-live="polite"></p>
+      </form>
+    </section>
+
+    <button class="logout-button" id="logoutButton" type="button">退出当前账号</button>
+    <p class="footer-note">账号身份与使用授权由 MAO 服务器独立管理。</p>
+  </main>
+  <dialog id="accountActionDialog" class="account-action-dialog" aria-labelledby="accountActionTitle" aria-describedby="accountActionDescription">
+    <div class="account-action-content">
+      <div class="eyebrow">CONFIRM ACTION</div>
+      <h2 id="accountActionTitle">请确认操作</h2>
+      <p id="accountActionDescription"></p>
+      <div class="account-action-buttons">
+        <button type="button" id="accountActionCancel">取消</button>
+        <button type="button" id="accountActionConfirm">确认操作</button>
+      </div>
+    </div>
+  </dialog>
+</body>
+</html>

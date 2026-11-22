@@ -58,8 +58,57 @@ async function seed(page, data) {
 async function read(page, key) {
   return page.evaluate((k) => JSON.parse(localStorage.getItem(k) || 'null'), key);
 }
+async function sendFromVisibleComposer(page) {
+  // The legacy floating send button only exists for non-default themes.
+  // In the default/iMessage themes the real form's native submit button is used.
+  const floating = page.locator('#myFloatSend');
+  const native = page.locator('#chat-form .send-icon-btn');
+  const button = await floating.isVisible() ? floating : native;
+  await button.waitFor({ state: 'visible', timeout: 10000 });
+  await button.click();
+}
 async function setupGroup(page, groups, roles) {
   await seed(page, { phone_groups: groups, ai_custom_characters: roles, api_settings: apiSeed() });
+}
+
+
+const inviteCandidates = 'dialog [data-group-action="invite-confirm"]';
+
+async function openInvite(page) {
+  // The overview is intentionally collapsed; expand before using inline +/- controls.
+  const drawerToggle = page.locator('[data-group-action="expand"]');
+  await drawerToggle.waitFor({ state: 'visible' });
+  if (await drawerToggle.getAttribute('aria-expanded') !== 'true') {
+    await drawerToggle.click();
+  }
+  await page.locator('.group-home-members [data-group-action="invite"]').click();
+  await page.locator(inviteCandidates).first().waitFor();
+}
+
+async function inviteRole(page, id) {
+  await page.locator(inviteCandidates + '[data-target="' + id + '"]').click();
+  await page.getByRole('dialog').waitFor({ state: 'hidden' });
+}
+
+async function candidateIds(page) {
+  return page.locator(inviteCandidates).evaluateAll((buttons) => buttons.map((button) => button.dataset.target));
+}
+
+async function openGroupCategory(page, category) {
+  await page.locator(
+    '[data-open-category="' + category + '"]'
+  ).click();
+
+  await page.locator(
+    '[data-group-category="' + category + '"]'
+  ).waitFor({ state: 'visible' });
+}
+
+async function openAtmosphereAdvanced(page) {
+  await openGroupCategory(page, 'atmosphere');
+  await page.locator(
+    '[data-group-category="atmosphere"] details.category-more > summary'
+  ).click();
 }
 
 before(async () => {
@@ -80,19 +129,17 @@ test('C1-C5 invite writes group, role library unchanged, candidate disappears', 
   const page = await context.newPage();
   try {
     await setupGroup(page, groups, roles);
-    await page.goto(baseUrl + '/chat/chat/chat-settings.html?roleId=g1', { waitUntil: 'load' });
-    await page.waitForFunction(() => document.querySelectorAll('.gp-member-row').length === 2);
+    await page.goto(baseUrl + '/chat/chat/group-play.html?id=g1', { waitUntil: 'load' });
+    await page.waitForFunction(() => document.querySelectorAll('.group-home-members [data-group-action="member"]').length === 2);
     const snapshot = (await read(page, 'ai_custom_characters')).find((r) => r.id === 'c3');
     assert.deepEqual(snapshot, roles.find((r) => r.id === 'c3'));
 
-    await page.locator('#actionGroupManage').click();
-    await page.locator('#gpInviteToggle').click();
-    await page.locator('.gp-invite-row').first().waitFor({ state: 'visible' });
-    const beforeIds = await page.$$eval('.gp-invite-row', (rows) => rows.map((r) => r.getAttribute('data-role-id')));
+    await openInvite(page);
+    const beforeIds = await candidateIds(page);
     assert.deepEqual(beforeIds.sort(), ['c3', 'c4']);
 
-    await page.locator('.gp-invite-row[data-role-id="c3"] .gp-invite-add').click();
-    await page.waitForFunction(() => document.querySelectorAll('.gp-member-row').length === 3);
+    await inviteRole(page, 'c3');
+    await page.waitForFunction(() => document.querySelectorAll('.group-home-members [data-group-action="member"]').length === 3);
 
     const storedGroups = await read(page, 'phone_groups');
     const g = storedGroups.find((x) => x.id === 'g1');
@@ -103,10 +150,11 @@ test('C1-C5 invite writes group, role library unchanged, candidate disappears', 
     assert.deepEqual(storedRoles, roles, 'entire role library must be byte-identical after invite');
     assert.deepEqual(storedRoles.find((r) => r.id === 'c3'), snapshot, 'invited role profile deep-equals snapshot');
 
-    const afterIds = await page.$$eval('.gp-invite-row', (rows) => rows.map((r) => r.getAttribute('data-role-id')));
+    await openInvite(page);
+    const afterIds = await candidateIds(page);
     assert.deepEqual(afterIds, ['c4'], 'invited role disappears from candidates');
-    assert.equal((await page.locator('#gpInviteCount').innerText()).trim(), '1 位可邀请');
-    assert.equal(await page.locator('.gp-invite-row[data-role-id="c3"]').count(), 0, 'no duplicate invite entry for c3');
+    assert.equal(await page.locator(inviteCandidates).count(), 1);
+    assert.equal(await page.locator(inviteCandidates + '[data-target="c3"]').count(), 0, 'no duplicate invite entry for c3');
   } finally {
     await context.close();
   }
@@ -120,21 +168,20 @@ test('C6-C8 chat.html -> chat-detail renders 3 members and request context conta
   const settingsPage = await context.newPage();
   try {
     await setupGroup(settingsPage, groups, roles);
-    await settingsPage.goto(baseUrl + '/chat/chat/chat-settings.html?roleId=g1', { waitUntil: 'load' });
-    await settingsPage.waitForFunction(() => document.querySelectorAll('.gp-member-row').length === 2);
-    await settingsPage.locator('#actionGroupManage').click();
-    await settingsPage.locator('#gpInviteToggle').click();
-    await settingsPage.locator('.gp-invite-row').first().waitFor({ state: 'visible' });
-    await settingsPage.locator('.gp-invite-row[data-role-id="c3"] .gp-invite-add').click();
-    await settingsPage.waitForFunction(() => document.querySelectorAll('.gp-member-row').length === 3);
+    await settingsPage.goto(baseUrl + '/chat/chat/group-play.html?id=g1', { waitUntil: 'load' });
+    await settingsPage.waitForFunction(() => document.querySelectorAll('.group-home-members [data-group-action="member"]').length === 2);
+    await openInvite(settingsPage);
+    await inviteRole(settingsPage, 'c3');
+    await settingsPage.waitForFunction(() => document.querySelectorAll('.group-home-members [data-group-action="member"]').length === 3);
     const invitedGroups = await read(settingsPage, 'phone_groups');
     assert.equal(invitedGroups[0].members.length, 3);
     await settingsPage.close();
 
     // 用群设置页真实编辑新成员资料，并让其余成员禁言，确保本轮发言者确定性为新成员
     const detailSeedPage = await context.newPage();
-    await detailSeedPage.goto(baseUrl + '/chat/chat/group-play.html?id=g1', { waitUntil: 'load' });
+    await detailSeedPage.goto(baseUrl + '/chat/chat/group-play.html?id=g1&panel=advanced', { waitUntil: 'load' });
     await detailSeedPage.waitForFunction(() => document.querySelectorAll('#membersList .member').length === 3);
+    await openGroupCategory(detailSeedPage, 'members');
     const c1Card = detailSeedPage.locator('#membersList .member[data-member-id="c1"]');
     await c1Card.locator('.member-toggle').click();
     await c1Card.locator('[data-member-field="muted"]').check();
@@ -168,6 +215,12 @@ test('C6-C8 chat.html -> chat-detail renders 3 members and request context conta
 
     // 从 chat.html 真实点击群条目
     const page = await context.newPage();
+    const personaDiagnostics = [];
+    page.on('console', (msg) => {
+      if (msg.type() === 'error' && msg.text().includes('[ChatPersonaSources] mandatory source check failed')) {
+        personaDiagnostics.push(msg.text());
+      }
+    });
     await page.route('https://mock.local/**', (route) => route.fulfill({ status: 200, contentType: 'application/json', body: '{}' }));
     let resolveBody;
     const bodyPromise = new Promise((resolve) => { resolveBody = resolve; });
@@ -191,23 +244,43 @@ test('C6-C8 chat.html -> chat-detail renders 3 members and request context conta
     ]);
     assert.ok(page.url().includes('id=g1'), 'must land on chat-detail with group id');
 
-    await page.waitForFunction(() => {
-      const el = document.getElementById('chat-status-sub');
-      return el && el.textContent.trim().length > 0;
-    });
-    const statusText = (await page.locator('#chat-status-sub').innerText()).trim();
-    const parts = statusText.split('·').map((s) => s.trim()).filter(Boolean);
-    assert.equal(parts.length, 4, 'status should list 3 member names plus mode');
-    assert.ok(parts.includes('阿五'), 'header renders the invited member nickname');
-    assert.ok(parts.includes('角色一') && parts.includes('角色二'));
-    assert.equal(parts[3], '线上');
+    // Group header is intentionally compact: 3 role members + user = 4.
+    // Nickname, roles, and member settings are still asserted against the real AI request below.
+    await page.waitForFunction(() =>
+      document.getElementById('chat-title')?.textContent?.trim() === '三人测试群（4）'
+    );
+    assert.equal((await page.locator('#chat-title').innerText()).trim(), '三人测试群（4）');
+    assert.equal(await page.locator('#chat-status-sub').isVisible(), false,
+      'group member/online subtitle must not appear as a gray header box');
 
     await page.locator('#chat-input').fill('大家好');
-    await page.locator('#myFloatSend').click();
-    const body = await Promise.race([
-      bodyPromise,
-      new Promise((_, reject) => setTimeout(() => reject(new Error('no /chat/completions request captured')), 20000))
-    ]);
+    await sendFromVisibleComposer(page);
+    let body;
+    try {
+      body = await Promise.race([
+        bodyPromise,
+        new Promise((_, reject) => setTimeout(() => reject(new Error('no /chat/completions request captured')), 20000))
+      ]);
+    } catch (error) {
+      const details = await page.evaluate(() => ({
+        toast: String(document.getElementById('detailToast')?.textContent || ''),
+        roleModule: !!window.MAOMAOChatRoleContext,
+        defaultProtocol: !!window.MAOMAO_RP_DEFAULT_PROTOCOL,
+        contextPolicy: !!window.ChatContextPolicy,
+        sendFunction: typeof window.sendMsg === 'function'
+      }));
+      const reason = details.toast.includes('世界书') ? 'lore-read'
+        : details.toast.includes('人设协议') ? 'protocol-read'
+        : details.toast.includes('角色人设') ? 'persona-read'
+        : details.toast.includes('API') ? 'api-config'
+        : details.toast ? 'other-toast' : 'no-toast';
+      throw new Error('no request; reason=' + reason +
+        '; roleModule=' + details.roleModule +
+        '; defaultProtocol=' + details.defaultProtocol +
+        '; contextPolicy=' + details.contextPolicy +
+        '; sendFunction=' + details.sendFunction +
+        '; errorEvents=' + personaDiagnostics.length);
+    }
     const system = (body.messages || []).filter((m) => m.role === 'system').map((m) => String(m.content || '')).join('\n\n');
     assert.ok(system.length > 0, 'system prompt must exist');
     assert.ok(system.includes('群成员有：'), 'group member roster present');
@@ -218,6 +291,35 @@ test('C6-C8 chat.html -> chat-detail renders 3 members and request context conta
     assert.ok(system.includes('话唠度=90/100'), 'invited member talkativeness in context');
     assert.ok(system.includes('兴趣=推理、音乐'), 'invited member interests in context');
     assert.ok(system.includes('本轮由你（阿五）'), 'reply pick is the invited member');
+    assert.ok(system.includes('【本轮角色档案 · 身份依据】'), 'source-first role identity section must be present');
+    assert.ok(system.includes('姓名：角色三'), 'identity anchor must use the selected role, not the group title');
+    assert.ok(!system.includes('姓名：三人测试群'), 'group title is not a speaker persona');
+    const authoredPrefix = system.split('【本轮角色档案 · 身份依据】')[0] || '';
+    assert.ok(authoredPrefix.includes('夜班编辑人设') || system.includes('【本轮角色档案 · 身份依据】\n姓名：角色三\n夜班编辑人设'),
+      'the selected group member persona must be present in the user-authored priority section');
+    assert.ok(!system.includes('【群聊口吻纠偏】') && system.includes('[群成员自然互动]'),
+      'group reply should retain natural speaker context without a duplicate bot lecture');
+    const received = page.locator('.msg-row.received.group-member-row').last();
+    await received.waitFor({ state: 'visible', timeout: 12000 });
+    await received.scrollIntoViewIfNeeded();
+    assert.equal((await received.locator('.msg-sender').textContent() || '').trim(), '阿五');
+    for (const width of [375, 390, 430]) {
+      await page.setViewportSize({ width, height: 844 });
+      const layout = await received.evaluate((row) => {
+        const name = row.querySelector('.msg-sender');
+        const avatar = row.querySelector('.msg-avatar');
+        const bubble = row.querySelector('.msg-bubble');
+        const a = avatar.getBoundingClientRect(), n = name.getBoundingClientRect(), b = bubble.getBoundingClientRect();
+        return { display: getComputedStyle(row).display, avatarLeft: a.left, avatarRight: a.right,
+          nameLeft: n.left, nameTop: n.top, bubbleLeft: b.left, bubbleTop: b.top, bubbleRight: b.right,
+          viewport: innerWidth };
+      });
+      assert.equal(layout.display, 'grid', width + ': group message must use two-column layout');
+      assert.ok(layout.avatarRight < layout.nameLeft, width + ': avatar must sit left of name');
+      assert.ok(Math.abs(layout.nameLeft - layout.bubbleLeft) <= 4, width + ': name and message must share left edge');
+      assert.ok(layout.nameTop < layout.bubbleTop, width + ': sender name must appear above the message');
+      assert.ok(layout.bubbleRight <= layout.viewport + 1, width + ': bubble must stay within viewport');
+    }
     await page.close();
   } finally {
     await context.close();
@@ -234,8 +336,9 @@ test('C9 spectatorMode saved in settings page is reflected in a fresh chat-detai
     // 设置页开启旁观模式并保存
     const settings = await context.newPage();
     await setupGroup(settings, groups, roles);
-    await settings.goto(baseUrl + '/chat/chat/group-play.html?id=g1', { waitUntil: 'load' });
+    await settings.goto(baseUrl + '/chat/chat/group-play.html?id=g1&panel=advanced', { waitUntil: 'load' });
     await settings.waitForFunction(() => document.querySelectorAll('#membersList .member').length === 3);
+    await openAtmosphereAdvanced(settings);
     await settings.locator('input[data-setting="spectatorMode"]').check();
     let stored = await read(settings, 'phone_groups');
     assert.equal(stored[0].settings.spectatorMode, true, 'spectatorMode must be persisted by the settings page');
@@ -279,12 +382,11 @@ test('C9 spectatorMode saved in settings page is reflected in a fresh chat-detai
       const detailGroup = detailGroups.find((item) => String(item.id) === 'g1');
       assert.equal(detailGroup?.settings?.spectatorMode, expectedSpectatorMode,
         'fresh chat-detail must load the persisted spectator setting before sending');
-      // The composer exists before group metadata finishes rendering; wait for the real group status
-      // before sending, matching the already-passing C6-C8 flow.
-      await page.waitForFunction(() => {
-        const status = document.getElementById('chat-status-sub');
-        return status && status.textContent.trim().length > 0;
-      });
+      // Wait for the populated compact group title, not the removed members/online subtitle.
+      await page.waitForFunction(() =>
+        document.getElementById('chat-title')?.textContent?.trim() === '旁观测试群（4）'
+      );
+      assert.equal(await page.locator('#chat-status-sub').isVisible(), false);
       await page.waitForFunction(() => document.querySelectorAll('#chat-input').length === 1);
       // Exercise the actual user path. Each mode gets a distinct message so the
       // group's duplicate-message guard does not reject the second request.
@@ -294,8 +396,7 @@ test('C9 spectatorMode saved in settings page is reflected in a fresh chat-detai
       await page.locator('#chat-input').fill(testMessage);
       const inputBeforeSend = await page.locator('#chat-input').inputValue();
       assert.equal(inputBeforeSend, testMessage, 'the real composer must contain the test message');
-      await page.locator('#myFloatSend').waitFor({ state: 'visible', timeout: 10000 });
-      await page.locator('#myFloatSend').click();
+      await sendFromVisibleComposer(page);
       let body;
       try {
         body = await Promise.race([
@@ -311,7 +412,7 @@ test('C9 spectatorMode saved in settings page is reflected in a fresh chat-detai
           const input = document.getElementById('chat-input');
           return {
             url: location.href,
-            status: document.getElementById('chat-status-sub')?.textContent || '',
+            groupTitle: document.getElementById('chat-title')?.textContent || '',
             inputValue: input?.value || '',
             apiKeyPresent: !!(api.apiKey && String(api.apiKey).trim()),
             apiBaseUrl: api.baseUrl || '',
@@ -343,8 +444,9 @@ test('C9 spectatorMode saved in settings page is reflected in a fresh chat-detai
 
     // 关闭并保存，再用新的页面实例验证规则消失
     const settings2 = await context.newPage();
-    await settings2.goto(baseUrl + '/chat/chat/group-play.html?id=g1', { waitUntil: 'load' });
+    await settings2.goto(baseUrl + '/chat/chat/group-play.html?id=g1&panel=advanced', { waitUntil: 'load' });
     await settings2.waitForFunction(() => document.querySelectorAll('#membersList .member').length === 3);
+    await openAtmosphereAdvanced(settings2);
     await settings2.locator('input[data-setting="spectatorMode"]').uncheck();
     stored = await read(settings2, 'phone_groups');
     assert.equal(stored[0].settings.spectatorMode, false);

@@ -25,6 +25,7 @@
      *   apiKey      {String}          Bearer 凭证
      *   model       {String}          模型 ID
      *   messages    {Array}           OpenAI 格式消息 [{role, content}]
+     *   fallbackModels {String[]?}    同一 API 上的备用模型（最多两个）
      *   temperature {Number?=0.7}     温度（总是发送）
      *   maxTokens   {*=undefined}     仅当 Number > 0 时发送 max_tokens（floor 取整）
      *   topP        {*=undefined}     仅当 0 < topP < 1 时发送 top_p；=1 或未设置不发送
@@ -42,8 +43,62 @@
      *                           status?, detail?, reason? }
      *   abort.reason ∈ 'connect'(连接超时) | 'watchdog'(无数据) | 'total'(总上限)
      */
-    NS.chat = function (opts) {
+    NS.chat = async function (opts) {
         opts = opts || {};
+        var fallbackModels = Array.isArray(opts.fallbackModels) ? opts.fallbackModels : [];
+        var primary = String(opts.model || 'gpt-3.5-turbo');
+        var models = [primary];
+        for (var candidate of fallbackModels) {
+            if (models.length === 3) break;
+            if (typeof candidate !== 'string') continue;
+            candidate = candidate.trim();
+            if (candidate && !models.includes(candidate)) models.push(candidate);
+        }
+
+        try {
+            var messages = Array.isArray(opts.messages) ? opts.messages : [];
+            // Capture the complete validated payload before the first network await.
+            if (models.length > 1) messages = JSON.parse(JSON.stringify(messages));
+            var result = await chatOnce({ ...opts, messages: messages });
+            if (!isCapacityError(result)) return result;
+
+            // Once a response has started, never splice a different model into it.
+            if (result.fullText) return result;
+
+            if (!messages.some(function (message) {
+                return message && message.role === 'system' &&
+                    typeof message.content === 'string' && message.content.trim();
+            })) {
+                return { ok: false, fullText: '', error: { kind: 'capacity' } };
+            }
+            var deadline = Date.now() + (opts.totalMs ?? 120000);
+            for (var model of models.slice(1)) {
+                var remaining = deadline - Date.now();
+                if (remaining <= 0) break;
+                // Buffer a backup response until it is complete so a failed backup
+                // cannot leave a provisional character bubble in the conversation.
+                result = await chatOnce({
+                    ...opts, messages: messages, model: model, onPaint: undefined,
+                    connectMs: Math.min(opts.connectMs ?? 15000, remaining),
+                    totalMs: remaining
+                });
+                if (result.ok) return result;
+            }
+            return { ok: false, fullText: '', error: { kind: 'capacity' } };
+        } catch (error) {
+            return { ok: false, fullText: '', error: { kind: 'network', detail: error && error.message } };
+        }
+    };
+
+    function isCapacityError(result) {
+        var error = result.error;
+        return !result.ok && error &&
+            ((error.kind === 'http' && error.status === 503) ||
+             ((error.kind === 'http' || error.kind === 'stream') &&
+              /\b(?:no capacity available|model (?:is )?overloaded|resource_exhausted.*capacity)\b/i.test(error.detail)));
+    }
+
+    function chatOnce(opts) {
         return new Promise(function (resolve) {
 
             /* ---------- 出参组装 ---------- */
@@ -54,6 +109,9 @@
             // 无条件再跑一次。result 是闭包里的同一个对象，resolve 之后仍会被改写，
             // 导致 ok 被改回 true、error 被清空 —— 401/429 在调用方表现为"成功但无内容"。
             var settled = false;
+            var monitor;
+            var request;
+            var usage;
             function finish(err) {
                 if (settled) return;
                 settled = true;
@@ -61,6 +119,9 @@
                 result.fullText = fullText;
                 result.error = err || null;
                 resolve(result);
+                try {
+                    if (request) monitor.complete(request, body.messages, fullText, err, usage);
+                } catch { /* Diagnostics must never affect the chat result. */ }
             }
 
             /* ---------- 入参防御 ---------- */
@@ -124,6 +185,8 @@
              * 高频 delta 在此被合并，长回复不再逐帧打满 CPU。 */
             var paintScheduled = false;
             var streamDone = false;
+            var doneMarkerSeen = false;
+            var finishReason = '';
             function schedulePaint() {
                 if (paintScheduled || streamDone) return;
                 paintScheduled = true;
@@ -136,7 +199,12 @@
             }
 
             /* ---------- 主流程 ---------- */
-            fetch(baseUrl + '/chat/completions', {
+            var requestUrl = baseUrl + '/chat/completions';
+            try {
+                monitor = global.PhoneApiMonitor;
+                request = monitor?.begin(requestUrl);
+            } catch { /* Monitoring is optional. */ }
+            fetch(requestUrl, {
                 method: 'POST',
                 headers: {
                     'Content-Type': 'application/json',
@@ -148,13 +216,17 @@
 
                 /* -- HTTP 层错误（401/404/429/5xx 等）：读 body 提取详情，不进入流解析 -- */
                 if (!response.ok || !response.body) {
-                    clearAllTimers();
-                    return response.text().catch(function () { return ''; }).then(function (bodyText) {
+                    enterStreamMode();
+                    return response.text().catch(function (err) {
+                        if (controller.signal.aborted) throw err;
+                        return '';
+                    }).then(function (bodyText) {
                         var detail = '';
                         try {
                             var parsed = JSON.parse(bodyText);
                             detail = (parsed.error && parsed.error.message) || bodyText;
                         } catch (e) { detail = bodyText; }
+                        clearAllTimers();
                         finish({ kind: 'http', status: response.status, detail: detail || response.statusText });
                     });
                 }
@@ -177,11 +249,14 @@
                     if (line.indexOf('data:') !== 0) return;
 
                     var payload = line.slice(5).trim();
-                    if (payload === '[DONE]') { streamDone = true; return; }
+                    if (payload === '[DONE]') { doneMarkerSeen = true; streamDone = true; return; }
 
                     var json;
                     try { json = JSON.parse(payload); }
                     catch (e) { return; }   // 碎片/非 JSON，忽略
+
+                    if (!json || typeof json !== 'object') return;
+                    if (monitor && json.usage && typeof json.usage === 'object') usage = json.usage;
 
                     if (json.error) {
                         var se = new Error((json.error && json.error.message) || JSON.stringify(json.error));
@@ -189,8 +264,10 @@
                         throw se;
                     }
 
-                    var delta = json.choices && json.choices[0] && json.choices[0].delta && json.choices[0].delta.content;
-                    if (delta) {
+                    var choice = json.choices && json.choices[0];
+                    if (choice && choice.finish_reason != null) finishReason = String(choice.finish_reason);
+                    var delta = choice && choice.delta && choice.delta.content;
+                    if (typeof delta === 'string' && delta) {
                         fullText += delta;
                         schedulePaint();
                     }
@@ -223,6 +300,30 @@
                         buffer = '';
                     }
                     streamDone = true;
+                    // A socket can close gracefully after sending part of an answer.
+                    // HTTP 200 + a few SSE deltas is not proof of completion.
+                    // Respect either OpenAI [DONE] or an explicit stop finish_reason.
+                    // A length/content_filter finish reason is not a complete reply.
+                    if (finishReason === 'length' || finishReason === 'content_filter') {
+                        var incompleteReason = new Error(finishReason === 'length'
+                            ? '回复超过 API 生成上限，未完整返回'
+                            : '回复被服务商过滤，未完整返回');
+                        incompleteReason.__streamError = true;
+                        throw incompleteReason;
+                    }
+                    // Some OpenAI-compatible endpoints return HTTP 200 with an empty
+                    // SSE body or only heartbeats. Treat that as failure, not a
+                    // successful empty character reply. Never erase partial text.
+                    if (!fullText.trim()) {
+                        var emptyStreamError = new Error('API 已连接，但没有返回可用的聊天正文');
+                        emptyStreamError.__streamError = true;
+                        throw emptyStreamError;
+                    }
+                    if (!doneMarkerSeen && finishReason !== 'stop') {
+                        var prematureEnd = new Error('API 流式响应提前中断，未收到完成标记');
+                        prematureEnd.__streamError = true;
+                        throw prematureEnd;
+                    }
                     // 兜底：同步补一次渲染，保证最后一段增量上屏
                     if (fullText && typeof opts.onPaint === 'function') opts.onPaint(fullText);
                 });
@@ -243,5 +344,5 @@
                 finish(e);
             });
         });
-    };
+    }
 })(window);

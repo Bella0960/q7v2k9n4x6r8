@@ -521,14 +521,14 @@ test('聊天页接线：缺字段走 legacy、按模式生成、已存内容不�
   assert.match(detailSource, /hasOwnProperty\.call\(currentCharacter, 'replyBubbleMode'\)/);
   assert.match(detailSource, /currentCharacter\.replyBubbleMode/);
   assert.match(detailSource, /buildReplyMessages\(fullText, getActiveReplyBubbleMode\(\)/);
-  assert.match(detailSource, /parseReplyContent\(raw, 'legacy'\)/);
+  assert.match(detailSource, /ChatMessagePolicy\.parseReplyContent\(raw, 'legacy'\)/);
   // 历史展示不得套用 5 条上限：上限只在生成侧（policy 的 legacyUncapped 守卫）生效。
   assert.ok(!/bubbles\.length > 5/.test(detailSource), '已存内容渲染不得截断到 5 条');
   assert.match(policySource, /!legacyUncapped && bubbles\.length > REPLY_BUBBLE_MAX/);
   assert.match(detailSource, /本轮只输出一条完整消息，不要用空行分隔多个气泡/);
-  assert.match(detailSource, /本轮必须拆成 2–5 条连续消息/);
-  assert.match(detailSource, /单次回复最多 5 条/);
-  assert.match(detailSource, /不设置固定条数上限/);
+  assert.match(detailSource, /按语义分成 2–5 条消息，每条以换行分隔/);
+  assert.match(detailSource, /最多 5 条/);
+  assert.match(detailSource, /沿用角色原有的自然分段，不设置固定条数/);
 });
 
 test('设置页接线：复用 ai_custom_characters，三选一模式，不新增独立存储键', () => {

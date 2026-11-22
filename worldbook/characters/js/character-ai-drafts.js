@@ -7,12 +7,39 @@
     var FIELDS = ['name','relation','category','awareness','profession','personality','background','relationNotes','connections','speechStyle','currentStatus'];
     function element(id) { return document.getElementById(id); }
     function safe(value, limit) { return typeof value === 'string' ? value.trim().slice(0, limit || 1200) : ''; }
-    function field(id, value) {
+    function field(id, value, replaceDefault) {
         var node = element(id);
-        if (node && value != null) node.value = safe(String(value), node.maxLength > 0 ? node.maxLength : 2000);
+        if (node && value != null && (replaceDefault || !String(node.value || '').trim())) {
+            node.value = safe(String(value), node.maxLength > 0 ? node.maxLength : 2000);
+        }
     }
     function selectedRole() {
         return typeof getActiveProfileRole === 'function' ? getActiveProfileRole() : null;
+    }
+    function boundWorldBooks(role) {
+        var ids = Array.isArray(role.worldBookIds) ? role.worldBookIds.map(String) : [];
+        if (global.RoleWorldbookBindings && typeof global.RoleWorldbookBindings.read === 'function') {
+            var binding = global.RoleWorldbookBindings.read(String(role.id));
+            if (binding && binding.ok && Array.isArray(binding.ids)) ids = binding.ids.map(String);
+        }
+        var available = typeof loadWorldBooks === 'function' ? loadWorldBooks() : [];
+        return (Array.isArray(available) ? available : []).filter(function (book) {
+            return ids.includes(String(book.id));
+        }).slice(0,8).map(function (book) {
+            var entries = Array.isArray(book.entries) ? book.entries : [];
+            var content = entries.length ? entries.slice(0,15).map(function (item) {
+                return [safe(item.name || item.title,80), safe(item.content || item.text,350)].filter(Boolean).join('：');
+            }).join('\n') : safe(book.content || book.text,1800);
+            return { title:safe(book.title,80), content:safe(content,1800) };
+        });
+    }
+    function currentNpcDraft() {
+        var draft = {};
+        FIELDS.forEach(function (key) {
+            var node = element('npc' + key.charAt(0).toUpperCase() + key.slice(1));
+            if (node && String(node.value || '').trim()) draft[key] = safe(node.value,400);
+        });
+        return draft;
     }
     function context(role) {
         return {
@@ -26,7 +53,7 @@
             recentEvents: (Array.isArray(role.lifeEvents) ? role.lifeEvents : []).slice(0, 12).map(function (event) {
                 return { title:safe(event.title,80), detail:safe(event.detail,220) };
             }),
-            worldBookIds: Array.isArray(role.worldBookIds) ? role.worldBookIds.slice(0,30) : []
+            worldBooks: boundWorldBooks(role)
         };
     }
     function status(kind, message) {
@@ -43,7 +70,7 @@
         return result;
     }
     function applyNpc(item) {
-        FIELDS.forEach(function (key) { field('npc' + key.charAt(0).toUpperCase() + key.slice(1), item[key]); });
+        FIELDS.forEach(function (key) { field('npc' + key.charAt(0).toUpperCase() + key.slice(1), item[key], ['category','awareness'].includes(key) && !String(element('npcId').value || '').trim()); });
         // Generated content is only a draft. The user saves with the existing button.
         status('npc', '已填入草稿，请检查后保存。');
     }
@@ -89,7 +116,9 @@
         if (busy) return;
         var role = selectedRole();
         if (!role || !role.id) { status(kind,'请先打开一位主角色的档案。'); return; }
-        var elapsed = Date.now() - lastRequestAt;
+        var storedAt = 0;
+        try { storedAt = Number(global.localStorage.getItem('character_ai_last_request_' + String(role.id))) || 0; } catch (error) {}
+        var elapsed = Date.now() - Math.max(lastRequestAt, storedAt);
         if (lastRequestAt && elapsed < COOLDOWN_MS) {
             status(kind, '为避免重复消耗 API，请在 ' + Math.ceil((COOLDOWN_MS-elapsed)/1000) + ' 秒后再试。');
             return;
@@ -99,14 +128,15 @@
         }
         var conf = global.PhoneStorage && global.PhoneStorage.getApiConfig ? global.PhoneStorage.getApiConfig() : {};
         if (!conf || !String(conf.apiKey || '').trim()) { status(kind,'请先在设置中配置 API。'); return; }
-        if (!global.confirm('AI 解析将调用一次已配置的 ' + (conf.model || '聊天') + ' 模型 API，可能产生费用。不会自动连续请求，也不会自动覆盖现有资料。确认生成？')) return;
+        if (!global.confirm('AI 解析将发起一次可能计费的请求，使用已配置的 ' + (conf.model || '聊天') + ' 模型 API，可能产生费用。不会自动连续请求，也不会自动覆盖现有资料。确认生成？')) return;
         busy = true; lastRequestAt = Date.now();
+        try { global.localStorage.setItem('character_ai_last_request_' + String(role.id), String(lastRequestAt)); } catch (error) {}
         button.disabled = true; status(kind,'正在生成，请勿重复点击…');
         var roleId = String(role.id);
         try {
             var response = await global.PhoneAPI.completeJSON({
                 system:'你是虚构角色档案编辑器。严格依据用户提供的主角色设定与已知人物，保持身份及关系一致。只返回有效 JSON，不要 Markdown、表情符号、说明文字；不要编造真实世界事实。' + SPEC[kind],
-                user:JSON.stringify(context(role)),
+                user:JSON.stringify({ role:context(role), existingForm:kind === 'npc' ? currentNpcDraft() : null }),
                 temperature:0.7,
                 timeoutMs:30000
             });

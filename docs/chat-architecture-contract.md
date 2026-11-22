@@ -217,3 +217,13 @@ chat-extras.js 当前依赖详情页中的 loadMessages、saveMessages、appendM
 
 本契约依据当前源码持续维护。`sendMsg` 现通过 `ChatContextPolicy` 处理历史映射、角色历史条数优先级、最近历史切片、本地历史召回参数、用户动态记忆角色筛选和长期记忆注入文案分层；显式带角色 ID 的条目按角色注入，无角色 ID 的旧版条目保留全局兼容。PWA Service Worker 已递增到 `phone-app-pwa-v123`，并预缓存上下文策略 v5。2026-10-29 的 GitHub Actions [回归运行记录](https://github.com/Bella0960/MAOMAO/actions/runs/40879318959) 已在 Node.js 22 执行 `npm run test:chat:contract`，25/25 项通过。自动测试覆盖纯逻辑与静态源码契约，但不等于浏览器/PWA 端到端验证；手机端仍需实测历史召回排除范围、固定/待确认记忆注入和不同角色隔离。
 
+## 10. 2026-11-20 AI 模型输出格式契约（CHAT-PARSER-001）
+
+- 新增无副作用 shared/js/phone/ai-response-parser.js，公共函数 AIResponseParser.parseJSON(raw, validator?)、chatText(raw)、replyOptions(raw, styles)。
+- 严格业务 JSON：按完整 JSON、Markdown 围栏 JSON 和成对括号候选顺序解析，返回 ok/data/raw 或失败结果；无效自然语言不能冒充帖子、转账、角色记录或番外剧场数据。
+- 聊天自然语言：chatText 只解包完整、成功且明确包含聊天字段的 JSON 回复。普通自然语言、Markdown、旁白、记忆标记、不完整流和历史消息原文不得被强制清洗；本层不负责分气泡、角色身份审核或持久化。
+- 面对面候选回复：replyOptions 兼容单对象、options/replies/choices 数组、Markdown 混合 JSON 和纯文本兜底；该宽松文本兜底不施加于严格业务 JSON。
+- 主聊天 chat/chat/chat-detail.html 的私聊、群聊、多气泡和 regenerate 共用 sendMsg，在成功流完成后、身份验证及动作标记处理前做解析；流失败仍保留原有错误语义。
+- 线下 chat/date/date.html 共用候选解析、成功剧情格式解包；chat/date/journey.html 共用严格 JSON 提取且仍要求 4 条有效消息。
+- PhoneAPI.completeJSON 在模块已加载时委托严格解析；其他页面与主动联系动态依赖按需加载同一模块。原 ID、角色协议、世界书、存储键和旧消息格式不变。
+- 验收：tests/ai-response-parser.test.mjs、tests/date-reply-options-parser.test.mjs、npm run test:chat:contract，以及原 QA 完整 Node/Vite/Chromium 发布门禁；Android/iOS 真机另行验收。

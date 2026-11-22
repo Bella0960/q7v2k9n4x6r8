@@ -16,7 +16,7 @@ let baseUrl;
 
 const MEMBER_DEFAULT_KEYS = [
   'activeFrom', 'activeTo', 'avatar', 'backgroundTags', 'expertiseTags',
-  'id', 'interestTags', 'interests', 'isAdmin', 'muted', 'name',
+  'id', 'interestTags', 'interests', 'isAdmin', 'isMuted', 'memberRole', 'muted', 'name',
   'nickname', 'replyThreshold', 'talkativeness', 'title'
 ].sort();
 
@@ -100,6 +100,7 @@ async function seedStorage(page, data) {
 async function withPage(seed, urlPath, fn) {
   const context = await browser.newContext({ viewport: { width: 390, height: 844 } });
   const page = await context.newPage();
+  page.setDefaultTimeout(10000);
   try {
     await seedStorage(page, seed);
     await page.goto(baseUrl + urlPath, { waitUntil: 'load' });
@@ -107,6 +108,42 @@ async function withPage(seed, urlPath, fn) {
   } finally {
     await context.close();
   }
+}
+
+const inviteCandidates = 'dialog [data-group-action="invite-confirm"]';
+
+async function expandOverview(page) {
+  const toggle = page.locator('[data-group-action="expand"]');
+  await toggle.waitFor({ state: 'visible' });
+  if (await toggle.getAttribute('aria-expanded') !== 'true') await toggle.click();
+  await page.locator('#groupHomeDrawer[aria-hidden="false"]').waitFor();
+}
+
+async function openInvite(page) {
+  await expandOverview(page);
+  await page.locator('.group-home-members [data-group-action="invite"]').click();
+  await page.locator(inviteCandidates).first().waitFor();
+}
+
+async function inviteRole(page, id) {
+  await page.locator(inviteCandidates + '[data-target="' + id + '"]').click();
+  await page.getByRole('dialog').waitFor({ state: 'hidden' });
+}
+
+async function candidateIds(page) {
+  return page.locator(inviteCandidates).evaluateAll((buttons) => buttons.map((button) => button.dataset.target));
+}
+
+async function openGroupCategory(page, category) {
+  const entry = page.locator(
+    '[data-open-category="' + category + '"]'
+  );
+  await entry.waitFor({ state: 'visible' });
+  await entry.click();
+
+  await page.locator(
+    '[data-group-category="' + category + '"]'
+  ).waitFor({ state: 'visible' });
 }
 
 async function readStorage(page, key) {
@@ -168,7 +205,7 @@ test('1. every member card is collapsed by default for 2, 5 and 8 members', asyn
   for (const size of [2, 5, 8]) {
     const members = Array.from({ length: size }, (_, i) => makeMember('c' + (i + 1), '角色' + (i + 1)));
     const seed = { phone_groups: [makeGroup('g1', '测试群', members)], ai_custom_characters: makeRoles(10) };
-    await withPage(seed, '/chat/chat/group-play.html?id=g1', async (page) => {
+    await withPage(seed, '/chat/chat/group-play.html?id=g1&panel=advanced', async (page) => {
       await page.waitForFunction((n) => document.querySelectorAll('#membersList .member').length === n, size);
       const memberState = await page.$$eval('#membersList .member', (cards) => cards.map((card) => ({
         open: card.classList.contains('is-open'),
@@ -196,8 +233,9 @@ test('1b. status compacts keep avatar, nickname, role name and group nickname', 
     makeMember('c2', '角色二')
   ];
   await withPage({ phone_groups: [makeGroup('g1', '测试群', members)], ai_custom_characters: makeRoles(4) },
-    '/chat/chat/group-play.html?id=g1', async (page) => {
+    '/chat/chat/group-play.html?id=g1&panel=advanced', async (page) => {
       await page.waitForFunction(() => document.querySelectorAll('#membersList .member').length === 2);
+      await openGroupCategory(page, 'members');
       const card = page.locator('#membersList .member').first();
       assert.ok(await card.locator('.avatar').isVisible());
       assert.equal((await card.locator('.member-name').innerText()).trim(), '小一');
@@ -213,8 +251,9 @@ test('1b. status compacts keep avatar, nickname, role name and group nickname', 
 test('2. member cards open and close independently', async () => {
   const members = [makeMember('c1', '角色一'), makeMember('c2', '角色二'), makeMember('c3', '角色三')];
   await withPage({ phone_groups: [makeGroup('g1', '测试群', members)], ai_custom_characters: makeRoles(5) },
-    '/chat/chat/group-play.html?id=g1', async (page) => {
+    '/chat/chat/group-play.html?id=g1&panel=advanced', async (page) => {
       await page.waitForFunction(() => document.querySelectorAll('#membersList .member').length === 3);
+      await openGroupCategory(page, 'members');
       const cards = page.locator('#membersList .member');
       const states = async () => page.$$eval('#membersList .member', (list) => list.map((c) => c.classList.contains('is-open')));
       assert.deepEqual(await states(), [false, false, false]);
@@ -243,8 +282,9 @@ test('2. member cards open and close independently', async () => {
 test('3. editing fields after expanding still persists and keeps the card open', async () => {
   const members = [makeMember('c1', '角色一'), makeMember('c2', '角色二')];
   await withPage({ phone_groups: [makeGroup('g1', '测试群', members)], ai_custom_characters: makeRoles(4) },
-    '/chat/chat/group-play.html?id=g1', async (page) => {
+    '/chat/chat/group-play.html?id=g1&panel=advanced', async (page) => {
       await page.waitForFunction(() => document.querySelectorAll('#membersList .member').length === 2);
+      await openGroupCategory(page, 'members');
       const card = page.locator('.member[data-member-id="c1"]');
       await card.locator('.member-toggle').click();
 
@@ -284,8 +324,9 @@ test('3. editing fields after expanding still persists and keeps the card open',
 test('4. relationship pairs collapse one by one and keep saving fields', async () => {
   const members = [makeMember('c1', '角色一'), makeMember('c2', '角色二'), makeMember('c3', '角色三')];
   await withPage({ phone_groups: [makeGroup('g1', '测试群', members)], ai_custom_characters: makeRoles(5) },
-    '/chat/chat/group-play.html?id=g1', async (page) => {
+    '/chat/chat/group-play.html?id=g1&panel=advanced', async (page) => {
       await page.waitForFunction(() => document.querySelectorAll('.relationship').length === 3);
+      await openGroupCategory(page, 'members');
       const pairs = page.locator('.relationship');
       const states = async () => page.$$eval('.relationship', (list) => list.map((c) => c.classList.contains('is-open')));
       assert.deepEqual(await states(), [false, false, false]);
@@ -319,25 +360,21 @@ test('4. relationship pairs collapse one by one and keep saving fields', async (
 });
 
 // ---------------------------------------------------------------------------
-// 5. 邀请写入当前群（chat-settings 群管理内）
+// 5. 邀请写入当前群（群聊设置）
 // ---------------------------------------------------------------------------
-test('5. inviting a role from chat-settings writes it into the current group', async () => {
+test('5. inviting a role from group settings writes it into the current group', async () => {
   const group = makeGroup('g1', '测试群', [makeMember('c1', '角色一'), makeMember('c2', '角色二')]);
   await withPage({ phone_groups: [group], ai_custom_characters: makeRoles(4) },
-    '/chat/chat/chat-settings.html?roleId=g1', async (page) => {
-      await page.waitForFunction(() => document.querySelectorAll('.gp-member-row').length === 2);
-      await page.locator('#actionGroupManage').click();
-      await page.locator('#gpInviteToggle').waitFor({ state: 'visible' });
-      assert.equal(await page.locator('#gpInvitePanel').isVisible(), false, 'invite library must be collapsed by default');
+    '/chat/chat/group-play.html?id=g1', async (page) => {
+      await page.waitForFunction(() => document.querySelectorAll('.group-home-members [data-group-action="member"]').length === 2);
+      assert.equal(await page.getByRole('dialog').isVisible(), false, 'invite library must be closed by default');
+      await openInvite(page);
 
-      await page.locator('#gpInviteToggle').click();
-      await page.locator('.gp-invite-row').first().waitFor({ state: 'visible' });
-
-      const before = await page.$$eval('.gp-invite-row', (rows) => rows.map((r) => r.getAttribute('data-role-id')));
+      const before = await candidateIds(page);
       assert.deepEqual(before.sort(), ['c3', 'c4']);
-      assert.equal((await page.locator('#gpInviteCount').innerText()).trim(), '2 位可邀请');
+      assert.equal(await page.locator(inviteCandidates).count(), 2);
 
-      await page.locator('.gp-invite-row[data-role-id="c3"] .gp-invite-add').click();
+      await inviteRole(page, 'c3');
 
       const stored = await readStorage(page, 'phone_groups');
       const g = stored.find((item) => String(item.id) === 'g1');
@@ -349,8 +386,8 @@ test('5. inviting a role from chat-settings writes it into the current group', a
       assert.equal(invited.talkativeness, 0.5);
       assert.equal(invited.replyThreshold, 55);
 
-      await page.waitForFunction(() => document.querySelectorAll('.gp-member-row').length === 3);
-      assert.equal((await page.locator('#gpMetaSub').innerText()).trim(), '成员 · 3人');
+      await page.waitForFunction(() => document.querySelectorAll('.group-home-members [data-group-action="member"]').length === 3);
+      assert.equal(await page.locator('.group-home-members [data-group-action="member"]').count(), 3);
     });
 });
 
@@ -360,20 +397,19 @@ test('5. inviting a role from chat-settings writes it into the current group', a
 test('6. roles already in the group are not offered again', async () => {
   const group = makeGroup('g1', '测试群', [makeMember('c1', '角色一'), makeMember('c2', '角色二')]);
   await withPage({ phone_groups: [group], ai_custom_characters: makeRoles(4) },
-    '/chat/chat/chat-settings.html?roleId=g1', async (page) => {
-      await page.waitForFunction(() => document.querySelectorAll('.gp-member-row').length === 2);
-      await page.locator('#actionGroupManage').click();
-      await page.locator('#gpInviteToggle').click();
-      await page.locator('.gp-invite-row').first().waitFor({ state: 'visible' });
-      const ids = await page.$$eval('.gp-invite-row', (rows) => rows.map((r) => r.getAttribute('data-role-id')));
+    '/chat/chat/group-play.html?id=g1', async (page) => {
+      await page.waitForFunction(() => document.querySelectorAll('.group-home-members [data-group-action="member"]').length === 2);
+      await openInvite(page);
+      const ids = await candidateIds(page);
       assert.deepEqual(ids.sort(), ['c3', 'c4']);
 
-      await page.locator('.gp-invite-row[data-role-id="c3"] .gp-invite-add').click();
-      await page.waitForFunction(() => document.querySelectorAll('.gp-invite-row').length === 1);
-      const remaining = await page.$$eval('.gp-invite-row', (rows) => rows.map((r) => r.getAttribute('data-role-id')));
+      await inviteRole(page, 'c3');
+      await openInvite(page);
+      const remaining = await candidateIds(page);
       assert.deepEqual(remaining, ['c4']);
-      assert.equal((await page.locator('#gpInviteCount').innerText()).trim(), '1 位可邀请');
-      assert.equal((await page.locator('#gpMembersList').innerText()).includes('角色3'), true);
+      assert.equal(await page.locator(inviteCandidates).count(), 1);
+      await page.getByRole('button', { name: '关闭', exact: true }).click();
+      assert.equal((await page.locator('.group-home-members').innerText()).includes('角色3'), true);
     });
 });
 
@@ -383,23 +419,26 @@ test('6. roles already in the group are not offered again', async () => {
 test('7. a removed member becomes invitable again', async () => {
   const group = makeGroup('g1', '测试群', [makeMember('c1', '角色一'), makeMember('c2', '角色二')]);
   await withPage({ phone_groups: [group], ai_custom_characters: makeRoles(4) },
-    '/chat/chat/chat-settings.html?roleId=g1', async (page) => {
-      await page.waitForFunction(() => document.querySelectorAll('.gp-member-row').length === 2);
-      await page.locator('#actionGroupManage').click();
-      await page.locator('#gpInviteToggle').click();
-      await page.locator('.gp-invite-row').first().waitFor({ state: 'visible' });
-      assert.deepEqual((await page.$$eval('.gp-invite-row', (r) => r.map((x) => x.getAttribute('data-role-id')))).sort(), ['c3', 'c4']);
+    '/chat/chat/group-play.html?id=g1', async (page) => {
+      await page.waitForFunction(() => document.querySelectorAll('.group-home-members [data-group-action="member"]').length === 2);
+      await openInvite(page);
+      assert.deepEqual((await candidateIds(page)).sort(), ['c3', 'c4']);
 
-      await page.locator('.gp-member-row[data-mid="c2"] .gp-member-remove').click();
-      await page.waitForFunction(() => document.querySelectorAll('.gp-member-row').length === 1);
+      await page.getByRole('button', { name: '关闭', exact: true }).click();
+      await expandOverview(page);
+      await page.locator('.group-home-members [data-group-action="remove"]').click();
+      await page.locator('dialog [data-group-action="remove-review"][data-target="c2"]').click();
+      await page.getByRole('button', { name: '确认移除' }).click();
+      await page.waitForFunction(() => document.querySelectorAll('.group-home-members [data-group-action="member"]').length === 1);
 
       const stored = await readStorage(page, 'phone_groups');
       const g = stored.find((item) => String(item.id) === 'g1');
       assert.deepEqual(g.members.map((m) => String(m.id)), ['c1']);
 
-      const ids = await page.$$eval('.gp-invite-row', (rows) => rows.map((r) => r.getAttribute('data-role-id')));
+      await openInvite(page);
+      const ids = await candidateIds(page);
       assert.deepEqual(ids.sort(), ['c2', 'c3', 'c4']);
-      assert.equal((await page.locator('#gpInviteCount').innerText()).trim(), '3 位可邀请');
+      assert.equal(await page.locator(inviteCandidates).count(), 3);
     });
 });
 
@@ -409,8 +448,9 @@ test('7. a removed member becomes invitable again', async () => {
 test('8. members and per-member config survive a reload on both pages', async () => {
   const group = makeGroup('g1', '测试群', [makeMember('c1', '角色一')]);
   await withPage({ phone_groups: [group], ai_custom_characters: makeRoles(5) },
-    '/chat/chat/group-play.html?id=g1', async (page) => {
+    '/chat/chat/group-play.html?id=g1&panel=advanced', async (page) => {
       await page.waitForFunction(() => document.querySelectorAll('#membersList .member').length === 1);
+      await openGroupCategory(page, 'members');
       await page.locator('.member-toggle').click();
       await page.locator('[data-member-field="nickname"]').fill('阿一');
       await page.keyboard.press('Tab');
@@ -422,6 +462,7 @@ test('8. members and per-member config survive a reload on both pages', async ()
 
       await page.reload({ waitUntil: 'load' });
       await page.waitForFunction(() => document.querySelectorAll('#membersList .member').length === 1);
+      await openGroupCategory(page, 'members');
 
       const saved = await readStorage(page, 'phone_groups');
       assert.equal(saved[0].members[0].nickname, '阿一');
@@ -444,21 +485,23 @@ test('9. groups do not leak members into each other', async () => {
   const g2 = makeGroup('g2', '群二', [makeMember('c4', '角色四')]);
   const seed = { phone_groups: [g1, g2], ai_custom_characters: makeRoles(5) };
 
-  await withPage(seed, '/chat/chat/chat-settings.html?roleId=g1', async (page) => {
-    await page.waitForFunction(() => document.querySelectorAll('.gp-member-row').length === 2);
-    await page.locator('#actionGroupManage').click();
-    await page.locator('#gpInviteToggle').click();
-    await page.locator('.gp-invite-row').first().waitFor({ state: 'visible' });
-    const ids = await page.$$eval('.gp-invite-row', (rows) => rows.map((r) => r.getAttribute('data-role-id')));
+  await withPage(seed, '/chat/chat/group-play.html?id=g1', async (page) => {
+    await page.waitForFunction(() => document.querySelectorAll('.group-home-members [data-group-action="member"]').length === 2);
+    await openInvite(page);
+    const ids = await candidateIds(page);
     assert.deepEqual(ids.sort(), ['c3', 'c4', 'c5'], 'only members of the current group are excluded from the invite list');
 
-    await page.locator('.gp-invite-row[data-role-id="c3"] .gp-invite-add').click();
+    await inviteRole(page, 'c3');
     const stored = await readStorage(page, 'phone_groups');
+    const current = stored.find((item) => String(item.id) === 'g1');
     const other = stored.find((item) => String(item.id) === 'g2');
-    assert.deepEqual(other.members.map((m) => String(m.id)), ['c4']);
+    assert.deepEqual(current.members.map((m) => String(m.id)), ['c1', 'c2', 'c3'],
+      'invite must update only the currently selected group');
+    assert.deepEqual(other.members.map((m) => String(m.id)), ['c4'],
+      'inviting into g1 must not change the member list of g2');
   });
 
-  await withPage(seed, '/chat/chat/group-play.html?id=g2', async (page) => {
+  await withPage(seed, '/chat/chat/group-play.html?id=g2&panel=advanced', async (page) => {
     await page.waitForFunction(() => document.querySelectorAll('#membersList .member').length === 1);
     assert.equal((await page.locator('#membersList .member-name').first().innerText()).trim(), '角色四');
   });
@@ -470,8 +513,13 @@ test('9. groups do not leak members into each other', async () => {
 test('10. legacy group-play and group-management controls still work', async () => {
   const members = [makeMember('c1', '角色一'), makeMember('c2', '角色二')];
   await withPage({ phone_groups: [makeGroup('g1', '旧群名', members)], ai_custom_characters: makeRoles(4) },
-    '/chat/chat/group-play.html?id=g1', async (page) => {
+    '/chat/chat/group-play.html?id=g1&panel=advanced', async (page) => {
       await page.waitForFunction(() => document.querySelectorAll('#membersList .member').length === 2);
+      await openGroupCategory(page, 'atmosphere');
+
+      await page.locator(
+        '[data-group-category="atmosphere"] details.category-more > summary'
+      ).click();
 
       await page.locator('input[data-setting="scheduleEnabled"]').check();
       const stored = await readStorage(page, 'phone_groups');
@@ -480,6 +528,16 @@ test('10. legacy group-play and group-management controls still work', async () 
       await page.locator('#groupChatMode').selectOption('offline');
       const stored2 = await readStorage(page, 'phone_groups');
       assert.equal(stored2[0].settings.chatMode, 'offline');
+
+      await page.locator(
+        '[data-group-category="atmosphere"] [data-category-back]'
+      ).click();
+
+      await openGroupCategory(page, 'owner');
+
+      await page.locator(
+        '[data-group-category="owner"] details.category-more > summary'
+      ).click();
 
       page.once('dialog', (dialog) => dialog.accept());
       await page.locator('#ownerSelect').selectOption('c2');
@@ -494,17 +552,19 @@ test('10. legacy group-play and group-management controls still work', async () 
     });
 
   await withPage({ phone_groups: [makeGroup('g1', '旧群名', members)], ai_custom_characters: makeRoles(4) },
-    '/chat/chat/chat-settings.html?roleId=g1', async (page) => {
-      await page.waitForFunction(() => document.querySelectorAll('.gp-member-row').length === 2);
-      await page.locator('#actionGroupInfo').click();
-      await page.locator('#gpNameInput').waitFor({ state: 'visible' });
-      await page.locator('#gpNameInput').fill('新群名');
-      await page.locator('#gpInfoSaveBtn').click();
+    '/chat/chat/group-play.html?id=g1', async (page) => {
+      await page.waitForFunction(() => document.querySelectorAll('.group-home-members [data-group-action="member"]').length === 2);
+      await expandOverview(page);
+      await page.locator('.group-home-list [data-group-action="name"]').click();
+      await page.getByRole('textbox', { name: '群组名称' }).fill('新群名');
+      await page.getByRole('button', { name: '保存', exact: true }).click();
       await page.waitForFunction(() => {
         const groups = JSON.parse(localStorage.getItem('phone_groups'));
         return groups[0].name === '新群名';
       });
-      assert.equal((await page.locator('#gpNameText').innerText()).trim(), '新群名');
+      assert.equal((await page.locator('.group-home-name').textContent()).trim(), '新群名');
+      assert.equal((await page.locator('.group-home-cover').textContent()).trim(), '',
+        'the cover must remain text-free after renaming');
     });
 });
 
@@ -514,10 +574,68 @@ test('10. legacy group-play and group-management controls still work', async () 
 test('11. group-play page exposes no invite UI at runtime', async () => {
   const group = makeGroup('g1', '测试群', [makeMember('c1', '角色一'), makeMember('c2', '角色二')]);
   await withPage({ phone_groups: [group], ai_custom_characters: makeRoles(4) },
-    '/chat/chat/group-play.html?id=g1', async (page) => {
+    '/chat/chat/group-play.html?id=g1&panel=advanced', async (page) => {
       await page.waitForFunction(() => document.querySelectorAll('#membersList .member').length === 2);
       assert.equal(await page.locator('#addList').count(), 0);
       assert.equal(await page.locator('[data-add-member]').count(), 0);
       assert.equal(await page.getByText('邀请角色', { exact: false }).count(), 0);
     });
+});
+
+
+test('group overview starts collapsed and expands a photo-first drawer at mobile widths', async () => {
+  for (const width of [375, 390, 430]) {
+    const seed = {
+      phone_groups: [makeGroup('g1', '测试群聊', [makeMember('c1', '洛'), makeMember('c2', '陆')])],
+      ai_custom_characters: makeRoles(4)
+    };
+    await withPage(seed, '/chat/chat/group-play.html?id=g1', async (page) => {
+      await page.setViewportSize({ width, height: 844 });
+      const cover = page.locator('.group-home-cover');
+      await cover.waitFor({ state: 'visible' });
+      assert.equal((await cover.textContent()).trim(), '', 'banner image must have no overlaid name or count');
+      assert.equal((await page.locator('.group-home-name').textContent()).trim(), '测试群聊');
+      assert.match(await page.locator('.group-home-count').textContent(), /3 位成员/);
+      const expand = page.locator('[data-group-action="expand"]');
+      const drawer = page.locator('#groupHomeDrawer');
+      assert.equal(await expand.getAttribute('aria-expanded'), 'false');
+      assert.equal(await drawer.getAttribute('aria-hidden'), 'true');
+      assert.notEqual(await drawer.getAttribute('inert'), null);
+      await expand.click();
+      assert.equal(await expand.getAttribute('aria-expanded'), 'true');
+      assert.equal(await drawer.getAttribute('aria-hidden'), 'false');
+      assert.equal(await drawer.getAttribute('inert'), null);
+      assert.equal(await page.locator('.group-home-members > button').count(), 5);
+      const actions = await page.locator('.group-home-members > button').evaluateAll((items) =>
+        items.slice(-2).map((item) => item.getAttribute('data-group-action')));
+      assert.deepEqual(actions, ['invite', 'remove'], 'dashed +/- must directly follow last avatar');
+      assert.equal(await page.locator('.group-home-member-add').count(), 2);
+      const dashed = await page.locator('.group-home-add-icon').first().evaluate((el) =>
+        getComputedStyle(el).borderTopStyle);
+      assert.equal(dashed, 'dashed');
+      const background = await page.locator('.group-home-tools button').first().evaluate((el) =>
+        getComputedStyle(el).backgroundColor);
+      assert.equal(background, 'rgba(0, 0, 0, 0)', 'action grid must be transparent');
+      assert.equal(await page.locator('.group-home-quick [role="switch"]').count(), 3);
+
+      const mute = page.locator('.group-home-quick [data-target="muted"]');
+      await mute.click();
+      const saved = await readStorage(page, 'phone_groups');
+      assert.equal(saved[0].preferences.muted, true, 'quick toggle retains existing storage behavior');
+      assert.equal(await page.locator('[data-group-action="expand"]').getAttribute('aria-expanded'), 'true',
+        'saving must not collapse the drawer');
+
+      await page.locator('[data-group-action="cover"]').click();
+      assert.ok(await page.getByRole('button', { name: '更换群头像' }).isVisible());
+      assert.ok(await page.getByRole('button', { name: '更换群背景' }).isVisible());
+      await page.getByRole('button', { name: '关闭', exact: true }).click();
+
+      await page.locator('[data-group-action="expand"]').click();
+      assert.equal(await page.locator('#groupHomeDrawer').getAttribute('aria-hidden'), 'true');
+      assert.equal((await cover.textContent()).trim(), '');
+      assert.equal(await page.evaluate(() =>
+        document.documentElement.scrollWidth <= document.documentElement.clientWidth + 1), true,
+        'mobile view must not overflow horizontally');
+    });
+  }
 });

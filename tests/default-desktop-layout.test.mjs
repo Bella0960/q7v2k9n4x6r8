@@ -26,8 +26,16 @@ test('default home has the clock, duo avatars, photo wall and app quadrants in t
     'app_wallet', 'app_music', 'app_beauty', 'app_theme_store'
   ]);
   assert.equal(pages.length, 3);
+  assert.equal(pages[1][0], 'app_characters');
+  assert.equal(pages[1][1], 'app_encounter', '邂逅必须出现在角色库旁');
   assert.match(index, /v:\s*14,/);
   assert.match(index, /var LS_KEY = 'ds_layout_v14'/);
+});
+
+test('encounter entry preserves removed apps and saved desktop layout', () => {
+  assert.match(index, /data-href="encounter\/encounter\.html" data-drag="app_encounter"/);
+  assert.match(index, /function addEncounterShortcutToExistingLayouts\(\)/);
+  assert.match(index, /currentLayout\.removed \|\| \[\]/);
 });
 
 test('obsolete layout keys are cleared and the widget manager uses the current layout key', () => {
@@ -41,7 +49,9 @@ test('every desktop app is assigned exactly once and dock apps stay in the dock'
   const pages = extractDefaultPages(index);
   const assigned = pages.flat();
   const appIds = [...new Set([...index.matchAll(/data-drag="(app_[^"]+)"/g)].map((m) => m[1]))]
-    .filter((id) => id !== 'app_chat' && id !== 'app_shop');
+    .filter((id) => id !== 'app_chat' && id !== 'app_shop' && id !== 'app_admin_center');
+  // The super-admin-only entry is intentionally hidden until account authorization.
+  assert.match(index, /data-drag="app_admin_center"[^>]*\bhidden>/);
   assert.equal(new Set(assigned).size, assigned.length, 'default pages must not contain duplicate items');
   assert.deepEqual([...assigned].filter((id) => id.startsWith('app_')).sort(), [...appIds].sort());
   assert.match(index, /dock:\s*\['app_chat',\s*'app_shop'\]/);
@@ -53,7 +63,7 @@ test('the mobile home grid keeps four columns and supports vertical page scrolli
   assert.match(desktopCss, /#gridPage0 > \[data-drag\]:nth-child\(6\)[^{]*\{ grid-column: 3 \/ 5 !important; grid-row: 3 \/ 5 !important;/);
   assert.match(mobileCss, /#gridPage0 > \[data-drag\]:nth-child\(7\)[^{]*\{ grid-column: 1 \/ 3 !important; grid-row: 5 \/ 7 !important;/);
   assert.match(mobileCss, /\.maomao-home \.home-page[\s\S]*?overflow-y:\s*auto\s*!important/);
-  assert.match(serviceWorker, /const CACHE_NAME = 'phone-app-pwa-v203'/);
+  assert.ok(Number(serviceWorker.match(/^const CACHE_NAME = 'phone-app-pwa-v(\d+)'/m)?.[1] || 0) >= 241, 'PWA must retain the network-first account cache baseline');
 });
 
 

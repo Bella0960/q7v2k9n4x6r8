@@ -12,10 +12,11 @@ const forumHome = read('forum/forum.html');
 const forumDetail = read('forum/forum-detail.html');
 const chatDetail = read('chat/chat/chat-detail.html');
 
-test('forum detail loads the same theme-aware seeded posts as the list and persists first initialization', () => {
+test('forum detail and list both start empty and preserve first-use initialization', () => {
   assert.match(forumHome, /function getSeededPosts\(themeOverride\)/);
   assert.match(forumDetail, /function getSeededPosts\(themeOverride\)/);
-  assert.match(forumDetail, /const seeded=\[/);
+  assert.match(forumHome, /function getSeededPosts\(themeOverride\)\s*\{\s*return \[\]/);
+  assert.match(forumDetail, /function getSeededPosts\(themeOverride\)\s*\{\s*return \[\]/);
   assert.match(forumHome, /localStorage\.setItem\(STORE,JSON\.stringify\(seedPosts\)\)/);
   assert.match(forumDetail, /if \(raw === null\)[\s\S]*?savePosts\(seedPosts\)/);
   assert.match(forumDetail, /function loadPosts\(\)[\s\S]*?mergeForumPosts\(stored, seedPosts, buildPreviousSeedSets\(stored, seedIds\)\)/);
@@ -88,12 +89,29 @@ function loadSaveMessages(sandbox) {
   const start = chatDetail.indexOf('function _readBackHistory()');
   const end = chatDetail.indexOf('\n        // 头像占位', start);
   assert.ok(start >= 0 && end > start, 'saveMessages read-back helpers should be isolated');
-  return runInNewContext(chatDetail.slice(start, end) + '\nsaveMessages;', sandbox);
+  // Match the real role-scoped optimistic write barrier. Older isolated
+  // fixtures passed unversioned arrays and were correctly refused by chat.
+  const baselineStart = chatDetail.indexOf('var _chatHistoryBaselines = new WeakMap();');
+  const baselineEnd = chatDetail.indexOf('function removeLegacyStickerCaptions(', baselineStart);
+  assert.ok(baselineStart >= 0 && baselineEnd > baselineStart);
+  const versioned = runInNewContext(
+    chatDetail.slice(baselineStart, baselineEnd) + '\n' + chatDetail.slice(start, end) +
+    '\n({ saveMessages, _rememberChatBaseline });', sandbox
+  );
+  return function (list) {
+    let raw = null;
+    if (sandbox.localStorage && typeof sandbox.localStorage.getItem === 'function') {
+      raw = sandbox.localStorage.getItem(sandbox.storageKey);
+    }
+    return versioned.saveMessages(versioned._rememberChatBaseline(list, raw));
+  };
 }
 
 function createSandboxBase() {
   return {
     currentCharacter: { id: 'role-1' },
+    // saveMessages normally closes over this fail-closed flag in chat-detail.html.
+    _chatHistoryUnreadable: false,
     storageKey: 'chat_history_role-1',
     showToast: () => {},
     _resetWarnCooldown: () => {},
@@ -260,7 +278,9 @@ test('saveMessages read-back verification also covers the localStorage fallback 
   assert.equal(loadSaveMessages(staleSandbox)(target), false);
 });
 
-function runMissingApiKeyBranch(options) {
+async function runMissingApiKeyBranch(options) {
+  // Model a guarded atomic append: each attempt sees the latest persisted snapshot.
+  let persisted = clone(options.history || [{ role: 'assistant', text: '旧消息' }]);
   const saves = [];
   const renders = [];
   let quoteClears = 0;
@@ -282,10 +302,13 @@ function runMissingApiKeyBranch(options) {
     ensureMid: loadEnsureMid(),
     _isRepeatedSystemError: loadSystemErrorDedupe(),
     input,
-    loadMessages: () => clone(options.history || [{ role: 'assistant', text: '旧消息' }]),
-    saveMessages: (list) => {
-      saves.push(clone(list));
-      return options.saveResults[Math.min(saves.length - 1, options.saveResults.length - 1)];
+    loadMessages: () => clone(persisted),
+    appendChatSafely: async (batch) => {
+      const next = persisted.concat(clone(batch));
+      saves.push(clone(next));
+      const ok = !!options.saveResults[Math.min(saves.length - 1, options.saveResults.length - 1)];
+      if (ok) persisted = next;
+      return ok;
     },
     acceptGroupUserMessage: () => true,
     appendMessageToDOM: (msg) => renders.push(msg),
@@ -298,12 +321,12 @@ function runMissingApiKeyBranch(options) {
   };
   const sendStart = chatDetail.indexOf('async function sendMsg(opts)');
   const branch = extractBlock(chatDetail, 'if (!apiKey)', '\n            baseUrl = baseUrl.replace', sendStart);
-  new Function('context', 'with (context) { ' + branch + ' }')(context);
-  return { saves, renders, input, quoteClears, context };
+  await new Function('context', 'with (context) { return (async function () { ' + branch + ' }).call(context); }')(context);
+  return { saves, renders, input, quoteClears, context, persisted };
 }
 
-test('missing API key: a failed user-message save stops the send and writes no error record', () => {
-  const result = runMissingApiKeyBranch({ saveResults: [false] });
+test('missing API key: a failed user-message save stops the send and writes no error record', async () => {
+  const result = await runMissingApiKeyBranch({ saveResults: [false] });
   assert.equal(result.saves.length, 1, '只有用户消息的一次写入尝试');
   assert.equal(result.saves[0].length, 2);
   assert.equal(result.saves[0][1].role, 'user');
@@ -315,8 +338,8 @@ test('missing API key: a failed user-message save stops the send and writes no e
   assert.equal(result.context.groupAutoFollowupToken, 5, '群聊防重复占位必须回滚');
 });
 
-test('missing API key: a failed second save never leaves an error bubble that storage does not contain', () => {
-  const result = runMissingApiKeyBranch({ saveResults: [true, false] });
+test('missing API key: a failed second save never leaves an error bubble that storage does not contain', async () => {
+  const result = await runMissingApiKeyBranch({ saveResults: [true, false] });
   assert.equal(result.saves.length, 2);
   assert.equal(result.renders.length, 1);
   assert.equal(result.renders[0].role, 'user');
@@ -324,8 +347,8 @@ test('missing API key: a failed second save never leaves an error bubble that st
   assert.equal(result.input.value, '');
 });
 
-test('missing API key: successful saves keep the existing user-then-error behavior', () => {
-  const result = runMissingApiKeyBranch({ saveResults: [true, true] });
+test('missing API key: successful saves keep the existing user-then-error behavior', async () => {
+  const result = await runMissingApiKeyBranch({ saveResults: [true, true] });
   assert.equal(result.saves.length, 2);
   assert.equal(result.renders.length, 2);
   assert.equal(result.renders[0].role, 'user');
@@ -336,14 +359,14 @@ test('missing API key: successful saves keep the existing user-then-error behavi
   assert.equal(result.quoteClears, 1);
 });
 
-test('missing API key without a new user message never renders an unsaved error record', () => {
-  const result = runMissingApiKeyBranch({ isRegen: true, saveResults: [false] });
+test('missing API key without a new user message never renders an unsaved error record', async () => {
+  const result = await runMissingApiKeyBranch({ isRegen: true, saveResults: [false] });
   assert.equal(result.saves.length, 1);
   assert.equal(result.renders.length, 0);
 });
 
-test('new failed user messages persist a stable mid without duplicating the record on the second save', () => {
-  const result = runMissingApiKeyBranch({ saveResults: [true, true] });
+test('new failed user messages persist a stable mid without duplicating the record on the second save', async () => {
+  const result = await runMissingApiKeyBranch({ saveResults: [true, true] });
   const user = result.saves[0][1];
   assert.equal(user.role, 'user');
   assert.ok(typeof user.mid === 'string' && user.mid.length > 0, '用户消息必须带稳定 mid');
@@ -352,21 +375,21 @@ test('new failed user messages persist a stable mid without duplicating the reco
   assert.equal(result.saves[0].filter((m) => m.role === 'user').length, 1);
 });
 
-test('missing API key: repeated regen/contextOnly triggers do not accumulate the same system_error', () => {
-  const first = runMissingApiKeyBranch({ isRegen: true, saveResults: [true] });
+test('missing API key: repeated regen/contextOnly triggers do not accumulate the same system_error', async () => {
+  const first = await runMissingApiKeyBranch({ isRegen: true, saveResults: [true] });
   assert.equal(first.saves.length, 1);
   assert.equal(first.saves[0].filter((m) => m.role === 'system_error').length, 1);
 
   const stored = clone(first.saves[first.saves.length - 1]);
-  const second = runMissingApiKeyBranch({ isRegen: true, history: stored, saveResults: [true] });
+  const second = await runMissingApiKeyBranch({ isRegen: true, history: stored, saveResults: [true] });
   assert.equal(second.saves.length, 0, '相同错误已在历史尾部时不再重复写入');
   assert.equal(second.renders.length, 0, '不得重复渲染相同错误提示');
   assert.equal(stored.filter((m) => m.role === 'system_error').length, 1);
 
-  const contextFirst = runMissingApiKeyBranch({ contextOnly: true, saveResults: [true] });
+  const contextFirst = await runMissingApiKeyBranch({ contextOnly: true, saveResults: [true] });
   assert.equal(contextFirst.saves.length, 1);
   const contextStored = clone(contextFirst.saves[contextFirst.saves.length - 1]);
-  const contextSecond = runMissingApiKeyBranch({ contextOnly: true, history: contextStored, saveResults: [true] });
+  const contextSecond = await runMissingApiKeyBranch({ contextOnly: true, history: contextStored, saveResults: [true] });
   assert.equal(contextSecond.saves.length, 0, 'contextOnly 重复触发同样不得累积');
   assert.equal(contextStored.filter((m) => m.role === 'system_error').length, 1);
 });
@@ -468,86 +491,82 @@ test('zero-content API error bubble is written and rendered only when persistenc
   assert.deepEqual(saved.toasts, []);
 });
 
-test('retry API failure re-marks the same user message instead of creating a new one', () => {
-  const writes = [];
-  const helpers = loadRetryLifecycleHelpers((list) => { writes.push(clone(list)); return true; });
-  const original = [
-    { role: 'assistant', text: '欢迎', time: 1, mid: 'm1' },
-    { role: 'user', text: '在吗', time: 2, mid: 'm2' }
-  ];
-  const historyList = clone(original);
-  const context = {
-    historyList,
-    streamResult: { ok: false, error: { kind: 'http', status: 503 } },
-    retryTarget: { mid: 'm2', time: 2 },
-    _markUserSendFailed: helpers._markUserSendFailed
-  };
-  new Function('context', 'with (context) { ' +
-    extractBlock(chatDetail, 'var retryRemarked = false;', '\n            try {') + ' }')(context);
+// The current retry flow deliberately leaves the saved failed message intact
+// until its assistant reply commits. Run the actual production retry handler.
+function currentRetryFixture(seed) {
+  const original=clone(seed);
+  const messages=clone(seed), sends=[],toasts=[];
+  const locateStart=chatDetail.indexOf('function _locateRetryMessage(');
+  const locateEnd=chatDetail.indexOf('function _prepareRetryMessage(', locateStart);
+  const retryStart=chatDetail.indexOf('var _retryInFlight = false;');
+  const retryEnd=chatDetail.indexOf('// ================= 礼物', retryStart);
+  assert.ok(locateStart>0&&locateEnd>locateStart&&retryStart>0&&retryEnd>retryStart);
+  const source=chatDetail.slice(locateStart,locateEnd)+'\n'+
+    chatDetail.slice(retryStart,retryEnd);
+  const env={window:{},messages,sends,toasts,Promise};
+  const setup=new Function('env',`
+    const {window,messages,sends,toasts,Promise}=env;
+    const aliasRoleId='role-1',isBlocked=()=>false;
+    const getAiConfig=()=>({apiKey:'synthetic-key'});
+    const loadMessages=()=>messages;
+    const showToast=text=>toasts.push(text);
+    const sendMsg=opts=>{sends.push(opts);return Promise.reject(Error('synthetic-api-unavailable'));};
+    const console={warn(){}};
+    var aiSending=false;
+    var singleChatSendPending=false;
+    ${source}
+    return {retry:window.retryFailedMessage,project:_buildRetryModelHistory};
+  `);
+  return {original,messages,sends,toasts,run:setup(env)};
+}
 
-  assert.equal(historyList.length, 2, '不得新增第二条用户消息');
-  assert.equal(historyList.filter((m) => m.role === 'user').length, 1);
-  assert.equal(historyList[1].mid, 'm2', 'mid 必须保持不变');
-  assert.equal(historyList[1].sendFailed, true, 'API 失败后必须重新打失败标记');
-  assert.equal(historyList[1].sendFailedReason, 'api-error');
-  assert.deepEqual(historyList[0], original[0], '已成功的历史不得改动');
-  assert.equal(writes.length, 1);
-  assert.equal(writes[0].filter((m) => m.role === 'user').length, 1);
-
-  // API 成功时不得误打失败标记。
-  const okList = clone(original);
-  new Function('context', 'with (context) { ' +
-    extractBlock(chatDetail, 'var retryRemarked = false;', '\n            try {') + ' }')({
-    historyList: okList,
-    streamResult: { ok: true },
-    retryTarget: { mid: 'm2', time: 2 },
-    _markUserSendFailed: helpers._markUserSendFailed
-  });
-  assert.equal(okList[1].sendFailed, undefined);
-  assert.equal(writes.length, 1, '成功路径不得写入失败标记');
+test('retry API failure keeps the saved failed bubble and starts no duplicate send', async () => {
+  const h=currentRetryFixture([
+    {role:'assistant',text:'欢迎',mid:'m1',time:1},
+    {role:'user',text:'在吗',mid:'m2',time:2,sendFailed:true,sendFailedReason:'api-error'}
+  ]);
+  h.run.retry('m2',2);
+  await new Promise(resolve=>setImmediate(resolve));
+  assert.deepEqual(h.messages,h.original,'early API failure must not change persisted content');
+  assert.equal(h.sends.length,1);
+  assert.deepEqual(h.sends[0],{contextOnly:true,retryTarget:{mid:'m2',time:2}});
+  assert.equal(h.messages.filter(x=>x.role==='user').length,1);
+  assert.match(h.toasts[0],/原消息仍可再次重试/);
 });
 
-test('two consecutive retry failures keep exactly one failed user message', () => {
-  const writes = [];
-  const helpers = loadRetryLifecycleHelpers((list) => { writes.push(clone(list)); return true; });
-  const list = [
-    { role: 'assistant', text: '欢迎', time: 1, mid: 'm1' },
-    { role: 'user', text: '在吗', time: 2, mid: 'm2', sendFailed: true, sendFailedReason: 'missing-api-key' }
-  ];
-
-  for (let attempt = 0; attempt < 2; attempt += 1) {
-    const prepared = helpers._prepareRetryMessage(list, 'm2');
-    assert.ok(prepared, '第 ' + (attempt + 1) + ' 次重试必须能接管上一条失败消息');
-    assert.equal(list.filter((m) => m.role === 'user').length, 1);
-    assert.ok(helpers._markUserSendFailed(list, 'm2', undefined, 'api-error'));
-    assert.equal(list.length, 2, '连续重试不得产生重复记录');
-    assert.equal(list[1].mid, 'm2');
-    assert.equal(list[1].text, '在吗');
-    assert.equal(list[1].sendFailed, true);
-  }
-
-  assert.equal(writes.length, 2);
-  assert.ok(writes.every((snapshot) => snapshot.filter((m) => m.role === 'user').length === 1));
+test('two consecutive failed retries keep exactly one failed user message', async () => {
+  const h=currentRetryFixture([
+    {role:'assistant',text:'欢迎',mid:'m1',time:1},
+    {role:'user',text:'在吗',mid:'m2',time:2,sendFailed:true,sendFailedReason:'api-error'}
+  ]);
+  h.run.retry('m2',2);
+  await new Promise(resolve=>setImmediate(resolve));
+  h.run.retry('m2',2);
+  await new Promise(resolve=>setImmediate(resolve));
+  assert.equal(h.sends.length,2);
+  assert.deepEqual(h.messages,h.original);
+  assert.equal(h.messages.filter(x=>x.role==='user').length,1);
 });
 
-test('retry API failure re-marks legacy messages without mid by time and never migrates them', () => {
-  const helpers = loadRetryLifecycleHelpers(() => true);
-  const list = [
-    { role: 'assistant', text: '欢迎', time: 1 },
-    { role: 'user', text: '旧失败消息', time: 2, sendFailed: true, sendFailedReason: 'missing-api-key' }
-  ];
-
-  assert.ok(helpers._prepareRetryMessage(list, 'm_generated_at_render', 2), '旧消息按 time 进入重试');
-  assert.equal(list[1].sendFailed, undefined);
-  assert.ok(helpers._markUserSendFailed(list, 'm_generated_at_render', 2, 'api-error'),
-    'API 失败后按 time 回退重新标记');
-  assert.equal(list.length, 2);
-  assert.equal(list[1].sendFailed, true);
-  assert.equal(list[1].mid, undefined, '不得为旧消息补写 mid 或迁移历史数据');
-  assert.equal(list[1].text, '旧失败消息');
+test('retry uses a temporary model copy for legacy messages without migrating their IDs', async () => {
+  const h=currentRetryFixture([
+    {role:'assistant',text:'欢迎',time:1},
+    {role:'user',text:'旧失败消息',time:2,sendFailed:true,sendFailedReason:'missing-api-key'}
+  ]);
+  const projected=h.run.project(h.messages,{mid:'m_generated_at_render',time:2});
+  assert.ok(projected);
+  assert.equal(projected[1].sendFailed,undefined);
+  assert.equal(projected[1].mid,undefined);
+  assert.equal(h.messages[1].sendFailed,true);
+  h.run.retry('m_generated_at_render',2);
+  await new Promise(resolve=>setImmediate(resolve));
+  assert.equal(h.sends.length,1);
+  assert.equal(h.sends[0].retryTarget.time,2);
+  assert.equal(h.messages[1].mid,undefined,'old user data must not migrate');
+  assert.deepEqual(h.messages,h.original);
 });
 
-test('blocked send also stops when the user message cannot be persisted', () => {
+test('blocked send also stops when the user message cannot be persisted', async () => {
   const saves = [];
   const renders = [];
   let quoteClears = 0;
@@ -568,7 +587,10 @@ test('blocked send also stops when the user message cannot be persisted', () => 
     input,
     acceptGroupUserMessage: () => true,
     loadMessages: () => clone([{ role: 'assistant', text: '旧消息' }]),
-    saveMessages: (list) => { saves.push(clone(list)); return false; },
+    appendChatSafely: async (batch) => {
+      saves.push(clone([{ role: 'assistant', text: '旧消息' }, ...batch]));
+      return false;
+    },
     appendMessageToDOM: (msg) => renders.push(msg),
     vlRefresh: () => {},
     updateSendBtnState: () => {},
@@ -582,7 +604,7 @@ test('blocked send also stops when the user message cannot be persisted', () => 
     'if (isBlocked(aliasRoleId) && !isRegen && !contextOnly) {',
     '\n            const config = getAiConfig();'
   );
-  new Function('context', 'with (context) { ' + branch + ' }')(context);
+  await new Function('context', 'with (context) { return (async function () { ' + branch + ' }).call(context); }')(context);
   assert.equal(saves.length, 1);
   assert.equal(renders.length, 0);
   assert.equal(input.value, '未发送原文');
@@ -711,50 +733,51 @@ const forumSeedCores = [
 ];
 
 for (const core of forumSeedCores) {
-  test(core.name + ' only overwrites seed defaults that the user never touched', () => {
+  test(core.name + ' preserves user edits while migrating explicitly supplied legacy seed defaults', () => {
     const env = createForumEnv({});
     const page = core.load(env);
+    assert.equal(page.getSeededPosts().length, 0, 'current forum must not inject demo posts');
 
-    env.localStorage.setItem('forum_config', JSON.stringify({ theme: 'reality' }));
-    const previousSeeds = clone(page.getSeededPosts());
-
-    const stored = clone(previousSeeds);
+    // Only this migration test supplies old seed fixtures. The actual app default
+    // stays empty; this checks legacy data protection without reinstating seeds.
+    const oldSeeds = [
+      { id: 'p1', name: '旧作者', title: '旧标题', body: '旧正文', topic: '旧话题', owner: 'seed', themeId: 'reality' },
+      { id: 'p2', name: '旧作者二', title: '旧标题二', body: '旧正文二', topic: '旧话题', owner: 'seed', themeId: 'reality' }
+    ];
+    const nextSeeds = [
+      { ...oldSeeds[0], title: '新默认标题', body: '新默认正文', topic: '新话题', themeId: 'bagua' },
+      { ...oldSeeds[1], title: '新默认标题二', body: '新默认正文二', topic: '新话题', themeId: 'bagua' }
+    ];
+    const stored = clone(oldSeeds);
     stored[0].title = '我自己改过的标题';
     stored[0].likes = 99;
     stored[0].liked = true;
     stored[0].comments = [{ name: '我', owner: 'me', text: '我自己的评论' }];
     const userPost = {
-      id: 'user_keep',
-      owner: 'me',
-      title: '用户自己发的帖子',
-      body: '用户自己写的正文',
-      liked: false,
-      comments: [{ name: '我', owner: 'me', text: '用户自建评论' }]
+      id: 'user_keep', owner: 'me', title: '用户自己发的帖子',
+      body: '用户自己写的正文', comments: [{ name: '我', text: '用户自建评论' }]
     };
     stored.push(userPost);
 
-    env.localStorage.setItem('forum_config', JSON.stringify({ theme: 'bagua' }));
-    env.localStorage.setItem('forum_posts', JSON.stringify(stored));
-    const loaded = page.loadPosts();
-    const nextSeeds = clone(page.getSeededPosts());
-
-    const p1 = loaded.find((item) => item.id === 'p1');
-    const p2 = loaded.find((item) => item.id === 'p2');
-    assert.equal(p1.title, '我自己改过的标题', '用户改过的标题必须保留');
-    assert.equal(p1.body, nextSeeds[0].body, '未改过的正文同步到新主题默认值');
-    assert.equal(p1.topic, nextSeeds[0].topic, '未改过的话题同步到新主题默认值');
-    assert.equal(p1.themeId, 'bagua', '派生字段 themeId 跟随当前主题');
-    assert.equal(p1.likes, 99, '点赞数保留');
-    assert.equal(p1.liked, true, '点赞状态保留');
-    assert.equal(p1.comments[0].text, '我自己的评论', '用户评论保留');
-    assert.equal(p2.title, nextSeeds[1].title, '完全未改过的种子帖同步到新默认标题');
+    const previous = new Map([['reality', new Map(oldSeeds.map(post => [post.id, post]))]]);
+    const loaded = page.mergeForumPosts(stored, nextSeeds, previous);
+    const p1 = loaded.find(item => item.id === 'p1');
+    const p2 = loaded.find(item => item.id === 'p2');
+    assert.equal(p1.title, '我自己改过的标题', '已编辑的默认标题不可覆盖');
+    assert.equal(p1.body, nextSeeds[0].body, '未编辑的正文可同步新默认');
+    assert.equal(p1.topic, nextSeeds[0].topic);
+    assert.equal(p1.themeId, 'bagua');
+    assert.equal(p1.likes, 99);
+    assert.equal(p1.liked, true);
+    assert.equal(p1.comments[0].text, '我自己的评论');
+    assert.equal(p2.title, nextSeeds[1].title);
     assert.equal(p2.body, nextSeeds[1].body);
-
-    const keptUser = loaded.find((item) => item.id === 'user_keep');
-    assert.equal(keptUser.title, userPost.title, '用户自建帖子标题不被覆盖');
-    assert.equal(keptUser.body, userPost.body, '用户自建帖子正文不被覆盖');
-    assert.equal(keptUser.comments[0].text, '用户自建评论', '用户自建评论不被覆盖');
-    assert.equal(loaded.filter((item) => String(item.id).indexOf('p') === 0).length, 6, '种子帖不重复');
+    const keptUser = loaded.find(item => item.id === 'user_keep');
+    assert.equal(keptUser.title, userPost.title);
+    assert.equal(keptUser.body, userPost.body);
+    assert.equal(keptUser.comments[0].text, '用户自建评论');
+    assert.equal(loaded.length, 3, 'no new demo posts or duplicates');
+    assert.equal(stored[0].title, '我自己改过的标题', 'merge must not mutate input');
   });
 
   test(core.name + ' stays idempotent across repeated initialization', () => {
@@ -764,8 +787,8 @@ for (const core of forumSeedCores) {
     const second = clone(page.loadPosts());
     const third = clone(page.loadPosts());
 
-    assert.equal(first.length, 6, '首次初始化应得到 6 条种子帖');
-    assert.equal(new Set(first.map((item) => item.id)).size, 6, '种子帖 ID 不得重复');
+    assert.equal(first.length, 0, '首次初始化应保持空论坛');
+    assert.equal(new Set(first.map((item) => item.id)).size, 0, '不得注入示例帖');
     assert.deepEqual(second, first, '第二次加载不得改变内容');
     assert.deepEqual(third, second, '第三次加载不得改变内容');
     assert.equal(
@@ -773,7 +796,7 @@ for (const core of forumSeedCores) {
       1,
       '内容稳定后不得每次都重写存储'
     );
-    assert.equal(JSON.parse(env.forum.data.forum_posts).length, 6, '存储里只保留一份种子帖');
+    assert.deepEqual(JSON.parse(env.forum.data.forum_posts), [], '只持久化空列表');
   });
 
   test(core.name + ' keeps the document shell when stored data is corrupt or not a list', () => {
@@ -782,7 +805,7 @@ for (const core of forumSeedCores) {
       const page = core.load(env);
       const loaded = page.loadPosts();
       assert.ok(Array.isArray(loaded), '损坏数据不得让加载抛出或返回非数组');
-      assert.deepEqual(Array.from(loaded, (item) => item.id), ['p1', 'p2', 'p3', 'p4', 'p5', 'p6']);
+      assert.deepEqual(Array.from(loaded, (item) => item.id), [], '损坏数据不会重新注入旧帖子');
       assert.ok(env.forum.warns.length >= 1, '读取失败必须显式记录');
       assert.ok(env.forum.toasts.length >= 1, '读取失败必须给出用户可见提示');
       assert.equal(
@@ -796,13 +819,14 @@ for (const core of forumSeedCores) {
   test(core.name + ' still shows already-read user posts when write-back fails', () => {
     const env = createForumEnv({});
     const page = core.load(env);
-    const userPost = { id: 'user_keep', owner: 'me', title: '仍在的帖子', body: '用户正文' };
+    const userPost = { id: 'user_keep', owner: 'me', title: '仍在的帖子', body: '用户正文', comments: 3 };
     env.localStorage.setItem('forum_posts', JSON.stringify([userPost]));
     env.forum.setFailWrites(true);
 
     const loaded = page.loadPosts();
     assert.ok(loaded.some((item) => item.id === 'user_keep'), '回写失败不得退回只剩种子的视图');
-    assert.equal(loaded.length, 7, '用户帖子与 6 条种子帖都应继续展示');
+    assert.equal(loaded.length, 1, '不注入旧种子帖，用户帖子仍应展示');
+    assert.deepEqual(Array.from(loaded[0].comments), [], '旧数字评论应安全迁移为空数组');
     assert.ok(env.forum.warns.length >= 1, '回写失败必须显式记录');
     assert.ok(
       env.forum.toasts.some((message) => message.indexOf('未写入') >= 0),
@@ -902,7 +926,7 @@ function loadDetailLoadPost(env) {
   return runInNewContext(source + '\nloadPost;', env);
 }
 
-test('detail invalid post id keeps the shell and an unreadable store still renders the seed post', () => {
+test('detail invalid post id keeps its shell and an existing user post still renders normally', () => {
   const head = fakeElement();
   const actions = fakeElement();
   const content = fakeElement();
@@ -928,7 +952,8 @@ test('detail invalid post id keeps the shell and an unreadable store still rende
   const renders = [];
   const coreEnv = createForumEnv({ forum_posts: '{broken json' });
   const core = loadDetailForumCore(coreEnv);
-  const seeds = clone(core.loadPosts());
+  const emptyPosts = clone(core.loadPosts());
+  assert.deepEqual(emptyPosts, [], '损坏的存储不可重新生成旧种子帖');
   const baseStubs = {
     document,
     URLSearchParams,
@@ -942,7 +967,7 @@ test('detail invalid post id keeps the shell and an unreadable store still rende
   Object.assign(env, baseStubs, {
     location: { search: '?id=missing_post' },
     getPostId: () => 'missing_post',
-    loadPosts: () => clone(seeds)
+    loadPosts: () => clone(emptyPosts)
   });
   const loadPost = loadDetailLoadPost(env);
   loadPost();
@@ -959,13 +984,13 @@ test('detail invalid post id keeps the shell and an unreadable store still rende
 
   const okEnv = createForumEnv({});
   Object.assign(okEnv, baseStubs, {
-    location: { search: '?id=p1' },
-    getPostId: () => 'p1',
-    loadPosts: () => clone(seeds)
+    location: { search: '?id=user_keep' },
+    getPostId: () => 'user_keep',
+    loadPosts: () => [{ id: 'user_keep', owner: 'me', title: '留存的帖子', body: '仍可读取', comments: [], aiCommentBatch: 'v1' }]
   });
   const loadSeedPost = loadDetailLoadPost(okEnv);
   loadSeedPost();
-  assert.deepEqual(renders, ['post', 'comments'], '存储损坏时仍可展示已读出的种子帖，页面外壳不崩溃');
+  assert.deepEqual(renders, ['post', 'comments'], '有效用户帖能正常渲染，页面外壳不崩溃');
 });
 
 /* ===== 论坛静默 catch 收口：注入抛错桩验证退化语义与 warn 上下文 ===== */
@@ -1082,6 +1107,7 @@ test('callAI without a loaded PhoneAPI still degrades quietly on the normal path
 
 test('getForumThreadWorldbook falls back to the default theme persona and logs the forum_config read failure', () => {
   const env = createForumEnv({ forum_config: '{broken json' });
+  env.post = null; // real forum-detail.html defines this variable in enclosing scope
   const before = env.forum.warns.length;
   const worldbook = loadThreadWorldbook(env)();
   assert.ok(worldbook.includes('当前论坛主题：现代都市'), '配置读失败时仍使用默认主题人设');
@@ -1091,20 +1117,29 @@ test('getForumThreadWorldbook falls back to the default theme persona and logs t
   assert.ok(env.forum.warns[before].includes('forum_config'));
 
   const okEnv = createForumEnv({ forum_config: JSON.stringify({ theme: 'xiuxian' }) });
+  okEnv.post = null;
   assert.ok(loadThreadWorldbook(okEnv)().includes('当前论坛主题：修仙界'), '正常路径不得受影响');
   assert.equal(okEnv.forum.warns.length, 0);
 });
 
-test('sharePost degrades to the no-contact prompt and logs the unreadable character cache', () => {
+test('sharePost distinguishes an unreadable character cache from an empty contact list', () => {
   const alerts = [];
   const env = createForumEnv({ ai_custom_characters: '{broken json' });
   env.alert = (message) => alerts.push(String(message));
   const before = env.forum.warns.length;
   loadSharePost(env)();
-  assert.deepEqual(alerts, ['还没有联系人，先去加好友吧'], '解析失败仍按无联系人处理');
+  assert.deepEqual(alerts, ['联系人列表暂时无法读取，请重试'], '损坏的角色缓存必须报读取错误，不得误称没有联系人');
   assert.equal(env.forum.warns.length, before + 1);
   assert.ok(env.forum.warns[before].includes('sharePost'));
   assert.ok(env.forum.warns[before].includes('ai_custom_characters'));
   assert.equal(env.forum.writes.length, 0, '角色缓存不可读时不得写入聊天记录');
+
+  const emptyAlerts = [];
+  const empty = createForumEnv({ ai_custom_characters: '[]' });
+  empty.alert = (message) => emptyAlerts.push(String(message));
+  loadSharePost(empty)();
+  assert.deepEqual(emptyAlerts, ['还没有可分享的联系人，请先去添加联系人'],
+    '正常空列表应该提示去添加联系人，和损坏缓存明确区分');
+  assert.equal(empty.forum.writes.length, 0, '空联系人列表也不能写入聊天记录');
 });
 

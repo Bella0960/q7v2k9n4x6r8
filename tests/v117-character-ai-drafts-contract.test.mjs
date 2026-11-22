@@ -15,5 +15,8 @@ test('AI generation requires opt-in, has cooldown and explicit persistence',()=>
   assert.match(js,/if \(busy\) return/);
   assert.match(js,/PhoneAPI\.completeJSON/);
   assert.match(js,/saveActiveRoleMutation/);
+  assert.match(js,/character_ai_last_request_/);
+  assert.match(js,/boundWorldBooks/);
+  assert.match(js,/currentNpcDraft/);
   assert.match(js,/applyNpc\(normalizeNpc\(response\.data\)\)/);
 });

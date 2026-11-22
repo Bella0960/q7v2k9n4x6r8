@@ -414,3 +414,69 @@ Do not parallelize:
 5. Agent E: PERF-001 — image asset inventory and safe optimization recommendations, no replacements yet.
 
 Only after these reports are reviewed should implementation tasks be assigned.
+
+### CHAT-RP-001 — Keep direct online AI replies in the saved character identity
+**Priority:** P0 · **Status:** IN PROGRESS (2026-11-19)
+
+- User mobile evidence: an ordinary human direct-chat character repeatedly answered as a generic AI service assistant, despite saved persona, worldbooks and global RP protocol.
+- Required: use verified same-role saved sources as before; before displaying streamed text or saving a generated direct online response, refuse high-confidence generic AI self-identification and assistant boilerplate for ordinary roles. Explicitly digital/AI-authored characters must retain their chosen identity.
+- Preserve saved history, message format, all character data, worldbooks, offline routes, group guard, and the existing one-QA-release safety process. Do not silently re-request paid AI completions.
+- Acceptance: real Node/Vite/Chromium, direct/group role-policy regression, same-origin QA release receipt, account/core unchanged; device verification remains a separate human acceptance step.
+
+### CHAT-PARSER-001 — Unify AI reply format adapters without flattening business schemas
+
+**Priority:** P0 · **Status:** IN PROGRESS (2026-11-20)
+
+- User-requested global parser audit and shared extraction layer for ordinary private/group/multi-bubble/regenerate and offline chat, with reusable strict JSON extraction for existing PhoneAPI consumers.
+- Preserve plain dialogue, model stream errors/partials, narration/translation/role markers, role/group IDs, persona/worldbooks/global protocol, legacy historical bubbles, account boundaries and all persisted records.
+- Business JSON must still satisfy each app's own schema; fallback plaintext is allowed only for user-facing reply suggestions. No fabricated persistence or successful HTTP/API responses.
+- Acceptance: shared parser behavior tests, parser-load order, existing Node/Vite/Chromium full regression, original QA-only source receipt and identity-core continuity. Android/iPhone manual experience test separately.
+
+### MUSIC-IMPORT-003 — Restore actual audio bytes from Android SAF false-zero file picks
+
+**Priority:** P1 · **Status:** IMPLEMENTED ON TASK BRANCH; QA/DEVICE NOT VERIFIED (2026-11-20)
+
+- Android SAF/file/cloud pickers may report missing/zero `File.size` for audio with unreadable or recoverable contents. Probe bytes before declaring empty; a read/permission failure must have a distinct user-facing error and bounded retry, without silent success.
+- Preserve original file-name support, 256-byte header detection for normal tracks, MP3/M4A/WAV signature rules, IndexedDB-first catalog commit, old playlist data, music UI and backup format.
+- Recover a nonempty Blob from actual bytes when picker metadata or sliced bytes are unreliable; verify Blob size before persistence; do not overwrite existing tracks when checks fail.
+- Acceptance: focused Node suites, production build/Chromium, Android SAF/cloud-picker and iPhone Files device checks, original QA-only pipeline. No deployment or merging before review.
+
+### MUSIC-IMPORT-004 — Android 受保护文件读取失败友好提示
+
+**优先级：** P1 · **状态：** 独立任务分支，专项回归通过，完整 QA/手机验收待执行（2026-11-20）。
+
+- 仅调整 `music/music.html` 文件导入中的读取失败处理：首次读取、FileReader 重试均失败时提供可理解的本地「下载」文件夹迁移建议，禁止在提醒中暴露异常对象、文件系统路径或内部错误码。
+- 文件读取超时必须有界（每次最长 10 秒），批量选择中的受保护文件失败不能阻塞后续可读取文件；同一批选择只弹出一次提醒；重选文件输入控件可再次打开。
+- 原音乐库、索引、Blob、曲目 ID、播放与导入事务保持不变，不更改权限或读写其他系统受保护目录。
+
+### MUSIC-UI-004 — Show actual local music duration and human-friendly artist in lists
+
+**Priority:** P1 · **Status:** implemented on task branch, targeted Node PASS; QA-only release pending (2026-11-20).
+
+- Display: legacy "本地导入" artists render as "未知歌手" without changing old metadata; new imports use "未知歌手" directly. Local placeholder "本地" becomes "--:--"; actual duration is zero-padded mm:ss (hh:mm:ss for long tracks). Demo track display unchanged.
+- Use a separate Audio(metadata) probe with object-URL cleanup and timeout, no playback or primary player source mutation. Probe asynchronously *after* safe IndexedDB/catalog import, and recover unmeasured older songs sequentially after reload.
+- Save only duration fields for the matching track after re-reading current catalog; never overwrite other tracks/lyrics or falsely mark metadata saved on storage error. Any failure leaves "--:--" and normal playback intact.
+- Affected: music/music.html, tests/music-extensionless-import.test.mjs, tests/music-duration-display.test.mjs. No DB migration, no external service, no chat, theme or Worker changes.
+
+### CHAT-HISTORY-001 · Group-private DM stale-history overwrite (P0) — QA integration candidate
+
+2026-11-20 cleanup selection: original unmerged history-safety branch PR #282, but current QA already has primary-history guards and notifier atomic writes. Remaining gap was the group-private receipt inside `chat/chat/chat-detail.html`, which read `PhoneStorage.getChatHistory` (possibly stale v2) first and rewrote a full detached array to `chat_history_<roleId>`. If the primary JSON was corrupt, non-array, or changed, a group reply could silently damage a role's chat.
+The QA-derived minimal patch replaces only this group-private role-write step with the existing `PhoneStorage.result.appendChatHistory` validated adapter plus authoritative primary readback; legacy test-only fallback refuses corrupt/non-array keys and checks its baseline. It does not change role ID, group schema, human chat UI, regular sending, notifications, or API calls. It is not a claim of 100% cross-tab atomicity for unconverted legacy writers.
+Acceptance: existing group turn, private receipt recovery, history corruption, atomic append and scoped group history tests; full Node/Vite/Chromium and QA-only identity/receipt gate; Android/iOS group private + ordinary chat history safety test.
+
+### CHAT-RP-001 — Required source preflight must preserve retryability (P0)
+
+2026-11-20 cleanup candidate. Although current QA validates the saved global RP protocol, character persona and activated worldbook before calling a paid AI API, its protocol-read / protocol-missing / persona audit / overbudget source early-return branches can happen **after** a new user message was safely stored. Those branches previously stopped without setting `sendFailed`, leaving a sent-looking bubble with no AI reply or per-message retry affordance.
+
+Limit this repair to `chat/chat/chat-detail.html` sendMsg mandatory-source failure exits: capture the exact user message MID only **after** confirmed storage; use existing `_markUserSendFailed` verified write to set `sendFailed` and source-specific reason; preserve retries/regenerations/context-only operations without duplicating a user message. Failure of marker persistence must not falsely claim the bubble is retryable. No change to actual prompt text, persona/worldbook/protocol storage, paid API, login, groups or UI layout.
+
+Acceptance: independent real source helper test; complete chat/persona tests; original Node/Vite/Chromium QA-only release safety gates; Android/iOS manual test with deliberately unavailable protocol and a saved user message, followed by restored protocol and single-tap retry. Preserve old chat history and characters.
+
+### CHAT-PROMPT-001 · Source-first system prompt + opt-in raw payload inspection (P0)
+
+Scope: The user reported real single/group role drift and requested inspection of the **actual messages** sent to the model. Existing QA builds a system message and asserts that saved character persona, activated scoped lore and global protocol appear inside it. Merely checking length or existence is insufficient to prove a real on-device turn uses the intended content. This task preserves all saved user data.
+
+- Preserve the verbatim saved global protocol (`chat_rp_protocol_`), full saved speaker persona and activated worldbooks. Place enabled, syntactically valid, text-applicable `regex_rules` before them as **format expectations only**; the original deterministic regex substitutions after reply remain authoritative. Never turn disabled/invalid or JSON-only repair rules into conversational instructions.
+- Replace the redundant hard-coded identity-lock essay and repeated single/group AI-deterrence prose with a compact role/voice/format anchor. User-authored expanded protocol comes before the compact identity note, activated lore still enters System, and essential group/private/game/message markers remain.
+- Add QA-only, on-device diagnostic: on `preview.mao520.com` tap chat title five times within 2.8 seconds to opt into a session-only pre-send modal. Show and permit copying the complete `systemPrompt` and exact `apiMessages`, and block the API request until user clicks Continue. The browser console logs the same full contents **only when opted in**. Never log API Key, persist or upload prompt/chat text, or enable on production.
+- Test exact array and order, old persona/worldbook/protocol priority, group scoped prompts, zero-regex behavior, snapshot copy/readability, QA-only activation and no writes to user data. Full Node, Vite, Chromium, source SHA and QA-only release gate required before mobile acceptance.

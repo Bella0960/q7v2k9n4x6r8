@@ -23,10 +23,61 @@
  * 依赖：playwright 主包（package.json devDependencies ^1.64.1）
  */
 import { chromium } from 'playwright';
+import { createServer } from 'node:http';
+import { readFile } from 'node:fs/promises';
+import { dirname, extname, isAbsolute, relative, resolve } from 'node:path';
+import { fileURLToPath } from 'node:url';
 
-const BASE = (process.env.BASE_URL || 'http://localhost:3000').replace(/\/$/, '');
-const URL = `${BASE}/inspect-phone/phone.html?id=pw-test`;
-const ROLE_SEED = JSON.stringify([{ id: 'pw-test', name: 'PW测试', description: 'test role' }]);
+// Full "node --test" runs without an external Vite server. Host the existing
+// static test page on a loopback-only random port instead of assuming :3000.
+const TEST_ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..');
+const MIME_TYPES = {
+  '.html': 'text/html; charset=utf-8',
+  '.js': 'text/javascript; charset=utf-8',
+  '.mjs': 'text/javascript; charset=utf-8',
+  '.css': 'text/css; charset=utf-8',
+  '.json': 'application/json; charset=utf-8',
+  '.svg': 'image/svg+xml',
+  '.png': 'image/png',
+  '.jpg': 'image/jpeg',
+  '.jpeg': 'image/jpeg',
+  '.webp': 'image/webp',
+  '.woff': 'font/woff',
+  '.woff2': 'font/woff2'
+};
+
+async function startLocalTestServer() {
+  const server = createServer(async (req, res) => {
+    try {
+      const pathname = decodeURIComponent(new globalThis.URL(req.url || '/', 'http://127.0.0.1').pathname);
+      const target = resolve(TEST_ROOT, '.' + (pathname === '/' ? '/index.html' : pathname));
+      const rel = relative(TEST_ROOT, target);
+      if (rel.startsWith('..') || isAbsolute(rel)) {
+        res.writeHead(403).end('Forbidden');
+        return;
+      }
+      const data = await readFile(target);
+      res.writeHead(200, {
+        'content-type': MIME_TYPES[extname(target).toLowerCase()] || 'application/octet-stream'
+      }).end(data);
+    } catch {
+      res.writeHead(404).end('Not found');
+    }
+  });
+  await new Promise((resolveReady, rejectReady) => {
+    server.once('error', rejectReady);
+    server.listen(0, '127.0.0.1', resolveReady);
+  });
+  return server;
+}
+
+let localTestServer = null;
+let BASE = (process.env.BASE_URL || '').replace(/\/$/, '');
+let URL = BASE ? `${BASE}/inspect-phone/phone.html?id=pw-test` : '';
+const ROLE_SEED = JSON.stringify([
+  { id: 'pw-test', name: 'PW测试', persona: '住在海边的画师，最近准备水彩展', relationship: '朋友' },
+  { id: 'pw-boss', name: '另一位角色', persona: '总裁，上午主持预算会议', relationship: '朋友' }
+]);
 
 let totalAssertions = 0;
 let passedAssertions = 0;
@@ -117,6 +168,11 @@ async function snapshot(page, label) {
 }
 
 async function main() {
+  if (!BASE) {
+    localTestServer = await startLocalTestServer();
+    BASE = 'http://127.0.0.1:' + localTestServer.address().port;
+    URL = BASE + '/inspect-phone/phone.html?id=pw-test';
+  }
   console.log('\n=== inspect-phone 回归测试 v3（位移守卫边界 + 纯 CDP touch）===');
   console.log('BASE:', BASE);
 
@@ -326,6 +382,100 @@ async function main() {
     await browser.close();
   }
 
+  // The structured response stands in for the user's configured model.
+  for (const width of [375, 390, 430]) {
+    const { browser, page } = await freshPage({ width, height: 844 });
+    const requests = [];
+    try {
+      await page.route('**/fixture/v1/chat/completions', async route => {
+        const body=route.request().postDataJSON();
+        const prompt=body.messages[1].content;
+        requests.push(prompt);
+        assert(body.model === 'active-model' && route.request().headers().authorization === 'Bearer fixture-key', '请求使用激活方案而非旧镜像');
+        assert(prompt.length < 950 && !prompt.includes('禁止发送的旧历史'), '生成请求不夹带旧历史');
+        assert(body.messages[0].content.includes('contacts[0]'), '系统提示强制首条用户单聊');
+        const painter=prompt.includes('水彩展');
+        const title=painter?'买颜料':'准备预算会议';
+        const data={
+          chat:{contacts:[...['小祝','筹备群'].map((name,i)=>({
+            name:(painter?'画室·':'公司·')+name,relationship:i===2?'工作群':'同事',
+            messages:[{side:'ai',text:title+' 0',time:new Date().toISOString()}]
+          })),{id:'user',name:'我',messages:[{side:'me',text:'晚点见。'}]}]},
+          moments:{moments:[0,1,2].map(i=>({text:title+'的近况 '+i,image:'工作台',comments:[{name:'小祝',text:'期待'}]}))},
+          notes:{notes:[0,1,2].map(i=>({title:title+' '+i,text:title}))}
+        };
+        const fence=String.fromCharCode(96).repeat(3);
+        const fenced=fence+'json\n'+JSON.stringify(data)+'\n'+fence;
+        await route.fulfill({json:{choices:[{finish_reason:'stop',message:{content:painter?fenced:[{type:'text',text:fenced}]}}]}});
+      });
+      async function enter(roleId) {
+        await page.goto(BASE+'/inspect-phone/phone.html?id='+roleId);
+        await page.evaluate(() => {
+          localStorage.setItem('api_settings',JSON.stringify({apiKey:'fixture-key',baseUrl:location.origin+'/fixture/v1',model:'old-model'}));
+          localStorage.setItem('api_active_profile','fixture-active');
+          localStorage.setItem('api_profiles_v1',JSON.stringify([{
+            id:'fixture-active',apiKey:'',baseUrl:location.origin+'/fixture/v1/chat/completions',model:'active-model'
+          }]));
+          localStorage.setItem('chat_history_pw-test',JSON.stringify([{text:'禁止发送的旧历史'}]));
+        });
+        await page.locator('#lock').click();
+      }
+      async function authorize() {
+        await page.locator('[data-action="grant"]').click();
+        if (!await page.locator('[data-choose="chat"]').isChecked()) await page.locator('[data-action="all"]').click();
+        await page.locator('[data-action="start"]').click();
+      }
+      await enter('pw-test');
+      await page.locator('#appHome').tap();
+      assert(await page.locator('#appHome').isHidden(), width + 'px 请求页可返回桌面');
+      const dockCentered = await page.locator('.dock').evaluate(dock => {
+        const icons = [...dock.querySelectorAll('.app')].map(button => button.getBoundingClientRect());
+        const bounds = dock.getBoundingClientRect();
+        return icons.length === 2 && Math.abs(icons[0].y - icons[1].y) < 1 &&
+          Math.abs((icons[0].left + icons[1].right) / 2 - (bounds.left + bounds.right) / 2) < 1;
+      });
+      assert(dockCentered, width + 'px 两个 Dock 图标居中对齐');
+      await page.locator('.dock [data-app="chat"]').tap();
+      await authorize();
+      await page.locator('.dock [data-app="chat"]').tap();
+      await page.locator('.nv-contact').first().waitFor();
+      assert((await page.locator('.nv-chat-list').innerText()).includes('买颜料'), '画师聊天按本人档案生成');
+      assert((await page.locator('.nv-contact strong').first().textContent())==='我','用户单聊固定首位');
+      const aligned = await page.locator('.nv-tabbar').evaluate(bar => {
+        const icons = [...bar.querySelectorAll('.nv-tab-icon')].map(icon => {
+          const rect = icon.getBoundingClientRect();
+          return { x: rect.x + rect.width / 2, y: rect.y + rect.height / 2 };
+        });
+        const gaps = icons.slice(1).map((entry,i) => entry.x - icons[i].x);
+        return icons.length === 4 && icons.every(icon => Math.abs(icon.y - icons[0].y) < 1) &&
+          Math.max(...gaps) - Math.min(...gaps) < 1;
+      });
+      assert(aligned, width + 'px 微信四个图标均匀且水平对齐');
+      await page.locator('.nv-contact').first().tap();
+      await page.locator('#appHome').tap({ position: { x: 3, y: 22 } });
+      assert(await page.locator('#appHome').isHidden(), '微信聊天详情可直返桌面');
+      await page.locator('.grid [data-app="notes"]').tap();
+      await page.locator('[data-detail="note"]').first().tap();
+      assert((await page.locator('#appBody').innerText()).includes('买颜料'), '备忘录按画师档案生成');
+      await page.locator('#appHome').tap();
+      assert(await page.locator('#appHome').isHidden(), '备忘录正文可直返桌面');
+      const moments = await page.evaluate(() => JSON.parse(localStorage.getItem('inspect_story_v1_pw-test')).sections.moments.moments);
+      assert(moments.some(moment => moment.text.includes('买颜料')), '朋友圈与画师聊天同源生成');
+      await enter('pw-boss');
+      await authorize();
+      await page.locator('.dock [data-app="chat"]').tap();
+      await page.locator('.nv-contact').first().waitFor();
+      assert((await page.locator('.nv-chat-list').innerText()).includes('预算会议'), '读取第二个角色自己的档案');
+      await enter('pw-test');
+      await authorize();
+      await page.locator('.dock [data-app="chat"]').tap();
+      await page.locator('.nv-contact').first().waitFor();
+      assert(requests.length === 2 && requests[0].includes('水彩展') && requests[1].includes('预算会议'), '两个角色各生成一次，重开复用本地缓存');
+    } finally {
+      await browser.close();
+    }
+  }
+
   // ---- 总结 ----
   const skipped = 0;  // 本脚本无 skip
   console.log(`\n=== 总计 ${passedAssertions}/${totalAssertions} 通过, ${skipped} skip ===`);
@@ -334,4 +484,11 @@ async function main() {
   }
 }
 
-main().catch(err => { console.error('FATAL:', err?.message || err); process.exit(1); });
+main().catch(err => {
+  console.error('FATAL:', err?.message || err);
+  process.exitCode = 1;
+}).finally(async () => {
+  if (localTestServer) {
+    await new Promise((resolveClose) => localTestServer.close(resolveClose));
+  }
+});

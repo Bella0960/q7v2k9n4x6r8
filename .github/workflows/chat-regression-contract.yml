@@ -10,6 +10,14 @@ on:
       - 'shared/js/phone/**'
       - 'shared/js/chat-beauty.js'
       - 'shared/js/wallpaper-store.js'
+      - 'beauty/beauty.html'
+      - 'settings/settings.html'
+      - 'settings/appearance.html'
+      - 'shared/js/statusbar-control.js'
+      - 'shared/js/native-feel.js'
+      - 'music/music.html'
+      - 'inspect-phone/phone.html'
+      - 'travel/dream-travel.html'
       - 'sw.js'
       - 'tests/**'
       - 'docs/chat-architecture-contract.md'
@@ -24,6 +32,14 @@ on:
       - 'shared/js/phone/**'
       - 'shared/js/chat-beauty.js'
       - 'shared/js/wallpaper-store.js'
+      - 'beauty/beauty.html'
+      - 'settings/settings.html'
+      - 'settings/appearance.html'
+      - 'shared/js/statusbar-control.js'
+      - 'shared/js/native-feel.js'
+      - 'music/music.html'
+      - 'inspect-phone/phone.html'
+      - 'travel/dream-travel.html'
       - 'sw.js'
       - 'tests/**'
       - 'docs/chat-architecture-contract.md'
@@ -47,8 +63,12 @@ jobs:
           node-version: 22
       - name: Install dependencies
         run: npm ci
+      - name: Check global status bar wiring and preference behavior
+        run: node --test tests/global-statusbar-wiring.test.mjs
       - name: Install Chromium for mobile viewport checks
         run: npx playwright install --with-deps chromium
+      - name: Check global status bar DOM behavior in Chromium
+        run: node tests/global-statusbar-browser.mjs
       - name: Run chat regression contract tests
         run: |
           npm run test:chat:reply
@@ -62,6 +82,7 @@ jobs:
           npm run test:images
           npm run test:forum:seed
           npm run build
+          npm run test:fanwai:browser:build
           npm run test:forum:mobile
           npm run test:group:ui
           npm run test:group:invite-e2e
@@ -70,3 +91,11 @@ jobs:
         run: |
           npm run test:chat:isolation
           npm run test:chat:isolation:browser
+      - name: Save fanwai browser failure diagnostics
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: fanwai-browser-failure-${{ github.run_id }}
+          path: test-results/fanwai-browser/
+          if-no-files-found: ignore
+          retention-days: 5
