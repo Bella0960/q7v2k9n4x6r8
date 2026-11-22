@@ -179,7 +179,10 @@ test('invalid memory target or non-array input does not write new records', () =
 
 test('memory management actions do not claim success after storage failure', () => {
   const html = source('worldbook/memory/memory.html');
-  assert.match(html, /if \(!saveMemories\(currentMemId, arr\)\) \{ alert\('记忆保存失败/);
+  assert.match(html, /const dedupRoleId = currentMemId;/);
+  assert.match(html, /String\(currentMemId\) !== String\(dedupRoleId\)/);
+  assert.match(html, /JSON\.stringify\(arr\) !== dedupSnapshot/);
+  assert.match(html, /if \(!saveMemories\(dedupRoleId, arr\)\) \{ alert\('记忆保存失败/);
   assert.match(html, /if \(!saveMemories\(mergeRoleId, arr\)\) \{/);
   assert.match(html, /const mergeRoleId = currentMemId;/);
   assert.match(html, /const mems = loadMemories\(mergeRoleId\);/);
