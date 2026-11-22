@@ -13,7 +13,10 @@ function scopedRule(selector) {
   const marker = '/* ROLE-LIST-V117:';
   const start = inlineCSS.indexOf(marker);
   assert.ok(start >= 0, 'compact role-list styles must have their own scoped guard');
-  const section = inlineCSS.slice(start);
+  const latest = inlineCSS.indexOf('/* ROLE-LIST-PORTRAIT-V118');
+  assert.ok(latest >= start, 'portrait layout override must be present after v117 styles');
+  const endOverride = inlineCSS.indexOf('@media(max-width:360px)', latest);
+  const section = inlineCSS.slice(latest, endOverride >= 0 ? endOverride : undefined);
   const begin = section.lastIndexOf(selector + ' {');
   assert.ok(begin >= 0, selector + ' must exist in the scoped guard');
   const end = section.indexOf('}', begin);
