@@ -33,6 +33,17 @@
 
     var NS = global.PhoneStorage = {};
 
+    // Extension hook for local persistence failures. Never include stored payloads.
+    function emitStorageFailure(key, errorName) {
+        try {
+            if (typeof global.dispatchEvent === 'function' && typeof global.CustomEvent === 'function') {
+                global.dispatchEvent(new global.CustomEvent('phone:storage-failure', {
+                    detail: { key: String(key), error: String(errorName || 'Error') }
+                }));
+            }
+        } catch (ignored) { /* Diagnostics must not affect storage return values. */ }
+    }
+
     /* ========== 原始读写 ========== */
 
     NS.rawGet = function (key, fallback) {
@@ -55,6 +66,7 @@
             return true;
         } catch (e) {
             console.warn('[PhoneStorage] set failed', key, e);
+            emitStorageFailure(key, (e && e.name) || 'Error');
             return false;
         }
     };
@@ -258,9 +270,36 @@
     };
 
     NS.saveMemories = function (contactId, list) {
-        // 与聊天记录一样，先确认主 key 写入成功，再清除重复副本。
-        var saved = NS.rawSet('chat_memories_' + contactId, Array.isArray(list) ? list : []);
-        if (!saved) return false;
+        // Never overwrite a damaged primary memory key with a synthesized empty list.
+        // Legacy phone_data_v2 may be used only when the authoritative key is absent.
+        if (contactId == null || !String(contactId).trim() || !Array.isArray(list)) return false;
+        var key = 'chat_memories_' + contactId;
+        try {
+            var previousRaw = localStorage.getItem(key);
+            if (previousRaw !== null) {
+                var previous = JSON.parse(previousRaw);
+                if (!Array.isArray(previous)) {
+                    emitStorageFailure(key, 'CorruptPrimary');
+                    return false;
+                }
+            }
+        } catch (error) {
+            emitStorageFailure(key, error && error.name === 'SyntaxError' ? 'CorruptPrimary' : 'PrimaryUnavailable');
+            return false;
+        }
+        var serialized;
+        try { serialized = JSON.stringify(list); }
+        catch (error) { return false; }
+        if (!NS.rawSet(key, serialized)) return false;
+        try {
+            if (localStorage.getItem(key) !== serialized) {
+                emitStorageFailure(key, 'WriteNotPersisted');
+                return false;
+            }
+        } catch (error) {
+            emitStorageFailure(key, 'ReadbackUnavailable');
+            return false;
+        }
         var root = NS._getRoot();
         var bucket = root[contactId];
         if (bucket && bucket.memories != null) {

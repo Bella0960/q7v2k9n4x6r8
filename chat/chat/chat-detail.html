@@ -4939,6 +4939,17 @@
         const MEM_HALF_LIFE = { key: 365, anniversary: 365, plot: 21, detail: 60, preference: 60 };
         const MEM_CAT_BASE = { key: 1.0, anniversary: 1.0, plot: 0.45, detail: 0.7, preference: 0.7 };
 
+        // Keep the user informed when any PhoneStorage write fails (including chat history).
+        var lastStorageFailureNoticeAt = 0;
+        window.addEventListener('phone:storage-failure', function () {
+            var now = Date.now();
+            if (now - lastStorageFailureNoticeAt < 60000) return;
+            lastStorageFailureNoticeAt = now;
+            if (typeof showToast === 'function') {
+                showToast('本地存储写入失败，刚才的内容可能未保存。请先备份并检查存储空间。', 4000);
+            }
+        });
+
         function loadWeightMemories(roleId) {
             if (_storage) return _storage.getMemories(roleId);
             try {
@@ -9109,12 +9120,19 @@
           sourceStartIndex: startIndex, sourceEndIndex: endIndex - 1
         });
       });
-      if (window.MemoryRecall && window.MemoryRecall.saveMemories) {
-        var ok2 = window.MemoryRecall.saveMemories(rid, existing);
-        if (!ok2 && typeof sumToast === 'function') sumToast('记忆未能保存：' + (existing.length || 0) + ' 条新整理的记忆未落库，请检查本地存储空间');
+      var memSaved = false;
+      if (window.MemoryRecall && typeof window.MemoryRecall.saveMemories === 'function') {
+        try { memSaved = window.MemoryRecall.saveMemories(rid, existing) === true; }
+        catch (e) { memSaved = false; }
       } else {
-        try { localStorage.setItem('chat_memories_' + rid, JSON.stringify(existing)); }
-        catch (e) { if (typeof sumToast === 'function') sumToast('记忆未能保存，请检查本地存储空间'); }
+        try { localStorage.setItem('chat_memories_' + rid, JSON.stringify(existing)); memSaved = true; }
+        catch (e) { memSaved = false; }
+      }
+      if (!memSaved) {
+        // Retry remains possible: do not advance either the batch pointer or the cooldown timestamp.
+        overlay.style.display = 'none';
+        sumToast('本批记忆没有保存，整理进度未推进。请备份并检查存储空间后重试');
+        return;
       }
       localStorage.setItem('chat_summary_processed_' + rid, String(endIndex));
       localStorage.setItem('chat_last_summary_' + rid, String(now));
