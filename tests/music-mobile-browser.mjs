@@ -55,7 +55,8 @@ try {
     try {
       const response = await page.goto(BASE, { waitUntil: 'domcontentloaded' });
       assert.equal(response.status(), 200, 'music page HTTP 200');
-      await page.locator('#musicImport').waitFor();
+      // The upload control is intentionally hidden; setInputFiles works on attached inputs.
+      await page.locator('#musicImport').waitFor({ state: 'attached' });
       await page.screenshot({ path: join(shots, 'home-' + width + '.png') });
       await page.evaluate(() => {
         localStorage.setItem('settings_statusbar', '0');
