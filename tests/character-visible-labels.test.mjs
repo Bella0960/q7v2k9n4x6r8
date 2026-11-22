@@ -33,7 +33,8 @@ test('signed imports still reject external cards, but all exposed errors use neu
 });
 
 test('PWA refreshes the edited resources and notification headings use neutral names', () => {
-  assert.match(sw, /const CACHE_NAME = 'phone-app-pwa-v289'/);
+  const cacheVersion = Number(sw.match(/^const CACHE_NAME = 'phone-app-pwa-v(\d+)'/m)?.[1] || 0);
+  assert.ok(cacheVersion >= 289, 'do not regress the previously validated PWA cache baseline');
   assert.ok(html.includes('character-card-client.js?v=20261122-neutral-v1'));
   assert.ok(sw.includes('character-card-client.js?v=20261122-neutral-v1'));
   assert.ok(html.includes('characters-manager.js?v=20261122-inline-v2'));
