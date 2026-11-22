@@ -67,7 +67,11 @@ async function run(files, {
     LOCAL_TRACKS_KEY: 'music_local_tracks',
     putAudioBlob: async (entry) => {
       events.blobs.push(entry);
-      if (events.blobs.length === concurrentAt && concurrentRaw !== null) stored = concurrentRaw;
+      if (events.blobs.length === concurrentAt && concurrentRaw !== null) {
+        stored = concurrentRaw === 'append-other'
+          ? JSON.stringify([...JSON.parse(stored), { id: 'other-tab' }])
+          : concurrentRaw;
+      }
       if (failBinary) throw new Error('Audio store failed');
     },
     deleteAudioBlob: async (id) => events.cleanup.push(id),
@@ -169,14 +173,16 @@ test('storage access denied after initial read fails closed', async () => {
 });
 
 test('a second-file conflict preserves the first imported track and other-tab changes', async () => {
-  const otherTab = '[{"id":"from-first"},{"id":"other-tab"}]';
   const r = await run([audioFile('one.wav'), audioFile('two.wav')], {
     concurrentAt: 2,
-    concurrentRaw: otherTab,
+    concurrentRaw: 'append-other',
   });
-  assert.equal(r.stored, otherTab);
+  const catalog = JSON.parse(r.stored);
+  assert.equal(catalog.length, 2);
   assert.equal(r.blobs.length, 2);
   assert.equal(r.cleanup.length, 1);
   assert.equal(r.tracks.length, 1);
-  assert.equal(r.played.length, 1);
+  assert.equal(catalog[0].id, r.tracks[0].id);
+  assert.equal(catalog[1].id, 'other-tab');
+  assert.deepEqual(r.played, [catalog[0].id]);
 });
