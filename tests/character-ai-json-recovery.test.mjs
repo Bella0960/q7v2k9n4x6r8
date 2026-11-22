@@ -28,7 +28,7 @@ test('retain direct completeJSON success and accept model-wrapped event',()=>{
 test('AI parser is loaded before generator and PWA precache addresses match',()=>{
  const html=readFileSync(new URL('../worldbook/characters/characters.html',import.meta.url),'utf8');
  const sw=readFileSync(new URL('../sw.js',import.meta.url),'utf8');
- assert.ok(html.indexOf('character-ai-json.js?v=20261122-json-v2')<html.indexOf('character-ai-drafts.js?v=20261122-json-v2'));
+ assert.ok(html.indexOf('character-ai-json.js?v=20261122-json-v2')<html.indexOf('character-ai-drafts.js?v=20261122-life-json-v3'));
  assert.match(sw,/phone-app-pwa-v288/);
- for(const f of ['character-ai-json.js?v=20261122-json-v2','character-ai-drafts.js?v=20261122-json-v2']) assert.ok(sw.includes(f));
+ for(const f of ['character-ai-json.js?v=20261122-json-v2','character-ai-drafts.js?v=20261122-life-json-v3']) assert.ok(sw.includes(f));
 });
