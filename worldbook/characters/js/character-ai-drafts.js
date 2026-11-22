@@ -81,7 +81,14 @@
         var result = {};
         FIELDS.forEach(function (key) { result[key] = safe(item[key], 1200); });
         if (!result.name) throw new Error('生成的人物缺少姓名');
-        if (!['family','friend','work','other'].includes(result.category)) result.category = 'other';
+        if (!['family','friend','work','other'].includes(result.category)) {
+            // Short AI drafts can omit category. Preserve useful filter placement
+            // without inventing any extra person details or API call.
+            var relation = result.relation;
+            result.category = /父亲|母亲|爸爸|妈妈|儿子|女儿|丈夫|妻子|配偶|哥哥|姐姐|弟弟|妹妹|家人|亲戚|表姐|表哥|表妹|表弟/.test(relation) ? 'family' :
+                /同事|同学|老师|导师|老板|上司|下属|校友|客户|合伙人|合作伙伴/.test(relation) ? 'work' :
+                /朋友|发小|邻居|闺蜜|挚友|好友/.test(relation) ? 'friend' : 'other';
+        }
         if (!['known','heard','unknown'].includes(result.awareness)) result.awareness = 'heard';
         return result;
     }
