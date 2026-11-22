@@ -270,11 +270,25 @@
     };
 
     NS.saveMemories = function (contactId, list) {
-        // Verify the authoritative memory value before removing any legacy duplicate.
-        // Some storage shims report a successful setItem even if the value was not persisted.
+        // Never overwrite a damaged primary memory key with a synthesized empty list.
+        // Legacy phone_data_v2 may be used only when the authoritative key is absent.
+        if (contactId == null || !String(contactId).trim() || !Array.isArray(list)) return false;
         var key = 'chat_memories_' + contactId;
+        try {
+            var previousRaw = localStorage.getItem(key);
+            if (previousRaw !== null) {
+                var previous = JSON.parse(previousRaw);
+                if (!Array.isArray(previous)) {
+                    emitStorageFailure(key, 'CorruptPrimary');
+                    return false;
+                }
+            }
+        } catch (error) {
+            emitStorageFailure(key, error && error.name === 'SyntaxError' ? 'CorruptPrimary' : 'PrimaryUnavailable');
+            return false;
+        }
         var serialized;
-        try { serialized = JSON.stringify(Array.isArray(list) ? list : []); }
+        try { serialized = JSON.stringify(list); }
         catch (error) { return false; }
         if (!NS.rawSet(key, serialized)) return false;
         try {
