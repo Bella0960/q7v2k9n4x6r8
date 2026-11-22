@@ -16,7 +16,7 @@ assert.ok(from >= 0 && to > from && helperFrom >= 0 && helperTo > helperFrom,
   'production import and metadata persistence helpers should exist');
 const code = html.slice(helperFrom, helperTo) + '\n' + html.slice(from, to);
 
-async function runImport(files, { failNames = [], storageFailure = null, initialMeta = null, concurrentMeta = null } = {}) {
+async function runImport(files, { failNames = [], storageFailure = null, initialMeta = null, concurrentMeta = null, uuidFn = null } = {}) {
   const listeners = {};
   const played = [];
   const toasts = [];
@@ -46,6 +46,7 @@ async function runImport(files, { failNames = [], storageFailure = null, initial
     tracks,
     Date,
     Array,
+    crypto: uuidFn ? { randomUUID: uuidFn } : undefined,
   };
   vm.runInNewContext(code, ctx);
   const input = { files, value: 'selection' };
@@ -144,4 +145,12 @@ test('two sequential files still save without false conflict', async () => {
   assert.equal(after.length, 2);
   assert.equal(r.tracks.length, 3);
   assert.equal(r.played[0], after[1].id);
+});
+
+test('two tabs importing during same timestamp use distinct audio-store keys', async () => {
+  let sequence = 0;
+  const uuidFn = () => 'unique-' + (++sequence);
+  const first = await runImport([{ name: 'one.wav', size: 100 }], { uuidFn });
+  const second = await runImport([{ name: 'two.wav', size: 100 }], { uuidFn });
+  assert.notEqual(JSON.parse(first.storedMeta)[0].id, JSON.parse(second.storedMeta)[0].id);
 });
