@@ -551,8 +551,10 @@ test('forum refresh / 新帖子自带评论：根评论和楼中楼都按身份�
   const result = api.mergeForumRefreshData([], fresh, [], () => null);
   assert.equal(result.addedPostCount, 1);
   assert.equal(result.posts[0].comments.length, 1, '新帖子里的重复根评论只保留一份');
+  // 合并逻辑跑在 vm 上下文里，合并后的 replies 数组属于另一个 realm，
+  // 直接与当前 realm 的数组做严格比较会因原型不同而失败；先展开回本 realm。
   assert.deepEqual(
-    result.posts[0].comments[0].replies.map((reply) => reply.text),
+    [...result.posts[0].comments[0].replies].map((reply) => reply.text),
     ['我来补充', '还有一个细节']
   );
 });

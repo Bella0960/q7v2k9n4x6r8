@@ -6,9 +6,10 @@ import path from 'node:path';
 const root = process.cwd();
 const read = (file) => fs.readFileSync(path.join(root, file), 'utf8');
 const serviceWorker = read('sw.js');
+const pwaCacheVersion = Number((serviceWorker.match(/^const CACHE_NAME = 'phone-app-pwa-v(\d+)'/m) || [])[1] || 0);
 const desktopScript = read('desktop/js/script.js');
 const homePage = read('index.html');
-assert.match(serviceWorker, /const CACHE_NAME = 'phone-app-pwa-v203'/);
+assert.ok(pwaCacheVersion >= 203, 'navigation cache behaviour requires PWA cache version >= 203');
 const viteConfig = read('vite.config.js');
 
 test('build emits a manifest containing every HTML entry point', () => {
@@ -35,6 +36,18 @@ test('every desktop app shortcut is emitted as a real HTML page in the productio
     assert.ok(pageManifest.includes(route), 'app route missing from the PWA page manifest: ' + route);
     assert.ok(fs.existsSync(path.join(root, 'dist', route)), 'app route missing from production build output: ' + route);
   }
+});
+
+test('no test file freezes the PWA cache revision', () => {
+  // Cache revisions are bumped on purpose whenever precached assets change.
+  // Freezing one revision in a test turns every legal bump into a red suite and
+  // buries real regressions, so tests must assert a floor read from sw.js.
+  const revisionPattern = new RegExp('phone-app-pwa-v' + '\\d');
+  const frozen = fs.readdirSync(path.join(root, 'tests'))
+    .filter((file) => file.endsWith('.mjs'))
+    .filter((file) => revisionPattern.test(read(path.join('tests', file))));
+
+  assert.deepEqual(frozen, [], 'assert a minimum PWA cache version instead of a frozen revision');
 });
 
 test('service worker precaches all HTML routes listed by the build manifest', () => {

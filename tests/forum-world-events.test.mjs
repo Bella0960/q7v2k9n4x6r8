@@ -7,11 +7,15 @@ import { fileURLToPath } from 'node:url';
 
 const root=resolve(dirname(fileURLToPath(import.meta.url)),'..');
 const read=p=>readFileSync(resolve(root,p),'utf8');
+// Windows checkouts use CRLF (core.autocrlf=true) while the source-extraction
+// anchors below assume LF, so normalise before analysing. Content is unchanged.
+const readLf=p=>read(p).replace(/\r\n/g,'\n');
 const code=read('forum/forum-world-events.js');
-const home=read('forum/forum.html');
-const detail=read('forum/forum-detail.html');
-const settings=read('forum/forum-settings.html');
+const home=readLf('forum/forum.html');
+const detail=readLf('forum/forum-detail.html');
+const settings=readLf('forum/forum-settings.html');
 const sw=read('sw.js');
+const pwaCacheVersion=Number((sw.match(/^const CACHE_NAME = 'phone-app-pwa-v(\d+)'/m)||[])[1]||0);
 const env={window:{}};
 runInNewContext(code,env);
 const W=env.window.ForumWorldEvents;
@@ -121,7 +125,7 @@ test('existing mobile forum actually uses world arcs, selected settings and role
   assert.match(settings,/id="worldAutoContinue"/);
   assert.match(settings,/cfg\.worldAutoContinue/);
   assert.match(sw,/forum\/forum-world-events\.js\?v=20261111v1/);
-  assert.match(sw,/phone-app-pwa-v204/);
+  assert.ok(pwaCacheVersion>=204,'forum world events require PWA cache version >= 204');
 });
 
 test('all modified inlined code parses for mobile browser execution',()=>{
