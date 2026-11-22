@@ -105,7 +105,7 @@ test('quota error does not destroy the phone_data_v2 duplicate', () => {
 });
 
 test('silently dropped memory writes fail verification and preserve the legacy copy', () => {
-  const { win, localStorage } = environment();
+  const { win, localStorage, events } = environment();
   const legacy = JSON.stringify({ a: { memories: { items: [{ content: 'old' }] } } });
   localStorage.setItem('phone_data_v2', legacy);
   const normalSet = localStorage.setItem;
@@ -115,10 +115,11 @@ test('silently dropped memory writes fail verification and preserve the legacy c
   assert.equal(win.PhoneStorage.saveMemories('a', [{ content: 'new' }]), false);
   assert.equal(localStorage.getItem('chat_memories_a'), null);
   assert.equal(localStorage.getItem('phone_data_v2'), legacy);
+  assert.equal(events.at(-1).detail.error, 'WriteNotPersisted');
 });
 
 test('unreadable memory readback fails closed and retains legacy data', () => {
-  const { win, localStorage } = environment();
+  const { win, localStorage, events } = environment();
   const legacy = JSON.stringify({ a: { memories: { items: [{ content: 'old' }] } } });
   localStorage.setItem('phone_data_v2', legacy);
   const normalGet = localStorage.getItem;
@@ -128,6 +129,7 @@ test('unreadable memory readback fails closed and retains legacy data', () => {
   };
   assert.equal(win.PhoneStorage.saveMemories('a', [{ content: 'new' }]), false);
   assert.equal(localStorage.getItem('phone_data_v2'), legacy);
+  assert.equal(events.at(-1).detail.error, 'ReadbackUnavailable');
 });
 
 test('failure reporting cannot itself cause a second failure', () => {
