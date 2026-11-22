@@ -688,7 +688,7 @@
       return;
     }
     const model = window.FootprintAI;
-    let prompts, fingerprint, apiConfig;
+    let prompts, fingerprint, apiConfig, originalFootprintRaw;
     try {
       const profile = model.context(role, requestDate);
       const configured = ['persona','personality','profession','occupation','background',
@@ -701,6 +701,7 @@
       if (!configured) throw new Error('该角色还没有核心人设或生活线，请先填写设定，不能凭空生成模板足迹');
       prompts = model.prompts(role,requestDate);
       fingerprint = JSON.stringify(profile);
+      originalFootprintRaw = localStorage.getItem('footprint_' + requestRoleId);
       apiConfig = model.selectedApi(window.PhoneStorage);
       if (!apiConfig || !String(apiConfig.apiKey || '').trim()) {
         throw new Error('当前 API 方案尚未填写 Key，请先到 API 设置配置');
@@ -751,7 +752,7 @@
       if (!stillSelected || !latest || JSON.stringify(model.context(latest,requestDate))!==fingerprint) {
         throw new Error('生成期间切换了角色/日期或修改了人设，本次结果未写入');
       }
-      const saved = model.writeDay(localStorage,requestRoleId,requestDate,entries);
+      const saved = model.writeDay(localStorage,requestRoleId,requestDate,entries,originalFootprintRaw);
       renderTimeline(); updateCount(); renderCalendar();
       footprintStatus('已生成 '+saved.length+' 条符合该角色设定的足迹，可查看心声与状态。','success');
       showToast('足迹已生成');
