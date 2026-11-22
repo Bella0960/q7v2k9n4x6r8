@@ -1058,20 +1058,35 @@
             #listView .role-slim-bar .slim-avatar { height:146px;min-height:146px;width:100%; }
         }
 
-    /* Folded, neutral avatar archive after editable profile settings. */
-        .avatar-library-section { margin:18px 0 0; padding:0; border:1px solid #E5E5E2; border-radius:12px; background:#FAFAF9; }
-        .avatar-library-trigger { display:flex; align-items:center;justify-content:space-between;gap:12px; padding:17px 16px; list-style:none;cursor:pointer;color:#222;font-size:14px; }
-        .avatar-library-trigger::-webkit-details-marker { display:none; }
-        .avatar-library-trigger span { color:#888;font-size:10px;font-weight:400; }
-        .avatar-library-section[open] .avatar-library-trigger { border-bottom:1px solid #E8E8E5; }
-        .avatar-library-section[open] .avatar-library-trigger span { font-size:0; }
-        .avatar-library-section[open] .avatar-library-trigger span::after { content:'收起';font-size:10px; }
-        .avatar-library-inner { padding:16px; }
-        .avatar-library-heading { align-items:center;flex-wrap:wrap; }
-        .avatar-library-heading h3 { font-size:19px; }
-        .avatar-library-heading p { margin-bottom:3px; }
-        .avatar-library-add { border-radius:7px;background:transparent; }
-        .avatar-pair-heading { margin-top:12px; }
+    /* Portrait collection is the third plain editorial settings row; no card surface. */
+        #profileView .avatar-library-section {
+            display:block; width:100%; margin:0; padding:0;
+            border:0; border-radius:0; box-shadow:none; background:transparent;
+        }
+        #profileView .avatar-library-trigger {
+            width:100%; min-height:74px; display:grid;
+            grid-template-columns:34px minmax(0,1fr) 18px;
+            align-items:center; gap:12px; margin:0; padding:12px 0;
+            border:0; border-bottom:1px solid #E7E7E2;
+            border-radius:0; background:transparent; list-style:none; cursor:pointer;
+        }
+        #profileView .avatar-library-trigger::-webkit-details-marker { display:none; }
+        #profileView .avatar-library-trigger::marker { content:''; }
+        #profileView .avatar-library-trigger .profile-branch-arrow { transition:transform 180ms ease; }
+        #profileView .avatar-library-section[open] .profile-branch-arrow { transform:rotate(90deg); }
+        #profileView .avatar-library-inner {
+            padding:14px 0 20px 46px; margin:0; border:0;
+            border-bottom:1px solid #E7E7E2; border-radius:0; background:transparent;
+        }
+        #profileView .avatar-library-heading { align-items:center;flex-wrap:wrap; }
+        #profileView .avatar-library-heading h3 { font-size:17px; }
+        #profileView .avatar-library-add { border-radius:0;background:transparent; }
+        @media(max-width:360px) {
+          #profileView .avatar-library-inner { padding-left:38px; }
+        }
+        @media(prefers-reduced-motion:reduce) {
+          #profileView .avatar-library-trigger .profile-branch-arrow { transition:none; }
+        }
 
     /* Text-only opt-in AI actions, scoped to character world pages. */
         .character-ai-action { display:inline-block;flex-shrink:0;padding:7px 0;border:0;border-bottom:1px solid #999;border-radius:0;background:transparent;color:#333;font:inherit;font-size:11px;letter-spacing:.03em;cursor:pointer; }
@@ -1416,7 +1431,7 @@
     <script src="../../encounter/encounter-engine.js?v=20261115v1"></script>
     <script src="../../shared/js/phone/role-worldbook-bindings.js?v=20261119-qa1"></script>
     <script src="../../shared/js/phone/character-card-client.js?v=20261122-neutral-v1"></script>
-    <script src="js/characters-manager.js?v=20261122-avatar-archive-v120"></script>
+    <script src="js/characters-manager.js?v=20261122-inline-v2"></script>
     <script src="js/character-ai-drafts.js?v=20261122-life-v2"></script>
     <script src="../../shared/js/nav.js"></script>
 <script src="../../shared/js/statusbar-control.js"></script>
