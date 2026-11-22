@@ -1139,6 +1139,7 @@
   }
 </style>
 <link rel="stylesheet" href="../../shared/css/mobile-fit.css">
+<link rel="stylesheet" href="../../shared/css/chat-settings-single.css?v=20261122v1">
 </head>
 <body>
 
@@ -2009,6 +2010,8 @@
   // 群聊：隐藏不适用的设置项（双方备注 / 通话设置 / 自动来电 / 社交自动化 / 手动生成动态）
   // 普通单聊不受影响
   var isGroupSetting = !!selectedGroup;
+  // This isolated presentation scope never changes group permissions or controls.
+  document.documentElement.dataset.chatSettingsScope = isGroupSetting ? 'group' : 'single';
   if (isGroupSetting && (!window.GroupGovernance?.userIsInGroup(selectedGroup) ||
       !explicitGroupOptions)) {
     location.replace('group-play.html?id=' + encodeURIComponent(roleId));

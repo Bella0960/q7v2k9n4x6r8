@@ -1,0 +1,136 @@
+/* Single-chat settings / editorial UI. Deliberately never targets group settings. */
+html[data-chat-settings-scope="single"] {
+  --single-ink: #151515;
+  --single-muted: #85858a;
+  --single-paper: #ffffff;
+  --single-surface: #f7f7f8;
+  --single-line: #e8e8ea;
+}
+html[data-chat-settings-scope="single"] body {
+  background: #e9e9ea;
+  color: var(--single-ink);
+}
+html[data-chat-settings-scope="single"] .phone-mockup {
+  background: var(--single-paper);
+  box-shadow: 0 10px 28px rgba(0,0,0,.045);
+}
+html[data-chat-settings-scope="single"] .cs-stage {
+  background: var(--single-paper);
+  padding-inline: 20px;
+  padding-bottom: max(44px, env(safe-area-inset-bottom, 0px) + 28px);
+  overscroll-behavior-y: contain;
+  -webkit-overflow-scrolling: touch;
+}
+html[data-chat-settings-scope="single"] .cs-topbar {
+  margin-inline: -20px;
+  padding-inline: 24px;
+  gap: 17px;
+}
+html[data-chat-settings-scope="single"] .cs-title {
+  font-family: Georgia, "Times New Roman", "Songti SC", serif !important;
+  font-size: 30px !important;
+  font-weight: 400 !important;
+  letter-spacing: -.045em !important;
+  line-height: 1.16;
+}
+html[data-chat-settings-scope="single"] .cs-circle-btn {
+  border: 1px solid var(--single-line);
+  width: 34px;
+  height: 34px;
+  border-radius: 50%;
+  background: #fff;
+}
+html[data-chat-settings-scope="single"] .section-label {
+  margin: 26px 5px 11px;
+  color: #9c9ca1;
+  font-size: 10px;
+  font-weight: 500;
+  letter-spacing: .19em;
+}
+html[data-chat-settings-scope="single"] .settings-list {
+  display: flex;
+  flex-direction: column;
+  gap: 10px !important;
+}
+html[data-chat-settings-scope="single"] .settings-card {
+  border: 1px solid var(--single-line);
+  background: var(--single-surface);
+  border-radius: 18px !important;
+  box-shadow: 0 2px 11px rgba(0,0,0,.022);
+  overflow: hidden;
+  min-width: 0;
+}
+html[data-chat-settings-scope="single"] .settings-card + .settings-card {
+  margin-top: 0;
+}
+html[data-chat-settings-scope="single"] .action-row {
+  min-height: 62px;
+  padding: 15px 17px !important;
+  gap: 13px !important;
+}
+html[data-chat-settings-scope="single"] .action-row:active {
+  background: #efeff0;
+}
+html[data-chat-settings-scope="single"] .action-icon {
+  width: 31px !important;
+  height: 31px !important;
+  border: 1px solid #ececee;
+  border-radius: 11px;
+  background: #fff;
+}
+html[data-chat-settings-scope="single"] .action-body {
+  min-width: 0;
+}
+html[data-chat-settings-scope="single"] .action-title {
+  color: var(--single-ink);
+  font-size: 13px;
+  font-weight: 500;
+  letter-spacing: -.005em;
+}
+html[data-chat-settings-scope="single"] .action-sub {
+  color: var(--single-muted);
+  font-size: 11px;
+  line-height: 1.55;
+}
+html[data-chat-settings-scope="single"] .action-arrow {
+  opacity: .46;
+}
+html[data-chat-settings-scope="single"] .alias-panel {
+  border-top-color: transparent;
+}
+html[data-chat-settings-scope="single"] .alias-card.is-open .alias-panel {
+  border-top-color: var(--single-line);
+}
+html[data-chat-settings-scope="single"] .alias-panel-inner {
+  padding: 15px 17px 18px;
+}
+html[data-chat-settings-scope="single"] :is(button,input,select,textarea):focus-visible {
+  outline: 2px solid #666;
+  outline-offset: 2px;
+}
+html[data-chat-settings-scope="single"] :is(#clearRecordCard,#blockCard,#deleteChatForeverCard) {
+  background: #fff;
+  box-shadow: none;
+}
+@media (max-width: 430px) {
+  html[data-chat-settings-scope="single"] .phone-mockup {
+    width: 100vw;
+    height: 100dvh;
+    border: 0;
+    border-radius: 0;
+    box-shadow: none;
+  }
+  html[data-chat-settings-scope="single"] .cs-stage {
+    padding-inline: 17px;
+  }
+  html[data-chat-settings-scope="single"] .cs-topbar {
+    margin-inline: -17px;
+    padding-inline: 21px;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  html[data-chat-settings-scope="single"] .action-row,
+  html[data-chat-settings-scope="single"] .cs-circle-btn {
+    transition: none;
+  }
+}
