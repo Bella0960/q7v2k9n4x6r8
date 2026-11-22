@@ -45,7 +45,7 @@ test('release prerequisite: actual chat HTML loads fanwai entry and Vite publish
   const extras = readFileSync(resolve(root, 'chat/chat/js/chat-extras.js'), 'utf8');
   const fanwai = readFileSync(resolve(root, 'chat/chat/js/chat-fanwai.js'), 'utf8');
   const vite = readFileSync(resolve(root, 'vite.config.js'), 'utf8');
-  assert.match(html, /<script src="js\/chat-extras\.js\?t=20\d{6}fanwai\d+"/,
+  assert.match(html, /<script src="js\/chat-extras\.js\?t=20\d{6}(?:fanwai|cards)\d+"/,
     'chat page must refresh the original extras loader after integrating fanwai');
   assert.match(extras, /fanwaiScript\.src = 'js\/chat-fanwai\.js\?v=20\d{6}v\d+'/,
     'existing plus menu must load the versioned fanwai script');
