@@ -257,10 +257,9 @@ test('deleted chat images release only chat references after single or bulk dele
   assert.ok(chatDetailSource.includes("String(message.assetId),\n                        'chat-message',"));
   const single = chatDetailSource.slice(chatDetailSource.indexOf('function deleteOneMessage(bubbleId)'));
   const bulk = chatDetailSource.slice(chatDetailSource.indexOf("document.getElementById('selectDeleteBtn').addEventListener"));
-  // The single-message route retains its optimistic sync version check;
-  // the bulk route now uses the cross-tab Web Lock / compare-and-swap path.
+  // Both single and bulk deletion now share the same locked compare-and-swap path.
   for (const [handler, saveCall] of [
-    [single, 'if (!saveMessages(_inheritChatBaseline(keep, list)))'],
+    [single, 'if (!await replaceChatSafely(list, keep))'],
     [bulk, 'if (!await replaceChatSafely(originalSnapshot, keep))']
   ]) {
     const save = handler.indexOf(saveCall);
@@ -269,6 +268,9 @@ test('deleted chat images release only chat references after single or bulk dele
     assert.match(handler.slice(save, release), /删除失败[\s\S]*?return;/);
     assert.match(handler.slice(0, release), /removedMessages = list\.filter\(function \(m\) \{ return !keptMids\.has/);
   }
+  assert.match(single, /await replaceChatSafely\(list, keep\)/);
+  assert.match(single, /rerenderFromList\(loadMessages\(\)\)/);
+  assert.doesNotMatch(single.slice(0, single.indexOf('releaseDeletedChatImageReferences(removedMessages)')), /saveMessages\(/);
   assert.match(bulk, /await replaceChatSafely\(originalSnapshot, keep\)/);
   assert.doesNotMatch(bulk.slice(0, bulk.indexOf('releaseDeletedChatImageReferences(removedMessages)')),
     /saveMessages\(/);
