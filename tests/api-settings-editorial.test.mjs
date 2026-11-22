@@ -30,7 +30,7 @@ test('API-UI-003 hides management actions but preserves the complete API form',(
  for(const id of ['btnApiExportProfiles','btnApiImportProfiles','btnProfileNew','btnProfileDelete','presetChips'])
    assert.ok(!head.includes('id="'+id+'"'),'secondary action not on default surface: '+id);
  const management=root.split('<details class="api-tools-drawer"')[1].split('</details>')[0];
- assert.ok(management.includes('id="api-tools-drawer"')===false,'drawer opening tag split');
+ assert.ok(management.startsWith(' id="api-tools-drawer">'),'native disclosure element retains its unique ID');
  assert.ok(root.includes('id="api-tools-drawer"'));
  for(const id of ['btnApiExportProfiles','btnApiImportProfiles','btnProfileNew','btnProfileDelete','presetChips'])
    assert.ok(management.includes('id="'+id+'"'),'retained tool in drawer: '+id);
