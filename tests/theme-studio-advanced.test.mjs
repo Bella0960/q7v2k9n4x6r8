@@ -115,7 +115,13 @@ test('new picture adapter is loaded only by chat list, detail and studio',()=>{
   const workerCache = read('sw.js');
   const version = Number(workerCache.match(/const CACHE_NAME = 'phone-app-pwa-v(\d+)'/)?.[1] || 0);
   assert.ok(version >= 285, 'signed-card runtime requires a cache generation newer than v284');
-  assert.match(workerCache, /character-card-client\.js\?v=20261122-signed-v2/);
-  assert.match(workerCache, /characters-manager\.js\?v=20261122-signed-v2/);
+  // Compare the actual profile script references with the SW shell instead of
+  // pinning an obsolete query suffix: every UI revision must update both.
+  const rolePage = read('worldbook/characters/characters.html');
+  const signerVersion = rolePage.match(/character-card-client\.js\?v=([^"]+)/)?.[1];
+  const managerVersion = rolePage.match(/characters-manager\.js\?v=([^"]+)/)?.[1];
+  assert.ok(signerVersion && managerVersion, 'role editor must declare both versioned modules');
+  assert.ok(workerCache.includes("'./shared/js/phone/character-card-client.js?v=" + signerVersion + "'"));
+  assert.ok(workerCache.includes("'./worldbook/characters/js/characters-manager.js?v=" + managerVersion + "'"));
   assert.doesNotMatch(read('theme-studio/studio.js'),/localStorage\.setItem\([^)]*data:image/);
 });

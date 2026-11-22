@@ -391,7 +391,7 @@ try {
         name:'external-card.json',mimeType:'application/json',
         buffer:Buffer.from(JSON.stringify({name:'external',char_name:'external',description:'outside'}))
       });
-      await page.waitForFunction(() => document.querySelector('#saveStatus')?.textContent?.includes('仅允许导入服务器签发的角色卡'));
+      await page.waitForFunction(() => document.querySelector('#saveStatus')?.textContent?.includes('仅支持导入已验证签名的角色档案'));
       assert.equal(await page.locator('#editRoleName').inputValue(),name,'拒绝第三方卡后不得覆盖已有人设');
       sealedBrowserCheckpoint = 393;
       const tampered = JSON.parse(JSON.stringify(exported));

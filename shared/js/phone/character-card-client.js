@@ -51,7 +51,7 @@
     async sign(character) {
       const result = await send('sign', { character });
       if (!result.card || result.card.version !== 2 || !result.card.proof) {
-        return fail('签名服务器没有返回有效的角色卡。');
+        return fail('签名服务未返回有效的角色档案。');
       }
       return result.card;
     },
