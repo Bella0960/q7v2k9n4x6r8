@@ -266,9 +266,16 @@
     };
 
     NS.saveMemories = function (contactId, list) {
-        // 与聊天记录一样，先确认主 key 写入成功，再清除重复副本。
-        var saved = NS.rawSet('chat_memories_' + contactId, Array.isArray(list) ? list : []);
-        if (!saved) return false;
+        // Verify the authoritative memory value before removing any legacy duplicate.
+        // Some storage shims report a successful setItem even if the value was not persisted.
+        var key = 'chat_memories_' + contactId;
+        var serialized;
+        try { serialized = JSON.stringify(Array.isArray(list) ? list : []); }
+        catch (error) { return false; }
+        if (!NS.rawSet(key, serialized)) return false;
+        try {
+            if (localStorage.getItem(key) !== serialized) return false;
+        } catch (error) { return false; }
         var root = NS._getRoot();
         var bucket = root[contactId];
         if (bucket && bucket.memories != null) {
