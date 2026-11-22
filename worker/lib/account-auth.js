@@ -223,7 +223,9 @@ export function createAccountAuth({ store, env = {}, now = () => Date.now() }) {
     if (signingKey.length < 32) {
       throw new ApiError(503, 'CHARACTER_CARD_SIGNING_NOT_CONFIGURED', '角色卡签名服务尚未配置，原有角色不会受影响');
     }
-    const body = await readJsonBody(request);
+    // Role personas can be 30k characters; keep the signed-card request limit
+    // aligned with the documented 64 KiB ceiling instead of the default 8 KiB.
+    const body = await readJsonBody(request, 65536);
     if (JSON.stringify(body || {}).length > 65536) {
       throw new ApiError(413, 'CHARACTER_CARD_TOO_LARGE', '角色卡内容过长');
     }
