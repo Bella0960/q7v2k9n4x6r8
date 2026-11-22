@@ -6551,6 +6551,21 @@
               systemPrompt += '\n\n【世界书 / 角色生活背景】\n' + worldbookText;
             }
 
+            // ECO-LINK: only the exact, confirmed single-chat role can use
+            // explicitly authorized past encounters. Never modify role persona,
+            // user's RP protocol, activated worldbooks or group speaker context.
+            if (!isGroupChat && roleForTurn && roleForTurn.id != null &&
+                window.RoleEventMemory && typeof window.RoleEventMemory.buildPrompt === 'function') {
+                try {
+                    const eventHistory = window.RoleEventMemory.buildPrompt(String(roleForTurn.id));
+                    if (eventHistory && eventHistory.ok && eventHistory.value) {
+                        systemPrompt += '\n\n' + capText(eventHistory.value, 900);
+                    }
+                } catch (_ecoError) {
+                    // Fail closed for corrupt events, stale role ID, or changed account.
+                }
+            }
+
             // Role-level identity seals belong ahead of all feature mechanics.
             // A saved custom global agreement stays untouched in localStorage;
             // the seal is added to this turn's effective System only.
@@ -7008,22 +7023,6 @@
                 includesIdentitySeal ? '' : globalIdentitySeal
             ].filter(Boolean).join('\n');
             systemPrompt = roleIdentityHead + '\n\n' + systemPrompt;
-
-            // ECO-LINK: only the exact, confirmed single-chat role can use
-            // explicitly authorized past encounters. Never modify role persona,
-            // user's RP protocol, activated worldbooks or group speaker context.
-            if (!isGroupChat && roleForTurn && roleForTurn.id != null &&
-                window.RoleEventMemory && typeof window.RoleEventMemory.buildPrompt === 'function') {
-                try {
-                    const eventHistory = window.RoleEventMemory.buildPrompt(String(roleForTurn.id));
-                    if (eventHistory && eventHistory.ok && eventHistory.value) {
-                        systemPrompt += '\n\n' + capText(eventHistory.value, 900);
-                    }
-                } catch (_ecoError) {
-                    // Fail closed for corrupt events, stale role ID, or changed account.
-                }
-            }
-
 
             // Mandatory preflight for every single/group/continue/regenerate AI turn.
             // Never silently fall back to a generic chatbot when user-authored sources
