@@ -1,5 +1,13 @@
 # MAOMAO Execution Log
 
+## 2026-11-22｜DATA-008｜聊天加号菜单图片批量保存兼容
+
+- **根因：** `chat/chat/js/chat-extras.js` 的图片上传使用 `history.concat(messages)` 形成新数组，丢失 `saveMessages` 必需的历史版本基线，图片已上传本机媒体仓库却无法加入聊天。
+- **最小修复：** 复用 `loadMessages()` 返回的原始带基线数组同步追加并保存；写入失败或异常仅回滚本批图片，不渲染失败消息、不触发 AI，保留原媒体引用清理。未改聊天历史 key、图片 schema、菜单布局或其他功能。
+- **回归：** 在现有 `tests/chat-regression-contract.test.mjs` 加入真实批量函数运行测试，验证版本数组、两图失败回滚、孤儿资源清理、单图成功、存储抛错和 AI 发送条件；聊天页和 PWA 脚本统一改为 `20261122cards2`，缓存 v294。
+- **交付状态：** 独立分支 `task-DATA-008/chat-image-batch-versioned-save-20261122`。Node/Vite/Chromium 和手机 QA 实际结果以后续真实工作流回执为准；未验收前不宣称已上线。
+
+
 ## 2026-11-21｜THEME-STUDIO-002｜手机版精细主题工作台与图片素材
 
 - **起点与独立范围：** 原唯一 QA `f4c7c4488384a03f4030c66c60453d1b5f3ea78f`，单独分支 `THEME-STUDIO-002/mobile-editor-images-preview-20261121`，只调整工作台与仅在聊天列表/详情生效的可选样式。群聊折叠、聊天消息、人设、记忆、账号和正式 Worker 未修改。

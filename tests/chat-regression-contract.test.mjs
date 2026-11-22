@@ -2531,12 +2531,91 @@ test('chat extras: plus-menu cards persist only with a versioned history snapsho
   assert.equal(rendered.length, 1);
 });
 
+test('chat extras: image batches retain the versioned history, roll back errors and release unused assets', async () => {
+  const start = extras.indexOf('  async function saveChatImageBatch(files) {');
+  const end = extras.indexOf('\n  function openChatImagePicker()', start);
+  assert.ok(start >= 0 && end > start, 'batch sender must remain in chat-extras');
+
+  const history = [{ role: 'assistant', mid: 'old', text: '之前的消息' }];
+  const baseline = new WeakSet([history]);
+  const attempts = [];
+  const cleanup = [];
+  const toasts = [];
+  const renders = [];
+  const aiCalls = [];
+  let writeAllowed = false;
+  let throwOnWrite = false;
+  let sequence = 0;
+
+  const media = {
+    putBlob: async (_blob, opts) => ({
+      ok: true, value: { assetId: 'asset-' + opts.ownerId }
+    }),
+    removeRef: async (assetId, ownerType, ownerId) => {
+      cleanup.push({ op: 'ref', assetId, ownerType, ownerId });
+      return { ok: true, value: { removed: true } };
+    },
+    removeAsset: async (assetId) => {
+      cleanup.push({ op: 'asset', assetId });
+      return { ok: true };
+    }
+  };
+  const sandbox = {
+    window: { PhoneStorage: { MediaRepository: function () { return media; } } },
+    chatImageMediaRepo: null,
+    compressChatImage: async (file) => file,
+    imageMessageId: () => 'image-mid-' + (++sequence),
+    loadMessages: () => history,
+    saveMessages: (list) => {
+      attempts.push({ tracked: baseline.has(list), ids: list.map(msg => msg.mid) });
+      if (throwOnWrite) throw new Error('storage quota blocked');
+      return baseline.has(list) && writeAllowed;
+    },
+    renderAllMessages: () => renders.push('rendered'),
+    sendSilentInstruction: (text, mids) => aiCalls.push({ text, mids: Array.from(mids) }),
+    showToast: (value) => toasts.push(value)
+  };
+  runInNewContext(
+    extras.slice(start, end) + '\nglobalThis.sendImageBatch = saveChatImageBatch;',
+    sandbox
+  );
+  const image = (name) => ({ name, type: 'image/jpeg' });
+
+  await sandbox.sendImageBatch([image('one.jpg'), image('two.jpg')]);
+  assert.equal(attempts.length, 1);
+  assert.equal(attempts[0].tracked, true, 'copying history loses the storage baseline');
+  assert.equal(attempts[0].ids.length, 3, 'two images are included in the save attempt');
+  assert.equal(history.length, 1, 'failed save must not mutate the visible history');
+  assert.equal(renders.length, 0, 'unsaved images must not appear in chat');
+  assert.equal(aiCalls.length, 0, 'AI must not see unsaved images');
+  assert.equal(cleanup.filter(item => item.op === 'ref').length, 2);
+  assert.equal(cleanup.filter(item => item.op === 'asset').length, 2);
+  assert.ok(toasts.some(value => /图片未发送/.test(value)));
+
+  writeAllowed = true;
+  await sandbox.sendImageBatch([image('sent.jpg')]);
+  assert.equal(attempts[1].tracked, true);
+  assert.equal(history.length, 2);
+  assert.equal(history[1].mid, 'image-mid-3');
+  assert.equal(renders.length, 1);
+  assert.equal(aiCalls.length, 1);
+  assert.deepEqual(aiCalls[0].mids, ['image-mid-3']);
+
+  throwOnWrite = true;
+  await sandbox.sendImageBatch([image('quota.jpg')]);
+  assert.equal(attempts[2].tracked, true);
+  assert.equal(history.length, 2, 'throwing save must roll back only the new image');
+  assert.equal(renders.length, 1);
+  assert.equal(aiCalls.length, 1);
+  assert.equal(cleanup.filter(item => item.op === 'ref').length, 3);
+});
+
 test('chat plus-menu script is refreshed in the page and PWA together', () => {
   const loaded = detail.match(/js\/chat-extras\.js\?t=([\w-]+)/)?.[1];
   const cached = serviceWorker.match(/chat\/chat\/js\/chat-extras\.js\?t=([\w-]+)/)?.[1];
-  assert.equal(loaded, '20261122cards1', 'chat details must load the repaired helper');
+  assert.equal(loaded, '20261122cards2', 'chat details must load the repaired helper');
   assert.equal(cached, loaded, 'PWA must precache exactly the script loaded by the page');
-  assert.ok(pwaCacheVersion >= 293, 'the old cached helper must be invalidated');
+  assert.ok(pwaCacheVersion >= 294, 'the old cached helper must be invalidated');
 });
 
 test('chat extras: every extension card send gates AI dispatch on successful persistence', () => {
