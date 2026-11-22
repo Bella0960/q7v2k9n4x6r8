@@ -2,9 +2,10 @@
 <html lang="zh-CN"><head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
-<title>MAOMAO · 角色足迹</title>
+<title>角色足迹</title>
 <script src="../../shared/js/phone/phone_storage.js"></script>
 <script src="../../shared/js/phone/ai-response-parser.js?v=20261120parser1"></script><script src="../../shared/js/phone/phone_api.js"></script>
+<script src="footprint-ai.js?v=20261123-persona-json-v1"></script>
 <script src="../../shared/js/native-feel.js"></script>
 <link rel="stylesheet" href="../../shared/css/mobile-fit.css">
 <style>
@@ -295,6 +296,14 @@
     /* toast 位置避开加高的导航 */
     .toast { bottom: calc(92px + env(safe-area-inset-bottom, 0px)); }
   }
+  /* Character-specific JSON footprints: readable on 375/390/430px phones. */
+  .fp-generation-status { padding: 0 22px 10px; color: #666; font-size: 11px; line-height: 1.65; }
+  .fp-generation-status[data-state="error"] { color: #444; }
+  .fp-generation-status[data-state="busy"] { color: #777; }
+  .t-thought { margin-top: 8px; color: #666; font-size: 11px; line-height: 1.7; white-space: pre-wrap; overflow-wrap: anywhere; }
+  .t-tags { overflow-wrap:anywhere; }
+  .t-content { min-width:0; }
+  .top-bar .icon-btn:disabled { opacity:.45; pointer-events:none; }
 </style>
 </head>
 <body>
@@ -319,6 +328,8 @@
       </button>
     </div>
 
+    <p id="footprintGenerationStatus" class="fp-generation-status" role="status" aria-live="polite">选择角色后，点击右上角按钮生成符合人设的足迹。</p>
+
     <div class="hero-image">
       <img src="https://images.unsplash.com/photo-1490750967868-88aa4486c946?auto=format&amp;fit=crop&amp;w=800&amp;q=80" alt="花">
       
@@ -328,51 +339,18 @@
       <div class="roles-scroll" id="rolesScroll"></div>
       <div class="today-count">
         <small>今日足迹</small>
-        <strong>3</strong>
+        <strong>0</strong>
         <small>条记录</small>
       </div>
     </div>
 
     <div class="week-header">
       <h3>本周 · 行程时间线</h3>
-      <span>APRIL / 2025</span>
+      <span></span>
     </div>
-    <div class="week-days">
-      <div class="w-day"><span>一</span><span>13</span></div>
-      <div class="w-day"><span>二</span><span>14</span></div>
-      <div class="w-day"><span>三</span><span>15</span></div>
-      <!-- 这里是修改后的黑色胶囊 -->
-      <div class="w-day active"><span>四</span><span>16</span></div>
-      <div class="w-day"><span>五</span><span>17</span></div>
-      <div class="w-day"><span>六</span><span>18</span></div>
-      <div class="w-day"><span>日</span><span>19</span></div>
-    </div>
+    <div class="week-days"></div>
 
-    <div class="timeline"><div class="t-item" data-id="b-0416-1">
-        <div class="t-content">
-          <div class="t-time">08:24　上午</div>
-          <div class="t-title">与小主人的早安时光</div>
-          <div class="t-desc">阳光透过窗帘洒进来，在桌着歌里慢慢苏醒。开心。</div>
-          <div class="t-tags">♡ 家里 · 松弛</div>
-        </div>
-        <img class="t-img" src="https://images.unsplash.com/photo-1519710164239-da123dc03ef4?auto=format&amp;fit=crop&amp;w=300&amp;q=80" alt="">
-      </div><div class="t-item" data-id="b-0416-2">
-        <div class="t-content">
-          <div class="t-time">13:17　中午</div>
-          <div class="t-title">一起去看海</div>
-          <div class="t-desc">海风很轻，像你笑的样子。让海浪带着温柔。</div>
-          <div class="t-tags">⌖ 海边 · 开心</div>
-        </div>
-        <img class="t-img" src="https://images.unsplash.com/photo-1500375592092-40eb2168fd21?auto=format&amp;fit=crop&amp;w=300&amp;q=80" alt="">
-      </div><div class="t-item" data-id="b-0416-3">
-        <div class="t-content">
-          <div class="t-time">21:03　夜晚</div>
-          <div class="t-title">夜晚的星空</div>
-          <div class="t-desc">把今天收藏进记忆里。</div>
-          <div class="t-tags">✦ 阳台 · 安静</div>
-        </div>
-        <img class="t-img" src="https://images.unsplash.com/photo-1518837695005-2083093ee35b?auto=format&amp;fit=crop&amp;w=300&amp;q=80" alt="">
-      </div></div>
+    <div class="timeline" aria-live="polite"></div>
   </div>
 
   <!-- ================= 页面 2：日历 ================= -->
@@ -390,41 +368,23 @@
     <div class="cal-roles" id="calRoles"></div>
 
     <div class="cal-month">
-      <h1>2025.04</h1>
+      <h1></h1>
       <div class="cal-arrows">
         <svg viewBox="0 0 24 24"><path d="M15 18l-6-6 6-6"></path></svg>
         <svg viewBox="0 0 24 24"><path d="M9 18l6-6-6-6"></path></svg>
       </div>
     </div>
 
-    <div class="calendar-grid"><div class="cal-head">一</div><div class="cal-head">二</div><div class="cal-head">三</div><div class="cal-head">四</div><div class="cal-head">五</div><div class="cal-head">六</div><div class="cal-head">日</div><div class="cal-day outside">31</div><div class="cal-day" data-day="1">1</div><div class="cal-day" data-day="2">2</div><div class="cal-day" data-day="3">3</div><div class="cal-day" data-day="4">4</div><div class="cal-day" data-day="5">5</div><div class="cal-day" data-day="6">6</div><div class="cal-day" data-day="7">7</div><div class="cal-day" data-day="8">8</div><div class="cal-day" data-day="9">9</div><div class="cal-day" data-day="10">10</div><div class="cal-day" data-day="11">11</div><div class="cal-day" data-day="12">12</div><div class="cal-day" data-day="13">13</div><div class="cal-day" data-day="14">14</div><div class="cal-day" data-day="15">15<div class="dot"></div></div><div class="cal-day" data-day="16">16<div class="dot"></div></div><div class="cal-day" data-day="17">17<div class="dot"></div></div><div class="cal-day" data-day="18">18</div><div class="cal-day active" data-day="19">19<div class="dot"></div></div><div class="cal-day" data-day="20">20</div><div class="cal-day" data-day="21">21</div><div class="cal-day" data-day="22">22</div><div class="cal-day" data-day="23">23</div><div class="cal-day" data-day="24">24</div><div class="cal-day" data-day="25">25</div><div class="cal-day" data-day="26">26</div><div class="cal-day" data-day="27">27</div><div class="cal-day" data-day="28">28</div><div class="cal-day" data-day="29">29</div><div class="cal-day" data-day="30">30</div><div class="cal-day outside">1</div><div class="cal-day outside">2</div><div class="cal-day outside">3</div><div class="cal-day outside">4</div></div>
+    <div class="calendar-grid"></div>
 
     <div class="cal-list-header">
-      <h3>04 / 19 · 今日足迹</h3>
-      <span>1 条</span>
+      <h3>今日足迹</h3>
+      <span>0 条</span>
     </div>
     
-    <div class="cal-list"><div class="cal-list-item" data-id="m-0419-1">
-      <time>20:30</time>
-      <span class="title">旧照片</span>
-      <svg viewBox="0 0 24 24"><path d="M9 18l6-6-6-6"></path></svg>
-    </div></div>
+    <div class="cal-list"></div>
 
-    <div class="cal-footer">
-      <div class="cal-quote">
-        有些日子很平凡，<br>
-        却因为有你，变得特别。
-      </div>
-      <!-- 用极简 SVG 画一朵线稿花 -->
-      <svg class="plant-svg" viewBox="0 0 50 100">
-        <path d="M25 100 Q20 70 25 40" fill="none" stroke="#666" stroke-width="1"></path>
-        <path d="M25 60 Q10 50 5 60 Q15 70 25 60" fill="none" stroke="#666" stroke-width="1"></path>
-        <path d="M25 70 Q40 55 45 65 Q35 80 25 70" fill="none" stroke="#666" stroke-width="1"></path>
-        <path d="M25 40 Q15 30 20 20 Q25 25 25 40" fill="none" stroke="#666" stroke-width="1"></path>
-        <path d="M25 40 Q35 25 30 15 Q25 20 25 40" fill="none" stroke="#666" stroke-width="1"></path>
-        <path d="M25 40 Q22 20 25 5 Q28 20 25 40" fill="none" stroke="#666" stroke-width="1"></path>
-      </svg>
-    </div>
+
   </div>
 
   <!-- ================= 页面 3：详情拼贴 ================= -->
@@ -448,7 +408,7 @@
         <img src="https://images.unsplash.com/photo-1519710164239-da123dc03ef4?auto=format&amp;fit=crop&amp;w=300&amp;q=80" alt="海">
       </div>
       <div class="note-paper">
-        <div class="date-text">04 / 16<br>08:24</div>
+        <div class="date-text"></div>
         <img class="note-photo" alt="" style="display:none">
         <button type="button" class="handwritten" id="addPhotoBtn" aria-label="添加照片" title="添加照片"><svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="1.2" stroke-linecap="round" stroke-linejoin="round"><path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"/><circle cx="12" cy="13" r="4"/></svg></button>
       </div>
@@ -456,32 +416,18 @@
     </div>
 
     <div class="detail-content">
-      <div class="tag">♡ 家里 · 松弛</div>
-      <h1 class="detail-title">与小主人的早安时光</h1>
-      <p class="story">阳光透过窗帘洒进来，在桌着歌里慢慢苏醒。开心。</p>
+      <div class="tag"></div>
+      <h1 class="detail-title"></h1>
+      <p class="story"></p>
       <div class="location">
         <svg viewBox="0 0 24 24"><path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z"></path><circle cx="12" cy="10" r="3"></circle></svg>
-        <span>家里 · 松弛</span>
+        <span></span>
       </div>
     </div>
 
     <div class="divider"></div>
 
-    <div class="related-section">
-      <div class="related-header">
-        <h3>相关记忆</h3>
-        <svg viewBox="0 0 24 24"><path d="M5 12h14M12 5l7 7-7 7"></path></svg>
-      </div>
-      <div class="thumbs-grid">
-        <img class="thumb" src="https://images.unsplash.com/photo-1518837695005-2083093ee35b?auto=format&amp;fit=crop&amp;w=300&amp;q=80">
-        <img class="thumb" src="https://images.unsplash.com/photo-1473116763249-2faaef81ccda?auto=format&amp;fit=crop&amp;w=300&amp;q=80">
-        <img class="thumb" src="https://images.unsplash.com/photo-1500375592092-40eb2168fd21?auto=format&amp;fit=crop&amp;w=300&amp;q=80">
-      </div>
-    </div>
 
-    <div class="quote-block">
-      「和你在一起的每一刻，<br>都是值得珍藏的记忆。」
-    </div>
   </div>
 
   <!-- ================= 底部导航 ================= -->
@@ -502,48 +448,6 @@
 </div>
 
 <script>
-  // ================= 演示数据模型（角色 × 日期） =================
-  const IMG = {
-    plant:  'https://images.unsplash.com/photo-1519710164239-da123dc03ef4?auto=format&fit=crop&w=300&q=80',
-    sea:    'https://images.unsplash.com/photo-1500375592092-40eb2168fd21?auto=format&fit=crop&w=300&q=80',
-    star:   'https://images.unsplash.com/photo-1518837695005-2083093ee35b?auto=format&fit=crop&w=300&q=80',
-    flower: 'https://images.unsplash.com/photo-1473116763249-2faaef81ccda?auto=format&fit=crop&w=300&q=80',
-    beach:  'https://images.unsplash.com/photo-1507525428034-b723cf961d3e?auto=format&fit=crop&w=300&q=80',
-    meadow: 'https://images.unsplash.com/photo-1490750967868-88aa4486c946?auto=format&fit=crop&w=300&q=80'
-  };
-
-  const DATA = {
-    '宝宝': {
-      '2025-04-13': [{ id: 'b-0413-1', time: '09:15', title: '窗边的第一缕光', desc: '阳光悄悄爬上窗台，在书页上落下一小块暖黄色。', tag: '♡ 家里 · 安静', loc: '窗台 · 安静', img: IMG.meadow }],
-      '2025-04-14': [{ id: 'b-0414-1', time: '11:40', title: '给多肉浇水', desc: '每一片叶子都鼓鼓的，像在说谢谢。', tag: '♡ 阳台 · 松弛', loc: '阳台 · 松弛', img: IMG.plant }],
-      '2025-04-16': [
-        { id: 'b-0416-1', time: '08:24', title: '与小主人的早安时光', desc: '阳光透过窗帘洒进来，在桌着歌里慢慢苏醒。开心。', tag: '♡ 家里 · 松弛', loc: '家里 · 松弛', img: IMG.plant },
-        { id: 'b-0416-2', time: '13:17', title: '一起去看海', desc: '海风很轻，像你笑的样子。让海浪带着温柔。', story: '海风很轻，像你笑的样子。\n比海边还要温柔。\n那一刻，我觉得时间好像变慢了。', tag: '⌖ 海边 · 开心', loc: '海边 · 开心', img: IMG.sea },
-        { id: 'b-0416-3', time: '21:03', title: '夜晚的星空', desc: '把今天收藏进记忆里。', tag: '✦ 阳台 · 安静', loc: '阳台 · 安静', img: IMG.star }
-      ],
-      '2025-04-17': [{ id: 'b-0417-1', time: '18:20', title: '黄昏散步', desc: '绕着小区走了两圈，路灯一盏一盏亮起来。', tag: '⌖ 楼下 · 放松', loc: '楼下 · 放松', img: IMG.flower }],
-      '2025-04-19': [
-        { id: 'b-0419-1', time: '10:05', title: '煮一壶花茶', desc: '水汽袅袅升起，满屋子都是干净的香气。', tag: '♡ 厨房 · 温暖', loc: '厨房 · 温暖', img: IMG.meadow },
-        { id: 'b-0419-2', time: '22:40', title: '睡前日记', desc: '写下今天最想记住的三件事，然后关灯。', tag: '✦ 卧室 · 安静', loc: '卧室 · 安静', img: IMG.star }
-      ]
-    },
-    '梦': {
-      '2025-04-15': [{ id: 'm-0415-1', time: '23:11', title: '深夜读诗', desc: '读到一半停下来，想起一些很久以前的事。', tag: '✦ 书房 · 沉静', loc: '书房 · 沉静', img: IMG.star }],
-      '2025-04-16': [{ id: 'm-0416-1', time: '14:02', title: '梦里的海', desc: '午睡时梦见一片发光的海，醒来记不清细节。', tag: '⌖ 梦境 · 奇妙', loc: '梦境 · 奇妙', img: IMG.sea }],
-      '2025-04-17': [{ id: 'm-0417-1', time: '07:58', title: '醒得很早', desc: '天还没亮透，窗外的鸟先叫了。', tag: '♡ 家里 · 宁静', loc: '家里 · 宁静', img: IMG.meadow }],
-      '2025-04-19': [{ id: 'm-0419-1', time: '20:30', title: '旧照片', desc: '翻到一张旧照片，看了很久，笑了很久。', tag: '♡ 家里 · 怀念', loc: '家里 · 怀念', img: IMG.flower }]
-    },
-    '灵': {
-      '2025-04-16': [
-        { id: 'l-0416-1', time: '10:30', title: '灵感闪现', desc: '把突然冒出的念头写进手机备忘录，怕一转身就忘。', tag: '✦ 工作室 · 专注', loc: '工作室 · 专注', img: IMG.flower },
-        { id: 'l-0416-2', time: '16:45', title: '傍晚的风', desc: '站在窗边吹了一会儿风，脑子清爽了很多。', tag: '⌖ 窗边 · 舒展', loc: '窗边 · 舒展', img: IMG.meadow }
-      ],
-      '2025-04-18': [{ id: 'l-0418-1', time: '12:20', title: '午间小憩', desc: '在沙发上眯了二十分钟，像充了一格电。', tag: '♡ 家里 · 松弛', loc: '家里 · 松弛', img: IMG.plant }],
-      '2025-04-19': [{ id: 'l-0419-1', time: '21:15', title: '写一封信', desc: '给未来的自己写了三行字，封好放进抽屉。', tag: '✦ 书桌 · 郑重', loc: '书桌 · 郑重', img: IMG.star }],
-      '2025-04-21': [{ id: 'l-0421-1', time: '09:00', title: '周一的咖啡', desc: '换了一家店的美式，意外地好喝。', tag: '⌖ 咖啡店 · 新鲜', loc: '咖啡店 · 新鲜', img: IMG.beach }]
-    }
-  };
-
   // ================= 当前状态 =================
   // 真实角色列表：与项目其它页面共用 localStorage 键 ai_custom_characters
   // 每项形如 { id, name, avatar?(dataURL), memory? }
@@ -555,7 +459,7 @@
       return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[ch];
     });
   }
-  let currentRole = '宝宝';
+  let currentRole = '';
   let currentRoleId = '';
   const todayKey = () => {
     const now = new Date();
@@ -582,14 +486,11 @@
     } catch (e) {}
   }
   
-  // 获取某角色某天的足迹项：先从 localStorage 读，没有再从演示数据 DATA 读
-  const itemsOf = (role, date) => {
-    // 先按角色 ID 从 localStorage 读，真实行程优先于演示数据。
-    if (currentRoleId) {
-      const localData = loadFootprintData(currentRoleId);
-      if (Array.isArray(localData[date])) return localData[date];
-    }
-    return (DATA[role] && DATA[role][date]) || [];
+  // Records are strictly keyed by immutable character ID, never by display name.
+  const itemsOf = (_role, date) => {
+    if (!currentRoleId) return [];
+    const data = loadFootprintData(currentRoleId);
+    return Array.isArray(data[date]) ? data[date] : [];
   };
 
   function loadRealRoles() {
@@ -611,9 +512,9 @@
     const name = role.name || '角';
     const ch = name.charAt(0);
     if (role.avatar) {
-      return '<div class="avatar"><img src="' + role.avatar + '" alt=""></div>';
+      return '<div class="avatar"><img src="' + escapeFootprintHtml(role.avatar) + '" alt=""></div>';
     }
-    return '<div class="avatar placeholder">' + ch + '</div>';
+    return '<div class="avatar placeholder">' + escapeFootprintHtml(ch) + '</div>';
   }
 
   function renderRoles() {
@@ -624,27 +525,26 @@
     if (selected) {
       currentRole = selected.name || '角色';
       currentRoleId = String(selected.id != null ? selected.id : selected.name);
+    } else {
+      currentRole = '';
+      currentRoleId = '';
     }
 
     const build = (containerId) => {
       const box = document.getElementById(containerId);
       if (!box) return;
       if (!realRoles.length) {
-        // 还没有任何角色：渲染一个默认占位项
-        box.innerHTML =
-          '<button class="role-item active" data-role-name="未命名角色">' +
-            '<div class="avatar placeholder">角</div>' +
-            '<span class="role-name">未命名角色</span>' +
-          '</button>';
+        box.innerHTML = '<div class="t-empty">还没有角色，请先在角色档案中创建。</div>';
         return;
       }
       box.innerHTML = realRoles.map(r => {
         const nm = r.name || '角色';
         const rid = r.id != null ? String(r.id) : String(r.name || '');
-        const active = nm === currentRole ? ' active' : '';
-        return '<button class="role-item' + active + '" data-role-name="' + nm + '" data-role-id="' + rid + '">' +
+        const active = rid === currentRoleId ? ' active' : '';
+        return '<button class="role-item' + active + '" data-role-name="' +
+                 escapeFootprintHtml(nm) + '" data-role-id="' + escapeFootprintHtml(rid) + '">' +
                  avatarHTML(r) +
-                 '<span class="role-name">' + nm + '</span>' +
+                 '<span class="role-name">' + escapeFootprintHtml(nm) + '</span>' +
                '</button>';
       }).join('');
     };
@@ -652,23 +552,28 @@
     build('calRoles');
   }
 
-  // ================= 主页：时间线 =================
+  // ================= 主页：角色独有的 JSON 足迹 =================
   function renderTimeline() {
     const box = document.querySelector('.timeline');
     const items = itemsOf(currentRole, currentDate);
-    if (!items.length) { box.innerHTML = '<div class="t-empty">这一天还没有足迹。</div>'; return; }
-    box.innerHTML = items.map(it => {
-      const time = String(it.time || '09:00');
-      const h = parseInt(time.split(':')[0], 10) || 0;
-      return `<div class="t-item" data-id="${escapeFootprintHtml(it.id)}">
-        <div class="t-content">
-          <div class="t-time">${escapeFootprintHtml(time)}　${periodOf(h)}</div>
-          <div class="t-title">${escapeFootprintHtml(it.title)}</div>
-          <div class="t-desc">${escapeFootprintHtml(it.desc)}</div>
-          <div class="t-tags">${escapeFootprintHtml(it.tag)}</div>
-        </div>
-        <img class="t-img" src="${escapeFootprintHtml(it.img)}" alt="">
-      </div>`;
+    if (!items.length) {
+      box.innerHTML = '<div class="t-empty">这一天还没有足迹，点击右上角生成。</div>';
+      return;
+    }
+    box.innerHTML = items.map(function(it) {
+      const time = String(it.time || '');
+      const hour = Number(time.slice(0, 2)) || 0;
+      const action = String(it.action || it.title || '');
+      const status = String(it.status || it.tag || '');
+      const thought = String(it.thought || it.desc || '');
+      const photo = it.img ? '<img class="t-img" src="' + escapeFootprintHtml(it.img) + '" alt="">' : '';
+      return '<div class="t-item" data-id="' + escapeFootprintHtml(it.id) + '">' +
+        '<div class="t-content">' +
+          '<div class="t-time">' + escapeFootprintHtml(time) + '　' + periodOf(hour) + '</div>' +
+          '<div class="t-title">' + escapeFootprintHtml(action) + '</div>' +
+          '<div class="t-tags">状态 · ' + escapeFootprintHtml(status) + '</div>' +
+          '<div class="t-thought">心声 · ' + escapeFootprintHtml(thought) + '</div>' +
+        '</div>' + photo + '</div>';
     }).join('');
   }
 
@@ -689,7 +594,7 @@
     const prevDays = new Date(y, m - 1, 0).getDate();
     const inMonth = viewMonth === currentDate.slice(0, 7);
     const curDay = Number(currentDate.slice(8, 10));
-    const roleDays = Object.assign({}, DATA[currentRole] || {}, loadFootprintData(currentRoleId));
+    const roleDays = loadFootprintData(currentRoleId);
 
     let cells = '<div class="cal-head">一</div><div class="cal-head">二</div><div class="cal-head">三</div><div class="cal-head">四</div><div class="cal-head">五</div><div class="cal-head">六</div><div class="cal-head">日</div>';
     const totalCells = Math.ceil((lead + daysIn) / 7) * 7;
@@ -719,157 +624,147 @@
     if (!items.length) { list.innerHTML = '<div class="t-empty">这一天还没有足迹。</div>'; return; }
     list.innerHTML = items.map(it => `<div class="cal-list-item" data-id="${escapeFootprintHtml(it.id)}">
       <time>${escapeFootprintHtml(it.time)}</time>
-      <span class="title">${escapeFootprintHtml(it.title)}</span>
+      <span class="title">${escapeFootprintHtml(it.action || it.title)}</span>
       <svg viewBox="0 0 24 24"><path d="M9 18l6-6-6-6"/></svg>
     </div>`).join('');
   }
 
-  // ================= 详情联动（按 ID） =================
+  // ================= 详情联动（按角色 ID，不混用其他角色） =================
   function findItem(id) {
-    const localRole = loadFootprintData(currentRoleId);
-    for (const date in localRole) {
-      const list = Array.isArray(localRole[date]) ? localRole[date] : [];
-      const it = list.find(x => x && String(x.id) === String(id));
-      if (it) return { item: it, date: date };
-    }
-    const demoRole = DATA[currentRole] || {};
-    for (const date in demoRole) {
-      const it = demoRole[date].find(x => String(x.id) === String(id));
-      if (it) return { item: it, date: date };
+    const days = loadFootprintData(currentRoleId);
+    for (const date of Object.keys(days)) {
+      const entries = Array.isArray(days[date]) ? days[date] : [];
+      const item = entries.find(function(row) { return row && String(row.id) === String(id); });
+      if (item) return {item:item,date:date};
     }
     return null;
   }
 
   function openDetail(id) {
     const found = findItem(id);
-    if (found) {
-      const it = found.item;
-      document.querySelector('#page-detail .detail-title').textContent = it.title;
-      document.querySelector('#page-detail .story').textContent = it.story || it.desc;
-      document.querySelector('#page-detail .tag').textContent = it.tag;
-      document.querySelector('#page-detail .main-photo-wrapper img:last-of-type').src = it.img;
-      document.querySelector('#page-detail .date-text').innerHTML =
-        escapeFootprintHtml(found.date.slice(5, 7) + ' / ' + found.date.slice(8, 10)) + '<br>' + escapeFootprintHtml(it.time);
-      const loc = document.querySelector('#page-detail .location span');
-      if (loc) loc.textContent = it.loc || '今日 · 珍藏';
+    if (!found) { showToast('足迹不存在或已被更新'); return; }
+    const it = found.item;
+    const action = String(it.action || it.title || '');
+    const status = String(it.status || it.tag || '');
+    const thought = String(it.thought || it.story || it.desc || '');
+    document.querySelector('#page-detail .detail-title').textContent = action;
+    document.querySelector('#page-detail .story').textContent = thought;
+    document.querySelector('#page-detail .tag').textContent = '状态 · ' + status;
+    const photo = document.querySelector('#page-detail .main-photo-wrapper');
+    if (photo) {
+      photo.style.display = it.img ? '' : 'none';
+      if (it.img) photo.querySelector('img').src = it.img;
     }
+    document.querySelector('#page-detail .date-text').innerHTML =
+      escapeFootprintHtml(found.date.slice(5,7)+' / '+found.date.slice(8,10)) +
+      '<br>' + escapeFootprintHtml(it.time);
+    const location = document.querySelector('#page-detail .location span');
+    if (location) location.textContent = '时间 · ' + String(it.time || '');
     switchPage('detail');
   }
 
-  // ================= 刷新（右上角 ↻） =================
-  function refreshToday() {
-    const icon = document.querySelector('.top-bar .icon-btn svg');
-    if (icon) { icon.classList.remove('rot'); void icon.offsetWidth; icon.classList.add('rot'); }
-
-    const requestRoleId = String(currentRoleId || '');
-    const requestDate = String(currentDate);
-    const roleInfo = realRoles.find(r => String(r.id != null ? r.id : r.name) === requestRoleId);
-    const requestRoleName = currentRole;
-    const roleBio = String((roleInfo && [roleInfo.description, roleInfo.bio, roleInfo.personality,
-      roleInfo.character, roleInfo.speechStyle, roleInfo.prompt, roleInfo.systemPrompt].filter(Boolean).join('\n')) || '');
-    if (!requestRoleId) {
-      showToast('请先选择一个角色');
-      return;
-    }
-    showToast('正在生成今日行程...');
-
-    const cfg = window.PhoneStorage && PhoneStorage.getApiConfig ? PhoneStorage.getApiConfig() : {};
-    const canCallAI = cfg && String(cfg.apiKey || '').trim() && window.PhoneAPI && typeof window.PhoneAPI.complete === 'function';
-
-    if (canCallAI && roleBio) {
-      // 调用 AI 根据人设生成行程
-      const systemPrompt = '你是一个行程规划助手。根据角色的人设，生成她/他在指定日期一天的完整行程时间线。输出格式要求：每行一条，格式为"时间 | 标题 | 描述"，比如"08:30 | 起床 | 阳光透过窗帘洒进来，慢慢醒来"。要求：1. 生成8-10条行程，从早上起床到晚上睡觉，覆盖全天各个时段（起床、早餐、上午工作、午餐、下午休闲、傍晚、晚餐、晚间放松、睡前）；2. 行程要完全符合角色的人设、职业、性格和生活习惯，比如学生就是上课自习，上班族就是通勤上班，自由职业者就是在家工作；3. 时间安排要合理，不要太密也不要太松，间隔1-3小时一条；4. 描述要具体有细节，符合角色的语气和生活场景；5. 只输出行程列表，不要其他解释。';
-      const userPrompt = '日期：' + requestDate + '\n角色名字：' + requestRoleName + '\n角色人设：' + roleBio + '\n\n请生成这个角色在该日期一天的行程时间线。';
-      
-      window.PhoneAPI.complete({
-        system: systemPrompt,
-        user: userPrompt,
-        temperature: 0.8,
-        timeoutMs: 15000
-      }).then(function(text) {
-        if (!text) throw new Error('empty');
-        // 解析 AI 输出的行程
-        const lines = String(text).split('\n').filter(l => l.trim());
-        const items = lines.map(function(line, idx) {
-          const parts = line.split('|').map(s => s.trim());
-          if (parts.length < 3) return null;
-          const time = parts[0] || ('09:' + pad(idx*15));
-          const title = parts[1] || '日常事项';
-          const desc = parts[2] || '';
-          // 随机选一个配图
-          const imgs = [IMG.meadow, IMG.plant, IMG.sea, IMG.star, IMG.flower];
-          return {
-            id: requestRoleId + '-' + requestDate + '-' + idx,
-            time: time,
-            title: title,
-            desc: desc,
-            tag: '♡ 今日行程',
-            loc: title,
-            img: imgs[idx % imgs.length]
-          };
-        }).filter(Boolean);
-        
-        if (items.length >= 2) {
-          // 保存到 localStorage
-          const localData = loadFootprintData(requestRoleId);
-          localData[requestDate] = items;
-          saveFootprintData(requestRoleId, localData);
-          if (String(currentRoleId) === requestRoleId && currentDate === requestDate) {
-            renderTimeline();
-            updateCount();
-            renderCalendar();
-            showToast('已根据人设生成今日行程');
-          }
-        } else {
-          // 解析失败，用默认数据
-          generateDefaultFootprint(requestRoleId, requestDate, false);
-        }
-      }).catch(function() {
-        // 调用失败，用默认数据
-        generateDefaultFootprint(requestRoleId, requestDate, false);
-      });
-    } else {
-      // 没有 API Key，直接用默认数据
-      setTimeout(function() {
-        generateDefaultFootprint(requestRoleId, requestDate, false);
-      }, 600);
+  // ================= 按需生成：不在页面打开时静默计费 =================
+  let footprintGenerating = false;
+  function footprintStatus(message, state) {
+    const el = document.getElementById('footprintGenerationStatus');
+    if (el) {
+      el.textContent = message || '';
+      el.dataset.state = state || '';
     }
   }
-  
-  // 生成默认足迹（fallback）
-  function generateDefaultFootprint(targetRoleId, targetDate, forceReplace) {
-    const targetId = String(targetRoleId || currentRoleId || '');
-    const dateKey = String(targetDate || currentDate || todayKey());
-    if (!targetId) return;
-    const localData = loadFootprintData(targetId);
-    const hasExisting = Array.isArray(localData[dateKey]) && localData[dateKey].length > 0;
-    if (!forceReplace && hasExisting) {
-      if (String(currentRoleId) === targetId && currentDate === dateKey) showToast('未能生成新行程，已保留原有足迹');
+  async function refreshToday() {
+    if (footprintGenerating) return;
+    const requestRoleId = String(currentRoleId || '');
+    const requestDate = String(currentDate);
+    const button = document.querySelector('.top-bar .icon-btn');
+    // Reload the saved character each time; never generate from a stale
+    // in-memory profile captured before persona or life-line edits.
+    const roles = loadRealRoles();
+    const role = roles.find(function(item) {
+      return String(item.id != null ? item.id : item.name) === requestRoleId;
+    });
+    if (!requestRoleId || !role || !window.FootprintAI) {
+      footprintStatus('请先创建并选择角色，再生成足迹。','error');
       return;
     }
-    if (forceReplace || !hasExisting) {
-      const dateSeed = Number(dateKey.replace(/-/g, '').slice(-4)) || 1;
-      const variants = [
-        { time: '07:30', title: '起床洗漱', desc: '拉开窗帘，让早晨的阳光慢慢进来，泡一杯热饮清醒一下。', tag: '♡ 晨间 · 日常', loc: '卧室 · 厨房', img: IMG.meadow },
-        { time: '09:00', title: '早餐时间', desc: '慢慢吃一顿早饭，听听歌，不赶时间地开始这一天。', tag: '⌖ 早餐 · 松弛', loc: '餐厅', img: IMG.plant },
-        { time: '11:00', title: '处理今日事项', desc: '把最重要的事先做完，节奏不急不缓，状态刚好的时候效率最高。', tag: '✦ 上午 · 工作', loc: '书桌前', img: IMG.plant },
-        { time: '12:30', title: '午餐', desc: '好好吃一顿午饭，饭后走一走，看看窗外的树和行人。', tag: '♡ 午间 · 休息', loc: '餐厅 · 楼下', img: IMG.meadow },
-        { time: '15:00', title: '下午时光', desc: '泡杯茶或者咖啡，做点喜欢的事，读几页书，或者发发呆。', tag: '⌖ 午后 · 松弛', loc: '阳台 · 书房', img: IMG.plant },
-        { time: '18:00', title: '晚餐', desc: '晚上吃点简单又舒服的，吃完收拾一下厨房，今天的事就告一段落。', tag: '✦ 傍晚 · 日常', loc: '厨房 · 餐厅', img: IMG.meadow },
-        { time: '20:00', title: '晚间放松', desc: '看会儿电影或者刷刷手机，不用想明天的事，现在就好好放松。', tag: '♡ 夜晚 · 休闲', loc: '客厅', img: IMG.star },
-        { time: '22:30', title: '准备睡觉', desc: '洗漱完躺到床上，回想今天的小事，准备进入睡眠。', tag: '✦ 深夜 · 安睡', loc: '卧室', img: IMG.star }
-      ];
-      const offset = dateSeed % variants.length;
-      localData[dateKey] = variants.map(function (item, idx) {
-        return Object.assign({ id: targetId + '-' + dateKey + '-' + (idx + 1) }, variants[(idx + offset) % variants.length]);
+    const model = window.FootprintAI;
+    let prompts, fingerprint, apiConfig, originalFootprintRaw;
+    try {
+      const profile = model.context(role, requestDate);
+      const configured = ['persona','personality','profession','occupation','background',
+        'backstory','bio','description','character','story','world','era','setting',
+        'lifeLine','lifeEvents'].some(function(key) {
+        const value = profile[key];
+        return typeof value === 'string' ? !!value.trim() :
+          Array.isArray(value) && value.length > 0;
       });
-      saveFootprintData(targetId, localData);
+      if (!configured) throw new Error('该角色还没有核心人设或生活线，请先填写设定，不能凭空生成模板足迹');
+      prompts = model.prompts(role,requestDate);
+      fingerprint = JSON.stringify(profile);
+      originalFootprintRaw = localStorage.getItem('footprint_' + requestRoleId);
+      apiConfig = model.selectedApi(window.PhoneStorage);
+      if (!apiConfig || !String(apiConfig.apiKey || '').trim()) {
+        throw new Error('当前 API 方案尚未填写 Key，请先到 API 设置配置');
+      }
+      if (!String(apiConfig.model || '').trim()) throw new Error('当前 API 方案尚未选择模型');
+      if (!window.PhoneAPI || typeof window.PhoneAPI.completeJSON !== 'function') {
+        throw new Error('足迹生成请求服务没有加载，请重新打开此页面');
+      }
+    } catch (error) {
+      footprintStatus(String(error && error.message || '生成设置不可用'),'error');
+      return;
     }
-    if (String(currentRoleId) === targetId && currentDate === dateKey) {
-      renderTimeline();
-      updateCount();
-      renderCalendar();
-      showToast('已刷新今日行程');
+    const exists = itemsOf(currentRole,requestDate).length > 0;
+    const prompt = '将调用一次当前选中的模型 API 生成该角色 '+requestDate+' 的足迹，可能产生费用。' +
+      (exists ? '成功后将替换该角色这一天的旧足迹；失败则保留原记录。' : '失败不会写入默认假行程。') +
+      ' 确认继续？';
+    if (!window.confirm(prompt)) return;
+    footprintGenerating = true;
+    if (button) button.disabled = true;
+    footprintStatus('正在根据完整人设和生活线生成足迹…','busy');
+    try {
+      let diagnostic = null;
+      const result = await window.PhoneAPI.completeJSON({
+        apiConfig:apiConfig, system:prompts.system, user:prompts.user,
+        temperature:0.75, timeoutMs:45000,
+        onDiagnostic:function(info) {
+          if (info && info.stage==='response') diagnostic=info;
+        }
+      });
+      let entries;
+      try {
+        entries = model.parse(result,window.AIResponseParser);
+      } catch(error) {
+        if (diagnostic && diagnostic.finish==='length') {
+          throw new Error('模型输出被 Token 上限截断，请提高最大输出 Token 后手动重试，旧足迹仍在');
+        }
+        if (diagnostic && diagnostic.reasoningOnly) {
+          throw new Error('当前模型只返回思考内容，没有生成 JSON 正文，旧足迹仍在');
+        }
+        throw error;
+      }
+      // A slow model must never save into a different character, date, or
+      // a profile whose persona/life line changed during the paid request.
+      const stillSelected=String(currentRoleId)===requestRoleId && currentDate===requestDate;
+      const latest=loadRealRoles().find(function(item){
+        return String(item.id != null ? item.id : item.name)===requestRoleId;
+      });
+      if (!stillSelected || !latest || JSON.stringify(model.context(latest,requestDate))!==fingerprint) {
+        throw new Error('生成期间切换了角色/日期或修改了人设，本次结果未写入');
+      }
+      const saved = model.writeDay(localStorage,requestRoleId,requestDate,entries,originalFootprintRaw);
+      renderTimeline(); updateCount(); renderCalendar();
+      footprintStatus('已生成 '+saved.length+' 条符合该角色设定的足迹，可查看心声与状态。','success');
+      showToast('足迹已生成');
+    } catch(error) {
+      const message=String(error && error.message || '');
+      const safe=/足迹|角色|日期|模型|Token|API|JSON|存储|读取|修改|写入/.test(message) ?
+        message.slice(0,160) : '生成请求失败，请检查网络或 API 设置；旧足迹仍保留';
+      footprintStatus(safe,'error');
+      showToast('生成未完成，原足迹已保留');
+    } finally {
+      footprintGenerating=false;
+      if (button) button.disabled=false;
     }
   }
 
@@ -1025,15 +920,7 @@
   updateCount();
   renderCalendar();
   
-  // 如果当天没有数据，自动根据人设生成行程
-  setTimeout(function() {
-    if (currentRoleId) {
-      const localData = loadFootprintData(currentRoleId);
-      if (!localData[currentDate] || !localData[currentDate].length) {
-        refreshToday();
-      }
-    }
-  }, 300);
+  // Opening the page never calls a paid API or invents a daily routine.
 </script>
 
 <script>
