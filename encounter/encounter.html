@@ -469,6 +469,17 @@ function openSaved(){
 document.getElementById('moreButton').addEventListener('click',openSettings);
 document.getElementById('savedButton').addEventListener('click',openSaved);
 drawNew();
+ // The profile can deep-link back to a recognized formal role, without
+ // creating a candidate, switching current character, or mutating history.
+ var requestedRole=new URLSearchParams(window.location.search).get('reunionRole');
+ if(requestedRole){
+   var knownRoles=engine.getEncounteredRoles();
+   if(knownRoles.ok&&knownRoles.value.some(function(r){return String(r.id)===requestedRole;})){
+     openReunion(requestedRole);
+   }else{
+     notify('这位角色当前没有可查看的邂逅来源。');
+   }
+ }
 })();
 </script>
 <script src="../shared/js/statusbar-control.js"></script>
