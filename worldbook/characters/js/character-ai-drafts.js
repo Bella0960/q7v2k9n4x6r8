@@ -88,7 +88,12 @@
             return item && typeof item === 'object' && String(item.id) === activeId;
         }) : null;
         if (!profile) return { activeProfileUnavailable:true };
-        return Object.assign({}, mirror, profile);
+        // Never inherit credentials or model from an unrelated old mirror.
+        return Object.assign({}, mirror, profile, {
+            apiKey:typeof profile.apiKey === 'string' ? profile.apiKey : '',
+            model:typeof profile.model === 'string' ? profile.model : '',
+            baseUrl:typeof profile.baseUrl === 'string' ? profile.baseUrl : ''
+        });
     }
     function status(kind, message) {
         var extra = registeredKinds[kind];
@@ -228,6 +233,7 @@
             status(kind,'当前选中的 API 方案已不存在，请到设置里重新选择后生成。'); return;
         }
         if (!conf || !String(conf.apiKey || '').trim()) { status(kind,'请先在设置中配置当前 API 方案。'); return; }
+        if (!String(conf.model || '').trim()) { status(kind,'当前 API 方案没有选择模型，请先在设置中选择。'); return; }
         var configuredLimit = Number(conf.maxTokens) || 0;
         if (configuredLimit > 0 && configuredLimit < MIN_EXPLICIT_OUTPUT_TOKENS) {
             status(kind,'这次还没有调用 API：你设置的最大输出 Token 偏低（' + Math.floor(configuredLimit) + '），容易让人物或事件资料被截断。请先在 API 设置中适当提高后再生成。');
