@@ -512,7 +512,7 @@
             if (!ok) return false;
             if (global.ChatFollowUpPolicy && typeof global.ChatFollowUpPolicy.calculateDelay === 'function') return true;
             return loadProactiveScript(
-                proactiveAsset('shared/js/phone/chat-followup-policy.js?v=20261119scheduled1'),
+                proactiveAsset('shared/js/phone/chat-followup-policy.js?v=20261122stop1'),
                 function () { return !!global.ChatFollowUpPolicy && typeof global.ChatFollowUpPolicy.calculateDelay === 'function'; }
             );
         });
