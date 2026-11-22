@@ -13,12 +13,24 @@ import { resolve, dirname, extname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import assert from 'node:assert/strict';
 import { execFileSync } from 'node:child_process';
+import { issueCharacterCard, verifyCharacterCard } from '../worker/lib/character-card-signature.js';
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 // 只测试实际构建产物，不用源码页面冒充生产资源回归。
 const siteRoot = resolve(root, 'dist');
 const artifacts = resolve(root, 'test-results');
 const startedAt = Date.now();
+// Local browser fixture only. The real Cloudflare Worker remains the sole
+// signing authority in QA/production and is tested separately.
+const TEST_ACCOUNT = 'MAO-ENCOUNTERQA0001';
+const TEST_COOKIE = 'encounter_local_session=browser-test-only';
+const TEST_SIGNING_KEY = 'encounter-browser-local-only-crypto-key-2026-not-deployed';
+let signedCalls = 0, verifiedCalls = 0, rejectedCalls = 0;
+const respondJson = (res, status, value) => {
+  res.writeHead(status, { 'content-type': 'application/json;charset=utf-8',
+    'cache-control': 'no-store' });
+  res.end(JSON.stringify(value));
+};
 const receiptPath = resolve(artifacts, 'encounter-browser-receipt.json');
 const gitHead = () => execFileSync('git',['rev-parse','HEAD'],{
   cwd:root,encoding:'utf8',stdio:['ignore','pipe','ignore']
@@ -27,6 +39,50 @@ const mime = {'.html':'text/html;charset=utf-8','.js':'application/javascript;ch
 const server = http.createServer(async (req, res) => {
   try {
     const pathname = decodeURIComponent(new URL(req.url, 'http://localhost').pathname);
+    // Authenticate browser-only test calls with a local httpOnly cookie.
+    // Use the actual signature implementation rather than trusting a format
+    // field. This route exists only in this ephemeral localhost test server.
+    if (pathname.startsWith('/api/')) {
+      if (!String(req.headers.cookie || '').split(';').map(v => v.trim()).includes(TEST_COOKIE)) {
+        respondJson(res, 401, {ok:false,error:{message:'local test session required'}});
+        return;
+      }
+      if (pathname === '/api/accounts/me' && req.method === 'GET') {
+        respondJson(res, 200, {ok:true,account:{id:TEST_ACCOUNT,status:'active'}});
+        return;
+      }
+      if (pathname.startsWith('/api/character-cards/') && req.method === 'POST') {
+        if (req.headers['x-mao-account-context'] !== TEST_ACCOUNT) {
+          respondJson(res, 403, {ok:false,error:{message:'account context mismatch'}});
+          return;
+        }
+        try {
+          let raw = '';
+          for await (const chunk of req) {
+            raw += chunk.toString('utf8');
+            if (raw.length > 65536) throw new Error('oversized test card');
+          }
+          const body = JSON.parse(raw);
+          if (pathname === '/api/character-cards/sign') {
+            const card = issueCharacterCard(body.character, TEST_ACCOUNT, TEST_SIGNING_KEY);
+            signedCalls++;
+            respondJson(res, 200, {ok:true,card});
+          } else if (pathname === '/api/character-cards/verify') {
+            const character = verifyCharacterCard(body.card, TEST_ACCOUNT, TEST_SIGNING_KEY);
+            verifiedCalls++;
+            respondJson(res, 200, {ok:true,character});
+          } else {
+            respondJson(res, 404, {ok:false,error:{message:'unknown signed-card endpoint'}});
+          }
+        } catch {
+          rejectedCalls++;
+          respondJson(res, 400, {ok:false,error:{message:'invalid signed character card'}});
+        }
+        return;
+      }
+      respondJson(res, 404, {ok:false,error:{message:'unknown local test API'}});
+      return;
+    }
     const resolved = resolve(siteRoot, '.' + pathname);
     if (!resolved.startsWith(siteRoot + '/') && resolved !== siteRoot) { res.writeHead(403);res.end();return; }
     const stat = await fs.stat(resolved);
@@ -45,6 +101,14 @@ const base = 'http://127.0.0.1:' + server.address().port;
 let browser;
 const failures = [];
 try {
+  // Keep negative auth checks under try/finally to prevent a leaked HTTP
+  // server from hanging CI if an assertion fails during setup.
+  const withoutSession = await fetch(base + '/api/accounts/me');
+  assert.equal(withoutSession.status, 401, 'local auth endpoint must reject anonymous access');
+  const anonCard = await fetch(base + '/api/character-cards/sign', {method:'POST',
+    headers:{'content-type':'application/json','x-mao-account-context':TEST_ACCOUNT},
+    body:JSON.stringify({character:{name:'访客',persona:'未登录不应签发'}})});
+  assert.equal(anonCard.status, 401, 'signed export requires a local authenticated session');
   mkdirSync(artifacts, {recursive: true});
   // 先取消上一次“通过”回执；本轮任何中断都不得继承旧结果。
   await fs.rm(receiptPath,{force:true});
@@ -82,6 +146,8 @@ try {
       viewport,acceptDownloads:true,reducedMotion:'reduce',
       isMobile:true,hasTouch:true,deviceScaleFactor:2
     });
+    await context.addCookies([{name:'encounter_local_session',value:'browser-test-only',
+      url:base,httpOnly:true,sameSite:'Lax'}]);
     const page = await context.newPage();
     const jsErrors = [];
     page.on('pageerror', error => jsErrors.push(String(error)));
@@ -303,19 +369,50 @@ try {
       const download=await downloadEvent;
       const exported=JSON.parse(await fs.readFile(await download.path(),'utf8'));
       assert.equal(exported.format,'maomao-character');
-      assert.equal(exported.version,1);
+      assert.equal(exported.version,2,'signed character card must use v2 format');
+      assert.equal(exported.ownerId,TEST_ACCOUNT,'signed export must bind owner ID');
+      assert.equal(exported.proof?.algorithm,'HMAC-SHA256');
+      assert.match(exported.proof?.signature || '',/^[a-f0-9]{64}$/);
+      assert.equal(exported.character.name,name);
       assert.equal(exported.character.name,name);
       assert.ok(!JSON.stringify(exported).includes('apiKey'));
       const imported=JSON.stringify(exported);
       await page.locator('#roleImportFile').setInputFiles({name:'maomao-character.json',mimeType:'application/json',buffer:Buffer.from(imported)});
-      await page.waitForFunction(() => document.querySelector('#saveStatus')?.textContent?.includes('已导入 MAOMAO'));
+      await page.waitForFunction(() => document.querySelector('#saveStatus')?.textContent?.includes('签名已验证'));
       assert.equal(await page.locator('#editRoleName').inputValue(),name,'本机导出的 JSON 应能再次导入');
       await page.locator('#roleImportFile').setInputFiles({
         name:'external-card.json',mimeType:'application/json',
         buffer:Buffer.from(JSON.stringify({name:'external',char_name:'external',description:'outside'}))
       });
-      await page.waitForFunction(() => document.querySelector('#saveStatus')?.textContent?.includes('仅支持从 MAOMAO 导出的角色 JSON'));
+      await page.waitForFunction(() => document.querySelector('#saveStatus')?.textContent?.includes('仅允许导入 MAOMAO 服务器签发的角色卡'));
       assert.equal(await page.locator('#editRoleName').inputValue(),name,'拒绝第三方卡后不得覆盖已有人设');
+      const tampered = JSON.parse(JSON.stringify(exported));
+      tampered.character.persona += '伪造内容';
+      const tamperReject = page.waitForResponse(response =>
+        response.url().includes('/api/character-cards/verify') && response.status() === 400);
+      await page.locator('#roleImportFile').setInputFiles({
+        name:'tampered-card.json',mimeType:'application/json',
+        buffer:Buffer.from(JSON.stringify(tampered))
+      });
+      await tamperReject;
+      await page.waitForFunction(() => document.querySelector('#saveStatus')?.textContent?.includes('invalid signed character card'));
+      assert.equal(await page.locator('#editRolePersona').inputValue(),
+        exported.character.persona,'篡改签名后不得覆盖人设');
+      const crossAccount = JSON.parse(JSON.stringify(exported));
+      crossAccount.ownerId = 'MAO-FOREIGNACCOUNT12';
+      // Clear the previous failure text to avoid a stale-status false pass.
+      await page.locator('#saveStatus').evaluate(node => { node.textContent = ''; });
+      const foreignReject = page.waitForResponse(response =>
+        response.url().includes('/api/character-cards/verify') && response.status() === 400);
+      await page.locator('#roleImportFile').setInputFiles({
+        name:'cross-account.json',mimeType:'application/json',
+        buffer:Buffer.from(JSON.stringify(crossAccount))
+      });
+      await foreignReject;
+      await page.waitForFunction(() => document.querySelector('#saveStatus')?.textContent?.includes('invalid signed character card'));
+      assert.equal(await page.locator('#editRoleName').inputValue(),name,
+        '跨账号角色卡必须拒绝且不能修改档案');
+
       await page.screenshot({path:resolve(artifacts,'encounter-original-role-editor.png')});
     }
     if(jsErrors.length)failures.push(...jsErrors.map(e=>viewport.width+': '+e));
@@ -365,6 +462,9 @@ try {
   } finally {
     await fateContext.close();
   }
+  assert.ok(signedCalls >= 1, 'browser must actually call test-only signing server');
+  assert.ok(verifiedCalls >= 1, 'browser must actually call test-only verification server');
+  assert.ok(rejectedCalls >= 2, 'tampered and cross-account cards must be refused by signer');
   if(failures.length)throw new Error('Browser JS errors:\n'+failures.join('\n'));
   const files=['encounter-375.png','encounter-390.png','encounter-430.png',
     'encounter-original-role-editor.png','encounter-object-concealed.png',
