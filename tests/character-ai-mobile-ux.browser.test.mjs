@@ -25,25 +25,26 @@ test('Chromium phone: click life AI, recover fenced JSON and fill form at 375/39
      window.getActiveProfileRole=()=>({id:'test-role',name:'角色A',persona:'深圳摄影师',worldBookIds:[],npcCharacters:[],lifeEvents:[]});
      window.PhoneStorage={getApiConfig:()=>({apiKey:'non-production-test-only',model:'mock',baseUrl:'https://character-ai-qa.invalid/v1'}),pushApiLog:()=>{}};
     });
-    let modelPostCount=0;
-    let modelRequest=null;
-    await page.route('https://character-ai-qa.invalid/v1/chat/completions',async route=>{
-      const req=route.request();
-      const headers={'access-control-allow-origin':'*','access-control-allow-headers':'authorization,content-type','access-control-allow-methods':'POST,OPTIONS'};
-      if(req.method()==='OPTIONS'){await route.fulfill({status:204,headers});return;}
-      modelPostCount++;
-      modelRequest=JSON.parse(req.postData()||'{}');
-      const text=['模型给出的结果：',String.fromCharCode(96,96,96)+'json','{"event":{"title":"准备摄影展","date":"2026-11-23","people":"同事","status":"ongoing","detail":"挑选照片",}}',String.fromCharCode(96,96,96),'完成'].join('\n');
-      await route.fulfill({status:200,headers:{...headers,'content-type':'application/json'},body:JSON.stringify({choices:[{message:{content:text},finish_reason:'stop'}],usage:{total_tokens:50}})});
+    // Intercept fetch at the browser boundary, keeping the actual PhoneAPI
+    // request builder, response decoder and JSON cleaner under test.
+    await page.evaluate(()=>{
+      window.__calls=0; window.__lastPrompt='';
+      window.fetch=async (url,options)=>{
+        window.__calls++;
+        const body=JSON.parse(options.body);
+        window.__lastPrompt=body.messages[0].content;
+        const raw=['模型给出的结果：',String.fromCharCode(96,96,96)+'json','{"event":{"title":"准备摄影展","date":"2026-11-23","people":"同事","status":"ongoing","detail":"挑选照片",}}',String.fromCharCode(96,96,96),'完成'].join('\n');
+        return new Response(JSON.stringify({choices:[{message:{content:raw},finish_reason:'stop'}],usage:{total_tokens:50}}),{status:200,headers:{'content-type':'application/json'}});
+      };
     });
     await page.addScriptTag({content:phoneApi});
     await page.addScriptTag({content:parser});
     await page.addScriptTag({content:generator});
     await page.click('#btnAiLife');
     await page.waitForFunction(()=>document.getElementById('lifeEventTitle').value==='准备摄影展');
-    const result=await page.evaluate(()=>({values:['lifeEventTitle','lifeEventDate','lifeEventPeople','lifeEventStatus','lifeEventDetail'].map(id=>document.getElementById(id).value),status:document.getElementById('lifeAiStatus').textContent}));
+    const result=await page.evaluate(()=>({values:['lifeEventTitle','lifeEventDate','lifeEventPeople','lifeEventStatus','lifeEventDetail'].map(id=>document.getElementById(id).value),status:document.getElementById('lifeAiStatus').textContent,calls:window.__calls,prompt:window.__lastPrompt}));
     assert.deepEqual(result.values,['准备摄影展','2026-11-23','同事','ongoing','挑选照片']);
-    assert.equal(modelPostCount,1);assert.match(modelRequest.messages[0].content,/严格合法的 JSON/);assert.match(result.status,/已生成生活事件/);
+    assert.equal(result.calls,1);assert.match(result.prompt,/严格合法的 JSON/);assert.match(result.status,/已生成生活事件/);
     const styles=await page.$eval('.avatar-library-section',node=>({bg:getComputedStyle(node).backgroundColor,border:getComputedStyle(node).borderTopWidth}));
     assert.equal(styles.bg,'rgba(0, 0, 0, 0)');assert.equal(styles.border,'0px');
     await page.click('.avatar-library-trigger');
