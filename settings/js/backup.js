@@ -48,10 +48,14 @@
     var IDB_TARGETS = [
         {
             db: 'maomao-media-store',
-            version: 2,   // 含 audio store（本地音乐）
+            version: 2,   // 保留原本的音频 ID 与存储结构
+            // DATA-003: 任一音频 Blob 超限或损坏时，整库排除并把备份标为不完整；
+            // 禁止只导出曲目 ID / 元数据，却误称音频已经可恢复。
+            atomicExport: true,
             stores: [
                 { store: 'wallpapers', keyPath: null },
-                { store: 'audio',      keyPath: 'id', excludeFields: ['blob'] }
+                { store: 'audio', keyPath: 'id', blobFields: ['blob'],
+                  blobMaxBytes: FONT_BLOB_MAX_BYTES, blobStoreMaxBytes: FONT_STORE_MAX_BYTES }
             ]
         },
         {
@@ -147,8 +151,7 @@
         if (!registry) return scope ? [] : IDB_TARGETS.slice();
         var targets = scope ? registry.databasesFor(scope, IDB_TARGETS)
             : registry.allDatabases(IDB_TARGETS);
-        // For targeted music/media backups include actual audio bytes, not
-        // just catalog metadata. Keep the legacy full-backup footprint intact.
+        // 全量备份与音乐分类备份均使用 Blob + 大小限制，保证相同恢复语义。
         if (scope === 'music' || scope === 'media') {
             targets = targets.map(function(target) {
                 if (target.db !== 'maomao-media-store') return target;
@@ -337,9 +340,47 @@
                 });
             }
 
-            // Failures are recorded in the archive manifest. Never describe a
-            // partial media export as a fully recoverable backup.
-            var backupComplete = dbWarnings.length === 0 && allSkipped.length === 0 && !hasAudioMeta;
+            // DATA-003: 即使音频 DB 整体为空/读取失败，也不能把本地曲目目录误称为完整备份。
+            // 校验的是「每条 local 曲目 ID 有可恢复的 base64 音频」，不靠数量相等猜测。
+            var missingAudioIds = [];
+            if (snap.music_local_tracks) {
+                try {
+                    var catalog = JSON.parse(snap.music_local_tracks);
+                    if (!Array.isArray(catalog)) throw new Error('invalid music catalog');
+                    var exportedAudio = ((dbData['maomao-media-store'] || {}).audio || []);
+                    var audioIds = new Set(exportedAudio.filter(function(record) {
+                        return record && typeof record.blob === 'string' && record.blob.length > 0;
+                    }).map(function(record) { return String(record.id); }));
+                    catalog.forEach(function(track) {
+                        if (track && track.id && track.source === 'local' && !audioIds.has(String(track.id)))
+                            missingAudioIds.push(String(track.id));
+                    });
+                } catch (e) { missingAudioIds.push('目录无法解析'); }
+            }
+            // 音乐封面与自定义背景保存在 maomao-assets；分类备份未包含该库时
+            // 不得声称这些资源已经完整打包，更不能让用户盲目恢复。
+            var missingMusicMedia = [];
+            var musicAssets = ((dbData['maomao-assets'] || {}).blobs || []);
+            var exportedMusicAssets = new Set(musicAssets.filter(function(rec) {
+                return rec && rec.assetId && typeof rec.blob === 'string' && rec.blob.length > 0;
+            }).map(function(rec) { return String(rec.assetId); }));
+            var musicCoverRefs = [];
+            if (snap.music_cover_assets_v1) {
+                try {
+                    var covers = JSON.parse(snap.music_cover_assets_v1);
+                    if (!covers || typeof covers !== 'object' || Array.isArray(covers)) throw new Error('bad covers');
+                    Object.keys(covers).forEach(function(id) {
+                        if (covers[id]) musicCoverRefs.push(String(covers[id]));
+                    });
+                } catch (e) { missingMusicMedia.push('封面配置损坏'); }
+            }
+            if (snap.music_background_asset_v1)
+                musicCoverRefs.push(snap.music_background_asset_v1);
+            musicCoverRefs.forEach(function(assetId) {
+                if (!exportedMusicAssets.has(assetId)) missingMusicMedia.push(assetId);
+            });
+            var backupComplete = dbWarnings.length === 0 && allSkipped.length === 0
+                && !hasAudioMeta && missingAudioIds.length === 0 && missingMusicMedia.length === 0;
             // localStorage 也没有任何数据时（纯 IndexedDB 备份）也允许导出，
             // 因为 wallpaper / books / photos 都可能只在 IndexedDB 里。
             if (!Object.keys(snap).length && !dbTotal) {
@@ -383,7 +424,9 @@
                     warnings: {
                         databasesSkipped: dbWarnings.length,
                         recordsSkipped: allSkipped.length,
-                        audioMetadataOnly: hasAudioMeta
+                        audioMetadataOnly: hasAudioMeta,
+                        missingMusicAudio: missingAudioIds.length,
+                        missingMusicMedia: missingMusicMedia.length
                     },
                     ...(scope ? { scope: scope, moduleLabel: registry.get(scope).label,
                         sharedMedia: exportTargets.some(function(t) {
@@ -423,6 +466,10 @@
             if (withSecrets) msg += '，含 API 密钥';
             if (dbWarnings.length) msg += '（' + dbWarnings.length + ' 个 IndexedDB 库读取失败已跳过）';
             if (hasAudioMeta) msg += '（本地音频元数据已包含，音频文件本身未打包）';
+            if (missingAudioIds.length) msg += '（' + missingAudioIds.length
+                + ' 首本地歌曲缺少可恢复音频，备份不完整且已禁止自动恢复）';
+            if (missingMusicMedia.length) msg += '（' + missingMusicMedia.length
+                + ' 项音乐封面/背景未包含原始图片，此备份不可自动恢复）';
             if (allSkipped.length) {
                 msg += '（' + allSkipped.length + ' 项因体积超限或读取失败未包含'
                     + '：' + allSkipped.slice(0, 5).map(function (s) { return s.db + '.' + s.store + '::' + s.id; }).join('、')
@@ -697,6 +744,14 @@
                 var idForReport;
                 if (rawValue.id != null) idForReport = rawValue.id;       // inline keyPath 的 id 字段
                 else idForReport = rawKey != null ? String(rawKey) : '#' + idx;
+
+                // DATA-003：禁止将缺少音频二进制的记录当成可恢复歌曲。
+                if (storeDef.store === 'audio' && blobFields.indexOf('blob') !== -1
+                        && !(rawValue.blob instanceof Blob)) {
+                    skipped.push({ id: idForReport, reason: '音频原文件不存在', bytes: 0 });
+                    idx++;
+                    continue;
+                }
 
                 // ---- 体积检查（拿到 value 后立即判断；blob 还没做转换） ----
                 var skipThis = false;
@@ -1023,6 +1078,52 @@
         }
     }
 
+    // 引用原始媒体时在覆盖任何数据库前校验编码格式。避免带有损坏 Blob
+    // 字符串的旧存档在 restoreStore.clear() 后跳过记录而丢失现有文件。
+    function musicBackupBlobEncoded(value) {
+        return typeof value === 'string' && value.length >= 4
+            && value.length % 4 === 0 && /^[A-Za-z0-9+/]*={0,2}$/.test(value);
+    }
+    function backupMissingMusicImages(obj) {
+        var data = obj && obj.data || {};
+        var imageIds = [];
+        if (data.music_cover_assets_v1) {
+            var covers;
+            try { covers = JSON.parse(data.music_cover_assets_v1); } catch (e) { return true; }
+            if (!covers || typeof covers !== 'object' || Array.isArray(covers)) return true;
+            Object.keys(covers).forEach(function(key) {
+                if (covers[key]) imageIds.push(String(covers[key]));
+            });
+        }
+        if (data.music_background_asset_v1) imageIds.push(String(data.music_background_asset_v1));
+        if (!imageIds.length) return false;
+        var records = obj.indexedDB && obj.indexedDB['maomao-assets']
+            && obj.indexedDB['maomao-assets'].blobs;
+        var available = new Set((Array.isArray(records) ? records : []).filter(function(record) {
+            return record && record.assetId && musicBackupBlobEncoded(record.blob);
+        }).map(function(record) { return String(record.assetId); }));
+        return imageIds.some(function(id) { return !available.has(id); });
+    }
+    function backupMissingMusicBytes(obj) {
+        var audio = obj.indexedDB && obj.indexedDB['maomao-media-store']
+            && obj.indexedDB['maomao-media-store'].audio;
+        // 连 music_local_tracks 都缺失的老备份也可能含 metadata-only audio。
+        // 不允许该数组触发恢复清库，却只写入不带 Blob 的空壳记录。
+        if (audio !== undefined && !Array.isArray(audio)) return true;
+        if (Array.isArray(audio) && audio.some(function(record) {
+            return !record || record.id == null || !musicBackupBlobEncoded(record.blob);
+        })) return true;
+        var raw = obj && obj.data && obj.data.music_local_tracks;
+        if (!raw) return false;
+        var catalog;
+        try { catalog = JSON.parse(raw); } catch (e) { return true; }
+        if (!Array.isArray(catalog)) return true;
+        var validIds = new Set((Array.isArray(audio) ? audio : [])
+            .map(function(record) { return String(record.id); }));
+        return catalog.some(function(track) {
+            return track && track.id && track.source === 'local' && !validIds.has(String(track.id));
+        });
+    }
     function handleImportFile(file) {
         var requestedScope = arguments[1];
         if (!file) return;
@@ -1035,6 +1136,12 @@
             if (err) { toast('导入失败：' + err); return; }
             if (obj.__backup.complete === false) {
                 toast('这份备份不完整，已阻止自动恢复。请先保存完整备份，避免覆盖现有数据'); return;
+            }
+            if (backupMissingMusicBytes(obj)) {
+                toast('旧备份没有本地歌曲原始音频，已禁止恢复，避免覆盖现有歌曲'); return;
+            }
+            if (backupMissingMusicImages(obj)) {
+                toast('备份缺少音乐自定义封面或背景原图，已阻止恢复以保护原素材'); return;
             }
             var scope = obj.__backup.scope || '';
             if (requestedScope && scope !== requestedScope) {

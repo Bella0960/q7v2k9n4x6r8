@@ -70,14 +70,14 @@ apps/settings/          # 历史样式候选目录；引用与打包范围仍待
 3. **phone_data_v2 不是所有数据的唯一主库**：它按 `phoneData[contactId][appId]` 保存部分角色级 App 数据。角色、群组、世界书、聊天等仍有不同的旧 key/独立域；不得假定所有数据都双读双写。
 4. **IndexedDB 已用于部分大数据**：壁纸/本地音乐、日记照片、阅读书库、字体方案，以及新建的媒体仓库均有各自数据库。
 5. **MediaRepository 尚未等于全站媒体迁移完成**：`shared/js/phone/storage/media-repository.js` 使用 `maomao-assets`（assets/blobs/refs），支持 Blob 与内容哈希去重；当前聊天图片主链路尚未完成迁移。
-6. **MediaRepository 备份已接入，但本地音频文件仍有单独缺口**：当前 `settings/js/backup.js` 的 IDB_TARGETS 已包含 `maomao-assets` v2 的 `assets`、`blobs`、`refs`、`image_records`。Blob 使用 Base64 备份并受单条/整库体积限制；`atomicExport` 防止 Blob 超限时生成只有元数据、缺少二进制的残缺媒体库。`tests/media-backup.test.mjs` 已覆盖四个 store 的往返恢复、引用关系、字节一致性和超限整库排除，但本次仓库检查环境尚未实际运行该测试。`maomao-media-store` 的 audio store 仍排除 `blob`，本地音乐文件不在该备份目标中，见 DATA-003。
+6. **MediaRepository 已接入备份，本地音频 DATA-003 修复仍待完整验收**：当前 `settings/js/backup.js` 的 IDB_TARGETS 已包含 `maomao-assets` v2 的 `assets`、`blobs`、`refs`、`image_records`。Blob 使用 Base64 备份并受单条/整库体积限制；`atomicExport` 防止 Blob 超限时生成只有元数据、缺少二进制的残缺媒体库。`tests/media-backup.test.mjs` 已覆盖四个 store 的往返恢复、引用关系、字节一致性和超限整库排除，但本次仓库检查环境尚未实际运行该测试。在 **PR #303 Draft 分支**，`maomao-media-store.audio` 已改为包含原始 Blob、原文件缺失则不完整且旧元数据备份拒绝恢复；但完整 Node/Vite/Chromium、真实恢复及手机 QA **尚未通过**。合并前不可把此分支实现当作 main 的当前行为。
 7. **禁止破坏性迁移**：不删除旧 key、不裁剪历史、不重写角色/群组 ID。迁移必须先备份、复制、校验数量/顺序/字段/媒体引用，再切换；旧数据要保留到验证与用户确认后。
 
 ### IndexedDB 当前数据库速查
 
 | 数据库 | 当前 stores | 主要使用方 | 备份状态 |
 |---|---|---|---|
-| `maomao-media-store` v2 | `wallpapers`, `audio` | `wallpaper-store.js`, `music/music.html` | 已列入；audio 的 blob 字段目前被排除 |
+| `maomao-media-store` v2 | `wallpapers`, `audio` | `wallpaper-store.js`, `music/music.html` | PR #303 Draft: audio/blob 已纳入带限额的原始文件备份，尚待真实构建和恢复验收（main 未确认） |
 | `maomao_diary_photo_store_v1` v1 | `photos` | `diary/diary.html` | 已列入 |
 | `maomao-reading-library` v1 | `books`, `comments` | `library/library.html` | 已列入 |
 | `maomao-font-presets` v1 | `presets` | `font-loader.js`, 字体设置、主题商城 | 已列入；Blob 有体积上限 |

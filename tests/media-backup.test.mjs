@@ -833,7 +833,8 @@ test('10 生产 doExport：localStorage 有数据 + atomicExportFailed 的 DB �
         { id: 'wp1', name: 'ocean.jpg', color: '#1a5e20' }
     ]);
     await injectRecords(mediaDb, 'audio', mediaDef.stores.find(s => s.store === 'audio'), [
-        { id: 'song1', title: 'Morning Breeze', artist: 'Alice' }
+        { id: 'song1', title: 'Morning Breeze', artist: 'Alice',
+          blob: new SandboxBlob([Buffer.from('SONG_BYTES')], { type: 'audio/mpeg' }) }
     ]);
 
     // ── maomao-font-presets：正常 ──
@@ -877,6 +878,11 @@ test('10 生产 doExport：localStorage 有数据 + atomicExportFailed 的 DB �
     // ====== 4. 其他 DB 正常保留 ======
     assert.ok('maomao-media-store' in parsed.indexedDB,
         'maomao-media-store 应正常保留');
+    const audioRows = parsed.indexedDB['maomao-media-store'].audio;
+    assert.equal(audioRows.length, 1, '本地音频应保留真实二进制记录');
+    assert.equal(audioRows[0].id, 'song1');
+    assert.equal(audioRows[0].blob, Buffer.from('SONG_BYTES').toString('base64'));
+    assert.equal(audioRows[0].__blobMime_blob, 'audio/mpeg');
     assert.ok('maomao-font-presets' in parsed.indexedDB,
         'maomao-font-presets 应正常保留');
 
