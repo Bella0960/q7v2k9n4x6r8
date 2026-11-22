@@ -2241,7 +2241,7 @@ document.getElementById('roleImportFile').addEventListener('change', function(e)
             // TXT is accepted only as a signed MAOMAO JSON envelope stored
             // with a .txt extension; arbitrary plain-text role cards are denied.
             if (isTxt && !/^\s*\{/.test(text)) {
-                throw new Error('TXT 文件缺少有效签名，暂不支持外部纯文本角色卡');
+                throw new Error('TXT 文件缺少有效签名，不接受外部纯文本角色卡');
             }
             let data;
             try {
