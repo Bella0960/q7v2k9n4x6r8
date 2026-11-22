@@ -130,8 +130,10 @@
         if (typeof renderRelationshipView === 'function') renderRelationshipView();
         status('relationships', '已添加 ' + list.length + ' 位人物。');
     }
-    // Future character-world tools register a prompt and result handler.
-    // Shared generate() still owns cost confirmation, cooldown and role checks.
+    // Future character-world tools register {prompt, apply(data, helpers), statusId?, parse?}.
+    // Connect a new button with CharacterWorldAI.generate('new-kind', button).
+    // No new model client: the shared request retains cost confirmation, cooldown,
+    // one-call behavior and active-role validation.
     var SPEC = {
         npc: '请阅读主角色的人设，帮我拟一位相关人物。已有的人物优先沿用，没有也可以合理补充。只需简短 JSON，例如 {"name":"人物名字","relation":"与主角色的关系","background":"简短人物背景"}。不必填写所有资料栏。',
         relationships: '请阅读主角色的人设，帮我拟出 1 到 2 位与 TA 有关系的人。优先整理设定中出现过的人名，缺少的可以合理补充。返回简短 JSON：{"people":[{"name":"人物名字","relation":"与主角色的关系","background":"两句简介"}]}。其余资料以后可以再补，不需要写满所有字段。',
