@@ -153,3 +153,70 @@ test('manual recovery handler uses the same formal role and preserved linkedAt',
   assert.match(manager,/roleId: roleIdAtClick, type: 'encounter\.first_met'/);
   assert.match(manager,/allowAI: false/);
 });
+
+
+test('clicking confirmed first-meet repair writes one event and rerenders; opening alone never writes', async () => {
+  const sourceStart=manager.indexOf("const restoreButton = event.target.closest ? event.target.closest('[data-eco-restore-first]')");
+  const sourceEnd=manager.indexOf("const pairButton = event.target.closest ?",sourceStart);
+  assert.ok(sourceStart>0 && sourceEnd>sourceStart);
+  const source=manager.slice(sourceStart,sourceEnd);
+  const confirmed={id:'role_enc_123',name:'角色A',encounterOrigin:{
+    version:1,sourceCandidateId:'enc_123',linkedAt:'2026-11-21T09:00:00.000Z'
+  }};
+  const calls=[];
+  const button={disabled:false};
+  const status={textContent:''};
+  const ctx={
+    event:{target:{closest:()=>button}},
+    content:{contains:item=>item===button,querySelector:selector=>
+      selector==='[data-eco-restore-status]'?status:null},
+    currentProfileRoleId:confirmed.id,
+    getRoleById:id=>id===confirmed.id?confirmed:null,
+    window:{WorldEvents:{
+      listForRole:()=>({ok:true,value:calls.map(item=>({
+        type:item.type,source:item.source,occurredAt:item.occurredAt
+      }))}),
+      append:async item=>{calls.push(item);return {ok:true,value:item}}
+    }},
+    rerenders:0,
+    renderRoleProfile:()=>{ctx.rerenders++},
+  };
+  const script='(function click(event){\n'+source+'\n})(event)';
+  vm.runInNewContext(script,ctx,{filename:'first-meet-restore-click.js'});
+  await new Promise(resolve=>setImmediate(resolve));
+  assert.equal(calls.length,1);
+  assert.equal(calls[0].roleId,confirmed.id);
+  assert.equal(calls[0].source.recordId,'enc_123');
+  assert.equal(calls[0].occurredAt,confirmed.encounterOrigin.linkedAt);
+  assert.equal(calls[0].allowAI,false);
+  assert.equal(ctx.rerenders,1);
+});
+
+test('clicking recovery while role is deleted or event read is corrupt refuses to write', async () => {
+  const begin=manager.indexOf("const restoreButton = event.target.closest ? event.target.closest('[data-eco-restore-first]')");
+  const end=manager.indexOf("const pairButton = event.target.closest ?",begin);
+  assert.ok(begin>0 && end>begin);
+  const button={disabled:false};
+  const note={textContent:''};
+  let writes=0;
+  const ctx={
+    event:{target:{closest:()=>button}},
+    content:{contains:item=>item===button,querySelector:()=>note},
+    currentProfileRoleId:'role_enc_123',
+    getRoleById:()=>null,
+    window:{WorldEvents:{
+      listForRole:()=>({ok:false,error:'corrupt'}),
+      append:async()=>{writes++;return {ok:true}}
+    }},
+    renderRoleProfile:()=>{throw new Error('no rerender should occur')}
+  };
+  const script='(function click(event){\n'+manager.slice(begin,end)+'\n})(event)';
+  vm.runInNewContext(script,ctx);
+  assert.equal(writes,0);
+  ctx.getRoleById=()=>({id:'role_enc_123',name:'测试',
+    encounterOrigin:{version:1,sourceCandidateId:'enc_123',
+      linkedAt:'2026-11-21T09:00:00.000Z'}});
+  vm.runInNewContext(script,ctx);
+  assert.equal(writes,0);
+  assert.match(note.textContent,/无法核验/);
+});
