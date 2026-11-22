@@ -391,6 +391,22 @@ Acceptance:
 - Unsupported or platform-limited capabilities are listed honestly; static build success alone is not treated as device verification.
 - No production deployment, Android release, or existing user data is changed without separate approval.
 
+## Phase 7 — Test suite health
+
+### TEST-BASELINE-001 — Restore a trustworthy test baseline
+**Priority:** P3 · **Status:** FIXED (PR pending review)
+
+Evidence (verified on `40b671bb`, Windows checkout, Node 22.22.2):
+- 13 cases in `tests/chat-regression-contract.test.mjs` failed before any code change. Twelve froze `phone-app-pwa-v204` while `sw.js` is already at v205; one asserted the pre-account-gate `return env.ASSETS.fetch(request)` form, although `worker.js` still passes non-root requests through unchanged.
+- `test:chat:image-vision` (3 cases) and `test:forum:world-events` (1 case) failed only on a CRLF checkout: assertions anchored on `\n` never match `\r\n`.
+- `test:forum:seed` (1 case) compared a vm-realm array with a test-realm array using strict deep equality.
+
+Fix: derive the cache version floor from `sw.js` (plus a guard that rejects frozen revisions), match the current passthrough expression, normalise line endings at the read boundary, and spread vm-realm results before comparing. Test-only change; no production code, storage key, or UI touched.
+
+Verification: all 23 `npm run test:*` Node scripts pass. `npx vite build` passes. Playwright/manual browser scripts (`test:chat:bubbles`, `test:wechat:browser`, `test:clock:palette`, `test:chat:isolation:browser`, `test:forum:mobile`) were NOT VERIFIED in this run.
+
+Remaining risk: the same CRLF anchoring can reappear in any new source-contract test. Normalising inside a shared read helper for every test file is still open work.
+
 ## Parallel work plan
 
 Safe to parallelize:
