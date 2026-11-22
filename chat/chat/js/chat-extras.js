@@ -1255,23 +1255,48 @@
     document.getElementById('asideCancel').onclick=closeModal;
     document.getElementById('asideSend').onclick=function(){var t=document.getElementById('asideText').value.trim();if(!t)return;closeModal();if (!insertChatMessage({role:'user',type:'aside',text:t})) return;sendSilentInstruction('[旁白/动作描写] '+t);};
   }
+  var clearChatInFlight = false;
   function coreClearChat() {
     openModal('清空聊天记录','<div class="x-core-card">此操作会清除此角色当前会话的聊天记录，无法撤销。<div class="x-core-actions"><button class="x-btn x-btn-ghost" id="clearNo">取消</button><button class="x-btn x-btn-primary" id="clearYes">确认清空</button></div></div>');
-    document.getElementById('clearNo').onclick=closeModal;
-    document.getElementById('clearYes').onclick=function(){
+    document.getElementById('clearNo').onclick = closeModal;
+    document.getElementById('clearYes').onclick = async function () {
+      if (clearChatInFlight) return;
+      clearChatInFlight = true;
       closeModal();
-      if(typeof saveMessages!=='function')return;
-      var previousMessages=typeof loadMessages==='function'?(loadMessages()||[]):[];
-      if(!saveMessages([])){
-        if(typeof showToast==='function')showToast('清空失败，聊天记录和图片均已保留');
-        return;
+      try {
+        if (typeof loadMessages !== 'function' || typeof replaceChatSafely !== 'function') {
+          if (typeof showToast === 'function') showToast('安全清空暂不可用，请刷新后重试');
+          return;
+        }
+        var previousMessages = loadMessages();
+        if (!Array.isArray(previousMessages)) {
+          if (typeof showToast === 'function') showToast('聊天记录读取失败，已保留原始数据');
+          return;
+        }
+        // Use the existing locked replace-if-unchanged operation. Never save an
+        // unversioned [] or erase messages another tab added after our read.
+        if (!await replaceChatSafely(previousMessages, [])) return;
+
+        // Only release linked image refs after the empty history is committed.
+        // Cleanup errors must not turn an already-saved clear into a false failure.
+        if (typeof window.releaseDeletedChatImageReferences === 'function') {
+          try {
+            var cleanup = window.releaseDeletedChatImageReferences(previousMessages);
+            if (cleanup && typeof cleanup.catch === 'function') {
+              cleanup.catch(function () { console.warn('[Chat] cleared image reference cleanup failed'); });
+            }
+          } catch (cleanupError) {
+            console.warn('[Chat] cleared image reference cleanup failed');
+          }
+        }
+        if (typeof renderAllMessages === 'function') renderAllMessages();
+        else if (chatMessages) chatMessages.innerHTML = '';
+        if (typeof showToast === 'function') showToast('当前聊天记录已清空');
+      } catch (error) {
+        if (typeof showToast === 'function') showToast('清空未完成，请刷新会话确认保存结果');
+      } finally {
+        clearChatInFlight = false;
       }
-      if(typeof window.releaseDeletedChatImageReferences==='function') {
-        window.releaseDeletedChatImageReferences(previousMessages);
-      }
-      if(typeof renderAllMessages==='function')renderAllMessages();
-      else if(chatMessages)chatMessages.innerHTML='';
-      if(typeof showToast==='function')showToast('当前聊天记录已清空');
     };
   }
   function coreCopyLast() {
