@@ -53,7 +53,8 @@ test('phone PWA loads the newly versioned send policy without touching the visua
   const asset = 'chat-send-policy.js?v=20261122-draftfix1';
   assert.ok(chatPage.includes(asset), 'chat page must request the fixed policy');
   assert.ok(sw.includes(asset), 'PWA pre-cache must use the same script URL');
-  assert.match(sw, /const CACHE_NAME = 'phone-app-pwa-v290'/);
+  const cacheVersion = Number(sw.match(/^const CACHE_NAME = 'phone-app-pwa-v(\\d+)'/m)?.[1] || 0);
+  assert.ok(cacheVersion >= 290, 'later PWA cache revisions must remain valid');
 });
 
 test('legacy fallback uses the same draft-isolation rule when shared policy is unavailable', () => {
