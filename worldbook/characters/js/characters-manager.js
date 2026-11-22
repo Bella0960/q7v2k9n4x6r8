@@ -841,9 +841,11 @@ function renderRoleEncounterHistory(role) {
                 : '账号或相遇记忆权限尚未就绪，暂不可开启。') +
         '</div>';
     const id = encodeURIComponent(String(role.id));
+    // Never substitute a reunion timestamp, role creation time or today's date
+    // when the actual confirmed first-meeting record is unavailable.
     const first = confirmedFirst || events.find(function (item) {
         return item.type === 'encounter.first_met';
-    }) || events[0] || null;
+    }) || null;
     const firstDate = first && first.occurredAt &&
         !Number.isNaN(Date.parse(first.occurredAt))
         ? '&date=' + encodeURIComponent([
