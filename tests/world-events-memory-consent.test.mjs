@@ -87,10 +87,10 @@ test('chat preserves identity and RP assembly and only injects opt-in memory in 
   assert.ok(marker>0);
   const excerpt=chat.slice(marker,marker+950);
   assert.match(excerpt,/!isGroupChat/);
-  assert.match(excerpt,/String\(currentCharacter\.id\)/);
+  assert.match(excerpt,/String\(roleForTurn\.id\)/);
   assert.match(excerpt,/eventContext && eventContext\.ok && eventContext\.value/);
   assert.match(excerpt,/capText\(eventContext\.value, 900\)/);
-  assert.match(chat,/systemPrompt = IDENTITY_LOCK/);
+  assert.match(chat,/systemPrompt = roleIdentityHead/);
   assert.match(chat,/【世界书 \/ 角色生活背景】/);
 });
 
