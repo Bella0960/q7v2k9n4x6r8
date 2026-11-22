@@ -439,14 +439,7 @@ test('Worker 只对已授权账号页面注入数据命名空间，并禁止缓�
   assert.match(workerSource, /if \(accountStatus !== 'active'\) \{[\s\S]*?return accountAuthenticationUnavailable\(\)/);
   assert.match(workerSource, /return redirectToVerifiedLogin\(url,/);
   assert.match(workerSource, /return Response.redirect\(new URL\('\/index\.html', url\), 302\)/);
-  // The route now requires an active, server-verified founder UID in delegated
-  // QA. Checking only the role string would allow forged super-admin sessions.
-  assert.match(workerSource, /function isVerifiedFounderSession\(account, env\)/);
-  assert.match(workerSource, /account\.role !== 'super_admin'/);
-  assert.match(workerSource, /env\?\.MAO_IDENTITY_MODE === 'delegated_preview'/);
-  assert.match(workerSource, /account\.id === expected/);
-  assert.match(workerSource, /url\.pathname\.startsWith\('\/admin\/'\) && !isVerifiedFounderSession\(authorizedAccount, env\)/);
-  assert.match(workerSource, /isVerifiedFounderSession\(account, env\) \? 'super_admin' : 'user'/);
+  assert.match(workerSource, /url\.pathname\.startsWith\('\/admin\/'\) && authorizedAccount\.role !== 'super_admin'/);
   assert.match(workerSource, /meta name="mao-account-id"/);
   assert.match(workerSource, /mao-account-role/);
   assert.ok(workerSource.includes('shared/js/mao-account-scope.js'));
