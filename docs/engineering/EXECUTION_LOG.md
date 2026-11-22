@@ -1,5 +1,13 @@
 # MAOMAO Execution Log
 
+## 2026-11-23｜CHAT-EDIT-001｜单聊长按编辑改为原子保护
+
+- **根因**：编辑原逻辑直接修改 `loadMessages()` 中的消息对象，再通过不共用 Web Locks 的 `saveMessages(list)` 写入；跨标签页更新可丢失，失败后内存快照已被修改。
+- **最小改动**：记住编辑面板打开时的原气泡正文；保存前重新核对当前气泡，复制目标消息后调用已有 `replaceChatSafely(list, next)`；并发、账号隔离、配额或无锁失败时不更改原始数据。重复确认仅执行一次，成功后从真实保存结果重绘；兼容旧多气泡单段编辑。
+- **测试**：`tests/chat-selection-delete-atomic.test.mjs` 执行真实编辑回调与原子存储模块；覆盖普通/旧多气泡、内容字段、跨标签页冲突、配额、无锁、账号隔离、重复点击。PWA 缓存 v298 只刷新聊天页，不修改界面。
+- **状态**：独立分支开发；完整 Node/Vite/Chromium、合并和手机 QA 发布必须有真实工作流回执，未验证不宣称上线。
+
+
 ## 2026-11-22｜CHAT-DELETE-001｜长按单条消息删除改用原子替换
 
 - **确认的缺陷**：`chat-detail.html` 单条删除路径仍调用同步 `saveMessages(_inheritChatBaseline(keep, list))`，跨标签页时没有和已有 `ChatHistoryAtomic` 的 per-conversation Web Locks 使用同一锁；独立写入可能与其他窗口的消息追加交叉。
