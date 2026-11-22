@@ -6,6 +6,8 @@ import {
   assertTrustedIdentityIssuerRequest, probeExistingIdentityAuthority,
   usesExistingAccountAuthority
 } from './identity-bridge.js';
+import { qaIsolatedSetupEnabled, isolatedQaAuthorityFounderId, resolveQaAuthorityFounderId, initializeIsolatedQaAuthority } from './qa-identity-bootstrap.js';
+import { issueCharacterCard, verifyCharacterCard } from './character-card-signature.js';
 
 const SESSION_COOKIE = 'MAO_SESSION';
 const SESSION_TTL_MS = 30 * 24 * 60 * 60 * 1000;
@@ -211,6 +213,32 @@ export function createAccountAuth({ store, env = {}, now = () => Date.now() }) {
     return session;
   }
 
+  // The role card is always signed/checked by the authenticated Worker.
+  // A user-supplied format field, role ID, or local checksum cannot authorize an import.
+  async function handleCharacterCard(request, action) {
+    const session = await getAuthenticatedAccount(request);
+    if (!session) throw new ApiError(401, 'ACCOUNT_SESSION_REQUIRED', '请先登录 MAO 账号，再导出或导入签名角色卡');
+    if (session.status !== 'active') throw new ApiError(403, 'ACCOUNT_NOT_ACTIVE', '账号尚未获得角色卡导入导出资格');
+    const signingKey = String(env.MAO_CHARACTER_CARD_SIGNING_SECRET || '');
+    if (signingKey.length < 32) {
+      throw new ApiError(503, 'CHARACTER_CARD_SIGNING_NOT_CONFIGURED', '角色卡签名服务尚未配置，原有角色不会受影响');
+    }
+    // Role personas can be 30k characters; keep the signed-card request limit
+    // aligned with the documented 64 KiB ceiling instead of the default 8 KiB.
+    const body = await readJsonBody(request, 65536);
+    if (JSON.stringify(body || {}).length > 65536) {
+      throw new ApiError(413, 'CHARACTER_CARD_TOO_LARGE', '角色卡内容过长');
+    }
+    try {
+      if (action === 'sign') {
+        return ok({ card: issueCharacterCard(body?.character, session.account_id, signingKey) });
+      }
+      return ok({ character: verifyCharacterCard(body?.card, session.account_id, signingKey) });
+    } catch {
+      throw new ApiError(400, 'CHARACTER_CARD_SIGNATURE_INVALID', '角色卡无效、签名错误或不属于当前账号，已拒绝导入');
+    }
+  }
+
   async function requireActiveAdmin(request) {
     const account = await getAuthenticatedAccount(request);
     if (!account) {
@@ -219,12 +247,98 @@ export function createAccountAuth({ store, env = {}, now = () => Date.now() }) {
     if (account.status !== 'active' || account.role !== 'super_admin') {
       throw new ApiError(403, 'ADMIN_ONLY', '仅超级管理员可以使用此功能');
     }
+    // In delegated QA, require the exact founder ID from trusted Worker
+    // configuration, not a client-provided UID or a claimed admin role.
+    // The central identity core independently checks the same founder.
+    if (delegated && usesExistingAccountAuthority(env)) {
+      const expectedFounderId = String(env.MAO_EXPECTED_FOUNDER_ID || '');
+      if (!ACCOUNT_ID_RE.test(expectedFounderId) || account.account_id !== expectedFounderId) {
+        throw new ApiError(403, 'QA_FOUNDER_MISMATCH', '管理员永久身份未通过校验');
+      }
+    }
     return account;
+  }
+
+  // The one QA identity core is a distinct, verified account authority.
+  // Forward only explicitly approved admin operations to that isolated core;
+  // never grant the Preview database permission to mutate account identities.
+  async function proxyIsolatedQaAdminRequest(request, path, method) {
+    const supportedGet =
+      path === '/api/admin/accounts' ||
+      path === '/api/admin/invites' ||
+      path === '/api/admin/audit' ||
+      /^\/api\/admin\/accounts\/MAO-[A-Z0-9]{12,24}\/(detail|active-invite|audit)$/.test(path);
+    const supportedPost =
+      path === '/api/admin/invites' ||
+      /^\/api\/admin\/accounts\/MAO-[A-Z0-9]{12,24}\/action$/.test(path) ||
+      /^\/api\/admin\/invites\/[A-Za-z0-9_-]{16,64}\/revoke$/.test(path);
+    if (!((method === 'GET' && supportedGet) || (method === 'POST' && supportedPost)) ||
+        !usesExistingAccountAuthority(env) ||
+        env.MAO_DELEGATED_ADMIN_MANAGEMENT_ENABLED !== 'true' ||
+        env.MAO_QA_AUTHORITY_WORKER !== 'maomao-identity-core' ||
+        typeof env.MAO_IDENTITY_AUTHORITY?.fetch !== 'function' ||
+        !/^MAO-[A-Z0-9]{12,24}$/.test(String(env.MAO_EXPECTED_FOUNDER_ID || ''))) {
+      throw new ApiError(403, 'DELEGATED_ACCOUNT_MANAGED_CENTRALLY',
+        '测试版管理员接口未接通独立身份服务，登录状态不受影响');
+    }
+
+    const admin = await requireActiveAdmin(request);
+    if (admin.account_id !== env.MAO_EXPECTED_FOUNDER_ID || admin.role !== 'super_admin') {
+      throw new ApiError(403, 'QA_FOUNDER_MISMATCH', '管理员 001 的永久身份未通过安全核对');
+    }
+    // Probe proves the binding targets the opt-in isolated authority with
+    // this exact founder ID, not an old gateway or a production account store.
+    const authority = await probeExistingIdentityAuthority(env);
+    if (!authority.connected || !authority.initialized || !authority.configured ||
+        authority.qaIsolatedAuthority !== true ||
+        authority.qaExpectedFounderId !== env.MAO_EXPECTED_FOUNDER_ID) {
+      throw new ApiError(503, 'QA_ADMIN_AUTHORITY_UNAVAILABLE',
+        '测试版独立管理员身份与隔离服务未通过安全核对，已停止管理操作');
+    }
+
+    const token = cookieValue(request);
+    if (!/^[A-Za-z0-9_-]{32,128}$/.test(token)) {
+      throw new ApiError(401, 'ACCOUNT_SESSION_REQUIRED', '请重新登录 MAO 账号');
+    }
+    const internalOrigin = 'https://mao520.com';
+    const headers = {
+      authorization: 'Bearer ' + token,
+      accept: 'application/json'
+    };
+    const options = { method, headers };
+    if (method === 'POST') {
+      const body = await request.text();
+      if (body.length > 32768) {
+        throw new ApiError(413, 'REQUEST_TOO_LARGE', '管理员操作数据过长');
+      }
+      headers.origin = internalOrigin;
+      headers['content-type'] = 'application/json';
+      options.body = body;
+    }
+    const target = internalOrigin + path + new URL(request.url).search;
+    let response;
+    try {
+      response = await env.MAO_IDENTITY_AUTHORITY.fetch(new Request(target, options));
+    } catch {
+      // A timed-out write has an unknown outcome. Never retry it automatically.
+      throw new ApiError(503, 'QA_ADMIN_RESULT_UNCONFIRMED',
+        '独立管理员服务未返回确认结果，请先重新读取状态，不要重复提交');
+    }
+    const payload = await response.json().catch(() => null);
+    if (!payload || typeof payload !== 'object' || typeof payload.ok !== 'boolean') {
+      throw new ApiError(503, 'QA_ADMIN_RESPONSE_INVALID', '独立管理员服务返回的数据无法核实');
+    }
+    // Construct a new JSON response: never forward identity-core Set-Cookie
+    // or internal service headers to the browser.
+    return Response.json(payload, {
+      status: response.status,
+      headers: { 'cache-control': 'no-store' }
+    });
   }
 
   async function bootstrap(request) {
     if (delegated) {
-      throw new ApiError(403, 'DELEGATED_FOUNDER_BOOTSTRAP_DISABLED', '你已有唯一管理员身份，测试版禁止创建第二个 001');
+      return await initializeIsolatedQaAuthority({ env, store, request });
     }
     if (store.hasMaoSuperAdminAccount()) {
       throw new ApiError(409, 'ADMIN_ALREADY_INITIALIZED', '超级管理员已经初始化');
@@ -269,7 +383,7 @@ export function createAccountAuth({ store, env = {}, now = () => Date.now() }) {
     const passwordHash = await passwordDigest(password, salt);
     const timestamp = now();
     const account = {
-      id: 'MAO-' + randomToken(12).replace(/[-_]/g, 'X').toUpperCase(),
+      id: resolveQaAuthorityFounderId(env, () => 'MAO-' + randomToken(12).replace(/[-_]/g, 'X').toUpperCase()),
       username: identity.username,
       usernameKey: identity.usernameKey,
       passwordSalt: salt,
@@ -287,7 +401,14 @@ export function createAccountAuth({ store, env = {}, now = () => Date.now() }) {
       throw error;
     }
     if (!created) throw new ApiError(409, 'ADMIN_ALREADY_INITIALIZED', '超级管理员已经初始化');
-    return await createSession(store.getMaoAccountById(account.id), request);
+    const founder = store.getMaoAccountById(account.id);
+    if (isolatedQaAuthorityFounderId(env) === account.id) {
+      // QA setup is a server-to-server operation. Do not mint an orphaned
+      // authority session: no authority cookie is ever sent to this browser.
+      // The owner explicitly logs in at the existing QA origin afterward.
+      return ok({ account: publicAccount(founder), qaSetupComplete: true, nextStep: 'qa_login' });
+    }
+    return await createSession(founder, request);
   }
 
   async function register(request) {
@@ -330,7 +451,16 @@ export function createAccountAuth({ store, env = {}, now = () => Date.now() }) {
       if (!created) {
         throw new ApiError(429, 'ACCOUNT_REGISTRATION_RATE_LIMITED', '当前网络注册次数过多，请稍后再试');
       }
-      return json({ ok: true, account: publicAccount(created), nextStep: 'invite_required' }, 201);
+      // Verify the committed Durable Object SQLite row before telling the
+      // browser it can rely on this permanent account ID.
+      const verified = store.getMaoAccountById(account.id);
+      if (!verified || verified.id !== account.id ||
+          verified.username_key !== account.usernameKey ||
+          verified.role !== 'user' || verified.status !== 'pending_invite') {
+        throw new ApiError(503, 'ACCOUNT_SAVE_UNVERIFIED',
+          '账号持久保存尚未确认，请先检查已有账号，不要重复注册');
+      }
+      return json({ ok: true, account: publicAccount(verified), nextStep: 'invite_required' }, 201);
     } catch (error) {
       if (/unique|constraint/i.test(String(error?.message || error))) {
         throw new ApiError(409, 'ACCOUNT_ALREADY_EXISTS', '用户名或邮箱已被使用');
@@ -949,13 +1079,28 @@ export function createAccountAuth({ store, env = {}, now = () => Date.now() }) {
           ? await probeExistingIdentityAuthority(env)
           : null;
         const initialized = delegated ? authority.initialized : store.hasMaoSuperAdminAccount();
+        const qaSetup = delegated && qaIsolatedSetupEnabled(env);
+        const qaCoreFounder = !delegated ? isolatedQaAuthorityFounderId(env) : null;
+        // Once the one-time QA setup flag is disabled, the isolated core is
+        // still configured for login. Never misreport it as missing secrets.
+        // Legacy gateway previews continue to keep bootstrap configured=false.
+        const qaIdentityCore = delegated && usesExistingAccountAuthority(env) &&
+          env.MAO_QA_AUTHORITY_WORKER === 'maomao-identity-core';
+        const qaCoreReady = qaIdentityCore &&
+          authority.connected && authority.configured;
         return ok({
           initialized,
-          configured: !delegated &&
+          configured: delegated ? Boolean(qaCoreReady) :
             String(env.MAO_SUPER_ADMIN_BOOTSTRAP_SECRET || '').length >= 32 &&
             String(env.DEVICE_SECRET_PEPPER || '').length >= 32,
           identityMode: delegated ? 'delegated' : 'local',
-          bootstrapAllowed: !delegated,
+          bootstrapAllowed: !delegated || qaSetup,
+          qaSetupAllowed: qaSetup,
+          // This is a display hint only; login is still verified by the
+          // isolated authority, never by a client-supplied identity flag.
+          qaIdentityCore,
+          qaIsolatedAuthority: !!qaCoreFounder,
+          qaExpectedFounderId: qaCoreFounder || undefined,
           identityAuthorityConnected: delegated ? authority.connected : undefined,
           identityAuthorityInitialized: delegated ? authority.initialized : undefined,
           signInReady: !delegated || (
@@ -973,15 +1118,22 @@ export function createAccountAuth({ store, env = {}, now = () => Date.now() }) {
       if (delegated && (
         path === '/api/accounts/register' ||
         path === '/api/accounts/invites/redeem' ||
-        path === '/api/accounts/password/change' ||
-        (path.startsWith('/api/admin/') && !path.startsWith('/api/admin/social/'))
+        path === '/api/accounts/password/change'
       )) {
-        throw new ApiError(403, 'DELEGATED_ACCOUNT_MANAGED_CENTRALLY', '账号和管理员身份只能在统一账号系统中管理');
+        throw new ApiError(403, 'DELEGATED_ACCOUNT_MANAGED_CENTRALLY',
+          '账号资料只能在统一账号系统中管理');
+      }
+      if (delegated && path.startsWith('/api/admin/') &&
+          !path.startsWith('/api/admin/social/') &&
+          !(path === '/api/admin/bootstrap' && method === 'POST' && qaIsolatedSetupEnabled(env))) {
+        return await proxyIsolatedQaAdminRequest(request, path, method);
       }
       if (path === '/api/accounts/register' && method === 'POST') return await register(request);
       if (path === '/api/accounts/login' && method === 'POST') return await login(request);
       if (path === '/api/accounts/logout' && method === 'POST') return await logout(request);
       if (path === '/api/accounts/me' && method === 'GET') return await currentAccount(request);
+      if (path === '/api/character-cards/sign' && method === 'POST') return await handleCharacterCard(request, 'sign');
+      if (path === '/api/character-cards/verify' && method === 'POST') return await handleCharacterCard(request, 'verify');
       if (path === '/api/accounts/security' && method === 'GET') return await accountSecurity(request);
       if (path === '/api/accounts/password/change' && method === 'POST') return await changePassword(request);
       if (path === '/api/accounts/invites/redeem' && method === 'POST') return await redeemInvite(request);

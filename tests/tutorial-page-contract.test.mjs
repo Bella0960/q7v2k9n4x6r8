@@ -52,8 +52,15 @@ test('tutorial migration preserves custom pages, Dock and removal choices', () =
 });
 
 test('guide documents the merged chat features and correctly separates unverified push', () => {
-  assert.match(guideScript, /PR #241/);
-  assert.match(guideScript, /PR #240/);
+  // Reader-facing release notes are editorial, not a dump of internal PRs.
+  const bulletin = guideScript.slice(
+    guideScript.indexOf('var OFFICIAL_RELEASE_NOTES ='),
+    guideScript.indexOf('var GUIDES =')
+  );
+  assert.match(bulletin, /OFFICIAL_RELEASE_NOTES/);
+  assert.doesNotMatch(bulletin, /PR #|测试候选|修 bug/);
+  assert.match(guideScript, /release\.approved === true/);
+  assert.match(guideScript, /release\.status === 'published'/);
   assert.match(guideScript, /单条 \/ 自动 \/ 连续多条/);
   assert.match(guideScript, /头像收藏/);
   assert.match(guideScript, /建立配对/);
@@ -65,16 +72,25 @@ test('guide documents the merged chat features and correctly separates unverifie
   assert.match(guideScript, /此前的手机打不开反馈仍需在安装版和普通浏览器分别实测/);
 });
 
-test('all 29 desktop app shortcuts have a matching app guide and quick-open entry', () => {
+test('every desktop app has a matching guide and quick-open entry, including admin center', () => {
   const tiles = [...home.matchAll(/data-href="([^"]+)" data-drag="(app_[^"]+)" data-name="([^"]+)"/g)]
     .map((match) => ({ path: match[1], id: match[2], name: match[3] }))
     .filter((item) => item.id.startsWith('app_'));
   const appGuideIds = [...guideScript.matchAll(/id:'(app-[^']+)'/g)].map((match) => match[1]);
   const appEntries = [...guideScript.matchAll(/\['([^']+)',\s*'([^']+\.html)',\s*'[^']+'\]/g)]
     .map((match) => ({ name: match[1], path: match[2] }));
-  assert.equal(tiles.length, 29, 'expected all desktop app tiles, including Tutorial');
-  assert.equal(appGuideIds.length, 29, 'every app must have its own step-by-step guide');
-  assert.equal(appEntries.length, 29, 'every app must appear in the quick-open directory');
+  assert.ok(tiles.some((tile) => tile.id === 'app_admin_center'),
+    'desktop admin-center shortcut must exist');
+  assert.ok(tiles.some((tile) => tile.id === 'app_tutorial'),
+    'desktop tutorial shortcut must exist');
+  assert.equal(appGuideIds.length, tiles.length,
+    'every real desktop app must have its own step-by-step guide');
+  assert.equal(new Set(appGuideIds).size, appGuideIds.length,
+    'duplicate app guides are not allowed');
+  assert.equal(appEntries.length, tiles.length,
+    'every real desktop app must appear in the quick-open directory');
+  assert.equal(new Set(appEntries.map((entry) => entry.path)).size, appEntries.length,
+    'duplicate quick-open destinations are not allowed');
   tiles.forEach((tile) => {
     assert.ok(guideScript.includes("href:'../" + tile.path + "'"), 'missing app guide route for ' + tile.name);
     assert.ok(appEntries.some((entry) => entry.path === tile.path), 'missing quick-open entry for ' + tile.name);
@@ -107,6 +123,69 @@ test('tutorial provides a real stepper, interface-location illustration, FAQ, an
   assert.equal((faqSection.match(/^    \['/gm) || []).length, 11, 'expected searchable FAQ entries');
 });
 
+test('manual is book-first: chapter index, readable sheets, official-only releases and folded private notebook', () => {
+  assert.match(guideHtml, /id="guideCoverTitle"/);
+  assert.match(guideHtml, /class="book-navigation"/);
+  assert.match(guideHtml, /id="release-notes"/);
+  assert.match(guideHtml, /id="book-index"/);
+  assert.match(guideHtml, /class="test-notebook"/);
+  assert.match(guideHtml, /id="guideSearch"/);
+  assert.match(guideHtml, /id="walkthroughModal"/);
+  assert.match(guideHtml, /tutorial\.js\?v=20261118book2/);
+  assert.match(guideScript, /<details class="guide-sheet">/);
+  assert.match(guideScript, /<summary class="guide-top">/);
+  assert.match(guideScript, /NO PUBLIC RELEASE YET/);
+  assert.doesNotMatch(guideScript.slice(guideScript.indexOf('function renderUpdates()'),guideScript.indexOf('function renderFilters()')),/GUIDE_UPDATES/);
+  // Do not lose the existing reader's saved test/progress storage schema.
+  assert.match(guideScript, /maomao_tutorial_progress_v1/);
+  assert.match(guideScript, /function startGuide/);
+  assert.match(guideScript, /function moveWalkthrough/);
+});
+
+test('book reader step navigation updates only the current chapter without rebuilding the open index', () => {
+  const counter = guideScript.slice(
+    guideScript.indexOf('  function refreshChapterProgress(guide) {'),
+    guideScript.indexOf('  function startGuide(id) {')
+  );
+  const stepper = guideScript.slice(
+    guideScript.indexOf('  function moveWalkthrough(delta) {'),
+    guideScript.indexOf('  function exportProgress() {')
+  );
+  const toggle = guideScript.slice(
+    guideScript.indexOf("  $('walkStepDone').addEventListener('change'"),
+    guideScript.indexOf("  $('walkthroughModal').addEventListener('click'")
+  );
+  assert.match(counter, /querySelector\('/);
+  assert.match(counter, /\.guide-step-meta/);
+  assert.match(counter, /counter\.textContent/);
+  assert.match(stepper, /refreshChapterProgress\(activeWalkthrough\)/);
+  assert.match(toggle, /refreshChapterProgress\(activeWalkthrough\)/);
+  assert.doesNotMatch(stepper, /renderGuides\(\)/);
+  assert.doesNotMatch(toggle, /renderGuides\(\)/);
+});
+
+test('chapter progress function updates the label in place without replacing a reader sheet', () => {
+  const source = guideScript.slice(
+    guideScript.indexOf('  function refreshChapterProgress(guide) {'),
+    guideScript.indexOf('  function startGuide(id) {')
+  );
+  const node = { textContent: '3 个分步操作 · 已阅读 0 步' };
+  const sheet = { querySelector(selector) {
+    assert.equal(selector, '.guide-step-meta');
+    return node;
+  } };
+  const grid = { querySelector(selector) {
+    assert.equal(selector, '[data-guide-id="app-chat"]');
+    return sheet;
+  } };
+  const run = new Function('$', 'stepState',
+    source + '\nreturn refreshChapterProgress;'
+  )(id => { assert.equal(id,'guideGrid'); return grid; },
+    () => ({walked:[0,1]}));
+  run({id:'app-chat',steps:['first','second','third']});
+  assert.equal(node.textContent, '3 个分步操作 · 已阅读 2 步');
+});
+
 test('composer menu guide covers the actual one-to-one and group menu entry labels', () => {
   for (const label of ['表情包','奔赴','重玩','位置','纪念日','旁白动作','直播间','音乐','语音通话','视频通话','发红包','转账','图片','语音','名片','送礼物','群投票','群接龙','群通话']) {
     assert.ok(guideScript.includes(label), 'missing composer menu guide label: ' + label);
@@ -129,9 +208,10 @@ test('tutorial workflow enforces a guide update when user-facing app pages chang
 });
 
 test('PWA app shell caches the full guide bundle and has a matching test command', () => {
-  assert.match(serviceWorker, /const CACHE_NAME = 'phone-app-pwa-v203'/);
+  assert.match(serviceWorker, /const CACHE_NAME = 'phone-app-pwa-v[0-9]+'/,
+    'PWA shell must use a versioned cache without hard-coding an old release');
   assert.ok(serviceWorker.includes("'./tutorial/tutorial.html'"));
-  assert.ok(serviceWorker.includes("'./tutorial/tutorial.js?v=20261111v3'"));
+  assert.ok(serviceWorker.includes("'./tutorial/tutorial.js?v=20261118book2'"));
   assert.equal(packageJson.scripts['test:tutorial'], 'node --test tests/tutorial-page-contract.test.mjs');
 });
 
@@ -140,4 +220,24 @@ test('chat detail scripts parse so the conversation settings handler can bind', 
     .filter(([, attributes]) => !/\bsrc\s*=|\btype\s*=/.test(attributes));
   assert.ok(scripts.some(([, , source]) => /async function sendMsg\(/.test(source)));
   for (const [, , source] of scripts) new Function(source);
+});
+
+test('account release candidate guide documents the existing login path and QA safety boundary', () => {
+  assert.match(guideScript, /"id"\s*:\s*"account-qa"/);
+  assert.match(guideScript, /已有账号 · 登录/);
+  assert.match(guideScript, /管理员中心（QA 待验收）/);
+  assert.match(guideScript, /"href"\s*:\s*"\.\.\/account\/index\.html"/);
+  assert.match(guideScript, /本机备份不等于云端账号的可恢复备份/);
+  assert.match(guideScript, /不得对正式账号执行停用、重置或清空/);
+});
+
+test('fanwai tutorial exposes hidden story preferences without claiming production acceptance', () => {
+  assert.match(guideScript, /"id"\s*:\s*"fanwai-story-qa"/);
+  assert.match(guideScript, /番外剧场与隐藏故事设置（QA 待验收）/);
+  assert.match(guideScript, /输入栏「＋」→「番外」/);
+  assert.match(guideScript, /不带记忆/);
+  assert.match(guideScript, /参考角色记忆/);
+  assert.match(guideScript, /短篇 40 条、中篇 80 条、长篇 100 条/);
+  assert.match(guideScript, /不能当作成功/);
+  assert.match(guideScript, /不允许写入原聊天、长期记忆或钱包/);
 });

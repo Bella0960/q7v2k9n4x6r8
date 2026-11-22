@@ -1,0 +1,180 @@
+import test from 'node:test';
+import assert from 'node:assert/strict';
+import { readFileSync } from 'node:fs';
+import { dirname, resolve } from 'node:path';
+import { fileURLToPath } from 'node:url';
+import vm from 'node:vm';
+
+const root = resolve(dirname(fileURLToPath(import.meta.url)), '..');
+const read = path => readFileSync(resolve(root, path), 'utf8');
+const detail = read('chat/chat/chat-detail.html');
+const settings = read('worldbook/settings/rp-protocol.html');
+const sandbox = { window: {} };
+vm.runInNewContext(read('shared/js/phone/chat-role-context.js'), sandbox);
+vm.runInNewContext(read('shared/js/phone/chat-context-policy.js'), sandbox);
+
+function extract(after, before) {
+  const start = detail.indexOf(after);
+  const end = detail.indexOf(before, start + after.length);
+  assert.ok(start >= 0 && end > start, 'real request assembly block must exist');
+  return detail.slice(start, end);
+}
+
+const protocolSource = extract("            let rpProtocol = '';", '            // 世界书：');
+const loreSource = extract('            // 世界书：', '            // 协议变量替换：');
+const protocolRead = new Function('localStorage', 'window', 'aliasRoleId', 'currentCharacter', 'roleId', 'showToast',
+  'const currentRoleId = roleId;\n' +
+  'const personaIncomplete = false, personaPolicy = window.MAOMAOChatRoleContext;\n' +
+  'const stopForMissingRoleSource = (reason, message) => showToast(message);\n' +
+  protocolSource + '\nreturn rpProtocol;');
+const loreRead = new Function('localStorage', 'window', 'aliasRoleId', 'roleForTurn', 'isGroupChat',
+  'historyList', 'roleModelHistory', 'text', 'showToast',
+  "const groupReplyPick = isGroupChat ? { id: roleForTurn.id } : null;" +
+  "const getRoleById = id => String(id) === String(roleForTurn.id) ? roleForTurn : null;" +
+  "const retryTarget=null,isRegen=false,contextOnly=false,silent=false,_vl=null;" +
+  "const renderAllMessages=()=>{}, vlRefresh=()=>{}, _markUserSendFailed=()=>false;" +
+  "const stopForMissingRoleSource=(reason,message)=>showToast(message);" +
+  loreSource + '\nreturn worldbookText;');
+
+function storage(values) {
+  const map = new Map(Object.entries(values || {}));
+  return { getItem: key => map.get(key) ?? null, setItem: (key, val) => map.set(key, val),
+    snapshot: () => JSON.stringify([...map.entries()]) };
+}
+function getLore({ books, mount, speaker = { id: 'a', worldBookIds: ['local_a'] },
+                   group = false, text = '深圳的地铁', faults = {}, alerts = [] } = {}) {
+  const raw = faults.raw ?? JSON.stringify(books || []);
+  const initial = { phone_worldbooks: raw };
+  if (mount !== undefined) initial['chat_worldbooks_' + (group ? 'group' : 'a')] = JSON.stringify(mount);
+  const db = storage(initial);
+  const policyWindow = faults.moduleMissing
+    ? { MAOMAOChatRoleContext: sandbox.window.MAOMAOChatRoleContext }
+    : { ...sandbox.window };
+  if (!faults.moduleMissing) {
+    vm.runInNewContext(read('shared/js/phone/role-worldbook-bindings.js'),
+      { window: policyWindow, localStorage: db });
+  }
+  const result = loreRead(db, policyWindow, group ? 'group' : 'a', speaker, group,
+    [], [], text, msg => alerts.push(msg));
+  return { result, alerts, before: db.snapshot(), after: db.snapshot() };
+}
+
+test('the saved global protocol is loaded verbatim and used for every role', () => {
+  assert.match(settings, /var STORAGE_KEY = 'chat_rp_protocol_';/);
+  const raw = '用户保存的协议\n' + '遵照人设。'.repeat(1700) + '\n{{persona}} {{worldbook}}';
+  const db = storage({ chat_rp_protocol_: raw });
+  const alerts = [];
+  const resultA = protocolRead(db, { MAOMAO_RP_DEFAULT_PROTOCOL: '系统默认' }, 'a', { id: 'a' }, 'a', x => alerts.push(x));
+  const resultB = protocolRead(db, { MAOMAO_RP_DEFAULT_PROTOCOL: '系统默认' }, 'b', { id: 'b' }, 'b', x => alerts.push(x));
+  assert.equal(resultA, raw);
+  assert.equal(resultB, raw);
+  assert.deepEqual(alerts, []);
+  assert.match(detail, /systemPrompt = applyProtocolVars\(rpProtocol\)/);
+  assert.match(detail, /personaPolicy\.MINIMAL_PERSONA_PROMPT/);
+});
+
+test('old per-character protocol remains untouched and cannot be silently promoted globally', () => {
+  const db = storage({
+    chat_rp_protocol_role_a: 'A专属旧规则',
+    chat_rp_protocol_role_b: 'B专属旧规则'
+  });
+  const before = db.snapshot();
+  const def = {MAOMAO_RP_DEFAULT_PROTOCOL: '应用默认共用协议'};
+  const a = protocolRead(db, def, 'role_a', {id:'role_a'}, 'role_a', () => {});
+  const b = protocolRead(db, def, 'role_b', {id:'role_b'}, 'role_b', () => {});
+  assert.equal(a, '应用默认共用协议');
+  assert.equal(b, '应用默认共用协议');
+  assert.equal(db.snapshot(), before, 'opening two chats never writes global or legacy keys');
+
+  // Execute the real settings-page load block with fake inputs, not a copy
+  // of its implementation. Opening settings is read-only until Save/Reset.
+  const begin = settings.indexOf("  var textarea = document.getElementById('protocolText');");
+  const end = settings.indexOf('  // Toast', begin);
+  assert.ok(begin > 0 && end > begin);
+  const textarea = {value: ''};
+  const editorRead = new Function('localStorage', 'window', 'document',
+    settings.slice(begin, end) + '\nreturn textarea.value;');
+  assert.equal(editorRead(db, def, {getElementById: () => textarea}), '应用默认共用协议');
+  assert.equal(db.snapshot(), before, 'opening settings cannot import unrelated role rules');
+  assert.equal(db.getItem('chat_rp_protocol_'), null);
+});
+
+test('missing protocol or blocked local storage stops generation instead of silently using an unrelated default', () => {
+  const alerts = [];
+  const broken = { getItem() { throw new Error('storage blocked'); } };
+  const result = protocolRead(broken, { MAOMAO_RP_DEFAULT_PROTOCOL: 'fallback' }, 'a',
+    { id: 'a' }, 'a', m => alerts.push(m));
+  assert.equal(result, undefined);
+  assert.match(alerts[0], /协议读取失败/);
+  const missing = [];
+  const none = protocolRead(storage({}), {}, 'a', { id: 'a' }, 'a', m => missing.push(m));
+  assert.equal(none, undefined);
+  assert.match(missing[0], /协议未加载/);
+});
+
+test('single-chat full persona and group selected-speaker persona are never silently shortened', () => {
+  assert.match(detail, /const roleForTurn = !isGroupChat[\s\S]*?resolveRole\(currentCharacter\.id, currentCharacter, getRoleById\)/);
+  assert.match(detail, /const rawSpeakerPersona = isGroupChat && groupReplyPick/);
+  assert.match(detail, /relationshipRole && \(relationshipRole\.persona \|\| relationshipRole\.prompt\)/);
+  assert.match(detail, /stripEncounterEditorNote\(rawSpeakerPersona, relationshipRole\)/);
+  assert.doesNotMatch(detail, /rolePersona = isGroupChat \? capText\(rolePersona/);
+  const start = detail.indexOf('const rawSpeakerPersona = isGroupChat && groupReplyPick');
+  const finish = detail.indexOf('const personaPolicy =', start);
+  assert.ok(start > 0 && finish > start, 'must execute actual persona selection');
+  const select = new Function('isGroupChat', 'groupReplyPick', 'relationshipRole', 'rolePersona',
+    detail.slice(start, finish) + '\nreturn rawSpeakerPersona;');
+  const persona = '长篇深圳人物经历。'.repeat(1200);
+  assert.equal(select(false, null, null, persona), persona);
+  assert.equal(select(true, {id:'a'}, {persona}, '仅公开成员目录'), persona);
+});
+
+test('only explicitly mounted global and local books enter the selected role turn', () => {
+  const books = [
+    { id: 'global', scope: 'global', title: '公共深圳背景',
+      entries: [
+        { name: '常驻', content: '深圳在广东省', injectMode: 'always' },
+        { name: '关键词', content: '地铁正在运营', injectMode: 'keyword', keywords: ['地铁'] },
+        { name: '未触发', content: '隐藏剧情', injectMode: 'keyword', keywords: ['外星飞船'] }
+      ] },
+    { id: 'local_a', scope: 'local', title: 'A的私有世界书', content: 'A经营花店' },
+    { id: 'local_b', scope: 'local', title: 'B的私有世界书', content: 'B住在山上' }
+  ];
+  const a = getLore({ books, mount: ['global', 'local_a'] });
+  assert.match(a.result, /深圳在广东省/);
+  assert.match(a.result, /地铁正在运营/);
+  assert.match(a.result, /A经营花店/);
+  assert.doesNotMatch(a.result, /B住在山上|隐藏剧情/);
+  const b = getLore({ books, speaker: { id: 'b', worldBookIds: [] },
+    text: '今天好热' });
+  assert.equal(b.result, '');
+  assert.doesNotMatch(b.result, /A经营花店|B住在山上|地铁正在运营/);
+  const group = getLore({ books, group: true, speaker: { id: 'b', worldBookIds: [] }, mount: ['local_b'] });
+  assert.doesNotMatch(group.result, /深圳在广东省|地铁正在运营/);
+  assert.match(group.result, /B住在山上/);
+  assert.doesNotMatch(group.result, /A经营花店/);
+});
+
+test('worldbook parse and activation errors block a turn; overbudget lore is reported instead of clipped', () => {
+  const books = [{ id: 'global', scope: 'global', title: '长篇设定', content: '字'.repeat(33000) }];
+  const alerts = [];
+  const badJson = getLore({ books, faults: { raw: '{invalid json' }, alerts });
+  assert.equal(badJson.result, undefined);
+  assert.match(alerts[0], /世界书读取失败/);
+  const missing = getLore({ books: [{ id: 'g', scope: 'global', content: '存在内容' }],
+    faults: { moduleMissing: true } });
+  assert.equal(missing.result, undefined);
+  assert.match(missing.alerts[0], /世界书读取失败/);
+  const tooLong = getLore({ books, mount: ['global'] });
+  assert.equal(tooLong.result, undefined);
+  assert.match(tooLong.alerts[0], /世界书过长/);
+  assert.match(detail, /maxEntries: Math\.max\(1, wbList\.reduce/);
+  assert.doesNotMatch(detail, /worldbookText = capText\(worldbookText, CTX_CAP\.worldbook\)/);
+});
+
+test('all affected inline scripts still parse without changing the storage schema', () => {
+  const scripts = [...detail.matchAll(/<script(?:\s[^>]*)?>([\s\S]*?)<\/script>/g)]
+    .map(m => m[1]);
+  const main = scripts.find(src => src.includes('async function sendMsg(opts)'));
+  assert.ok(main);
+  assert.doesNotThrow(() => new vm.Script(main));
+});

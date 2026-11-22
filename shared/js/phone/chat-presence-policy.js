@@ -41,6 +41,19 @@
       .trim();
   }
 
+  // Historical assistant copy is not the role's personality. Older builds
+  // could write generic welcome/service scripts; do not feed those scripts
+  // back as voice examples or learn their statistics. Saved messages remain
+  // untouched and visible. Explicit role persona/tone never passes this filter.
+  function isGenericAssistantBoilerplate(value) {
+    var text = extractHabitText(value).replace(/\s+/g, '').toLowerCase();
+    if (!text) return false;
+    return /捕捉到.{0,20}元气满满.{0,12}小伙伴/.test(text) ||
+      /随时在线待命|很高兴为您服务|有什么(?:问题|事情)(?:我)?(?:可以|能)(?:帮|为)你/.test(text) ||
+      /有什么.{0,20}想分享.{0,24}(?:还是|或者).{0,20}(?:问题|想聊)/.test(text) ||
+      /^(?:你好|您好|嗨)[，,!！\s]*(?:我是|这里是).{0,24}(?:ai助手|智能助手|聊天机器人)/i.test(text);
+  }
+
   function isUsableAssistantMessage(message) {
     if (!message || typeof message !== 'object') return false;
     if (message.isError || message.role === 'system_error' || message.silent ||
@@ -57,7 +70,19 @@
     if (speakerId) {
       var messageId = message.memberId == null ? '' : String(message.memberId);
       if (messageId) return messageId === speakerId;
-      return !!speakerName && String(message.name || '').trim() === speakerName;
+      // Old rows without memberId may use an obsolete display nickname.
+      // Never learn the wrong character's voice from an ambiguous nickname.
+      var savedName = String(message.name || '').trim();
+      if (!speakerName || savedName !== speakerName) return false;
+      var members = Array.isArray(options.groupMembers) ? options.groupMembers : [];
+      if (members.length) {
+        var matched = members.filter(function (member) {
+          return member && (String(member.nickname || '').trim() === savedName ||
+            String(member.name || '').trim() === savedName);
+        });
+        if (matched.length !== 1 || String(matched[0].id) !== speakerId) return false;
+      }
+      return true;
     }
     return !!speakerName && String(message.name || '').trim() === speakerName;
   }
@@ -75,7 +100,7 @@
       if (!isUsableAssistantMessage(message) || !matchesSpeaker(message, options)) continue;
       var source = extractHabitText(message.text || message.content || '');
       var compactLength = Array.from(source.replace(/\s/g, '')).length;
-      if (!source || compactLength < 2) continue;
+      if (!source || compactLength < 2 || isGenericAssistantBoilerplate(source)) continue;
       selected.push({
         text: source.slice(0, 800),
         identity: String(message.mid || '') + '|' +
@@ -270,7 +295,8 @@
       var message = list[i];
       if (!isUsableAssistantMessage(message) || !matchesSpeaker(message, options)) continue;
       var sample = cleanSampleText(message.text || message.content || '', options.maxSampleChars);
-      if (!sample || samples.indexOf(sample) !== -1) continue;
+      if (!sample || isGenericAssistantBoilerplate(message.text || message.content || '') ||
+          samples.indexOf(sample) !== -1) continue;
       samples.push(sample);
     }
     samples.reverse();
@@ -462,7 +488,8 @@
       var belongsToSpeaker = !options.isGroupChat || !isAssistant || matchesSpeaker(message, {
         isGroupChat: true,
         speakerId: speakerId,
-        speakerName: speakerName
+        speakerName: speakerName,
+        groupMembers: options.groupMembers
       });
 
       if (!isAssistant) {
@@ -618,7 +645,7 @@
   function buildProactiveContactPrompt(contact, history, options) {
     options = options || {};
     var name = String(contact && contact.name || '角色').trim() || '角色';
-    var persona = String(contact && (contact.persona || contact.prompt) || '').trim().slice(0, 5000);
+    var persona = String(contact && (contact.persona || contact.prompt) || '').trim();
     var lines = [
       '【MAOMAO 主动联系时机判断】',
       '你是「' + name + '」，现在不是在回复一条新消息，而是在考虑是否值得主动发一条简短的线上聊天消息。',
@@ -685,6 +712,7 @@
     return lines.join('\n');
   }
 
+  NS.isGenericAssistantBoilerplate = isGenericAssistantBoilerplate;
   NS.collectVoiceSamples = collectVoiceSamples;
   NS.buildVoiceHabitProfile = buildVoiceHabitProfile;
   NS.buildVoiceHabitPrompt = buildVoiceHabitPrompt;

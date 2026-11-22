@@ -20,14 +20,29 @@
     }
 
     var NS = global.PhoneAPI = {};
+    // The existing complete()/completeJSON() path forwards opts.signal to fetch
+    // and aborts on pagehide. Advertise that verified contract to NPC discovery.
+    NS.supportsAbortSignal = true;
 
     var DEFAULT_TIMEOUT = 15000;
+
+    function observeRequest(url, messages) {
+        try {
+            var monitor = global.PhoneApiMonitor;
+            var request = monitor?.begin(url);
+            if (!request) return;
+            return function (text, error, usage) {
+                try { monitor.complete(request, messages, text, error, usage); }
+                catch { /* Diagnostics cannot change the request outcome. */ }
+            };
+        } catch { /* Storage and diagnostics are optional. */ }
+    }
 
     /* ========== 单次 completion ========== */
 
     NS.complete = function (opts) {
-        // opts: { system, user, messages, temperature, model, timeoutMs }
-        var config = Storage ? Storage.getApiConfig() : {};
+        // opts: { system, user, messages, temperature, model, timeoutMs, signal? }
+        var config = opts.apiConfig || (Storage ? Storage.getApiConfig() : {});
         var apiKey = (config.apiKey || '').trim();
         if (!apiKey) {
             var err = new Error('未配置 API Key');
@@ -59,9 +74,24 @@
 
         var start = Date.now();
         var controller = new AbortController();
-        var timer = setTimeout(function () { controller.abort(); }, timeoutMs);
+        var externalSignal = opts && opts.signal;
+        var cancelledByCaller = false;
+        var timedOut = false;
+        function onCallerAbort() {
+            cancelledByCaller = true;
+            controller.abort();
+        }
+        // 可选取消接口，供番外暂停等调用方使用；旧 API 调用不传 signal 时行为不变。
+        if (externalSignal && typeof externalSignal.addEventListener === 'function') {
+            if (externalSignal.aborted) onCallerAbort();
+            else externalSignal.addEventListener('abort', onCallerAbort, { once: true });
+        }
+        var timer = setTimeout(function () { timedOut = true; controller.abort(); }, timeoutMs);
 
-        return fetch(baseUrl + '/chat/completions', {
+        var requestUrl = /\/chat\/completions$/i.test(baseUrl) ? baseUrl : baseUrl + '/chat/completions';
+        var observe = observeRequest(requestUrl, body.messages);
+        var httpStatus;
+        return fetch(requestUrl, {
             method: 'POST',
             headers: {
                 'Content-Type': 'application/json',
@@ -70,27 +100,47 @@
             signal: controller.signal,
             body: JSON.stringify(body)
         }).then(function (response) {
-            clearTimeout(timer);
             if (!response.ok) {
+                httpStatus = response.status;
                 return response.text().then(function (txt) {
-                    var e = new Error('HTTP ' + response.status + ' ' + txt.slice(0, 200));
+                    var e = new Error('HTTP ' + response.status + (opts.onDiagnostic ? '' : ' ' + txt.slice(0, 200)));
+                    e.status = response.status;
                     log('error', model, start, e.message);
                     throw e;
                 });
             }
             return response.json();
         }).then(function (data) {
-            var text = (((data || {}).choices || [])[0] || {}).message
-                ? (data.choices[0].message.content || '') : '';
+            var choice = data?.choices?.[0];
+            var content = choice?.message?.content;
+            var text = typeof content === 'string' ? content : Array.isArray(content)
+                ? content.map(function (part) { return typeof part?.text === 'string' ? part.text : ''; }).join('')
+                : '';
+            reportDiagnostic(opts, {
+                stage: 'response', characters: text.length, fenced: /\x60\x60\x60/.test(text),
+                finish: choice?.finish_reason === 'length' ? 'length' : choice?.finish_reason === 'stop' ? 'stop' : 'other',
+                reasoningOnly: !text && Boolean(choice?.message?.reasoning_content || choice?.message?.reasoning)
+            });
+            observe?.(text, null, data?.usage);
             log('success', model, start);
             return text;
         }).catch(function (err) {
-            clearTimeout(timer);
+            observe?.('', httpStatus ? { kind: 'http', status: httpStatus }
+                : timedOut ? { kind: 'abort', reason: 'connect' }
+                : { kind: err?.name === 'AbortError' ? 'cancelled' : 'network' });
+            reportDiagnostic(opts, { stage: 'request-error', status: httpStatus || 0, timedOut: timedOut });
             if (err && err.name === 'AbortError') {
-                err = new Error('请求超时（' + timeoutMs + 'ms）');
+                err = new Error(cancelledByCaller ? '请求已取消' :
+                    (timedOut ? '请求超时（' + timeoutMs + 'ms）' : '请求已中断'));
+                if (cancelledByCaller) err.name = 'AbortError';
             }
             log('error', model, start, err && err.message ? err.message : String(err));
             throw err;
+        }).finally(function () {
+            clearTimeout(timer);
+            if (externalSignal && typeof externalSignal.removeEventListener === 'function') {
+                externalSignal.removeEventListener('abort', onCallerAbort);
+            }
         });
     };
 
@@ -160,6 +210,9 @@
             return new Blob([bytes], { type: mimeType || 'image/png' });
         }
 
+        var observe = observeRequest(endpointUrl.href, [{ content: body.prompt }]);
+        var httpStatus;
+        var usage;
         return fetch(endpointUrl.href, {
             method: 'POST',
             headers: {
@@ -170,12 +223,14 @@
             body: JSON.stringify(body)
         }).then(function (response) {
             if (!response.ok) {
+                httpStatus = response.status;
                 return response.text().then(function (txt) {
                     throw new Error('图片生成接口 HTTP ' + response.status + ' ' + txt.slice(0, 220));
                 });
             }
             return response.json();
         }).then(function (payload) {
+            usage = payload?.usage;
             var item = payload && Array.isArray(payload.data) ? payload.data[0] : null;
             if (!item) throw new Error('图片生成服务没有返回图片');
             if (item.b64_json) {
@@ -184,7 +239,10 @@
             if (item.url) {
                 // 图片 URL 通常为临时地址。立即下载为 Blob，随后交给 MediaRepository 持久化。
                 return fetch(String(item.url), { method: 'GET', signal: controller.signal }).then(function (imageResponse) {
-                    if (!imageResponse.ok) throw new Error('生成图片下载失败（HTTP ' + imageResponse.status + '）');
+                    if (!imageResponse.ok) {
+                        httpStatus = imageResponse.status;
+                        throw new Error('生成图片下载失败（HTTP ' + imageResponse.status + '）');
+                    }
                     return imageResponse.blob();
                 }).then(function (blob) {
                     var type = blob && blob.type ? blob.type.toLowerCase() : '';
@@ -207,8 +265,11 @@
             }
             clearTimeout(timer);
             log('success', model, start);
+            observe?.('', null, usage);
             return { blob: blob, mimeType: blob.type, model: model };
         }).catch(function (error) {
+            observe?.('', httpStatus ? { kind: 'http', status: httpStatus }
+                : { kind: error?.name === 'AbortError' ? 'abort' : 'network' });
             clearTimeout(timer);
             if (error && error.name === 'AbortError') error = new Error('图片生成请求超时（' + timeoutMs + 'ms）');
             log('error', model, start, error && error.message ? error.message : String(error));
@@ -220,15 +281,27 @@
     // 约定：prompt 里已经告诉 AI 只返回 JSON。
     // 这里负责清洗 + 解析 + 失败兜底。
 
+    function reportDiagnostic(opts, details) {
+        if (typeof opts.onDiagnostic !== 'function') return;
+        try { opts.onDiagnostic(details); } catch (_) {}
+    }
+
     NS.completeJSON = function (opts) {
         return NS.complete(opts).then(function (raw) {
-            return cleanJSON(raw);
+            var parsed = cleanJSON(raw);
+            if (opts.onDiagnostic) reportDiagnostic(opts, { stage: 'parse', ok: parsed.ok });
+            return parsed;
         });
     };
 
     /* ========== JSON 清洗 ========== */
 
     function cleanJSON(raw) {
+        // Shared balanced JSON extractor, when loaded by the host app.
+        // Invalid business data stays invalid; never turn prose into fake records.
+        if (global.AIResponseParser && typeof global.AIResponseParser.parseJSON === 'function') {
+            return global.AIResponseParser.parseJSON(raw);
+        }
         var text = String(raw || '').trim();
 
         // 1. 去掉 markdown ```json ... ``` 包裹

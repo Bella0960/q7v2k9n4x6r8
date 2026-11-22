@@ -121,7 +121,9 @@ test('existing mobile forum actually uses world arcs, selected settings and role
   assert.match(settings,/id="worldAutoContinue"/);
   assert.match(settings,/cfg\.worldAutoContinue/);
   assert.match(sw,/forum\/forum-world-events\.js\?v=20261111v1/);
-  assert.match(sw,/phone-app-pwa-v204/);
+  const pwaVersion = Number(sw.match(/^const CACHE_NAME = 'phone-app-pwa-v(\d+)'/m)?.[1] || 0);
+  assert.ok(pwaVersion >= 204,
+    'forum event assets require at least v204; newer PWA releases must remain valid');
 });
 
 test('all modified inlined code parses for mobile browser execution',()=>{

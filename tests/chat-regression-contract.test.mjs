@@ -66,6 +66,8 @@ runInNewContext(rolePublicTimelineSource, { window: rolePublicTimelineWindow, gl
 const rolePublicTimeline = rolePublicTimelineWindow.RolePublicTimeline;
 
 const serviceWorker = read('sw.js');
+const pwaCacheVersion = Number(serviceWorker.match(/^const CACHE_NAME = 'phone-app-pwa-v(\d+)'/m)?.[1] || 0);
+
 const profileEditor = read('profile/edit-profile.html');
 const chatListPage = read('chat/chat/chat.html');
 const contactsPage = read('chat/contacts/contacts.html');
@@ -319,10 +321,13 @@ test('shared context policy preserves local historical recall query and budget r
   );
   assert.match(detail, /ChatContextPolicy\.buildHistoricalRecallRequest/);
   assert.match(detail, /Compatibility fallback: preserve the original backwards query scan and limits/);
-  assert.match(detail, /buildHistoricalRecallText\(historyList, recallQuery, recallOptions\)/);
+  assert.match(detail, /buildHistoricalRecallText\(recallableHistory, recallQuery, recallOptions\)/);
+  assert.match(detail, /if \(isGroupChat\) recallOptions\.groupPublicOnly = true/);
+  assert.match(detail, /m\.type !== 'group_game_private'/);
+  assert.match(detail, /m\.visibility !== 'role_only'/);
 });
 
-test('shared context policy keeps explicitly scoped user memories role-isolated while preserving legacy globals', () => {
+test('shared context policy strictly excludes unscoped legacy memories from all roles', () => {
   assert.equal(typeof contextPolicy.filterUserMemoriesForRole, 'function');
   const memories = [
     { text: 'legacy global fact' },
@@ -334,20 +339,18 @@ test('shared context policy keeps explicitly scoped user memories role-isolated 
   assert.deepEqual(
     JSON.parse(JSON.stringify(contextPolicy.filterUserMemoriesForRole(memories, 'role-A'))),
     [
-      { text: 'legacy global fact' },
       { content: 'role A fact', sourceRoleId: 'role-A' }
     ]
   );
   assert.deepEqual(
     JSON.parse(JSON.stringify(contextPolicy.filterUserMemoriesForRole(memories, 7))),
     [
-      { text: 'legacy global fact' },
       { content: 'numeric role fact', sourceRoleId: 7 }
     ]
   );
   assert.deepEqual(
     JSON.parse(JSON.stringify(contextPolicy.filterUserMemoriesForRole(memories, 'role-C'))),
-    [{ text: 'legacy global fact' }]
+    []
   );
   assert.deepEqual(
     JSON.parse(JSON.stringify(contextPolicy.filterUserMemoriesForRole(null, 'role-A'))),
@@ -355,7 +358,7 @@ test('shared context policy keeps explicitly scoped user memories role-isolated 
   );
   assert.equal(JSON.stringify(memories), before, 'memory filtering must not mutate stored memory objects');
   assert.match(detail, /ChatContextPolicy\.filterUserMemoriesForRole/);
-  assert.match(detail, /Compatibility fallback: legacy entries without a role ID remain globally visible/);
+  assert.match(detail, /Strict fallback: discard legacy entries without an exact role source ID/);
 });
 
 
@@ -925,7 +928,7 @@ test('offline group context keeps narration text so the shared scene remains con
 });
 
 test('group chat wiring includes mention dispatch, paced replies, duplicate protection and shared-history modes', () => {
-  assert.match(detail, /group-chat-policy\.js\?v=20261102v5/);
+  assert.match(detail, /group-chat-policy\.js\?v=20261118groupvoice1/);
   assert.match(detail, /groupPolicy\.selectSpeaker/);
   assert.match(detail, /getPendingMentionIds/);
   assert.match(detail, /本轮被@点名/);
@@ -963,7 +966,7 @@ test('group chat wiring includes mention dispatch, paced replies, duplicate prot
   assert.match(detail, /relationshipDynamicsEnabled !== false && isGroupFollowup/);
   assert.match(detail, /applyRelationshipEvent/);
   assert.match(detail, /群关系变化/);
-  assert.match(detail, /processGroupInteractionMarkers\(fullText, groupReplyPick, historyList, isRegen, isGroupFollowup\)/);
+  assert.match(detail, /processGroupInteractionMarkers\(fullText, groupReplyPick, historyList, isRegen, isGroupFollowup, streamResult\.ok,/);
   assert.match(detail, /!isGroupFollowup \|\| !speaker/);
   assert.match(groupPlay, /data-setting="relationshipDynamicsEnabled"/);
   assert.match(groupPlay, /近期关系变化/);
@@ -976,16 +979,16 @@ test('group chat wiring includes mention dispatch, paced replies, duplicate prot
 test('shared policy is loaded by both relevant pages and precached for PWA', () => {
   assert.match(detail, /chat-message-policy\.js\?v=20261029v5/);
   assert.match(search, /chat-message-policy\.js\?v=20261029v5/);
-  assert.ok(serviceWorker.includes('phone-app-pwa-v204'));
+  assert.ok(pwaCacheVersion >= 204, 'PWA cache must not regress below v204');
   assert.match(serviceWorker, /chat-message-policy\.js\?v=20261029v5/);
   assert.match(detail, /chat-send-policy\.js\?v=20261029v2/);
   assert.match(serviceWorker, /chat-send-policy\.js\?v=20261029v2/);
-  assert.match(detail, /chat-context-policy\.js\?v=20261107vision1/);
+  assert.match(detail, /chat-context-policy\.js\?v=20261118historybudget1/);
   assert.match(detail, /function buildCharacterSocialPrompt\(role\)/);
   assert.match(detail, /role\.npcCharacters/);
   assert.match(detail, /relationshipRole/);
-  assert.match(serviceWorker, /chat-context-policy\.js\?v=20261107vision1/);
-  assert.match(serviceWorker, /group-chat-policy\.js\?v=20261102v5/);
+  assert.match(serviceWorker, /chat-context-policy\.js\?v=20261118historybudget1/);
+  assert.match(serviceWorker, /group-chat-policy\.js\?v=20261118groupvoice1/);
   assert.match(serviceWorker, /phone_context\.js\?v=20261102npc1/);
   const contractFiles = packageJson.scripts['test:chat:contract'].split(/\s+/);
   assert.ok(contractFiles.includes('tests/chat-regression-contract.test.mjs'));
@@ -999,7 +1002,7 @@ test('chat detail retains the legacy load/save entry points and role-scoped stor
   assert.match(detail, /_storage\.getChatHistory\(currentCharacter\.id\)/);
   assert.match(detail, /_storage\.saveChatHistory\(currentCharacter\.id, list\)/);
   assert.match(detail, /localStorage\.getItem\(storageKey\)/);
-  assert.match(detail, /localStorage\.setItem\(storageKey, JSON\.stringify\(list\)\)/);
+  assert.match(detail, /localStorage\.setItem\(storageKey, expectedSerialized\)/);
 });
 
 test('online rendering and search preserve date/silent filtering and error exclusion', () => {
@@ -1046,14 +1049,18 @@ test('unexpected stream rejection is converted to the normal error path and keep
 });
 
 
-test('context size controls and local historical recall remain bounded', () => {
+test('context budgets remain bounded without silently truncating the saved global RP protocol', () => {
   assert.match(detail, /persona: 5000/);
   assert.match(detail, /memory: 3000/);
   assert.match(detail, /userMemory: 2000/);
   assert.match(detail, /worldbook: 8000/);
-  assert.match(detail, /rpComposed: 16000/);
-  assert.match(detail, /recentHistory = historyList\.slice\(-memoryLimit\)/);
-  assert.match(detail, /buildHistoricalRecallText\(historyList, recallQuery/);
+  // Per-character memory and activated lore still have budgets. The user's own
+  // saved global protocol must not lose rules after {{persona}}/{{worldbook}} expansion.
+  assert.match(detail, /systemPrompt = applyProtocolVars\(rpProtocol\);/);
+  assert.doesNotMatch(detail, /capText\(applyProtocolVars\(rpProtocol\)/);
+  assert.doesNotMatch(detail, /rpComposed: 16000/);
+  assert.match(detail, /recentHistory = roleModelHistory\.slice\(-memoryLimit\)/);
+  assert.match(detail, /buildHistoricalRecallText\(recallableHistory, recallQuery/);
   assert.match(detail, /maxItems: 2/);
   assert.match(detail, /maxChars: 540/);
   assert.match(detail, /maxScan: 2500/);
@@ -1091,7 +1098,8 @@ test('offline date mode shares the existing history key and marks scene messages
   assert.match(date, /_storage\.getChatHistory\(roleId\)/);
   assert.match(date, /_storage\.saveChatHistory\(roleId, list\)/);
   assert.match(journey, /var historyKey = 'chat_history_' \+ roleId/);
-  assert.match(journey, /PhoneStorage\.saveChatHistory\(roleId,list\)/);
+  assert.match(journey, /await atomic\.appendIf\(roleId,entry,/);
+  assert.doesNotMatch(journey, /PhoneStorage\.saveChatHistory\(/);
 });
 
 test('PhoneStorage remains backward-compatible and only compacts after a successful primary save', () => {
@@ -1113,9 +1121,14 @@ test('known external history writers remain on the migration inventory', () => {
   ];
   for (const caller of callers) {
     const source = read(caller);
+    // Group calls now append through the guarded writer, never a stale array.
+    // Other external callers remain on the migration inventory.
+    const atomicGroupCall = caller === 'chat/call/call.html' &&
+      source.includes('chat-history-atomic.js') &&
+      /await atomic\.appendIf\(roleId,callMessage\)/.test(source);
     assert.ok(
-      source.includes('chat_history_') || source.includes('saveChatHistory'),
-      `${caller} no longer appears to use the documented chat-history contract; review before migrating it`
+      source.includes('chat_history_') || source.includes('saveChatHistory') || atomicGroupCall,
+      `${caller} must retain a verifiable chat-history write contract`
     );
   }
 });
@@ -1222,10 +1235,10 @@ test('partner protocol is managed globally from desktop settings and shared by e
   assert.match(globalSettings, /伴侣协议/);
   assert.doesNotMatch(chatSettings, /rp-protocol\.html|伴侣协议/);
   assert.match(rpProtocolPage, /var STORAGE_KEY = 'chat_rp_protocol_';/);
-  assert.match(rpProtocolPage, /function migrateLegacyProtocol\(\)/);
+  assert.doesNotMatch(rpProtocolPage, /function migrateLegacyProtocol\(\)/);
   assert.doesNotMatch(rpProtocolPage, /getRoleIdFromUrl/);
   assert.match(detail, /localStorage\.getItem\(globalRpKey\)/);
-  assert.match(detail, /localStorage\.setItem\(globalRpKey, legacyValue\)/);
+  assert.doesNotMatch(detail, /localStorage\.setItem\(globalRpKey, legacyValue\)/);
   assert.doesNotMatch(detail, /localStorage\.getItem\('chat_rp_protocol_' \+ aliasRoleId\)/);
 });
 
@@ -1291,10 +1304,10 @@ test('chat presence policy skips narration and face-to-face modes and avoids rig
 });
 
 test('chat presence policy is loaded by chat detail and precached for PWA', () => {
-  assert.match(detail, /chat-presence-policy\.js\?v=20261102v17/);
+  assert.match(detail, /chat-presence-policy\.js\?v=20261119scheduled1/);
   assert.match(detail, /ChatPresencePolicy\.buildPrompt/);
-  assert.match(serviceWorker, /phone-app-pwa-v204/);
-  assert.match(serviceWorker, /chat-presence-policy\.js\?v=20261102v17/);
+  assert.ok(pwaCacheVersion >= 204, 'PWA cache must not regress below v204');
+  assert.match(serviceWorker, /chat-presence-policy\.js\?v=20261119scheduled1/);
 });
 
 
@@ -1415,8 +1428,8 @@ test('chat detail persists voice habits per character and per group session with
   assert.match(detail, /buildVoiceHabitPrompt\(voiceHabitProfile\)/);
   assert.match(detail, /buildEmotionContinuityPrompt/);
   assert.match(detail, /maxScan: 24/);
-  assert.match(serviceWorker, /phone-app-pwa-v204/);
-  assert.match(serviceWorker, /chat-presence-policy\.js\?v=20261102v17/);
+  assert.ok(pwaCacheVersion >= 204, 'PWA cache must not regress below v204');
+  assert.match(serviceWorker, /chat-presence-policy\.js\?v=20261119scheduled1/);
 });
 
 
@@ -1601,9 +1614,9 @@ test('chat detail injects the role autonomy prompt and precaches the updated pol
   assert.ok(detail.includes('ChatPresencePolicy.buildAutonomyPrompt'));
   assert.ok(detail.includes('maxNotes: 3'));
   assert.ok(detail.includes('maxTurns: 4'));
-  assert.ok(detail.includes('chat-presence-policy.js?v=20261102v17'));
-  assert.ok(serviceWorker.includes('phone-app-pwa-v204'));
-  assert.ok(serviceWorker.includes('chat-presence-policy.js?v=20261102v17'));
+  assert.ok(detail.includes('chat-presence-policy.js?v=20261119scheduled1'));
+  assert.ok(pwaCacheVersion >= 204, 'PWA cache must not regress below v204');
+  assert.ok(serviceWorker.includes('chat-presence-policy.js?v=20261119scheduled1'));
 });
 
 
@@ -1799,19 +1812,22 @@ test('proactive contact is opt-in, foreground-only, daily-capped and reuses chat
   assert.match(chatNotifier, /PhoneAPI\.completeJSON/);
   assert.match(chatNotifier, /chat_proactive_global_attempt_at/);
   assert.match(chatNotifier, /proactiveContact: true/);
-  assert.match(chatNotifier, /saveChatHistory\(candidate\.contact\.id, freshHistory\)/);
+  assert.match(chatNotifier, /ChatHistoryAtomic\.appendIf\(candidate\.contact\.id, newMessage/);
+  assert.match(chatNotifier, /ChatHistoryAtomic\.appendIf\(contact\.id, newMessage/);
+  assert.doesNotMatch(chatNotifier, /saveFollowUpHistory/);
+  assert.match(chatNotifier, /automaticStorageReady\(\)/);
   assert.match(chatNotifier, /tick\(\);/);
   assert.match(chatNotifier, /startProactiveScheduler\(\)/);
 });
 
 test('proactive contact notifier is loaded on home and navigation pages and precached by PWA', () => {
-  assert.match(homePage, /chat-notifier\.js\?v=20261102v3/);
-  assert.match(navPage, /chat-notifier\.js\?v=20261102v3/);
-  assert.match(detail, /chat-notifier\.js\?v=20261102v3/);
-  assert.match(detail, /chat-presence-policy\.js\?v=20261102v17/);
-  assert.match(serviceWorker, /phone-app-pwa-v204/);
-  assert.match(serviceWorker, /chat-notifier\.js\?v=20261102v3/);
-  assert.match(serviceWorker, /chat-presence-policy\.js\?v=20261102v17/);
+  assert.match(homePage, /chat-notifier\.js\?v=20261119scheduled1/);
+  assert.match(navPage, /chat-notifier\.js\?v=20261119scheduled1/);
+  assert.match(detail, /chat-notifier\.js\?v=20261119scheduled1/);
+  assert.match(detail, /chat-presence-policy\.js\?v=20261119scheduled1/);
+  assert.ok(pwaCacheVersion >= 204, 'PWA cache must not regress below v204');
+  assert.match(serviceWorker, /chat-notifier\.js\?v=20261119scheduled1/);
+  assert.match(serviceWorker, /chat-presence-policy\.js\?v=20261119scheduled1/);
   assert.match(serviceWorker, /chat-followup-policy/);
 });
 
@@ -1865,7 +1881,7 @@ test('chat, group chat and Moments prompts consume the same public timeline with
   assert.ok(detail.includes('PhoneStorage.getMoments()'));
   assert.ok(momentsPage.includes('role-public-timeline.js?v=20261102v1'));
   assert.ok(momentsPage.includes('RolePublicTimeline.buildRolePrompt'));
-  assert.ok(serviceWorker.includes('phone-app-pwa-v204'));
+  assert.ok(pwaCacheVersion >= 204, 'PWA cache must not regress below v204');
   assert.ok(serviceWorker.includes('role-public-timeline.js?v=20261102v1'));
 });
   
@@ -1875,7 +1891,7 @@ test('PWA manifest is referenced from the deployment root so relative icon and s
 });
 
 test('Service Worker navigation does not abort slow mobile page requests', () => {
-  assert.ok(serviceWorker.includes("if (req.mode === 'navigate')"));
+  assert.match(serviceWorker, /req\.mode === 'navigate'/, 'navigation must have explicit handling');
   assert.ok(serviceWorker.includes('fetch(req).then'));
   assert.equal(serviceWorker.includes('new AbortController()'), false);
   assert.equal(serviceWorker.includes('controller.abort()'), false);
@@ -1892,8 +1908,16 @@ test('Cloudflare Worker preserves explicit HTML routes and maps only the root to
   assert.equal(wranglerConfig.assets.html_handling, 'none');
   assert.equal(wranglerConfig.assets.run_worker_first, true);
   assert.match(worker, /url\.pathname === "\/"[\s\S]*?new URL\("\/index\.html", url\)/);
-  assert.match(worker, /return env\.ASSETS\.fetch\(request\)/,
-    'non-root app routes must be passed through unchanged instead of falling back to index.html');
+  assert.match(worker, /let assetRequest = request;/,
+    'non-root routes must start with the original request and URL');
+  assert.match(worker, /assetRequest = new Request\(request, \{ headers \}\)/,
+    'private HTML may strip conditional cache headers without changing the requested route');
+  assert.match(worker, /const response = await env\.ASSETS\.fetch\(assetRequest\)/,
+    'non-root app routes must be served from their original URL, not rewritten to index.html');
+  assert.match(worker, /isHtmlDocument && authorizedAccount/,
+    'private HTML must preserve server-verified account isolation');
+  assert.match(serviceWorker, /!isPublicAccountPage && \(url\.pathname === '\/' \|\|/,
+    'private HTML must bypass shared CacheStorage even without navigation');
 });
 
 
@@ -1905,7 +1929,7 @@ test('Messages chat-list theme is isolated, cache-busted, grayscale and hides in
 
   assert.ok(chatHome.includes('chat-list-editorial-theme.css?v=20261104v2'));
   assert.ok(chatHome.includes('chat-list-theme.js?v=20261104v2'));
-  assert.match(serviceWorker, /phone-app-pwa-v204/);
+  assert.ok(pwaCacheVersion >= 204, 'PWA cache must not regress below v204');
   assert.ok(serviceWorker.includes('./shared/css/chat-list-editorial-theme.css?v=20261104v2'));
   assert.ok(serviceWorker.includes('./shared/js/chat-list-theme.js?v=20261104v2'));
 
@@ -2047,7 +2071,7 @@ test('whole-chat theme is refreshed when a chat page is restored from browser hi
   ]) {
     assert.ok(read(path).includes('chat-page-theme.js?v=20261105v1'), path + ' should load the refreshed theme bridge');
   }
-  assert.match(serviceWorker, /phone-app-pwa-v204/, 'the PhoneAPI and settings changes require the refreshed PWA cache');
+  assert.ok(pwaCacheVersion >= 204, 'the PhoneAPI and settings changes require at least PWA cache v204');
 });
 
 
@@ -2202,7 +2226,7 @@ test('WeChat page refinements load on all five core pages and stay isolated from
     'message bubbles must remain under ChatBeauty customization'
   );
   assert.ok(serviceWorker.includes("'./shared/css/wechat-theme-refinements.css?v=20261105v2'"));
-  assert.ok(serviceWorker.includes('phone-app-pwa-v204'));
+  assert.ok(pwaCacheVersion >= 204, 'PWA cache must not regress below v204');
   assert.ok(
     wechatThemeCss.includes('.floating-nav .nav-tab > span:nth-of-type(2)::after'),
     'WeChat labels must attach to the second span, not the optional unread badge'
@@ -2279,7 +2303,7 @@ test('chat sticker picker exposes per-role favourites without replacing the glob
   assert.ok(detail.includes('stickerAllTab'));
   assert.ok(detail.includes('sticker_libraries'));
   assert.ok(serviceWorker.includes('role-sticker-library.js?v=20261107v2'));
-  assert.ok(serviceWorker.includes('phone-app-pwa-v204'));
+  assert.ok(pwaCacheVersion >= 204, 'PWA cache must not regress below v204');
 });
 
 test('AI replies can choose one role-favorite sticker without leaking machine markers', () => {
@@ -2295,7 +2319,7 @@ test('AI replies can choose one role-favorite sticker without leaking machine ma
   assert.ok(detail.includes('aiStickerMessages.forEach'));
   assert.ok(detail.includes('appendMessageToDOM(stickerMessage, stickerMessageIndex)'));
   assert.ok(serviceWorker.includes('role-sticker-library.js?v=20261107v2'));
-  assert.ok(serviceWorker.includes('phone-app-pwa-v204'));
+  assert.ok(pwaCacheVersion >= 204, 'PWA cache must not regress below v204');
 });
 
 
@@ -2307,7 +2331,7 @@ test('AI replies can send only images from the active role gallery and keep medi
   assert.match(detail, /RoleGalleryImageAutonomy\.releaseReferences\(aiRoleGalleryMessages\)/);
   assert.match(detail, /aiRoleGalleryMessages\.forEach\(function \(galleryMessage\)/);
   assert.ok(serviceWorker.includes('role-gallery-image-autonomy.js?v=20261111v2'));
-  assert.ok(serviceWorker.includes('phone-app-pwa-v204'));
+  assert.ok(pwaCacheVersion >= 204, 'PWA cache must not regress below v204');
 });
 
 test('chat detail classic inline scripts parse before chat handlers are attached', () => {
@@ -2344,8 +2368,12 @@ test('chat detail: payment ledger success is independent from chat-card status p
 });
 
 test('chat detail: group private messages require both the target history and group entry to persist', () => {
-  assert.match(detail, /privateSaved = window\.PhoneStorage\.saveChatHistory\(targetId, privateHistory\) === true/);
-  assert.match(detail, /verifiedPrivate\.length === privateHistory\.length/);
+  // The old full-history PhoneStorage write would resurrect stale legacy data.
+  // The actual group-private receipt now uses a verified append-only adapter.
+  assert.match(detail, /versioned\.appendChatHistory\(id, message\)/);
+  assert.match(detail, /var verifiedRaw = localStorage\.getItem\(key\)/);
+  assert.match(detail, /matches\.length === 1/);
+  assert.doesNotMatch(detail, /privateSaved = window\.PhoneStorage\.saveChatHistory\(targetId, privateHistory\)/);
   assert.match(detail, /if \(!privateSaved\)[\s\S]*?未显示已发送状态[\s\S]*?return ''/);
   assert.match(detail, /if \(!saveMessages\(historyList\)\)[\s\S]*?群聊中的私聊入口没有保存成功/);
   assert.match(detail, /showGroupPrivatePopup\(displayName, targetId, privateMessageText\)/);
@@ -2428,8 +2456,13 @@ test('chat detail: AI transfer-decision state is committed with its reply and ro
 test('chat detail: group interaction state and private-message entry require verified persistence', () => {
   assert.match(detail, /groupHistoryRollback\.push\(\{[\s\S]*?kind: 'votes'/);
   assert.match(detail, /groupHistoryRollback\.push\(\{[\s\S]*?kind: 'entries'/);
-  assert.match(detail, /if \(changedHistory && !saveMessages\(historyList\)\)[\s\S]*?groupHistoryRollback\.forEach/);
-  assert.match(detail, /privateSaved = privateSaved && Array\.isArray\(verifiedPrivate\)/);
+  // Group actions now share the verified reply-save transaction.
+  // Failure rolls staged vote/chain changes back through registered undo.
+  assert.match(detail, /turnEffects\.registerUndo\(function \(\) \{/);
+  assert.match(detail, /groupHistoryRollback\.length-1/);
+  assert.match(detail, /var replySaved = saveMessages\(historyList\)/);
+  assert.match(detail, /groupTurnEffects\.finalize\(replySaved && streamResult\.ok\)/);
+  assert.match(detail, /var privateSaved = saveGroupPrivateRoleMessageSafely\(targetId, privateMsg\)/);
   assert.match(detail, /if \(!privateSaved\)[\s\S]*?未显示已发送状态/);
 });
 

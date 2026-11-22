@@ -6,6 +6,27 @@
 (function () {
 'use strict';
 
+    /* Global first-paint statusbar setting: native-feel is loaded synchronously
+       in <head> on app pages. Apply the existing preference before any mock
+       statusbar is painted, even where statusbar-control.js loads at </body>.
+       This does not create a statusbar or change the Home Indicator. */
+    (function prepaintStatusbarVisibility() {
+        var attr = 'data-maomao-statusbar-hidden';
+        try {
+            if (window.localStorage.getItem('settings_statusbar') === '0') {
+                document.documentElement.setAttribute(attr, '');
+            } else {
+                document.documentElement.removeAttribute(attr);
+            }
+        } catch (_) { /* Same safe fallback as statusbar-control.js. */ }
+        if (document.getElementById('maomao-statusbar-prepaint')) return;
+        var rule = document.createElement('style');
+        rule.id = 'maomao-statusbar-prepaint';
+        rule.textContent = 'html[' + attr + '] .status-bar,' +
+            'html[' + attr + '] [data-maomao-system-statusbar]{display:none!important}';
+        (document.head || document.documentElement).appendChild(rule);
+    })();
+
     /* ---------- Theme layer: default stays Classic; glass is strictly opt-in ---------- */
     var MAOMAO_THEME_KEY = 'maomao_theme';
     var maomaoThemeRoot = document.documentElement;
@@ -252,21 +273,15 @@
         }
     }, true);
 
-    /* ---------- 五、Service Worker 更新后自动刷新一次 ----------
-       本地开发改了代码，浏览器可能仍被旧 SW 缓存命中。
-       新 SW 接管页面时 controllerchange 触发，自动刷新一次拿到最新版。
-       首访安装时本来没有 controller，skipWaiting + clients.claim() 会让本页
-       立刻收到 controllerchange；此时缓存已就绪，跳过刷新，避免二次文档加载。
-       sessionStorage 标记防循环刷新。 */
+    /* ---------- 五、SW 更新不再中途强制重载受保护页面 ----------
+       新 SW 激活时会淘汰旧缓存；下一次正常页面跳转自然读取新版。
+       在已有登录态的页面自动 reload 会引发第二次身份守卫校验，
+       网络短时波动时造成看起来被踢回登录页的现象。 */
     if ('serviceWorker' in navigator) {
         var swHadController = !!navigator.serviceWorker.controller;
         navigator.serviceWorker.addEventListener('controllerchange', function () {
             if (!swHadController) { swHadController = true; return; }
-            try {
-                if (sessionStorage.getItem('sw_reloaded')) return;
-                sessionStorage.setItem('sw_reloaded', '1');
-                location.reload();
-            } catch (err) { /* 隐私模式等异常场景直接忽略 */ }
+            document.documentElement.setAttribute('data-maomao-sw-updated', '1');
         });
     }
 
@@ -408,8 +423,17 @@
         window.addEventListener('maomao:themechange', schedule);
         if (window.MutationObserver) {
             var observer = new MutationObserver(schedule);
-            observer.observe(document.documentElement, { attributes: true, attributeFilter: ['class', 'style', 'data-theme', 'data-wallpaper-tone'] });
-            if (document.body) observer.observe(document.body, { subtree: true, attributes: true, attributeFilter: ['class', 'style'] });
+            observer.observe(document.documentElement, { attributes: true, attributeFilter: ['class', 'style', 'data-theme', 'data-wallpaper-tone', 'data-maomao-statusbar-hidden'] });
+            /* Most pages load native-feel.js in <head>; the body does not exist yet.
+             * Attach the existing observer once it is available so theme/status
+             * color sampling can react to later body/layout style changes. */
+            function observeBody() {
+                if (document.body) {
+                    observer.observe(document.body, { subtree: true, attributes: true, attributeFilter: ['class', 'style'] });
+                }
+            }
+            if (document.body) observeBody();
+            else document.addEventListener('DOMContentLoaded', observeBody, { once: true });
         }
     })();
 

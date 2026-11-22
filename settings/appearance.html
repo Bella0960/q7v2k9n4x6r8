@@ -682,12 +682,38 @@
   var homeIndicatorToggle = document.getElementById('homeIndicatorToggle');
   var HOME_INDICATOR_KEY = 'settings_home_indicator_visible';
   if (homeIndicatorToggle) {
-    try { homeIndicatorToggle.checked = localStorage.getItem(HOME_INDICATOR_KEY) !== '0'; }
-    catch (error) { homeIndicatorToggle.checked = true; }
+    function readHomeIndicatorPreference() {
+      try { return localStorage.getItem(HOME_INDICATOR_KEY) !== '0'; }
+      catch (error) { return true; }
+    }
+    var confirmedHomeIndicatorVisible = readHomeIndicatorPreference();
+    homeIndicatorToggle.checked = confirmedHomeIndicatorVisible;
     homeIndicatorToggle.addEventListener('change', function () {
-      try { localStorage.setItem(HOME_INDICATOR_KEY, homeIndicatorToggle.checked ? '1' : '0'); } catch (error) {}
+      var requested = homeIndicatorToggle.checked ? '1' : '0';
+      try {
+        localStorage.setItem(HOME_INDICATOR_KEY, requested);
+        if (localStorage.getItem(HOME_INDICATOR_KEY) !== requested) {
+          throw new Error('Home Indicator preference was not persisted');
+        }
+      } catch (error) {
+        homeIndicatorToggle.checked = confirmedHomeIndicatorVisible;
+        showToast('底部小横条设置未能保存，请检查浏览器存储空间');
+        return;
+      }
+      confirmedHomeIndicatorVisible = requested === '1';
       if (typeof window.__statusbarControlApply === 'function') window.__statusbarControlApply();
-      showToast(homeIndicatorToggle.checked ? '已显示桌面底部小横条' : '已隐藏桌面底部小横条');
+      window.dispatchEvent(new Event('maomao:home-indicator-change'));
+      showToast(confirmedHomeIndicatorVisible ? '已显示桌面底部小横条' : '已隐藏桌面底部小横条');
+    });
+    window.addEventListener('storage', function (event) {
+      if (!event.key || event.key === HOME_INDICATOR_KEY) {
+        confirmedHomeIndicatorVisible = readHomeIndicatorPreference();
+        homeIndicatorToggle.checked = confirmedHomeIndicatorVisible;
+      }
+    });
+    window.addEventListener('pageshow', function () {
+      confirmedHomeIndicatorVisible = readHomeIndicatorPreference();
+      homeIndicatorToggle.checked = confirmedHomeIndicatorVisible;
     });
   }
 
