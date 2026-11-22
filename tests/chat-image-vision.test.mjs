@@ -280,12 +280,12 @@ test('PWA shell and package contracts include the chat vision runtime', () => {
 
 
 test('forwarding an asset-backed chat image adds a destination chat reference', () => {
-  assert.match(chatDetailSource,
-    /async function forwardMessage\(resolved, targetId, targetName\)\s*\{\s*var msg = resolved\.message;/);
-  assert.ok(chatDetailSource.includes("_chatImageMediaRepo.addRef(fwd.assetId, 'chat-message', String(fwd.mid))"));
-  assert.ok(chatDetailSource.includes('fwd.assetId = String(msg.assetId)'));
-  assert.ok(chatDetailSource.includes('if (linkedImageRef)'));
-  assert.ok(chatDetailSource.includes('await _chatImageMediaRepo.removeRef(fwd.assetId'));
+  const handler = chatDetailSource.split('async function forwardMessage(resolved, targetId, targetName) {')[1]
+    ?.split('// 点 AI 头像')[0];
+  assert.ok(handler, 'forwarding handler must exist');
+  assert.ok(handler.includes("_chatImageMediaRepo.addRef(fwd.assetId, 'chat-message', String(fwd.mid))"));
+  assert.ok(handler.includes('fwd.assetId = String(msg.assetId)'));
+  assert.match(handler, /if \(linkedImageRef && !unverified\) \{\s*try \{ await _chatImageMediaRepo\.removeRef\(fwd\.assetId/);
 });
 
 test('paired avatar markers resolve two distinct current images and never collapse into two unrelated singles', () => {
