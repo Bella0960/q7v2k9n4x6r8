@@ -461,3 +461,163 @@ test('single delete never crosses account scope or deletes an unresolvable bubbl
   assert.deepEqual(absent.history().map(m => m.mid), ['img-1', 'keep-2']);
   assert.equal(absent.locks(), 0);
 });
+
+
+// Execute the real message editor and the existing locked history replacement.
+// All fixtures are synthetic; no real conversation data is read.
+const editSource = section(
+  'var editOverlay = document.getElementById(\'editOverlay\');',
+  '\n        // ---------- 转发面板'
+);
+const messagePolicySource = readFileSync('shared/js/phone/chat-message-policy.js', 'utf8');
+
+function editScenario(options = {}) {
+  const key = 'chat_history_role-1';
+  const original = options.multi ? [
+    { mid: 'edit-1', role: 'assistant', text: '第一段\n\n第二段\n[中译:second]\n\n第三段', metadata: { keep: 1 } }
+  ] : [
+    { mid: 'edit-1', role: 'user', ...(options.content ? { content: '原消息' } : { text: '原消息' }), metadata: { keep: 1 } }
+  ];
+  const db = new Map([
+    [key, JSON.stringify(original)],
+    ['chat_history_role-2', JSON.stringify([{ mid: 'other-1', text: '另一个角色' }])]
+  ]);
+  const events = [];
+  const snapshots = [];
+  let lockCount = 0;
+  let concurrentInjected = false;
+  const input = { value: '', focus() {} };
+  const overlay = { classList: { add() { events.push('open'); }, remove() { events.push('close'); } } };
+  const elements = { editOverlay: overlay, editBackdrop: { addEventListener() {} }, editInput: input,
+    editTitle: { textContent: '' }, editCancel: { addEventListener() {} },
+    editConfirm: { addEventListener() {} } };
+  const document = {
+    getElementById(id) { return elements[id] || null; },
+    querySelector(s) { return options.declaredAccount && s === 'meta[name="mao-account-id"]'
+      ? { content: options.declaredAccount } : null; }
+  };
+  const localStorage = {
+    getItem(k) { return db.get(k) ?? null; },
+    setItem(k, value) {
+      if (options.quota) { const error = new Error('quota'); error.name = 'QuotaExceededError'; throw error; }
+      db.set(k, String(value));
+    }
+  };
+  const navigator = options.noLock ? {} : { locks: {
+    request(name, settings, cb) {
+      lockCount++;
+      assert.equal(name, 'maomao:chat-history:role-1');
+      assert.equal(settings.mode, 'exclusive');
+      if (options.concurrent && !concurrentInjected) {
+        concurrentInjected = true;
+        const latest = JSON.parse(db.get(key));
+        latest.push({ mid: 'edit-other-tab', text: '其他窗口新消息' });
+        db.set(key, JSON.stringify(latest));
+      }
+      return cb();
+    }
+  } };
+  const window = { document, localStorage, navigator };
+  if (options.scope) window.__MAO_ACCOUNT_SCOPE__ = options.scope;
+  runInNewContext(messagePolicySource, { window, globalThis: window });
+  const context = {
+    window, document, localStorage, navigator,
+    currentCharacter: { id: 'role-1' }, storageKey: key, _chatHistoryUnreadable: false,
+    loadMessages() {
+      const snapshot = JSON.parse(localStorage.getItem(key));
+      snapshots.push(snapshot);
+      return snapshot;
+    },
+    ensureMid(m) { return m.mid; },
+    resolveBubbleInPage(id) { return window.ChatMessagePolicy.resolveBubble(JSON.parse(db.get(key)), id); },
+    rerenderFromList(list) { events.push({ type: 'render', mids: Array.from(list, m => m.mid) }); },
+    showToast(message) { events.push({ type: 'toast', message }); },
+    setTimeout() {}, Date
+  };
+  runInNewContext(atomicSource, context, { timeout: 2000 });
+  runInNewContext(helper + '\n' + editSource +
+    '\nthis.openEditor = openEditSheet; this.saveEdit = saveEditedMessage;', context, { timeout: 2000 });
+  context.openEditor(options.multi ? 'edit-1#1' : 'edit-1');
+  return {
+    input,
+    events,
+    save: () => context.saveEdit(),
+    history: () => JSON.parse(db.get(key)),
+    other: () => JSON.parse(db.get('chat_history_role-2')),
+    snapshots,
+    locks: () => lockCount,
+    editRaw(newText) {
+      const list = JSON.parse(db.get(key)); list[0][options.content ? 'content' : 'text'] = newText;
+      db.set(key, JSON.stringify(list));
+    }
+  };
+}
+
+test('single-bubble editing uses copy-on-write and the existing atomic replace guard', () => {
+  assert.match(editSource, /async function saveEditedMessage\(\)/);
+  assert.match(editSource, /await replaceChatSafely\(list, next\)/);
+  assert.match(editSource, /var next = list\.slice\(\)/);
+  assert.match(editSource, /Object\.assign\(\{\}, list\[idx\]\)/);
+  assert.doesNotMatch(editSource, /saveMessages\(/);
+});
+
+test('message edit commits only the selected bubble and retains metadata and other roles', async () => {
+  const s = editScenario({ content: true });
+  s.input.value = '修改后的文字';
+  await s.save();
+  assert.equal(s.locks(), 1);
+  assert.equal(s.history()[0].content, '修改后的文字');
+  assert.equal(s.history()[0].text, undefined);
+  assert.equal(s.history()[0].metadata.keep, 1);
+  assert.equal(s.history()[0].edited, true);
+  assert.equal(s.other()[0].mid, 'other-1');
+  assert.ok(s.events.some(e => e.type === 'render'));
+  assert.match(s.events.at(-1).message, /已保存/);
+});
+
+test('editing one legacy multi-bubble segment preserves sibling bubbles and translations', async () => {
+  const s = editScenario({ multi: true });
+  assert.equal(s.input.value, '第二段');
+  s.input.value = '修改第二段';
+  await s.save();
+  assert.match(s.history()[0].text, /第一段/);
+  assert.match(s.history()[0].text, /修改第二段/);
+  assert.match(s.history()[0].text, /第三段/);
+  assert.match(s.history()[0].text, /\[中译:second\]/);
+  assert.equal(s.history()[0].metadata.keep, 1);
+});
+
+test('stale message edit and concurrent new message are never overwritten', async () => {
+  const stale = editScenario();
+  stale.editRaw('其他窗口已经改写');
+  stale.input.value = '我的新文字';
+  await stale.save();
+  assert.equal(stale.history()[0].text, '其他窗口已经改写');
+  assert.equal(stale.locks(), 0);
+  assert.ok(stale.events.some(e => e.type === 'toast' && /其他窗口已修改/.test(e.message)));
+
+  const race = editScenario({ concurrent: true });
+  race.input.value = '我的新文字';
+  await race.save();
+  assert.deepEqual(race.history().map(m => m.mid), ['edit-1', 'edit-other-tab']);
+  assert.equal(race.history()[0].text, '原消息');
+  assert.equal(race.events.some(e => e.type === 'render'), false);
+});
+
+test('failed edit or duplicate confirmation keeps original and never claims success', async () => {
+  for (const opts of [{ quota: true }, { noLock: true },
+    { declaredAccount: 'account-A', scope: { ready: true, accountId: 'account-B' } }]) {
+    const s = editScenario(opts);
+    s.input.value = '不应该写入';
+    await s.save();
+    assert.equal(s.history()[0].text, '原消息');
+    assert.equal(s.snapshots.some(snapshot => snapshot[0].text === '不应该写入'), false);
+    assert.equal(s.events.some(e => e.type === 'render'), false);
+    assert.equal(s.events.some(e => e.type === 'toast' && /已保存/.test(e.message)), false);
+  }
+  const one = editScenario();
+  one.input.value = '只修改一次';
+  await Promise.all([one.save(), one.save()]);
+  assert.equal(one.locks(), 1);
+  assert.equal(one.history()[0].text, '只修改一次');
+});
