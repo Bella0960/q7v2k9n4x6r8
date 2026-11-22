@@ -402,11 +402,11 @@
     return false;
   }
 
-  // This is the historical search-index filter, not the final search-result check.
-  // Error messages remain in the indexed array so display indices stay aligned with
-  // the chat detail DOM; isSearchableMessage excludes errors at query time.
+  // Search indices must match renderAllMessages' visible-row indices exactly.
+  // Keep error messages in the index (but not search results); exclude hidden
+  // arrival and legacy-voice placeholders just like the chat timeline.
   function isOnlineSearchIndexVisible(message) {
-    if (!message || message.mode === 'date' || message.silent) return false;
+    if (!message || isHiddenFromOnlineTimeline(message)) return false;
     var text = String((message && (message.text || message.content)) || '');
     return text.indexOf('定位失败') === -1 && text.indexOf('Timeout expired') === -1;
   }
