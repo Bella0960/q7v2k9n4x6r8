@@ -2,9 +2,10 @@
 <html lang="zh-CN"><head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
-<title>MAOMAO · 角色足迹</title>
+<title>角色足迹</title>
 <script src="../../shared/js/phone/phone_storage.js"></script>
 <script src="../../shared/js/phone/ai-response-parser.js?v=20261120parser1"></script><script src="../../shared/js/phone/phone_api.js"></script>
+<script src="footprint-ai.js?v=20261123-persona-json-v1"></script>
 <script src="../../shared/js/native-feel.js"></script>
 <link rel="stylesheet" href="../../shared/css/mobile-fit.css">
 <style>
@@ -295,6 +296,14 @@
     /* toast 位置避开加高的导航 */
     .toast { bottom: calc(92px + env(safe-area-inset-bottom, 0px)); }
   }
+  /* Character-specific JSON footprints: readable on 375/390/430px phones. */
+  .fp-generation-status { padding: 0 22px 10px; color: #666; font-size: 11px; line-height: 1.65; }
+  .fp-generation-status[data-state="error"] { color: #444; }
+  .fp-generation-status[data-state="busy"] { color: #777; }
+  .t-thought { margin-top: 8px; color: #666; font-size: 11px; line-height: 1.7; white-space: pre-wrap; overflow-wrap: anywhere; }
+  .t-tags { overflow-wrap:anywhere; }
+  .t-content { min-width:0; }
+  .top-bar .icon-btn:disabled { opacity:.45; pointer-events:none; }
 </style>
 </head>
 <body>
@@ -319,6 +328,8 @@
       </button>
     </div>
 
+    <p id="footprintGenerationStatus" class="fp-generation-status" role="status" aria-live="polite">选择角色后，点击右上角按钮生成符合人设的足迹。</p>
+
     <div class="hero-image">
       <img src="https://images.unsplash.com/photo-1490750967868-88aa4486c946?auto=format&amp;fit=crop&amp;w=800&amp;q=80" alt="花">
       
@@ -328,51 +339,18 @@
       <div class="roles-scroll" id="rolesScroll"></div>
       <div class="today-count">
         <small>今日足迹</small>
-        <strong>3</strong>
+        <strong>0</strong>
         <small>条记录</small>
       </div>
     </div>
 
     <div class="week-header">
       <h3>本周 · 行程时间线</h3>
-      <span>APRIL / 2025</span>
+      <span></span>
     </div>
-    <div class="week-days">
-      <div class="w-day"><span>一</span><span>13</span></div>
-      <div class="w-day"><span>二</span><span>14</span></div>
-      <div class="w-day"><span>三</span><span>15</span></div>
-      <!-- 这里是修改后的黑色胶囊 -->
-      <div class="w-day active"><span>四</span><span>16</span></div>
-      <div class="w-day"><span>五</span><span>17</span></div>
-      <div class="w-day"><span>六</span><span>18</span></div>
-      <div class="w-day"><span>日</span><span>19</span></div>
-    </div>
+    <div class="week-days"></div>
 
-    <div class="timeline"><div class="t-item" data-id="b-0416-1">
-        <div class="t-content">
-          <div class="t-time">08:24　上午</div>
-          <div class="t-title">与小主人的早安时光</div>
-          <div class="t-desc">阳光透过窗帘洒进来，在桌着歌里慢慢苏醒。开心。</div>
-          <div class="t-tags">♡ 家里 · 松弛</div>
-        </div>
-        <img class="t-img" src="https://images.unsplash.com/photo-1519710164239-da123dc03ef4?auto=format&amp;fit=crop&amp;w=300&amp;q=80" alt="">
-      </div><div class="t-item" data-id="b-0416-2">
-        <div class="t-content">
-          <div class="t-time">13:17　中午</div>
-          <div class="t-title">一起去看海</div>
-          <div class="t-desc">海风很轻，像你笑的样子。让海浪带着温柔。</div>
-          <div class="t-tags">⌖ 海边 · 开心</div>
-        </div>
-        <img class="t-img" src="https://images.unsplash.com/photo-1500375592092-40eb2168fd21?auto=format&amp;fit=crop&amp;w=300&amp;q=80" alt="">
-      </div><div class="t-item" data-id="b-0416-3">
-        <div class="t-content">
-          <div class="t-time">21:03　夜晚</div>
-          <div class="t-title">夜晚的星空</div>
-          <div class="t-desc">把今天收藏进记忆里。</div>
-          <div class="t-tags">✦ 阳台 · 安静</div>
-        </div>
-        <img class="t-img" src="https://images.unsplash.com/photo-1518837695005-2083093ee35b?auto=format&amp;fit=crop&amp;w=300&amp;q=80" alt="">
-      </div></div>
+    <div class="timeline" aria-live="polite"></div>
   </div>
 
   <!-- ================= 页面 2：日历 ================= -->
@@ -390,41 +368,23 @@
     <div class="cal-roles" id="calRoles"></div>
 
     <div class="cal-month">
-      <h1>2025.04</h1>
+      <h1></h1>
       <div class="cal-arrows">
         <svg viewBox="0 0 24 24"><path d="M15 18l-6-6 6-6"></path></svg>
         <svg viewBox="0 0 24 24"><path d="M9 18l6-6-6-6"></path></svg>
       </div>
     </div>
 
-    <div class="calendar-grid"><div class="cal-head">一</div><div class="cal-head">二</div><div class="cal-head">三</div><div class="cal-head">四</div><div class="cal-head">五</div><div class="cal-head">六</div><div class="cal-head">日</div><div class="cal-day outside">31</div><div class="cal-day" data-day="1">1</div><div class="cal-day" data-day="2">2</div><div class="cal-day" data-day="3">3</div><div class="cal-day" data-day="4">4</div><div class="cal-day" data-day="5">5</div><div class="cal-day" data-day="6">6</div><div class="cal-day" data-day="7">7</div><div class="cal-day" data-day="8">8</div><div class="cal-day" data-day="9">9</div><div class="cal-day" data-day="10">10</div><div class="cal-day" data-day="11">11</div><div class="cal-day" data-day="12">12</div><div class="cal-day" data-day="13">13</div><div class="cal-day" data-day="14">14</div><div class="cal-day" data-day="15">15<div class="dot"></div></div><div class="cal-day" data-day="16">16<div class="dot"></div></div><div class="cal-day" data-day="17">17<div class="dot"></div></div><div class="cal-day" data-day="18">18</div><div class="cal-day active" data-day="19">19<div class="dot"></div></div><div class="cal-day" data-day="20">20</div><div class="cal-day" data-day="21">21</div><div class="cal-day" data-day="22">22</div><div class="cal-day" data-day="23">23</div><div class="cal-day" data-day="24">24</div><div class="cal-day" data-day="25">25</div><div class="cal-day" data-day="26">26</div><div class="cal-day" data-day="27">27</div><div class="cal-day" data-day="28">28</div><div class="cal-day" data-day="29">29</div><div class="cal-day" data-day="30">30</div><div class="cal-day outside">1</div><div class="cal-day outside">2</div><div class="cal-day outside">3</div><div class="cal-day outside">4</div></div>
+    <div class="calendar-grid"></div>
 
     <div class="cal-list-header">
-      <h3>04 / 19 · 今日足迹</h3>
-      <span>1 条</span>
+      <h3>今日足迹</h3>
+      <span>0 条</span>
     </div>
     
-    <div class="cal-list"><div class="cal-list-item" data-id="m-0419-1">
-      <time>20:30</time>
-      <span class="title">旧照片</span>
-      <svg viewBox="0 0 24 24"><path d="M9 18l6-6-6-6"></path></svg>
-    </div></div>
+    <div class="cal-list"></div>
 
-    <div class="cal-footer">
-      <div class="cal-quote">
-        有些日子很平凡，<br>
-        却因为有你，变得特别。
-      </div>
-      <!-- 用极简 SVG 画一朵线稿花 -->
-      <svg class="plant-svg" viewBox="0 0 50 100">
-        <path d="M25 100 Q20 70 25 40" fill="none" stroke="#666" stroke-width="1"></path>
-        <path d="M25 60 Q10 50 5 60 Q15 70 25 60" fill="none" stroke="#666" stroke-width="1"></path>
-        <path d="M25 70 Q40 55 45 65 Q35 80 25 70" fill="none" stroke="#666" stroke-width="1"></path>
-        <path d="M25 40 Q15 30 20 20 Q25 25 25 40" fill="none" stroke="#666" stroke-width="1"></path>
-        <path d="M25 40 Q35 25 30 15 Q25 20 25 40" fill="none" stroke="#666" stroke-width="1"></path>
-        <path d="M25 40 Q22 20 25 5 Q28 20 25 40" fill="none" stroke="#666" stroke-width="1"></path>
-      </svg>
-    </div>
+
   </div>
 
   <!-- ================= 页面 3：详情拼贴 ================= -->
@@ -448,7 +408,7 @@
         <img src="https://images.unsplash.com/photo-1519710164239-da123dc03ef4?auto=format&amp;fit=crop&amp;w=300&amp;q=80" alt="海">
       </div>
       <div class="note-paper">
-        <div class="date-text">04 / 16<br>08:24</div>
+        <div class="date-text"></div>
         <img class="note-photo" alt="" style="display:none">
         <button type="button" class="handwritten" id="addPhotoBtn" aria-label="添加照片" title="添加照片"><svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="1.2" stroke-linecap="round" stroke-linejoin="round"><path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"/><circle cx="12" cy="13" r="4"/></svg></button>
       </div>
@@ -456,32 +416,18 @@
     </div>
 
     <div class="detail-content">
-      <div class="tag">♡ 家里 · 松弛</div>
-      <h1 class="detail-title">与小主人的早安时光</h1>
-      <p class="story">阳光透过窗帘洒进来，在桌着歌里慢慢苏醒。开心。</p>
+      <div class="tag"></div>
+      <h1 class="detail-title"></h1>
+      <p class="story"></p>
       <div class="location">
         <svg viewBox="0 0 24 24"><path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z"></path><circle cx="12" cy="10" r="3"></circle></svg>
-        <span>家里 · 松弛</span>
+        <span></span>
       </div>
     </div>
 
     <div class="divider"></div>
 
-    <div class="related-section">
-      <div class="related-header">
-        <h3>相关记忆</h3>
-        <svg viewBox="0 0 24 24"><path d="M5 12h14M12 5l7 7-7 7"></path></svg>
-      </div>
-      <div class="thumbs-grid">
-        <img class="thumb" src="https://images.unsplash.com/photo-1518837695005-2083093ee35b?auto=format&amp;fit=crop&amp;w=300&amp;q=80">
-        <img class="thumb" src="https://images.unsplash.com/photo-1473116763249-2faaef81ccda?auto=format&amp;fit=crop&amp;w=300&amp;q=80">
-        <img class="thumb" src="https://images.unsplash.com/photo-1500375592092-40eb2168fd21?auto=format&amp;fit=crop&amp;w=300&amp;q=80">
-      </div>
-    </div>
 
-    <div class="quote-block">
-      「和你在一起的每一刻，<br>都是值得珍藏的记忆。」
-    </div>
   </div>
 
   <!-- ================= 底部导航 ================= -->
@@ -502,48 +448,6 @@
 </div>
 
 <script>
-  // ================= 演示数据模型（角色 × 日期） =================
-  const IMG = {
-    plant:  'https://images.unsplash.com/photo-1519710164239-da123dc03ef4?auto=format&fit=crop&w=300&q=80',
-    sea:    'https://images.unsplash.com/photo-1500375592092-40eb2168fd21?auto=format&fit=crop&w=300&q=80',
-    star:   'https://images.unsplash.com/photo-1518837695005-2083093ee35b?auto=format&fit=crop&w=300&q=80',
-    flower: 'https://images.unsplash.com/photo-1473116763249-2faaef81ccda?auto=format&fit=crop&w=300&q=80',
-    beach:  'https://images.unsplash.com/photo-1507525428034-b723cf961d3e?auto=format&fit=crop&w=300&q=80',
-    meadow: 'https://images.unsplash.com/photo-1490750967868-88aa4486c946?auto=format&fit=crop&w=300&q=80'
-  };
-
-  const DATA = {
-    '宝宝': {
-      '2025-04-13': [{ id: 'b-0413-1', time: '09:15', title: '窗边的第一缕光', desc: '阳光悄悄爬上窗台，在书页上落下一小块暖黄色。', tag: '♡ 家里 · 安静', loc: '窗台 · 安静', img: IMG.meadow }],
-      '2025-04-14': [{ id: 'b-0414-1', time: '11:40', title: '给多肉浇水', desc: '每一片叶子都鼓鼓的，像在说谢谢。', tag: '♡ 阳台 · 松弛', loc: '阳台 · 松弛', img: IMG.plant }],
-      '2025-04-16': [
-        { id: 'b-0416-1', time: '08:24', title: '与小主人的早安时光', desc: '阳光透过窗帘洒进来，在桌着歌里慢慢苏醒。开心。', tag: '♡ 家里 · 松弛', loc: '家里 · 松弛', img: IMG.plant },
-        { id: 'b-0416-2', time: '13:17', title: '一起去看海', desc: '海风很轻，像你笑的样子。让海浪带着温柔。', story: '海风很轻，像你笑的样子。\n比海边还要温柔。\n那一刻，我觉得时间好像变慢了。', tag: '⌖ 海边 · 开心', loc: '海边 · 开心', img: IMG.sea },
-        { id: 'b-0416-3', time: '21:03', title: '夜晚的星空', desc: '把今天收藏进记忆里。', tag: '✦ 阳台 · 安静', loc: '阳台 · 安静', img: IMG.star }
-      ],
-      '2025-04-17': [{ id: 'b-0417-1', time: '18:20', title: '黄昏散步', desc: '绕着小区走了两圈，路灯一盏一盏亮起来。', tag: '⌖ 楼下 · 放松', loc: '楼下 · 放松', img: IMG.flower }],
-      '2025-04-19': [
-        { id: 'b-0419-1', time: '10:05', title: '煮一壶花茶', desc: '水汽袅袅升起，满屋子都是干净的香气。', tag: '♡ 厨房 · 温暖', loc: '厨房 · 温暖', img: IMG.meadow },
-        { id: 'b-0419-2', time: '22:40', title: '睡前日记', desc: '写下今天最想记住的三件事，然后关灯。', tag: '✦ 卧室 · 安静', loc: '卧室 · 安静', img: IMG.star }
-      ]
-    },
-    '梦': {
-      '2025-04-15': [{ id: 'm-0415-1', time: '23:11', title: '深夜读诗', desc: '读到一半停下来，想起一些很久以前的事。', tag: '✦ 书房 · 沉静', loc: '书房 · 沉静', img: IMG.star }],
-      '2025-04-16': [{ id: 'm-0416-1', time: '14:02', title: '梦里的海', desc: '午睡时梦见一片发光的海，醒来记不清细节。', tag: '⌖ 梦境 · 奇妙', loc: '梦境 · 奇妙', img: IMG.sea }],
-      '2025-04-17': [{ id: 'm-0417-1', time: '07:58', title: '醒得很早', desc: '天还没亮透，窗外的鸟先叫了。', tag: '♡ 家里 · 宁静', loc: '家里 · 宁静', img: IMG.meadow }],
-      '2025-04-19': [{ id: 'm-0419-1', time: '20:30', title: '旧照片', desc: '翻到一张旧照片，看了很久，笑了很久。', tag: '♡ 家里 · 怀念', loc: '家里 · 怀念', img: IMG.flower }]
-    },
-    '灵': {
-      '2025-04-16': [
-        { id: 'l-0416-1', time: '10:30', title: '灵感闪现', desc: '把突然冒出的念头写进手机备忘录，怕一转身就忘。', tag: '✦ 工作室 · 专注', loc: '工作室 · 专注', img: IMG.flower },
-        { id: 'l-0416-2', time: '16:45', title: '傍晚的风', desc: '站在窗边吹了一会儿风，脑子清爽了很多。', tag: '⌖ 窗边 · 舒展', loc: '窗边 · 舒展', img: IMG.meadow }
-      ],
-      '2025-04-18': [{ id: 'l-0418-1', time: '12:20', title: '午间小憩', desc: '在沙发上眯了二十分钟，像充了一格电。', tag: '♡ 家里 · 松弛', loc: '家里 · 松弛', img: IMG.plant }],
-      '2025-04-19': [{ id: 'l-0419-1', time: '21:15', title: '写一封信', desc: '给未来的自己写了三行字，封好放进抽屉。', tag: '✦ 书桌 · 郑重', loc: '书桌 · 郑重', img: IMG.star }],
-      '2025-04-21': [{ id: 'l-0421-1', time: '09:00', title: '周一的咖啡', desc: '换了一家店的美式，意外地好喝。', tag: '⌖ 咖啡店 · 新鲜', loc: '咖啡店 · 新鲜', img: IMG.beach }]
-    }
-  };
-
   // ================= 当前状态 =================
   // 真实角色列表：与项目其它页面共用 localStorage 键 ai_custom_characters
   // 每项形如 { id, name, avatar?(dataURL), memory? }
