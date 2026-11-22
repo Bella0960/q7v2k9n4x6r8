@@ -2860,12 +2860,23 @@
     e.target.value = '';
     // Snapshot the catalog before async File/IndexedDB work; do not overwrite
     // changes made by another tab while the file is being imported.
-    var catalogAtStart = typeof localStorage !== 'undefined'
-      ? localStorage.getItem(LOCAL_TRACKS_KEY) : null;
+    var catalogAtStart = null;
+    try {
+      if (typeof localStorage !== 'undefined')
+        catalogAtStart = localStorage.getItem(LOCAL_TRACKS_KEY);
+    } catch (readError) {
+      toast('无法读取音乐目录，已停止导入以保护原数据');
+      return;
+    }
     var localMeta = readLocalTracksMeta(), lastImported = null, importedCount = 0;
-    if (typeof localStorage !== 'undefined' &&
-        localStorage.getItem(LOCAL_TRACKS_KEY) !== catalogAtStart) {
-      toast('其他页面更新了音乐列表，请重新选择文件后导入');
+    try {
+      if (typeof localStorage !== 'undefined' &&
+          localStorage.getItem(LOCAL_TRACKS_KEY) !== catalogAtStart) {
+        toast('其他页面更新了音乐列表，请重新选择文件后导入');
+        return;
+      }
+    } catch (readError) {
+      toast('无法读取音乐目录，已停止导入以保护原数据');
       return;
     }
     if (musicMetaReadFailure) { toast('原歌曲列表读取失败，已停止导入，避免覆盖旧歌曲'); return; }
