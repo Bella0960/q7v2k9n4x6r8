@@ -217,7 +217,7 @@ export function createAccountAuth({ store, env = {}, now = () => Date.now() }) {
   // A user-supplied format field, role ID, or local checksum cannot authorize an import.
   async function handleCharacterCard(request, action) {
     const session = await getAuthenticatedAccount(request);
-    if (!session) throw new ApiError(401, 'ACCOUNT_SESSION_REQUIRED', '请先登录 MAO 账号，再导出或导入签名角色卡');
+    if (!session) throw new ApiError(401, 'ACCOUNT_SESSION_REQUIRED', '请先登录账号，再导出或导入签名角色卡');
     if (session.status !== 'active') throw new ApiError(403, 'ACCOUNT_NOT_ACTIVE', '账号尚未获得角色卡导入导出资格');
     const signingKey = String(env.MAO_CHARACTER_CARD_SIGNING_SECRET || '');
     if (signingKey.length < 32) {
