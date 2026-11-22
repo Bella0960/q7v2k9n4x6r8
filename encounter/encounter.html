@@ -57,6 +57,10 @@
 }
 @media(max-height:720px){.header{height:60px}.intro{padding-top:0}.deck-wrap{margin-top:8px}.portrait{min-height:100px}.ring{width:88px;height:88px;border-width:13px}.ring:after{width:29px;height:29px;top:-21px;right:-22px}.portrait-caption{margin-top:17px}.quote{margin:10px 0}.card{padding-top:19px;padding-bottom:18px}.name{font-size:28px}.bottom{padding-bottom:calc(13px + env(safe-area-inset-bottom,0px))}}
 @media(prefers-reduced-motion:reduce){*,*:before,*:after{animation-duration:.01ms!important;transition-duration:.01ms!important}}
+.reunion-consent { margin: 14px 0 4px; }
+.reunion-consent button { width: 100%; padding: 11px 10px; border: 1px solid #C9C9CA; background: #F7F7F7; color: #333; }
+.reunion-consent button:disabled { opacity: .65; }
+
 </style>
 </head>
 <body>
@@ -78,6 +82,7 @@
 </main>
 </div>
 <script src="../shared/js/phone/phone_storage.js"></script>
+<script src="../shared/js/phone/world-events.js?v=20261123-eco2"></script>
 <script src="encounter-engine.js"></script>
 <script>
 (function(){
@@ -449,10 +454,25 @@ function openSettings(){
    notify('偏好已保存，下一张卡片起生效');
  });});
 }
+function footprintReturnRoute(roleId) {
+ var params=new URLSearchParams(window.location.search);
+ if(params.get('from')!=='footprint')return '';
+ var date=params.get('returnDate')||'';
+ if(date){
+   if(!/^\d{4}-\d{2}-\d{2}$/.test(date))return '';
+   var parts=date.split('-').map(Number);
+   var value=new Date(parts[0],parts[1]-1,parts[2]);
+   if(value.getFullYear()!==parts[0]||value.getMonth()!==parts[1]-1||
+     value.getDate()!==parts[2])return '';
+ }
+ return '../chat/footprint/footprint.html?roleId='+encodeURIComponent(roleId)+
+   (date?'&date='+encodeURIComponent(date):'');
+}
 function openReunion(roleId,sceneId){
  var result=engine.getReunionScenes(roleId);
  if(!result.ok){notify(result.error);return;}
  var reunion=result.value;
+ var returnToFootprint=footprintReturnRoute(reunion.id);
  var scene=reunion.scenes.find(function(item){return item.id===sceneId;})||reunion.scenes[0];
  var html=head('ENCOUNTER / AGAIN','再次相遇')+
  '<p class="tiny">与 '+escapeHtml(reunion.name)+' 的另一种相遇。选一个故事起点，只在这里预览，不会自动写进聊天或角色记忆。</p>'+
@@ -462,7 +482,9 @@ function openReunion(roleId,sceneId){
       '" data-reunion-scene="'+escapeHtml(item.id)+'" aria-pressed="'+(item.id===scene.id?'true':'false')+'">'+escapeHtml(item.title)+'</button>';
  }).join('')+'</div>'+
  '<p class="story-preview" role="status">'+escapeHtml(scene.text)+'</p>'+
+ '<div class="reunion-consent"><button type="button" class="mini" data-reunion-confirm>确认这次重逢并记录足迹</button></div>'+
  '<div class="saved-detail-actions"><button type="button" class="mini" data-return-collection>返回收藏</button>'+
+ (returnToFootprint ? '<button type="button" class="mini" data-return-footprint>返回足迹</button>' : '')+
  '<button type="button" class="mini" data-reunion-profile>去档案</button>'+
  '<button type="button" class="mini dark" data-reunion-chat>去聊天</button></div>';
  openSheet(html,'再次相遇');
@@ -471,11 +493,72 @@ function openReunion(roleId,sceneId){
  });
  var back=sheet.querySelector('[data-return-collection]');
  if(back)back.addEventListener('click',openSaved);
+ var toFootprint=sheet.querySelector('[data-return-footprint]');
+ if(toFootprint&&returnToFootprint){
+   toFootprint.addEventListener('click',function(){window.location.href=returnToFootprint;});
+ }
  var profile=sheet.querySelector('[data-reunion-profile]');
  if(profile)profile.addEventListener('click',function(){
    var fresh=engine.getReunionScenes(roleId);
    if(!fresh.ok){notify(fresh.error);return;}
    window.location.href='../worldbook/characters/characters.html?from=encounter&encounterRole='+encodeURIComponent(fresh.value.id);
+ });
+ // Explicit confirmation only: opening or changing a preview never writes history.
+ var recordButton=sheet.querySelector('[data-reunion-confirm]');
+ if(recordButton)recordButton.addEventListener('click',async function(){
+   var events=window.WorldEvents;
+   if(!events||typeof events.append!=='function'||typeof events.listForRole!=='function'){
+     notify('相遇事件仓储暂不可用，尚未记录');return;
+   }
+   var fresh=engine.getReunionScenes(roleId);
+   if(!fresh.ok){notify(fresh.error);return;}
+   var chosen=fresh.value.scenes.find(function(item){return item.id===scene.id;});
+   if(!chosen){notify('相遇情节已变化，请重新选择');return;}
+   var now=new Date();
+   var localDay=now.getFullYear()+'-'+String(now.getMonth()+1).padStart(2,'0')+
+     '-'+String(now.getDate()).padStart(2,'0');
+   var recordId='reunion_'+localDay+'_'+scene.id;
+   var bounds={
+     from:new Date(now.getFullYear(),now.getMonth(),now.getDate()).toISOString(),
+     to:new Date(now.getFullYear(),now.getMonth(),now.getDate()+1).toISOString(),
+     type:'encounter.reunion',limit:120
+   };
+   function alreadySaved(){
+     var read=events.listForRole(roleId,bounds);
+     if(!read||!read.ok)return {ok:false};
+     return {ok:true,exists:read.value.some(function(item){
+       return item&&item.source&&item.source.appId==='encounter'&&
+         item.source.recordId===recordId;
+     })};
+   }
+   var existing=alreadySaved();
+   if(!existing.ok){notify('无法核验已有记录，未再次写入');return;}
+   if(existing.exists){recordButton.disabled=true;recordButton.textContent='今天这段重逢已记录';return;}
+   recordButton.disabled=true;
+   var summary=('确认与'+fresh.value.name+'在「'+chosen.title+'」再次相遇')
+     .replace(/[\u0000-\u001f\u007f]/g,' ').slice(0,250);
+   var result;
+   try{
+     result=await events.append({
+       roleId:roleId,type:'encounter.reunion',
+       source:{appId:'encounter',recordId:recordId},
+       occurredAt:now.toISOString(),summary:summary,
+       provenance:'user-confirmed',allowAI:false
+     });
+   }catch(_error){result={ok:false};}
+   if(result&&result.ok){
+     recordButton.textContent='已记入角色足迹';
+     notify('重逢已记录，可在该角色足迹中查看');
+   }else{
+     var verified=alreadySaved();
+     if(verified.ok&&verified.exists){
+       recordButton.textContent='今天这段重逢已记录';
+       notify('已找到刚才保存的重逢记录');
+     }else{
+       recordButton.disabled=false;
+       notify('记录未确认成功，原角色与足迹均未修改');
+     }
+   }
  });
  var chat=sheet.querySelector('[data-reunion-chat]');
  if(chat)chat.addEventListener('click',function(){
@@ -532,6 +615,17 @@ function openSaved(){
 document.getElementById('moreButton').addEventListener('click',openSettings);
 document.getElementById('savedButton').addEventListener('click',openSaved);
 drawNew();
+ // The profile can deep-link back to a recognized formal role, without
+ // creating a candidate, switching current character, or mutating history.
+ var requestedRole=new URLSearchParams(window.location.search).get('reunionRole');
+ if(requestedRole){
+   var knownRoles=engine.getEncounteredRoles();
+   if(knownRoles.ok&&knownRoles.value.some(function(r){return String(r.id)===requestedRole;})){
+     openReunion(requestedRole,new URLSearchParams(window.location.search).get('scene')||'');
+   }else{
+     notify('这位角色当前没有可查看的邂逅来源。');
+   }
+ }
 })();
 </script>
 <script src="../shared/js/statusbar-control.js"></script>
