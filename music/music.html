@@ -2471,6 +2471,7 @@
       return;
     }
     var localMeta = readLocalTracksMeta(), lastImported = null;
+    var pendingDurationProbes = [];
     var protectedFileNoticeShown = false;
     try {
       if (localStorage.getItem(LOCAL_TRACKS_KEY) !== catalogAtStart) {
@@ -2539,9 +2540,15 @@
         catalogAtStart = JSON.stringify(localMeta);
         tracks.push(track);
         lastImported = track;
-        musicScheduleLocalDuration(track, audioBlob);
+        // Duration probes save metadata asynchronously. Defer them until this
+        // batch finishes, so our own duration update is not mistaken for a
+        // conflicting write from another tab during the next file import.
+        pendingDurationProbes.push({ track: track, blob: audioBlob });
       } catch (err) { toast('音频未导入：' + err.message); }
     }
+    pendingDurationProbes.forEach(function(entry) {
+      musicScheduleLocalDuration(entry.track, entry.blob);
+    });
     renderAlbum();
     renderRecent();
     renderSearch(tracks);
