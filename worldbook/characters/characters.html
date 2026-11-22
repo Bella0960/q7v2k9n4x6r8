@@ -918,6 +918,27 @@
                 overflow-wrap: anywhere;
             }
         }
+
+        /* P0-BATCH1: each role occupies the entire list width, no crowding
+           when the library contains many roles; scrollbars stay invisible. */
+        #listView { min-width:0; min-height:0; }
+        #listView .role-list {
+            box-sizing:border-box;
+            width:100%; min-width:0; max-width:100%; min-height:0;
+            flex:1 1 auto; align-items:stretch;
+            overflow-x:hidden; overflow-y:auto !important;
+            overscroll-behavior-y:contain;
+            scrollbar-width:none; -ms-overflow-style:none;
+            -webkit-overflow-scrolling:touch;
+        }
+        #listView .role-list::-webkit-scrollbar { display:none; width:0; height:0; }
+        #listView .role-slim-bar {
+            box-sizing:border-box; width:100%; min-width:0; max-width:100%;
+            flex:0 0 auto; align-self:stretch;
+        }
+        #listView .role-slim-bar .slim-meta { min-width:0; }
+
+
     </style>
 <link rel="stylesheet" href="../../shared/css/mobile-fit.css">
 </head>
@@ -1197,7 +1218,7 @@
                 <!-- 6. 导入角色 JSON -->
                 <div class="editor-field-group">
                     <label class="field-label" style="color: #8E8E93;">导入角色</label>
-                    <button type="button" id="btnImportRole" class="import-json-btn">导入 MAOMAO JSON / TXT</button>
+                    <button type="button" id="btnImportRole" class="import-json-btn">导入已签名 MAOMAO JSON / TXT</button>
                     <button type="button" id="btnExportRole" class="import-json-btn">导出当前角色 JSON</button>
                     <button type="button" id="btnExpandEncounterPersona" class="import-json-btn hidden">AI 完善人设 · 使用 API</button>
                     <input type="file" id="roleImportFile" accept=".json,.txt,application/json,text/plain" class="hidden">
@@ -1249,7 +1270,8 @@
     <script src="../../shared/js/phone/phone_api.js?v=20261115a"></script>
     <script src="../../encounter/encounter-engine.js?v=20261115v1"></script>
     <script src="../../shared/js/phone/role-worldbook-bindings.js?v=20261119-qa1"></script>
-    <script src="js/characters-manager.js?v=20261121avatar1"></script>
+    <script src="../../shared/js/phone/character-card-client.js?v=20261122-signed-v2"></script>
+    <script src="js/characters-manager.js?v=20261122-signed-v2"></script>
     <script src="../../shared/js/nav.js"></script>
 <script src="../../shared/js/statusbar-control.js"></script>
 </body>
