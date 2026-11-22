@@ -106,29 +106,53 @@
             target.scrollIntoView({ behavior:'smooth', block:'center' });
         }
     }
+    function npcNameKey(name) {
+        return safe(name,120).toLowerCase().replace(/\s+/g,'');
+    }
     function applyRelationships(data, roleId) {
         var list = Array.isArray(data.people) ? data.people.slice(0,2).map(normalizeNpc) : [];
         if (!list.length) throw new Error('没有生成人物');
-        if (!global.confirm('已生成 ' + list.length + ' 位关系人物草稿。确认后将添加到当前主角色的关系网络，是否保存？')) {
+        var current = selectedRole();
+        if (!current || String(current.id) !== String(roleId)) throw new Error('主角色已变化，本次结果不保存');
+        var seen = new Set((Array.isArray(current.npcCharacters) ? current.npcCharacters : [])
+            .map(function (npc) { return npcNameKey(npc.name); }));
+        seen.add(npcNameKey(current.name)); // Do not add the main role as its own NPC.
+        var fresh = list.filter(function (npc) {
+            var key = npcNameKey(npc.name);
+            if (!key || seen.has(key)) return false;
+            seen.add(key);
+            return true;
+        });
+        if (!fresh.length) {
+            status('relationships', '生成的人物已在当前关系网络中，未重复添加。');
+            return;
+        }
+        if (!global.confirm('已生成 ' + fresh.length + ' 位关系人物草稿。确认后将添加到当前主角色的关系网络，是否保存？')) {
             status('relationships', '已取消保存，本次生成仍可能产生 API 费用。');
             return;
         }
-        var current = selectedRole();
+        current = selectedRole();
         if (!current || String(current.id) !== String(roleId)) throw new Error('主角色已变化，本次结果不保存');
         if (typeof saveActiveRoleMutation !== 'function') throw new Error('角色保存接口不可用');
-        var now = Date.now();
+        var now = Date.now(), inserted = 0;
         var ok = saveActiveRoleMutation(function (role) {
             if (!Array.isArray(role.npcCharacters)) role.npcCharacters = [];
-            list.forEach(function (npc, index) {
+            var existing = new Set(role.npcCharacters.map(function (npc) { return npcNameKey(npc.name); }));
+            existing.add(npcNameKey(role.name));
+            fresh.forEach(function (npc, index) {
+                var key = npcNameKey(npc.name);
+                if (!key || existing.has(key)) return;
+                existing.add(key);
                 npc.id = 'npc_ai_' + now + '_' + index + '_' + Math.random().toString(36).slice(2,7);
                 npc.createdAt = now;
                 npc.updatedAt = now;
                 role.npcCharacters.unshift(npc);
+                inserted++;
             });
         });
         if (!ok) throw new Error('保存失败，请检查本机存储空间');
         if (typeof renderRelationshipView === 'function') renderRelationshipView();
-        status('relationships', '已添加 ' + list.length + ' 位人物。');
+        status('relationships', inserted ? '已添加 ' + inserted + ' 位人物。' : '人物已存在，未重复添加。');
     }
     // Future character-world tools register {prompt, apply(data, helpers), statusId?, parse?}.
     // Connect a new button with CharacterWorldAI.generate('new-kind', button).
