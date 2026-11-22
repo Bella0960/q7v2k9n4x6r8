@@ -39,7 +39,8 @@ function createFixture() {
     storage:disk, locks:null, scopeResolver:()=>({ok:true,value:{id:account}}),
     readRoles:()=>roles, now:()=>Date.parse('2026-11-21T12:00:00Z')
   });
-  const memory = root.RoleEventMemory.create({events:ledger,storage:disk,locks:null});
+  const memoryFactory = root.RoleEventMemory.create;
+  const memory = memoryFactory({events:ledger,storage:disk,locks:null});
   root.WorldEvents = ledger;
   root.RoleEventMemory = memory;
   const event = (options={})=>({
@@ -49,7 +50,7 @@ function createFixture() {
     summary:'通过邂逅正式认识了林某',
     provenance:'user-confirmed',allowAI:false,...options
   });
-  return { disk, roles, role, root, ledger, memory, event,
+  return { disk, roles, role, root, ledger, memory, memoryFactory, event,
     setAccount:id=>{account=id} };
 }
 function editorSnippet(startMark, endMark) {
@@ -131,7 +132,7 @@ test('explicit opt-in allows exactly one event scan per context construction',as
   assert.equal(f.memory.buildPrompt(f.role.id).value,'');
   let scans=0;
   const counted={...f.ledger,listForRole(...args){scans++;return f.ledger.listForRole(...args)}};
-  const delegated=f.root.RoleEventMemory.create({events:counted,storage:f.disk,locks:null});
+  const delegated=f.memoryFactory({events:counted,storage:f.disk,locks:null});
   const start=performance.now();
   assert.equal((await delegated.setConsent(f.role.id,true)).ok,true);
   assert.equal(scans,0,'consent checks must not scan every event');
