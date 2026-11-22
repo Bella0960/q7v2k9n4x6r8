@@ -49,7 +49,9 @@
 
   function createStore(options) {
     options = options || {};
-    var storage = options.storage || root.localStorage;
+    var storage;
+    try { storage = options.storage || root.localStorage; }
+    catch (_error) { storage = null; }
     var scopeResolver = options.scopeResolver || resolveAccount;
     var locks = own(options, 'locks') ? options.locks : (root.navigator && root.navigator.locks);
     var clock = options.now || Date.now;
@@ -248,7 +250,7 @@
 
     return Object.freeze({
       version: VERSION, append: append, listForRole: listForRole, subscribe: subscribe,
-      getRole: findRole, account: accountResult
+      account: accountResult
     });
   }
 
@@ -259,7 +261,6 @@
     append: worldEvents.append,
     listForRole: worldEvents.listForRole,
     subscribe: worldEvents.subscribe,
-    getRole: worldEvents.getRole,
     account: worldEvents.account,
     createStore: createStore
   });
