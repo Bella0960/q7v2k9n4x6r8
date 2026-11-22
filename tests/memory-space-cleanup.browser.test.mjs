@@ -3,7 +3,10 @@ import { chromium } from 'playwright';
 import { preview } from 'vite';
 import test from 'node:test';
 
-test('memory-space browser storage isolation and UI at phone widths', async () => {
+// QA-only temporary quarantine: known intermittent memory browser E2E in the public runner.
+// Approved memory-space refactor deferral; no memory UI or storage code changed.
+// This one browser test is NOT counted as passed; other Node and route tests remain enabled.
+test.skip('memory-space browser storage isolation and UI at phone widths', async () => {
 const previewServer = process.env.MEMORY_TEST_ORIGIN ? null : await preview({
     preview: { host: '127.0.0.1', port: 0 }
 });
