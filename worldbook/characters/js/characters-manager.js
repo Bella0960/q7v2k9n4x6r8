@@ -861,7 +861,14 @@ function renderRoleProfile() {
                 '</button>' +
             '</div>' +
         '</section>' +
-        '<section class="avatar-library-section" aria-labelledby="avatarLibraryTitle">' +
+        '<div class="profile-section-kicker">CHARACTER SETTINGS / 角色设定</div>' +
+        '<div class="profile-branch-list">' +
+            '<button class="profile-branch" type="button" data-profile-action="basic"><span class="profile-branch-index">01</span><span class="profile-branch-copy"><span class="profile-branch-title">基本资料与人设</span><span class="profile-branch-desc">身份、性格、成长背景与人物设定</span></span><span class="profile-branch-arrow">›</span></button>' +
+            '<button class="profile-branch" type="button" data-profile-action="tone"><span class="profile-branch-index">02</span><span class="profile-branch-copy"><span class="profile-branch-title">说话与行为习惯</span><span class="profile-branch-desc">聊天语气、表达习惯、口头禅与行为特点</span></span><span class="profile-branch-arrow">›</span></button>' +
+        '</div>' +
+        '<details class="avatar-library-section" aria-labelledby="avatarLibraryTitle">' +
+            '<summary class="avatar-library-trigger">头像收藏 <span>展开管理</span></summary>' +
+            '<div class="avatar-library-inner">' +
             '<div class="avatar-library-heading"><div><div class="avatar-library-kicker">PORTRAIT ARCHIVE / PRIVATE COLLECTION</div><h3 id="avatarLibraryTitle">头像收藏</h3><p>每个角色独立保存，互不混用。</p></div>' +
             '<button class="avatar-library-add" type="button" data-profile-action="avatar-add"><span aria-hidden="true">＋</span> 添加头像</button></div>' +
             '<div class="avatar-library-autonomy"><div class="avatar-library-autonomy-copy"><strong>自主更换头像</strong><span>允许 TA 从自己的头像收藏中挑选；不会影响你的头像。</span></div>' +
@@ -876,12 +883,7 @@ function renderRoleProfile() {
                 '</div>' +
             '</details>' +
             '<div class="avatar-library-grid" id="avatarLibraryGrid"><div class="avatar-library-empty">正在载入头像…</div></div>' +
-        '</section>' +
-        '<div class="profile-section-kicker">CHARACTER SETTINGS / 角色设定</div>' +
-        '<div class="profile-branch-list">' +
-            '<button class="profile-branch" type="button" data-profile-action="basic"><span class="profile-branch-index">01</span><span class="profile-branch-copy"><span class="profile-branch-title">基本资料与人设</span><span class="profile-branch-desc">身份、性格、成长背景与人物设定</span></span><span class="profile-branch-arrow">›</span></button>' +
-            '<button class="profile-branch" type="button" data-profile-action="tone"><span class="profile-branch-index">02</span><span class="profile-branch-copy"><span class="profile-branch-title">说话与行为习惯</span><span class="profile-branch-desc">聊天语气、表达习惯、口头禅与行为特点</span></span><span class="profile-branch-arrow">›</span></button>' +
-        '</div>' +
+        '</div></details>' +
         '<div class="profile-section-kicker">SOCIAL WORLD / 生活与关系</div>' +
         '<div class="profile-branch-list">' +
             '<button class="profile-branch" type="button" data-profile-action="relationships"><span class="profile-branch-index">03</span><span class="profile-branch-copy"><span class="profile-branch-title">人物关系网络</span><span class="profile-branch-desc">家人、朋友、同事，以及每个人自己的档案 · ' + count + ' 人</span></span><span class="profile-branch-arrow">›</span></button>' +

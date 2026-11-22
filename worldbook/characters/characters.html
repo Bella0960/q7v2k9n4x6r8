@@ -1058,6 +1058,21 @@
             #listView .role-slim-bar .slim-avatar { height:146px;min-height:146px;width:100%; }
         }
 
+    /* Folded, neutral avatar archive after editable profile settings. */
+        .avatar-library-section { margin:18px 0 0; padding:0; border:1px solid #E5E5E2; border-radius:12px; background:#FAFAF9; }
+        .avatar-library-trigger { display:flex; align-items:center;justify-content:space-between;gap:12px; padding:17px 16px; list-style:none;cursor:pointer;color:#222;font-size:14px; }
+        .avatar-library-trigger::-webkit-details-marker { display:none; }
+        .avatar-library-trigger span { color:#888;font-size:10px;font-weight:400; }
+        .avatar-library-section[open] .avatar-library-trigger { border-bottom:1px solid #E8E8E5; }
+        .avatar-library-section[open] .avatar-library-trigger span { font-size:0; }
+        .avatar-library-section[open] .avatar-library-trigger span::after { content:'收起';font-size:10px; }
+        .avatar-library-inner { padding:16px; }
+        .avatar-library-heading { align-items:center;flex-wrap:wrap; }
+        .avatar-library-heading h3 { font-size:19px; }
+        .avatar-library-heading p { margin-bottom:3px; }
+        .avatar-library-add { border-radius:7px;background:transparent; }
+        .avatar-pair-heading { margin-top:12px; }
+
     </style>
 <link rel="stylesheet" href="../../shared/css/mobile-fit.css">
 </head>
@@ -1390,7 +1405,7 @@
     <script src="../../encounter/encounter-engine.js?v=20261115v1"></script>
     <script src="../../shared/js/phone/role-worldbook-bindings.js?v=20261119-qa1"></script>
     <script src="../../shared/js/phone/character-card-client.js?v=20261122-neutral-v1"></script>
-    <script src="js/characters-manager.js?v=20261122-neutral-v1"></script>
+    <script src="js/characters-manager.js?v=20261122-avatar-archive-v120"></script>
     <script src="../../shared/js/nav.js"></script>
 <script src="../../shared/js/statusbar-control.js"></script>
 </body>
