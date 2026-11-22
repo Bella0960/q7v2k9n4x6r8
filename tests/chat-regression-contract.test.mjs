@@ -1168,8 +1168,13 @@ test('footprint follows the local current date and keeps week, calendar and gene
   assert.match(footprint, /function renderWeekDays\(\)/);
   assert.match(footprint, /data-date/);
   assert.match(footprint, /currentDate = todayKey\(\)/);
-  assert.match(footprint, /loadFootprintData\(requestRoleId\)/);
-  assert.match(footprint, /localData\[requestDate\] = items/);
+  // Footprint now uses a strict validated JSON store with an async snapshot
+  // guard, rather than silently writing fake default schedules.
+  assert.match(footprint, /model\.context\(role, requestDate\)/);
+  assert.match(footprint, /model\.prompts\(role,requestDate\)/);
+  assert.match(footprint, /model\.writeDay\(localStorage,requestRoleId,requestDate,entries,originalFootprintRaw\)/);
+  assert.match(footprint, /String\(currentRoleId\)===requestRoleId && currentDate===requestDate/);
+  assert.doesNotMatch(footprint, /generateDefaultFootprint|const DATA =/);
   assert.match(footprint, /function findItem\(id\)/);
   assert.doesNotMatch(footprint, /currentDate = '2025-04-16'/);
   assert.doesNotMatch(footprint, /currentDate = '2025-04-' \+/);
