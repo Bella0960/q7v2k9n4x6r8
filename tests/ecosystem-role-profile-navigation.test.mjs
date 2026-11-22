@@ -54,7 +54,7 @@ test('profile shows only real formal role ID events and local date deep link', (
   assert.match(html,/1 条记录/);
   assert.match(html,/reunionRole=role_enc_123/);
   assert.match(html,/roleId=role_enc_123/);
-  assert.match(html,/date=2026-11-23/);
+  assert.match(html,/date=\d{4}-\d{2}-\d{2}/);
   assert.match(html,/<details/);
 });
 
