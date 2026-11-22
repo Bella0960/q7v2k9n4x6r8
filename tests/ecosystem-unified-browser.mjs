@@ -60,7 +60,7 @@ const server=http.createServer(async(req,res)=>{
 });
 await new Promise(resolve=>server.listen(0,'127.0.0.1',resolve));
 const base='http://127.0.0.1:'+server.address().port;
-const report={schemaVersion:1,branch:'integration/qa-eco-unified',
+const report={schemaVersion:1,branch:execFileSync('git',['rev-parse','--abbrev-ref','HEAD'],{cwd:root,encoding:'utf8'}).trim(),
   gitHead:execFileSync('git',['rev-parse','HEAD'],{cwd:root,encoding:'utf8'}).trim(),
   scope:'synthetic-browser-account-metadata (not real Worker login)',
   viewports:[],timings:{},errors:[],checked:{}};
