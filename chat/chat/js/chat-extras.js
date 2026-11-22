@@ -13,15 +13,25 @@
     if (!msg || typeof msg !== 'object') return false;
     if (!msg.time) msg.time = Date.now();
     if (!msg.role) msg.role = 'user';
-    // Build a fresh snapshot: a failed write must not mutate a shared history array.
+    // saveMessages requires the exact versioned array returned by loadMessages.
+    // A detached history.concat(...) loses that baseline and is always rejected.
     var saved = false;
+    var history = null;
+    var appended = false;
     try {
-      var history = loadMessages();
-      if (Array.isArray(history)) saved = saveMessages(history.concat([msg])) === true;
+      history = loadMessages();
+      if (Array.isArray(history)) {
+        if (typeof ensureMid === 'function') ensureMid(msg);
+        history.push(msg);
+        appended = true;
+        saved = saveMessages(history) === true;
+      }
     } catch (error) {
       saved = false;
     }
     if (!saved) {
+      // Roll back the in-memory snapshot; never display or AI-send an unsaved card.
+      if (appended && history[history.length - 1] === msg) history.pop();
       if (typeof showToast === 'function') showToast('聊天记录保存失败，消息未发送');
       return false;
     }
