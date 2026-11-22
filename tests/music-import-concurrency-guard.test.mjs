@@ -41,10 +41,11 @@ async function run(files, {
   readErrorAt = null,
   concurrentAt = 1,
   uuid = null,
+  simulateDurationWrites = false,
 } = {}) {
   let stored = initialRaw;
   let readCount = 0;
-  const events = { blobs: [], cleanup: [], played: [], notices: [], tracks: [] };
+  const events = { blobs: [], cleanup: [], played: [], notices: [], tracks: [], durationSnapshots: [] };
   const input = {
     files, value: 'selected', handler: null,
     addEventListener(event, cb) {
@@ -80,7 +81,18 @@ async function run(files, {
     toast: (message) => events.notices.push(String(message)),
     playTrack: async (id) => { events.played.push(id); return true; },
     crypto: uuid ? { randomUUID: uuid } : undefined,
-    musicScheduleLocalDuration() {},
+    musicScheduleLocalDuration(track) {
+      if (!simulateDurationWrites) return;
+      events.durationSnapshots.push(JSON.parse(stored).length);
+      Promise.resolve().then(() => {
+        const rows = JSON.parse(stored);
+        const row = rows.find(item => item.id === track.id);
+        if (!row) return;
+        row.durSec = 4;
+        row.dur = '00:04';
+        stored = JSON.stringify(rows);
+      });
+    },
     window: { alert() {} },
     Uint8Array,
     Blob,
@@ -187,4 +199,16 @@ test('a second-file conflict preserves the first imported track and other-tab ch
   assert.equal(catalog[0].id, r.tracks[0].id);
   assert.equal(catalog[1].id, 'other-tab');
   assert.deepEqual(r.played, [catalog[0].id]);
+});
+
+test('own async duration updates wait until both songs finish importing', async () => {
+  const r = await run([audioFile('one.wav'), audioFile('two.wav')], {
+    simulateDurationWrites: true,
+  });
+  const tracks = JSON.parse(r.stored);
+  assert.equal(tracks.length, 2, 'the second song must not be rolled back by the first duration update');
+  assert.equal(r.cleanup.length, 0);
+  assert.deepEqual(r.durationSnapshots, [2, 2],
+    'duration probes must only begin after the full import catalog was persisted');
+  assert.ok(tracks.every(item => item.durSec === 4));
 });
