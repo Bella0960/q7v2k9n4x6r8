@@ -2470,20 +2470,27 @@ test('chat detail: group interaction state and private-message entry require ver
 });
 
 
-test('chat extras: failed card persistence prevents misleading display and keeps prior history intact', () => {
+test('chat extras: plus-menu cards persist only with a versioned history snapshot', () => {
   const start = extras.indexOf('  function insertChatMessage(msg) {');
   const end = extras.indexOf('\n  // 隐藏指令', start);
   assert.ok(start >= 0 && end > start, 'extension message insertion helper must exist');
   const history = [{ mid: 'existing', text: '已保存的旧消息' }];
+  const trackedSnapshots = new WeakSet([history]);
   const attempts = [];
   const rendered = [];
   const toasts = [];
   let allowWrite = false;
+  let midSequence = 0;
   const sandbox = {
     loadMessages: () => history,
+    ensureMid: (message) => {
+      if (!message.mid) message.mid = 'test-mid-' + (++midSequence);
+      return message.mid;
+    },
     saveMessages: (messages) => {
-      attempts.push(messages);
-      return allowWrite;
+      attempts.push({ sameSnapshot: messages === history, copy: JSON.parse(JSON.stringify(messages)) });
+      // The real saveMessages rejects copied arrays which lost their version baseline.
+      return trackedSnapshots.has(messages) && allowWrite;
     },
     appendMessageToDOM: (message) => rendered.push(message),
     showToast: (message) => toasts.push(message),
@@ -2496,22 +2503,40 @@ test('chat extras: failed card persistence prevents misleading display and keeps
 
   const card = { role: 'user', type: 'location', location: { label: '公园' } };
   assert.equal(sandbox.insertExtensionMessage(card), false);
-  assert.equal(history.length, 1, 'failed save must not mutate existing history');
-  assert.equal(attempts[0].length, 2, 'attempt includes previous history and the new card');
+  assert.equal(history.length, 1, 'failed save must roll back the versioned snapshot');
+  assert.equal(attempts[0].sameSnapshot, true, 'save must receive the exact tracked array');
+  assert.equal(attempts[0].copy.length, 2, 'save attempt included the previous conversation');
   assert.equal(rendered.length, 0, 'failed card must not be displayed as delivered');
   assert.match(toasts[0], /保存失败.*未发送/);
   assert.equal(sandbox.chatMessages.scrollTop, 0);
 
   allowWrite = true;
   assert.equal(sandbox.insertExtensionMessage(card), true);
-  assert.equal(rendered.length, 1, 'successful save displays exactly one card');
-  assert.equal(attempts[1].length, 2);
+  assert.equal(history.length, 2, 'a successful card is committed once');
+  assert.equal(rendered.length, 1, 'a successful save displays exactly one card');
+  assert.equal(attempts[1].sameSnapshot, true);
+  assert.equal(attempts[1].copy[1].mid, card.mid, 'the stable bubble ID is stored before DOM rendering');
   assert.equal(sandbox.chatMessages.scrollTop, 120);
 
+  // Even a throwing store must not create phantom gift/voice/location cards.
   sandbox.saveMessages = () => { throw new Error('storage blocked'); };
   assert.equal(sandbox.insertExtensionMessage({ role: 'user', type: 'gift' }), false);
-  assert.equal(rendered.length, 1, 'thrown write errors must not render a phantom card');
-  assert.equal(history.length, 1);
+  assert.equal(rendered.length, 1, 'thrown write errors must not render an extra card');
+  assert.equal(history.length, 2, 'thrown writes must restore the previous in-memory history');
+
+  // Stale-tab optimistic concurrency rejection must also roll back its message.
+  sandbox.saveMessages = () => false;
+  assert.equal(sandbox.insertExtensionMessage({ role: 'user', type: 'voice' }), false);
+  assert.equal(history.length, 2);
+  assert.equal(rendered.length, 1);
+});
+
+test('chat plus-menu script is refreshed in the page and PWA together', () => {
+  const loaded = detail.match(/js\/chat-extras\.js\?t=([\w-]+)/)?.[1];
+  const cached = serviceWorker.match(/chat\/chat\/js\/chat-extras\.js\?t=([\w-]+)/)?.[1];
+  assert.equal(loaded, '20261122cards1', 'chat details must load the repaired helper');
+  assert.equal(cached, loaded, 'PWA must precache exactly the script loaded by the page');
+  assert.ok(pwaCacheVersion >= 293, 'the old cached helper must be invalidated');
 });
 
 test('chat extras: every extension card send gates AI dispatch on successful persistence', () => {
