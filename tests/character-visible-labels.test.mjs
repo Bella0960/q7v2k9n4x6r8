@@ -33,11 +33,11 @@ test('signed imports still reject external cards, but all exposed errors use neu
 });
 
 test('PWA refreshes the edited resources and notification headings use neutral names', () => {
-  assert.match(sw, /const CACHE_NAME = 'phone-app-pwa-v287'/);
+  assert.match(sw, /const CACHE_NAME = 'phone-app-pwa-v288'/);
   assert.ok(html.includes('character-card-client.js?v=20261122-neutral-v1'));
   assert.ok(sw.includes('character-card-client.js?v=20261122-neutral-v1'));
-  assert.ok(html.includes('characters-manager.js?v=20261122-avatar-archive-v120'));
-  assert.ok(sw.includes('characters-manager.js?v=20261122-avatar-archive-v120'));
+  assert.ok(html.includes('characters-manager.js?v=20261122-inline-v2'));
+  assert.ok(sw.includes('characters-manager.js?v=20261122-inline-v2'));
   assert.match(sw, /showNotification\('远程连接提醒'/);
   assert.match(sw, /showNotification\('云端推送测试'/);
   assert.match(sw, /payload\.title \|\| '新消息'/);

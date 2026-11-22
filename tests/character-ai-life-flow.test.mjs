@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import vm from 'node:vm';
 const source=readFileSync(new URL('../worldbook/characters/js/character-ai-drafts.js',import.meta.url),'utf8');
+const parserSource=readFileSync(new URL('../worldbook/characters/js/character-ai-json.js',import.meta.url),'utf8');
 const page=readFileSync(new URL('../worldbook/characters/characters.html',import.meta.url),'utf8');
 test('life AI click makes one model request and visibly fills every event field',async()=>{
   const ids=['btnAiLife','btnAiNpc','btnAiRelationships','lifeAiStatus','lifeEventTitle','lifeEventDate','lifeEventPeople','lifeEventStatus','lifeEventDetail'];
@@ -16,6 +17,7 @@ test('life AI click makes one model request and visibly fills every event field'
   const ctx=vm.createContext({window:win,document:{getElementById:id=>nodes[id]||null},
     getActiveProfileRole:()=>({id:'role-A',name:'测试角色',npcCharacters:[],lifeEvents:[]}),
     saveActiveRoleMutation:()=>{writes++;return true;},loadWorldBooks:()=>[]});
+  vm.runInContext(parserSource,ctx);
   vm.runInContext(source,ctx);
   assert.equal(typeof nodes.btnAiLife.click,'function');
   nodes.btnAiLife.click();for(let i=0;i<12;i++)await Promise.resolve();

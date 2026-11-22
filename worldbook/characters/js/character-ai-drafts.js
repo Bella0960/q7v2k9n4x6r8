@@ -116,24 +116,27 @@
     }
     var SPEC = {
         npc: '只输出 JSON 对象，字段 name,relation,category(family/friend/work/other),awareness(known/heard/unknown),profession,personality,background,relationNotes,connections,speechStyle,currentStatus。为当前主角色创造一名符合既有人设的独立人物，禁止替换主角色自身。',
-        relationships: '只输出 JSON 对象：{"people":[人物1,人物2,人物3]}。每个人包含 name,relation,category,awareness,profession,personality,background,relationNotes,connections,speechStyle,currentStatus。创造最多3位彼此不同、符合主角色既有人设的配角，不重复现有关系人物。',
+        relationships: '请仅输出一个合法 JSON 对象，格式示例：{"people":[{"name":"姓名","relation":"同事","category":"work","awareness":"heard","profession":"摄影师","personality":"温和","background":"背景","relationNotes":"相处方式","connections":"人物关系","speechStyle":"表达方式","currentStatus":"近期状态"}]}。people 数组请生成1至3位彼此不同、符合主角色人设的配角，不得重复既有人物；category 只能为 family、friend、work、other，awareness 只能为 known、heard、unknown。请用真实生成内容替换示例值，禁止解释和代码围栏。',
         life: '只输出 JSON 对象，字段 title,date(YYYY-MM-DD),people,status(planned/ongoing/done),detail。生成一条与主角色既有人设和生活连续性一致的生活事件；不要当成已实际发生的聊天事实。'
     };
     async function generate(kind, button) {
         if (busy) return;
-        var role = selectedRole();
+        var role = null;
+        try { role = selectedRole(); } catch (_) { role = null; }
         if (!role || !role.id) { status(kind,'请先打开一位主角色的档案。'); return; }
         var storedAt = 0;
         try { storedAt = Number(global.localStorage.getItem('character_ai_last_request_' + String(role.id))) || 0; } catch (error) {}
         var elapsed = Date.now() - Math.max(lastRequestAt, storedAt);
-        if (lastRequestAt && elapsed < COOLDOWN_MS) {
+        if (Math.max(lastRequestAt,storedAt) && elapsed < COOLDOWN_MS) {
             status(kind, '为避免重复消耗 API，请在 ' + Math.ceil((COOLDOWN_MS-elapsed)/1000) + ' 秒后再试。');
             return;
         }
         if (!global.PhoneAPI || typeof global.PhoneAPI.completeJSON !== 'function') {
-            status(kind, 'API 请求模块未加载。'); return;
+            status(kind, '生成服务暂时不可用，请重新打开此页面后再试。'); return;
         }
-        var conf = global.PhoneStorage && global.PhoneStorage.getApiConfig ? global.PhoneStorage.getApiConfig() : {};
+        var conf = {};
+        try { conf = global.PhoneStorage && global.PhoneStorage.getApiConfig ? global.PhoneStorage.getApiConfig() : {}; }
+        catch (_) { status(kind,'暂时无法读取 API 设置，请到设置中检查配置。'); return; }
         if (!conf || !String(conf.apiKey || '').trim()) { status(kind,'请先在设置中配置 API。'); return; }
         var existingLifeDraft = kind === 'life' && ['lifeEventTitle','lifeEventPeople','lifeEventDate','lifeEventDetail'].some(function (id) {
             var input = element(id); return input && String(input.value || '').trim();
@@ -151,19 +154,29 @@
         var roleId = String(role.id);
         try {
             var response = await global.PhoneAPI.completeJSON({
-                system:'你是虚构角色档案编辑器。严格依据用户提供的主角色设定与已知人物，保持身份及关系一致。只返回有效 JSON，不要 Markdown、表情符号、说明文字；不要编造真实世界事实。' + SPEC[kind],
+                system:'你是虚构角色档案编辑器。严格依据用户提供的主角色设定与已知人物，保持身份及关系一致。只返回一个严格合法的 JSON 对象，不要代码围栏、Markdown、前后说明或尾逗号；全部键名和字符串必须用双引号，禁止省略字段值；不要编造真实世界事实。' + SPEC[kind],
                 user:JSON.stringify({ role:context(role), existingForm:kind === 'npc' ? currentNpcDraft() : null }),
-                temperature:0.7,
+                temperature:0.25,
                 timeoutMs:30000
             });
-            if (!response || !response.ok || !response.data) throw new Error('模型未返回可解析的 JSON，请手动重试');
+            var decoded = global.CharacterAiJSON && global.CharacterAiJSON.fromCompletion(response,kind);
+            if (!decoded || !decoded.ok || !decoded.data) throw new Error('character-ai-format');
             var active = selectedRole();
             if (!active || String(active.id) !== roleId) throw new Error('主角色已切换，结果未写入');
-            if (kind === 'npc') applyNpc(normalizeNpc(response.data));
-            if (kind === 'life') applyLife(response.data);
-            if (kind === 'relationships') applyRelationships(response.data,roleId);
+            if (kind === 'npc') applyNpc(normalizeNpc(decoded.data));
+            if (kind === 'life') applyLife(decoded.data);
+            if (kind === 'relationships') applyRelationships(decoded.data,roleId);
         } catch (error) {
-            status(kind,'生成失败：' + safe(error && error.message || '未知错误',160) + '。请勿连续重试。');
+            var message = String(error && error.message || '');
+            if (message === 'character-ai-format' || message === '没有生成人物' || message === '缺少生活事件名称') {
+                status(kind,'这次生成的内容不完整，没有写入资料。可以稍后再试一次，本次请求可能已产生费用。');
+            } else if (message.indexOf('主角色已切换') >= 0) {
+                status(kind,'已切换到其他角色，这次内容没有保存。');
+            } else if (message.indexOf('保存失败') >= 0) {
+                status(kind,'本机暂时无法保存人物，请检查存储空间。');
+            } else {
+                status(kind,'暂时没能完成生成，请检查网络或 API 设置后再试。本次请求可能已产生费用。');
+            }
         } finally { busy = false; button.disabled = false; button.textContent = originalLabel; }
     }
     [['btnAiNpc','npc'],['btnAiRelationships','relationships'],['btnAiLife','life']].forEach(function (entry) {
