@@ -1,7 +1,7 @@
 /* 小手机 PWA Service Worker
  * 页面与静态资源均采用缓存优先+后台更新，断网/慢网时秒开。
  */
-const CACHE_NAME = 'phone-app-pwa-v289';
+const CACHE_NAME = 'phone-app-pwa-v290';
 const FONT_ASSET_CACHE = 'maomao-font-assets-v1';
 function cacheablePublicResponse(response) {
   return !!(response && response.ok && !response.redirected &&
@@ -165,7 +165,7 @@ const APP_SHELL = [
   './shared/js/group-settings-home.js?v=20261121group1',
   './shared/css/group-settings-home.css?v=20261121group1',
   './shared/js/phone/group_memory_view.js?v=20261121memory1',
-  './shared/js/phone/chat-followup-policy.js?v=20261119scheduled1',
+  './shared/js/phone/chat-followup-policy.js?v=20261122stop1',
   'shared/js/phone/phone_stream.js',
   'shared/js/phone/phone_api_monitor.js',
   'shared/css/phone-api-monitor.css',
