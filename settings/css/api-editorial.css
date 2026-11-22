@@ -356,3 +356,16 @@
         animation: none !important; transition: none !important;
     }
 }
+
+/* The settings-home parent header rule is more specific; keep API typography scoped. */
+body.settings-home .phone-mockup > #api-panel.api-editorial-panel > .api-editorial-header {
+    min-height: 61px;
+    padding: max(12px, env(safe-area-inset-top, 0px)) 20px 10px;
+}
+body.settings-home .phone-mockup > #api-panel.api-editorial-panel > .api-editorial-header .header-title {
+    font-family: Georgia, "Songti SC", "Noto Serif CJK SC", serif;
+    font-size: 30px;
+    font-weight: 600;
+    line-height: 1.15;
+    letter-spacing: -.7px;
+}
