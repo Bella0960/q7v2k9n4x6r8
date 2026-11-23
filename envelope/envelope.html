@@ -924,6 +924,8 @@ button:focus-visible,input:focus-visible,textarea:focus-visible{outline:2px soli
   var editingIsSavedLetter = false;
   var selectedColor = '#292929';
   var draftImages = [];
+  var composeBaseline = null;
+  var imageAddBusy = false;
   var toastTimer = null;
   var COLOR_NAMES = {'#292929':'黑色','#E4C9CE':'粉色','#F0EADF':'米白色','#FFFFFF':'白色','#C9CAC7':'灰色','#E6D39B':'浅黄色'};
 
@@ -980,6 +982,15 @@ button:focus-visible,input:focus-visible,textarea:focus-visible{outline:2px soli
     };
     currentData.letters.sort(function(a,b){return (b.updatedAt || b.createdAt || 0)-(a.updatedAt || a.createdAt || 0);});
     currentData.drafts.sort(function(a,b){return (b.updatedAt || b.createdAt || 0)-(a.updatedAt || a.createdAt || 0);});
+  }
+  /* 写失败时把内存状态整体回滚：否则界面看起来已经改过、磁盘还是旧内容，
+     下一次成功保存又会把这些未落盘的改动一起写进去，出现「删了又回来」的错乱。 */
+  function mutateAndPersist(mutator){
+    var backup=JSON.stringify(currentData);
+    mutator();
+    if(persistData()) return true;
+    try{currentData=JSON.parse(backup);}catch(e){}
+    return false;
   }
   function persistData(){
     if(!currentContactId || !Storage){toast('请先选择一位角色');return false;}
@@ -1102,7 +1113,42 @@ button:focus-visible,input:focus-visible,textarea:focus-visible{outline:2px soli
     selectedColor=letter ? letterColor(letter) : (currentData.preferredEnvelopeColor || '#F0EADF');
     updatePalette();
     renderImagePreviews();
+    composeBaseline=composeSignature();
     setView('composeView');
+  }
+  function composeSignature(){
+    return JSON.stringify({
+      title:$('letterTitle').value,
+      sender:$('letterSender').value,
+      recipient:$('letterRecipient').value,
+      content:$('letterContent').value,
+      images:draftImages.length
+    });
+  }
+  function composeDirty(){return composeBaseline!==null && composeSignature()!==composeBaseline;}
+  /* 离开写信页不能默默把写了一半的信丢掉：
+     - 编辑已保存的信件：确认是否放弃修改（避免误覆盖正式信）
+     - 新建信件/草稿：自动存为草稿，回来还能继续写 */
+  function leaveCompose(){
+    if(!composeDirty()){composeBaseline=null;setView('homeView');return;}
+    if(editingIsSavedLetter){
+      if(!window.confirm('这次修改还没有保存，确定离开吗？')) return;
+      composeBaseline=null;editingIsSavedLetter=false;editingLetterId=null;editingDraftId=null;
+      setView('homeView');return;
+    }
+    var hasContent=$('letterTitle').value.trim()||$('letterContent').value.trim()||draftImages.length;
+    if(!hasContent){composeBaseline=null;setView('homeView');return;}
+    var item=collectComposeData();
+    if(editingDraftId) item.id=editingDraftId;
+    var saved=mutateAndPersist(function(){
+      var idx=currentData.drafts.findIndex(function(d){return d.id===item.id;});
+      if(idx>=0) currentData.drafts[idx]=item; else currentData.drafts.unshift(item);
+    });
+    if(!saved){toast('草稿没能保存，请勿关闭页面，先清理本机存储');return;}
+    editingDraftId=item.id;editingLetterId=null;
+    composeBaseline=null;
+    toast('已自动存为草稿');
+    setView('homeView');renderLetters();
   }
   function updatePalette(){
     $('colorPalette').querySelectorAll('.swatch').forEach(function(btn){
@@ -1171,17 +1217,21 @@ button:focus-visible,input:focus-visible,textarea:focus-visible{outline:2px soli
     var item=collectComposeData();
     if(editingDraftId) item.id=editingDraftId;
     if(editingIsSavedLetter){
-      var existingIndex=currentData.letters.findIndex(function(l){return l.id===editingLetterId;});
-      if(existingIndex>=0) currentData.letters[existingIndex]=item;
-      if(!persistData()) return;
+      if(!mutateAndPersist(function(){
+        var existingIndex=currentData.letters.findIndex(function(l){return l.id===editingLetterId;});
+        if(existingIndex>=0) currentData.letters[existingIndex]=item;
+      })) return;
       toast('信件修改已保存');
       editingIsSavedLetter=false;editingLetterId=null;editingDraftId=null;
+      composeBaseline=null;
       setView('homeView');renderLetters();return;
     }
-    var idx=currentData.drafts.findIndex(function(d){return d.id===item.id;});
-    if(idx>=0) currentData.drafts[idx]=item; else currentData.drafts.unshift(item);
-    if(!persistData()) return;
+    if(!mutateAndPersist(function(){
+      var idx=currentData.drafts.findIndex(function(d){return d.id===item.id;});
+      if(idx>=0) currentData.drafts[idx]=item; else currentData.drafts.unshift(item);
+    })) return;
     editingDraftId=item.id;editingLetterId=null;
+    composeBaseline=null;
     toast('草稿已保存');
     setView('homeView');renderLetters();
   }
@@ -1190,10 +1240,13 @@ button:focus-visible,input:focus-visible,textarea:focus-visible{outline:2px soli
     if(!body && !draftImages.length){toast('先写一点内容，或添加一张图片');return;}
     var wasEditingSavedLetter=editingIsSavedLetter;
     var item=collectComposeData();
-    if(editingDraftId) removeDraftById(editingDraftId);
-    var idx=currentData.letters.findIndex(function(l){return l.id===item.id;});
-    if(idx>=0) currentData.letters[idx]=item; else currentData.letters.unshift(item);
-    if(!persistData()) return;
+    var draftId=editingDraftId;
+    if(!mutateAndPersist(function(){
+      if(draftId) removeDraftById(draftId);
+      var idx=currentData.letters.findIndex(function(l){return l.id===item.id;});
+      if(idx>=0) currentData.letters[idx]=item; else currentData.letters.unshift(item);
+    })) return;
+    composeBaseline=null;
     editingLetterId=item.id;editingDraftId=null;editingIsSavedLetter=false;
     toast(wasEditingSavedLetter?'信件修改已保存':'信件已放进寄件箱');
     currentFilter=item.direction==='received'?'received':'sent';
@@ -1263,8 +1316,11 @@ button:focus-visible,input:focus-visible,textarea:focus-visible{outline:2px soli
     if(!pending.length){apply();return;}
     Promise.all(pending.map(function(img){
       return new Promise(function(resolve){
-        img.addEventListener('load',resolve,{once:true});
-        img.addEventListener('error',resolve,{once:true});
+        var done=false;
+        var finish=function(){if(done)return;done=true;resolve();};
+        img.addEventListener('load',finish,{once:true});
+        img.addEventListener('error',finish,{once:true});
+        setTimeout(finish,4000);       /* 图片一直不触发 load/error 时不要让排版卡住 */
       });
     })).then(apply);
   }
@@ -1281,6 +1337,7 @@ button:focus-visible,input:focus-visible,textarea:focus-visible{outline:2px soli
   function openLetter(id){
     var letter=currentData.letters.find(function(l){return l.id===id;});
     if(!letter) return;
+    cancelPaperAnimation();          /* 上一封信的展开/折叠必须立刻停手 */
     activeLetterId=id;
     var main=$('detailMain');
     $('detailView').classList.remove('paper-opened');
@@ -1326,10 +1383,11 @@ button:focus-visible,input:focus-visible,textarea:focus-visible{outline:2px soli
     requestPaperFit();
   }
   function wait(ms){return new Promise(function(resolve){setTimeout(resolve,ms);});}
-  function animatePaperTransform(element,startAngle,endAngle,duration,onUpdate){
+  function animatePaperTransform(element,startAngle,endAngle,duration,onUpdate,token){
     return new Promise(function(resolve){
       var startTime=performance.now();
       function step(now){
+        if(token!==undefined && token!==paperAnimToken){resolve();return;}
         var progress=Math.min((now-startTime)/duration,1);
         var eased=1-Math.pow(1-progress,4);
         var angle=startAngle+(endAngle-startAngle)*eased;
@@ -1342,26 +1400,37 @@ button:focus-visible,input:focus-visible,textarea:focus-visible{outline:2px soli
     });
   }
   var paperAnimationBusy=false;
-  async function unfoldPaper(){
+  /* 多阶段动画需要一个可取消的令牌：否则中途返回首页 / 换一封信时，
+     旧动画会继续把新的信纸面板写到一半，出现「折不完也展不开」的卡死。
+     同时令牌能让 paperAnimationBusy 在中断后立刻释放，不必等完整条动画链。 */
+  var paperAnimToken=0;
+  function cancelPaperAnimation(){
+    paperAnimToken++;
+    paperAnimationBusy=false;
+  }
+  async function unfoldPaper(token){
     // 先展开上折页，再展开下折页，让信纸像真实三折信笺一样逐层打开
     $('letterStage').classList.add('unfolded');
     $('letterShadow').style.transform='scale(1.15) translateY(35px)';
     $('letterShadow').style.opacity='.7';
     await animatePaperTransform($('panelTop'),-180,0,780,function(angle){
       $('shadeTop').style.opacity=Math.sin(Math.abs(angle)*Math.PI/180)*.48;
-    });
+    },token);
+    if(token!==paperAnimToken) return;
     await animatePaperTransform($('panelBottom'),180,0,780,function(angle){
       $('shadeBottom').style.opacity=Math.sin(angle*Math.PI/180)*.48;
-    });
+    },token);
   }
-  async function foldPaper(){
+  async function foldPaper(token){
     // 折回时反向执行：先收下折页，再收上折页
     await animatePaperTransform($('panelBottom'),0,180,680,function(angle){
       $('shadeBottom').style.opacity=Math.sin(angle*Math.PI/180)*.48;
-    });
+    },token);
+    if(token!==paperAnimToken) return;
     await animatePaperTransform($('panelTop'),0,-180,680,function(angle){
       $('shadeTop').style.opacity=Math.sin(Math.abs(angle)*Math.PI/180)*.48;
-    });
+    },token);
+    if(token!==paperAnimToken) return;
     $('letterStage').classList.remove('unfolded');
     $('letterShadow').style.transform='scale(1) translateY(0px)';
     $('letterShadow').style.opacity='1';
@@ -1369,32 +1438,48 @@ button:focus-visible,input:focus-visible,textarea:focus-visible{outline:2px soli
   async function revealLetter(){
     if(paperAnimationBusy) return;
     paperAnimationBusy=true;
+    var token=paperAnimToken;
     var main=$('detailMain');
     var env=$('detailEnvelope');
     $('detailEnvelope').setAttribute('aria-disabled','true');
-    main.classList.add('envelope-open');
-    await wait(760);
+    try{
+      main.classList.add('envelope-open');
+      await wait(760);
+      if(token!==paperAnimToken) return;
 
-    main.classList.add('paper-rising');
-    await wait(520);
+      main.classList.add('paper-rising');
+      await wait(520);
+      if(token!==paperAnimToken) return;
 
-    main.classList.add('envelope-retiring');
-    await wait(430);
-    env.style.display='none';
+      main.classList.add('envelope-retiring');
+      await wait(430);
+      if(token!==paperAnimToken) return;
+      env.style.display='none';
 
-    main.classList.add('paper-opened');
-    $('detailView').classList.add('paper-opened');
-    await unfoldPaper();
-    $('detailEnvelope').setAttribute('aria-disabled','false');
-    paperAnimationBusy=false;
+      main.classList.add('paper-opened');
+      $('detailView').classList.add('paper-opened');
+      await unfoldPaper(token);
+    }finally{
+      /* 任何中断或异常都必须解锁，否则这封信就再也打不开了 */
+      if(token===paperAnimToken){
+        $('detailEnvelope').setAttribute('aria-disabled','false');
+        paperAnimationBusy=false;
+      }
+    }
   }
   async function closeEnvelope(){
     if(paperAnimationBusy || !$('detailMain').classList.contains('paper-opened')) return;
     paperAnimationBusy=true;
-    await foldPaper();
-    $('detailMain').classList.remove('paper-opened');
-    $('detailView').classList.remove('paper-opened');
-    paperAnimationBusy=false;
+    var token=paperAnimToken;
+    try{
+      await foldPaper(token);
+    }finally{
+      if(token===paperAnimToken){
+        $('detailMain').classList.remove('paper-opened');
+        $('detailView').classList.remove('paper-opened');
+        paperAnimationBusy=false;
+      }
+    }
   }
   function editActiveLetter(){
     var letter=currentData.letters.find(function(l){return l.id===activeLetterId;});
@@ -1493,8 +1578,11 @@ button:focus-visible,input:focus-visible,textarea:focus-visible{outline:2px soli
     var letter=currentData.letters.find(function(l){return l.id===activeLetterId;});
     if(!letter) return;
     if(!window.confirm('确定删除这封信吗？')) return;
-    currentData.letters=currentData.letters.filter(function(l){return l.id!==activeLetterId;});
-    if(persistData()){activeLetterId=null;setView('homeView');renderLetters();toast('信件已删除');}
+    var removedId=activeLetterId;
+    if(!mutateAndPersist(function(){
+      currentData.letters=currentData.letters.filter(function(l){return l.id!==removedId;});
+    })) return;
+    activeLetterId=null;setView('homeView');renderLetters();toast('信件已删除');
   }
   function updateFilterButtons(){
     document.querySelectorAll('[data-filter]').forEach(function(btn){
@@ -1538,18 +1626,21 @@ button:focus-visible,input:focus-visible,textarea:focus-visible{outline:2px soli
   function handleImageFiles(files){
     var chosen=Array.prototype.slice.call(files||[]).filter(function(f){return /^image\//.test(f.type);});
     if(!chosen.length) return;
+    if(imageAddBusy){toast('上一张图片还在处理，请稍等');return;}
     if(draftImages.length+chosen.length>2){toast('每封信最多添加 2 张图片');return;}
+    imageAddBusy=true;                 /* 压缩是异步的：不锁会在快速选两次后超过 2 张上限 */
     Promise.all(chosen.map(compressImage)).then(function(images){
       var total=draftImages.reduce(function(sum,s){return sum+s.length;},0)+images.reduce(function(sum,s){return sum+s.length;},0);
       if(total>1500000){toast('图片总量较大，请减少图片后再保存');return;}
       draftImages=draftImages.concat(images);renderImagePreviews();
-    }).catch(function(err){toast(err.message||'图片添加失败');});
+    }).catch(function(err){toast(err.message||'图片添加失败');}).then(function(){imageAddBusy=false;});
   }
 
   $('homeBack').addEventListener('click',function(){location.href='../index.html';});
-  $('composeBack').addEventListener('click',function(){setView('homeView');});
-  $('composeCancel').addEventListener('click',function(){setView('homeView');});
+  $('composeBack').addEventListener('click',leaveCompose);
+  $('composeCancel').addEventListener('click',leaveCompose);
   $('detailBack').addEventListener('click',function(){
+    cancelPaperAnimation();          /* 动画中途返回：立刻解锁，下次还能正常打开 */
     $('detailMain').classList.remove('paper-opened');
     $('detailView').classList.remove('paper-opened');
     setView('homeView');
@@ -1577,8 +1668,9 @@ button:focus-visible,input:focus-visible,textarea:focus-visible{outline:2px soli
     var btn=e.target.closest('[data-color]');
     if(!btn) return;
     selectedColor=btn.getAttribute('data-color');
+    var prevColor=currentData.preferredEnvelopeColor;
     currentData.preferredEnvelopeColor=selectedColor;
-    persistData();
+    if(!persistData()) currentData.preferredEnvelopeColor=prevColor;
     updatePalette();
   });
   $('letterRecipient').addEventListener('input',updateEnvelopePreview);
@@ -1600,10 +1692,12 @@ button:focus-visible,input:focus-visible,textarea:focus-visible{outline:2px soli
   $('letterStage').addEventListener('click',function(){
     if(paperAnimationBusy || !$('detailMain').classList.contains('paper-opened')) return;
     paperAnimationBusy=true;
+    var token=paperAnimToken;
+    var done=function(){if(token===paperAnimToken) paperAnimationBusy=false;};
     if($('letterStage').classList.contains('unfolded')){
-      foldPaper().finally(function(){paperAnimationBusy=false;});
+      foldPaper(token).then(done,done);
     }else{
-      unfoldPaper().finally(function(){paperAnimationBusy=false;});
+      unfoldPaper(token).then(done,done);
     }
   });
   $('replyButton').addEventListener('click',replyManually);
