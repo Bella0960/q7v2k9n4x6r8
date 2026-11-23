@@ -227,26 +227,140 @@
     $('mockNativeHeader').hidden=$('previewMode').value==='wechat';
     $('mockWechatHeader').hidden=$('previewMode').value!=='wechat';
   }
+  function roleNameById(id) {
+    try {
+      var roles=JSON.parse(localStorage.getItem('ai_custom_characters')||'[]');
+      if(!Array.isArray(roles))return null;
+      var hit=roles.find(function(r){return r&&String(r.id)===String(id);});
+      return hit?String(hit.name||'未命名角色'):null;
+    } catch(e){return null;}
+  }
+  // Bubble presets carry an allowlisted source scope; legacy presets without one
+  // are labelled generic and never silently bound to a role.
+  function scopeLabel(p) {
+    if(p.tab!=='bubble')return '';
+    if(p.scope==null)return '旧版通用方案';
+    if(p.scope==='global')return '全局';
+    return roleNameById(p.scope)||('角色 '+String(p.scope).slice(0,8));
+  }
+  function currentValues(group) {
+    return group==='bubble' ? cleanBubble(drafts.bubble) : api.clean(group,drafts[group]);
+  }
+  function persistPresets(next) {
+    next.updatedAt=Date.now();
+    if(!api.save(next)){toast('操作失败，请检查存储空间');return false;}
+    state=api.read();renderPresets();return true;
+  }
+  function presetId() {
+    return 'ts-' + Date.now().toString(36) + '-' + Math.random().toString(36).slice(2, 8);
+  }
+  // A bubble preset owned by another role (or a legacy generic one) must never be
+  // overwritten from this scope: update creates a new entry for the current scope
+  // instead, leaving the original id/values/scope untouched.
+  function isCrossScopeBubble(p) {
+    return p.tab === 'bubble' && (p.scope == null || p.scope !== scope);
+  }
+  function scopeName(value) {
+    if (value === 'global') return '全局';
+    return roleNameById(value) || '当前角色';
+  }
+  function applyPresetToDraft(p) {
+    if(p.tab==='bubble'){
+      if(isCrossScopeBubble(p)){
+        var from=p.scope==null?'旧版通用方案':scopeLabel(p);
+        var to=scopeName(scope);
+        if(!window.confirm('该方案来自「'+from+'」，载入到「'+to+'」草稿？仅作模板，不会自动应用。'))return;
+      }
+      drafts.bubble=cleanBubble(p.values);
+    } else {
+      drafts[p.tab]=api.clean(p.tab,p.values);
+    }
+    drawFields();drawPreview();renderImageSlots();toast('已载入草稿，点应用后生效');
+  }
+  function renamePreset(p) {
+    var input=window.prompt('重命名方案',p.name);
+    if(input==null)return;
+    var nextName=input.trim().slice(0,24);
+    if(!nextName){toast('方案名称不能为空');return;}
+    var next=api.read();
+    var target=next.presets.find(function(item){return item.id===p.id;});
+    if(!target){toast('方案不存在或已被删除');return;}
+    target.name=nextName;
+    if(!persistPresets(next))return;
+    toast('方案已重命名');
+  }
+  function updatePresetFromDraft(p) {
+    if (isCrossScopeBubble(p)) {
+      var from = p.scope == null ? '旧版通用方案' : scopeLabel(p);
+      var to = scopeName(scope);
+      var copy = window.confirm('该方案来自「' + from + '」，不能在「' + to + '」下直接覆盖原方案。\n点确定将当前草稿另存为「' + to + '」的新方案；点取消放弃，原方案保持不变。');
+      if (!copy) return;
+      var asked = window.prompt('另存为新方案的名字', p.name + '（' + to + '）');
+      if (asked == null) return;
+      var newName = asked.trim().slice(0, 24);
+      if (!newName) { toast('方案名称不能为空'); return; }
+      var next = api.read();
+      if (next.presets.length >= 20) { toast('最多保存 20 个方案'); return; }
+      var entry = { id: presetId(), name: newName, tab: p.tab,
+        values: currentValues(p.tab) };
+      if (p.tab === 'bubble') entry.scope = scope;
+      next.presets.push(entry);
+      if (!persistPresets(next)) return;
+      toast('已另存为「' + to + '」的新方案，原方案未改动');
+      return;
+    }
+    if(!window.confirm('用当前草稿更新方案「'+p.name+'」？'))return;
+    var next=api.read();
+    var target=next.presets.find(function(item){return item.id===p.id;});
+    if(!target){toast('方案不存在或已被删除');return;}
+    target.values=currentValues(target.tab);
+    if(target.tab==='bubble')target.scope=scope;
+    if(!persistPresets(next))return;
+    toast('方案已更新（未自动应用）');
+  }
+  function deletePreset(p) {
+    var label=scopeLabel(p);
+    var source=label?'（来源：'+label+'）':'';
+    if(!window.confirm('删除方案「'+p.name+'」'+source+'？此操作不可撤销。'))return;
+    var next=api.read();
+    next.presets=next.presets.filter(function(item){return item.id!==p.id;});
+    if(!persistPresets(next))return;
+    toast('方案已删除');
+  }
   function renderPresets() {
     var box=$('presetList');box.replaceChildren();
     var presets=state.presets.filter(function(p){return p.tab===tab;});
-    if(!presets.length){var p=document.createElement('p');p.textContent='还没有保存方案';box.appendChild(p);return;}
+    if(!presets.length){var empty=document.createElement('p');empty.textContent='还没有保存方案';box.appendChild(empty);return;}
     presets.forEach(function(p){
       var wrap=document.createElement('div');wrap.className='preset-entry';
-      var use=document.createElement('button');use.type='button';use.textContent=p.name;
-      use.addEventListener('click',function(){
-        drafts[tab]=tab==='bubble'?cleanBubble(p.values):api.clean(tab,p.values);
-        drawFields();drawPreview();renderImageSlots();toast('已载入草稿，点应用后生效');
+      var main=document.createElement('button');main.type='button';main.className='preset-use';
+      var name=document.createElement('span');name.className='preset-name';name.textContent=p.name;
+      main.appendChild(name);
+      var label=scopeLabel(p);
+      if(label){var tag=document.createElement('span');tag.className='preset-scope';tag.textContent=label;main.appendChild(tag);}
+      main.addEventListener('click',function(){applyPresetToDraft(p);});
+
+      var menuBtn=document.createElement('button');menuBtn.type='button';menuBtn.className='preset-menu-btn';
+      menuBtn.setAttribute('aria-label','管理方案「'+p.name+'」');
+      menuBtn.innerHTML='<svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><circle cx="12" cy="5" r="1.6"/><circle cx="12" cy="12" r="1.6"/><circle cx="12" cy="19" r="1.6"/></svg>';
+      var menu=document.createElement('div');menu.className='preset-menu';
+      var rename=document.createElement('button');rename.type='button';rename.textContent='重命名';
+      rename.addEventListener('click',function(){renamePreset(p);});
+      var update=document.createElement('button');update.type='button';
+      update.textContent=isCrossScopeBubble(p)?'另存为…':'更新草稿';
+      update.addEventListener('click',function(){updatePresetFromDraft(p);});
+      var remove=document.createElement('button');remove.type='button';remove.className='danger';remove.textContent='删除';
+      remove.addEventListener('click',function(){deletePreset(p);});
+      menu.appendChild(rename);menu.appendChild(update);menu.appendChild(remove);
+
+      menuBtn.addEventListener('click',function(){
+        var willOpen=!wrap.classList.contains('menu-open');
+        box.querySelectorAll('.preset-entry.menu-open').forEach(function(el){el.classList.remove('menu-open');});
+        if(willOpen)wrap.classList.add('menu-open');
       });
-      var remove=document.createElement('button');remove.type='button';remove.textContent='×';remove.className='remove';remove.setAttribute('aria-label','删除 '+p.name);
-      remove.addEventListener('click',function(){
-        if(!window.confirm('删除方案「'+p.name+'」？'))return;
-        var next=api.read();next.presets=next.presets.filter(function(item){return item.id!==p.id;});
-        next.updatedAt=Date.now();
-        if(!api.save(next)){toast('删除失败，请检查存储空间');return;}
-        state=api.read();renderPresets();toast('方案已删除');
-      });
-      wrap.appendChild(use);wrap.appendChild(remove);box.appendChild(wrap);
+
+      wrap.appendChild(main);wrap.appendChild(menuBtn);wrap.appendChild(menu);
+      box.appendChild(wrap);
     });
   }
   function setTab(next) {
@@ -292,8 +406,9 @@
     name=name.trim().slice(0,24);
     var next=api.read();
     if(next.presets.length>=20){toast('最多保存 20 个方案');return;}
-    next.presets.push({id:'ts-'+Date.now().toString(36)+'-'+Math.random().toString(36).slice(2,8),
-      name:name,tab:tab,values:JSON.parse(JSON.stringify(drafts[tab]))});
+    var entry={id:presetId(),name:name,tab:tab,values:currentValues(tab)};
+    if(tab==='bubble')entry.scope=scope;
+    next.presets.push(entry);
     next.updatedAt=Date.now();
     if(!api.save(next)){toast('方案保存失败，请检查存储空间');return;}
     state=api.read();renderPresets();toast('方案已保存（未自动应用）');
@@ -330,28 +445,99 @@
     rows.push('}');
     makeDownload('theme-studio.css',rows.join('\n'),'text/css');
   }
-  function unpackImport(text,filename) {
-    if(text.length>65536)throw new Error('文件过大（最多 64KB）');
-    if(/\.css$/i.test(filename)){
-      var found=0,match,regex=/--ts-(list|detail|bubble)-([a-z0-9-]+)\s*:\s*([^;{}]+);/gi;
-      while((match=regex.exec(text))){
-        var group=match[1].toLowerCase(),key=match[2].replace(/-([a-z])/g,function(_,c){return c.toUpperCase();});
-        var defs=group==='bubble'?BUBBLE.map(function(p){return [p[0],p[2],p[4],p[5],p[3]];}):Object.keys(api.SPECS[group]).map(function(k){var s=api.SPECS[group][k];return [k,s[0],s[2],s[3],s[1]];});
-        var d=defs.filter(function(def){return def[0]===key;})[0];if(!d)continue;
-        var value=match[3].trim();
-        if(d[1]==='color' && /^#[0-9a-f]{6}$/i.test(value)){drafts[group][key]=value;found++;}
-        else if(d[1]==='number'&&/^-?\d+(?:\.\d+)?(?:px|%)?$/.test(value)){
-          var number=Number(value.replace(/(px|%)$/,''));if(number>=d[2]&&number<=d[3]){drafts[group][key]=number;found++;}
-        }
-      }
-      if(!found)throw new Error('未找到兼容的 --ts-* 变量，请使用 JSON 或工作台导出的 CSS');
-    }else{
-      var value=JSON.parse(text);
-      if(value.format!=='maomao-theme-studio'||value.version!==1)throw new Error('主题格式不兼容');
-      if(value.list)drafts.list=api.clean('list',value.list);
-      if(value.detail)drafts.detail=api.clean('detail',value.detail);
-      if(value.bubble)drafts.bubble=cleanBubble(value.bubble);
+  function fieldSpec(group, key) {
+    if (group === 'bubble') {
+      var f = BUBBLE.filter(function (p) { return p[0] === key; })[0];
+      if (!f) return null;
+      return { type: f[2], min: f[4], max: f[5], unit: f[6] };
     }
+    var spec = api.SPECS[group] && api.SPECS[group][key];
+    if (!spec) return null;
+    return { type: spec[0], min: spec[2], max: spec[3], unit: ['avatarRadius','coverPosition','coverOpacity','chatImagePosition'].includes(key) ? '%' : (((api.EXTENSION_FIELDS[group]||[]).find(function(f){return f[0]===key;})||[])[3] || 'px') };
+  }
+  function parseCssImport(text) {
+    var pending = { list: {}, detail: {}, bubble: {} };
+    var KNOWN = ['list', 'detail', 'bubble'];
+    var found = 0, match;
+    // Scan every --ts-* declaration, including a last rule that legally omits the
+    // trailing semicolon. An unknown group or unknown key rejects the whole file;
+    // no declaration may be silently skipped. The value stops at ; { or }.
+    var regex = /--ts-([a-z0-9]+(?:-[a-z0-9]+)*)\s*:\s*([^;{}]+)/gi;
+    while ((match = regex.exec(text))) {
+      var name = match[1].toLowerCase();
+      var group = KNOWN.find(function (g) { return name === g || name.indexOf(g + '-') === 0; });
+      if (!group) throw new Error('不支持的配置组 --ts-' + name);
+      var rest = name === group ? '' : name.slice(group.length + 1);
+      var rawKey = rest;
+      var key = rest.replace(/-([a-z])/g, function (_, c) { return c.toUpperCase(); });
+      var spec = fieldSpec(group, key);
+      // Unknown --ts-* item rejects the whole file; it is not silently skipped.
+      if (!spec) throw new Error('不支持的配置项 --ts-' + name);
+      var value = match[2].trim();
+      if (spec.type === 'asset') throw new Error('图片素材不能从 CSS 变量导入，请在工作台选择图片');
+      if (spec.type === 'color') {
+        if (!/^#[0-9a-f]{6}$/i.test(value)) throw new Error('颜色格式不正确：' + key + ' 需为 6 位十六进制色值');
+        pending[group][key] = value;
+      } else if (spec.type === 'number') {
+        var unitRe = spec.unit === '%' ? /^(-?\d+(?:\.\d+)?)%$/ : /^(-?\d+(?:\.\d+)?)px$/;
+        var m = unitRe.exec(value);
+        if (!m) throw new Error('单位不正确：' + key + ' 需使用 ' + spec.unit);
+        var number = Number(m[1]);
+        if (!Number.isFinite(number) || number < spec.min || number > spec.max) {
+          throw new Error('数值越界：' + key + ' 需在 ' + spec.min + '–' + spec.max + ' ' + spec.unit);
+        }
+        pending[group][key] = number;
+      }
+      found++;
+    }
+    if (!found) throw new Error('未找到兼容的 --ts-* 变量，请使用 JSON 或工作台导出的 CSS');
+    return pending;
+  }
+  // Validate one section strictly before any tolerant clean/clamp runs. Returns
+  // only allowlisted, already-valid fields; the caller fills defaults for the rest.
+  function strictValidateSection(group, raw, label) {
+    if (!raw || typeof raw !== 'object' || Array.isArray(raw)) throw new Error(label + '配置格式不正确');
+    var out = {};
+    Object.keys(raw).forEach(function (key) {
+      var spec = fieldSpec(group, key);
+      if (!spec) throw new Error(label + '包含不支持的配置项：' + key);
+      var value = raw[key];
+      if (spec.type === 'color') {
+        if (typeof value !== 'string' || !/^#[0-9a-f]{6}$/i.test(value)) throw new Error('颜色格式不正确：' + key + ' 需为 6 位十六进制色值');
+        out[key] = value;
+      } else if (spec.type === 'number') {
+        if (typeof value !== 'number' || !Number.isFinite(value)) throw new Error('数值类型不正确：' + key + ' 需为数字');
+        if (value < spec.min || value > spec.max) throw new Error('数值越界：' + key + ' 需在 ' + spec.min + '–' + spec.max + ' ' + spec.unit);
+        out[key] = value;
+      } else if (spec.type === 'asset') {
+        if (typeof value !== 'string' || !(value === '' || /^as_[A-Z2-7]{32}$/.test(value))) throw new Error('图片素材引用格式无效：'+key);
+        out[key] = value;
+      }
+    });
+    return out;
+  }
+  function parseJsonImport(text) {
+    var parsed;
+    try { parsed = JSON.parse(text); }
+    catch (e) { throw new Error('JSON 解析失败：文件不是有效的 JSON'); }
+    if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) throw new Error('主题格式不兼容：根节点必须是对象');
+    if (parsed.format !== 'maomao-theme-studio' || parsed.version !== 1) throw new Error('主题格式不兼容：仅支持 maomao-theme-studio v1');
+    var hasSection = parsed.list !== undefined || parsed.detail !== undefined || parsed.bubble !== undefined;
+    if (!hasSection) throw new Error('配置为空：未包含列表、详情或气泡任一段');
+    var pending = { list: null, detail: null, bubble: null };
+    if (parsed.list !== undefined) pending.list = strictValidateSection('list', parsed.list, '列表');
+    if (parsed.detail !== undefined) pending.detail = strictValidateSection('detail', parsed.detail, '详情');
+    if (parsed.bubble !== undefined) pending.bubble = strictValidateSection('bubble', parsed.bubble, '气泡');
+    return pending;
+  }
+  function unpackImport(text, filename) {
+    if (text.length > 65536) throw new Error('文件过大（最多 64KB）');
+    var isCSS=/\.css$/i.test(filename),pending=isCSS?parseCssImport(text):parseJsonImport(text);
+    // Preserve any field omitted from a partial import, especially existing IDB image IDs.
+    var nextList=api.clean('list',Object.assign({},drafts.list,pending.list||{}));
+    var nextDetail=api.clean('detail',Object.assign({},drafts.detail,pending.detail||{}));
+    var nextBubble=cleanBubble(Object.assign({},drafts.bubble,pending.bubble||{}));
+    drafts.list=nextList;drafts.detail=nextDetail;drafts.bubble=nextBubble;
   }
   function populateScopes() {
     try {
@@ -386,7 +572,9 @@
   $('importFile').addEventListener('change',function(){
     var file=this.files&&this.files[0];if(!file)return;
     if(file.size>65536){toast('文件过大（最多 64KB）');this.value='';return;}
+    var capturedTab=tab,capturedScope=scope;
     file.text().then(function(text){
+      if(tab!==capturedTab||scope!==capturedScope){toast('导入已过期，请重新选择文件');return;}
       unpackImport(text,file.name);drawFields();drawPreview();renderImageSlots();toast('导入成功，请分别检查并应用各区域');
     }).catch(function(error){toast(error && error.message ? error.message : '导入失败');});
     this.value='';
@@ -410,5 +598,9 @@
     Object.keys(photoLeases).forEach(function(key){if(photoLeases[key].asset)photoLeases[key].asset.revoke();});
     document.querySelectorAll('.image-thumb').forEach(function(el){if(el._asset)el._asset.revoke();});
   });
+  // Read-only QA inspection hook; never persists user data.
+  api._draftSnapshot=function(){return {tab:tab,scope:scope,
+    list:api.clean('list',drafts.list),detail:api.clean('detail',drafts.detail),
+    bubble:cleanBubble(drafts.bubble)};};
   populateScopes();loadBubble();setTab('list');
 })();
