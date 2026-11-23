@@ -160,3 +160,18 @@ On the next turn/session, read this file and the current `AGENTS.md` first. Cont
 - **测试：** 新增 `tests/cafe-role-context.test.mjs`——从源码截取三个函数的真实实现，在 `node:vm` 中执行：正式 ID 与 `'cafe'` 应用标识、未知角色不调用、占位错误不注入、异常安全回退、8000 字符上限、脚本加载顺序与两处调用点；6/6 通过。内联脚本 `node --check` 通过。
 - **未验证：** 真实模型回复是否更贴合人设（需配置 API 的浏览器/真机）、提示词体积对首字延迟的影响、Vite 全站构建（清空 `dist/` 被环境策略拒绝）。
 - **依赖记录：** 人设协议（RP protocol）目前不在 `buildPhoneRoleContext` 的拼装范围内。本应用不另建协议层，若要纳入需在共享上下文模块统一扩展，属其他组范围。
+
+## 2026-11-23 · APP-CAFE-003 · 返工：共享上下文按角色 fail-closed（PR #428）
+
+- **审查结论：** P1-01 世界书未按角色绑定筛选，新调用可能串角色；P1-02 财务/动态快照未按角色过滤；P2 8000 字符从头裁剪。要求应用侧 fail-closed，不改共享模块、不复制世界书实现。
+- **独立复核（真实共享模块 + 假存储）：** 直接运行未改动的 `shared/js/phone/phone_context.js`，`buildPhoneRoleContext('A','cafe')` 的实际输出同时包含 `A专属设定`、`B专属设定` 两个世界书条目与 `钱包/财务` 快照。审查意见成立，此前「调用统一接口即等于正确接入」的判断不成立。
+- **修改（仅 cafe 页面 + 测试）：**
+  - 新增段落白名单 `CAFE_CONTEXT_ALLOWED`（角色人设 / 说话与表达习惯 / 人物关系网络 / 个人生活线 / 长期记忆 / 近期聊天 / 当前设备时间）。
+  - `cafeContextSections()` 按 `\n\n【` 切段；`cafeContextBuild()` 只保留白名单段落，其余记入 `dropped`。世界书段（含其嵌套 `【书 · 条目】` 子块）与「其他 App 已有数据」（动态/财务快照）整段丢弃。
+  - 预算改为**按段落累计**：超预算段落整段跳过并记录，不再 `slice(0,8000)` 从中间截断；首段（人设）保底。
+  - `roleContextBlock()` 返回过滤后的文本；无安全内容时返回空串，`partnerPersonaText()` 回退角色卡。
+- **测试：** `tests/cafe-role-context.test.mjs` 重写为 8 项：段落过滤、真实模块下 A/B 跨角色隔离（记忆/聊天/世界书/财务/对方姓名）、整段丢弃、预算不丢人设、未知角色不调用、占位错误/缺模块/抛错回退、脚本顺序与调用点。8/8 通过；内联脚本 `node --check` 通过。
+- **仍未完成 / 依赖：**
+  - 世界书按角色绑定注入需共享上下文负责人提供安全输出（`chat_worldbooks_<contactId>` 绑定域已有 repository 定义）。本 PR 不放行，标记 BLOCKED。
+  - 人设协议（RP protocol）同样不在共享上下文范围内，未接通，不宣称。
+  - 真实模型回复、首字延迟、Vite 全站构建、浏览器/真机仍未验证。
