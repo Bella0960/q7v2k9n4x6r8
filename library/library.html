@@ -737,24 +737,55 @@ button{font:inherit;color:inherit;cursor:pointer;border:0;background:transparent
       return saved;
     } catch (e) { return {}; }
   }
+  /* 设置写入失败原先被空 catch 吞掉：滑杆照动、界面照变，刷新后又回到旧值，
+     用户完全不知道为什么。改为返回结果，并在本会话内只提示一次，避免拖动滑杆时刷屏。 */
+  var settingsSaveWarned = false;
+  function warnSettingsSaveFailed() {
+    if (settingsSaveWarned) return;
+    settingsSaveWarned = true;
+    showToast('阅读设置没能存到本机（存储空间不足），刷新后会回到上一次保存的设置');
+  }
   function saveReaderSettings() {
     // 文字类设置照常存到 READER_SETTINGS_KEY；背景图是大体积 DataURL，独立存 READER_BG_KEY
     var compact = Object.assign({}, settings);
     delete compact.image;
-    try { localStorage.setItem(READER_SETTINGS_KEY, JSON.stringify(compact)); } catch (e) {}
+    var saved = true;
+    var stored;
+    try { stored = localStorage.getItem(READER_SETTINGS_KEY); } catch (e) { saved = false; }
     // 背景图：有则存、空则删；超限则提示并保留上一张
+    var backgroundSaved = true;
     var img = settings && settings.image;
     if (img && typeof img === 'string') {
       if (img.length > READER_BG_MAX_CHARS) {
+        backgroundSaved = false;
         alert('背景图过大（约 ' + Math.round(img.length / 1024) + ' KB），未保存。建议用更小的图片，或先压缩后再上传。');
       } else {
-        try { localStorage.setItem(READER_BG_KEY, img); } catch (e) {
+        try {
+          localStorage.setItem(READER_BG_KEY, img);
+          if (localStorage.getItem(READER_BG_KEY) !== img) throw new Error('Background not saved');
+        } catch (e) {
+          backgroundSaved = false;
           alert('背景图保存失败：本地存储空间不足。');
         }
       }
     } else {
-      try { localStorage.removeItem(READER_BG_KEY); } catch (e) {}
+      try {
+        localStorage.removeItem(READER_BG_KEY);
+        backgroundSaved = localStorage.getItem(READER_BG_KEY) === null;
+      } catch (e) { backgroundSaved = false; }
     }
+    if (saved) {
+      try {
+        var previous = stored === null ? {} : JSON.parse(stored);
+        if (!previous || typeof previous !== 'object' || Array.isArray(previous)) throw new Error('Invalid reader preferences');
+        if (!backgroundSaved && previous.image) compact.image = previous.image;
+        var payload = JSON.stringify(compact);
+        localStorage.setItem(READER_SETTINGS_KEY, payload);
+        saved = localStorage.getItem(READER_SETTINGS_KEY) === payload;
+      } catch (e) { saved = false; }
+    }
+    if (!saved || (!backgroundSaved && !img)) warnSettingsSaveFailed();
+    return saved && backgroundSaved;
   }
   function readStoredBookFallback() {
     try {
@@ -818,14 +849,27 @@ button{font:inherit;color:inherit;cursor:pointer;border:0;background:transparent
       } catch (e) {}
     });
   }
+  /* IndexedDB 不可用时回落到 localStorage；回落也失败时必须给出可读原因，
+     否则调用方只能拿到 "QuotaExceededError" 这类原始异常文案，用户看不懂。 */
   function saveReaderComment(comment) {
     return idbPut('comments', comment).catch(function () {
-      var items = [];
-      try { items = JSON.parse(localStorage.getItem('maomao_reader_comments_v1') || '[]') || []; } catch (e) {}
-      if (!Array.isArray(items)) items = [];
-      var index = items.findIndex(function (item) { return item.id === comment.id; });
+      var items;
+      try {
+        var stored = localStorage.getItem('maomao_reader_comments_v1');
+        items = stored === null ? [] : JSON.parse(stored);
+        if (!Array.isArray(items)) throw new Error('Invalid reader comments');
+      } catch (e) {
+        throw new Error('旧段评无法读取，已保留原资料，这条段评没能保存');
+      }
+      var index = items.findIndex(function (item) { return item && item.id === comment.id; });
       if (index >= 0) items[index] = comment; else items.push(comment);
-      localStorage.setItem('maomao_reader_comments_v1', JSON.stringify(items));
+      try {
+        var payload = JSON.stringify(items);
+        localStorage.setItem('maomao_reader_comments_v1', payload);
+        if (localStorage.getItem('maomao_reader_comments_v1') !== payload) throw new Error('Comment not saved');
+      } catch (e) {
+        throw new Error('本机存储空间不足，这条段评没能保存');
+      }
     }).then(function () { commentCache[comment.id] = comment; });
   }
   function getReaderRoles() {
