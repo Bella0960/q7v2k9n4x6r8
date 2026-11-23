@@ -738,6 +738,7 @@
     document.addEventListener('visibilitychange',function(){if(!document.hidden)refreshAll();});
     window.MAOMAOStorefront.init({themes:defaultThemes, market:market, render:render,
       navigate:setCategory, applyTheme:applyTheme, toast:toast, scope:function(){return bubbleScopeValue;},
+      roles:function(){return readRoles().map(function(role){return {id:String(role.id),name:role.name||''};});},
       using:function(){var box=document.createElement('div');box.innerHTML=renderMine();box.querySelectorAll('.mine-item').forEach(function(item){if(item.querySelector('.mine-status').textContent!=='正在使用')item.remove();});box.querySelector('.mine-filter')?.remove();return box.innerHTML;}, nativeThemes:renderThemes, nativeArt:themeArt, listCard:renderChatListCard});
     document.querySelectorAll('#categoryNav button').forEach(function(button,index){
       button.insertAdjacentHTML('afterbegin',window.MAOMAOStorefront.svg(['home','theme','category','mine'][index]));
