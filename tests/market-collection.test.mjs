@@ -7,6 +7,7 @@ const source=readFileSync(new URL('../theme-store/collection-store.js',import.me
 const beauty=readFileSync(new URL('../shared/js/chat-beauty.js',import.meta.url),'utf8');
 function setup(){
  const disk=new Map(),pictures=new Map();let failKey='',failImages=false,failImageOnce='';
+ disk.set('ai_custom_characters',JSON.stringify([{id:'A',name:'角色甲'},{id:'B',name:'角色乙'}]));
  const storage={getItem:k=>disk.get(k)??null,setItem(k,v){if(k===failKey)throw Error('quota');disk.set(k,String(v));},removeItem:k=>disk.delete(k),key:i=>[...disk.keys()][i],get length(){return disk.size;}};
  const window={localStorage:storage,crypto:webcrypto,dispatchEvent(){},addEventListener(){},MAOMAOWallpaperStore:{key:'home_custom_wallpaper',get:async()=>pictures.get('home_custom_wallpaper')||'',getByKey:async k=>pictures.get(k)||'',saveByKey:async(k,v,options)=>{assert.equal(options.requireIDB,true);if(failImages||k===failImageOnce){failImageOnce='';throw Error('IDB failure');}pictures.set(k,v);return true;},clear:async()=>pictures.delete('home_custom_wallpaper'),removeByKey:async k=>pictures.delete(k)}};
  const ctx={window,localStorage:storage,document:{},console,CustomEvent:class{},setTimeout};
@@ -105,6 +106,66 @@ test('missing icon preset images are preflighted before editing any current icon
   x.pictures.set('home_icon_img_app_chat','data:image/png;base64,BEFORE');
   await assert.rejects(x.model.applyOutfit(item,['icons']),/不完整/);
   assert.equal(x.pictures.get('home_icon_img_app_chat'),'data:image/png;base64,BEFORE');
+});
+
+test('OUTFIT-003: cross-role bubble retarget writes only the chosen target, original role and record stay intact',async()=>{
+ const x=setup();
+ x.beauty.save('A',{myBubbleBg:'#444'});
+ x.beauty.save('B',{myBubbleBg:'#777'});
+ const item=await x.model.saveOutfit('A气泡',['bubbles'],'A');
+ await x.model.applyOutfit(item,['bubbles'],{bubbleTarget:'B'});
+ assert.equal(x.beauty.resolve('B').myBubbleBg,'#444','B receives the copied bubble value');
+ assert.equal(x.beauty.resolve('A').myBubbleBg,'#444','original role A keeps its own config');
+ assert.equal(item.data.bubbles.scope,'A','record source scope is not rewritten');
+ assert.equal(JSON.stringify(item.scopes),'["bubbles"]');
+ const snapshot=Object.fromEntries(x.disk);
+ await x.model.applyOutfit(item,['bubbles'],{bubbleTarget:'global'});
+ assert.equal(x.beauty.resolve('global').myBubbleBg,'#444','global layer receives the copied value');
+ assert.equal(x.disk.get('beauty_chat_A'),snapshot.beauty_chat_A,'role A untouched by global retarget');
+ assert.equal(item.data.bubbles.scope,'A');
+});
+
+test('OUTFIT-003: invalid target and corrupt outfit fail read-only preflight with zero writes',async()=>{
+ const x=setup();
+ x.beauty.save('A',{myBubbleBg:'#444'});
+ x.beauty.save('B',{myBubbleBg:'#777'});
+ const item=await x.model.saveOutfit('A气泡',['bubbles'],'A');
+ const before={A:x.disk.get('beauty_chat_A'),B:x.disk.get('beauty_chat_B'),G:x.disk.get('beauty_chat_global_v1')};
+ await assert.rejects(x.model.applyOutfit(item,['bubbles'],{bubbleTarget:'GHOST'}),/目标气泡作用域无效/);
+ assert.equal(x.disk.get('beauty_chat_A'),before.A);
+ assert.equal(x.disk.get('beauty_chat_B'),before.B);
+ assert.equal(x.disk.get('beauty_chat_global_v1'),before.G);
+ const badTheme={id:item.id,scopes:['theme'],data:{theme:'no-such-theme'}};
+ await assert.rejects(x.model.applyOutfit(badTheme,['theme']),/主题已失效/);
+ const badField={id:item.id,scopes:['bubbles'],data:{bubbles:{scope:'A',vars:{bogusField:1}}}};
+ await assert.rejects(x.model.applyOutfit(badField,['bubbles']),/无法识别/);
+ assert.equal(x.disk.get('beauty_chat_A'),before.A,'corrupt variants leave current config intact');
+});
+
+test('OUTFIT-003: missing wallpaper fails preflight before theme/bubble write and rolls back',async()=>{
+ const x=setup();
+ x.beauty.setThemePreset('wechat');
+ x.beauty.save('A',{myBubbleBg:'#333'});
+ const item=await x.model.saveOutfit('主题气泡壁纸',['theme','bubbles','wallpaper'],'A');
+ x.beauty.setThemePreset('qq');x.beauty.save('A',{myBubbleBg:'#999'});
+ const role=x.disk.get('beauty_chat_A');
+ item.data.wallpaper={key:'missing'};
+ await assert.rejects(x.model.applyOutfit(item,item.scopes),/壁纸已缺失/);
+ assert.equal(x.disk.get('beauty_chat_A'),role);
+ assert.equal(x.beauty.getThemePreset(),'qq');
+});
+
+test('OUTFIT-003: failed retarget rolls the target role back to its original sparse override',async()=>{
+ const x=setup();
+ x.beauty.save('A',{myBubbleBg:'#444'});
+ x.beauty.save('B',{myBubbleBg:'#777'});
+ const item=await x.model.saveOutfit('A气泡壁纸',['bubbles','wallpaper'],'A');
+ item.data.wallpaper={key:'missing'};
+ const beforeB=x.disk.get('beauty_chat_B');
+ const beforeA=x.disk.get('beauty_chat_A');
+ await assert.rejects(x.model.applyOutfit(item,['bubbles','wallpaper'],{bubbleTarget:'B'}),/壁纸已缺失/);
+ assert.equal(x.disk.get('beauty_chat_B'),beforeB,'target role B restored after failure');
+ assert.equal(x.disk.get('beauty_chat_A'),beforeA,'source role A never touched');
 });
 
 

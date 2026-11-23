@@ -94,6 +94,7 @@ function close(){
  if(!target?.isConnected)target=document.querySelector('#categoryNav [aria-current="page"]')||document.getElementById('backButton');
  if(target?.isConnected)target.focus({preventScroll:true});
  focusBefore=null;
+ pendingOutfit=null;
 }
 function modal(title,body){if(overlay){overlay.remove();overlay=null;}else focusBefore=document.activeElement;overlay=document.createElement('div');overlay.className='sf-overlay';overlay.innerHTML='<section role="dialog" aria-modal="true" aria-label="'+e(title)+'" class="sf-dialog"><header><h2>'+e(title)+'</h2>'+button(svg('close'),'close','','sf-close')+'</header>'+body+'<p class="sf-error" role="alert"></p></section>';document.body.append(overlay);document.querySelector('.store-app').inert=true;overlay.querySelector('button').focus();overlay.addEventListener('click',ev=>{if(ev.target===overlay)close();});overlay.addEventListener('keydown',ev=>{if(ev.key==='Escape')close();if(ev.key==='Tab'){const all=[...overlay.querySelectorAll('button,input,select')].filter(x=>!x.disabled&&x.getClientRects().length);const first=all[0],last=all.at(-1);if(ev.shiftKey&&document.activeElement===first){ev.preventDefault();last.focus();}else if(!ev.shiftKey&&document.activeElement===last){ev.preventDefault();first.focus();}}});}
 function detail(id){
@@ -142,6 +143,14 @@ function showPage(page){
 function checkboxes(selected,checked=selected){return '<fieldset class="sf-scopes"><legend>选择应用范围</legend>'+selected.map(s=>'<label><input type="checkbox" name="scope" value="'+s+'"'+(checked.includes(s)?' checked':'')+'> '+model.scopes[s]+'</label>').join('')+'</fieldset>';}
 const selected=()=>[...overlay.querySelectorAll('[name=scope]:checked')].map(x=>x.value);
 function getRecord(encoded){const [type,id]=encoded.split(':');if(!['outfits','creations'].includes(type))throw Error('记录类型无效');const item=model.read()[type].find(x=>x.id===id);if(!item)throw Error('记录已不存在');return {type,item};}
+function roleName(scope){
+  if(scope==='global')return '全部聊天 · 全局';
+  const roles=typeof api.roles==='function'?(api.roles()||[]):[];
+  const hit=roles.find(r=>String(r.id)===String(scope));
+  return hit&&hit.name?hit.name:('角色 '+scope);
+}
+function knownRoleIds(){const roles=typeof api.roles==='function'?(api.roles()||[]):[];return roles.map(r=>String(r.id));}
+let pendingOutfit=null;
 async function renderSavedIconPreview(host,saved){
  if(!host?.isConnected||!saved)return;
  const pane=document.createElement('section');pane.className='sf-icon-preview';
@@ -167,7 +176,19 @@ async function recordPreview(encoded){const {type,item}=getRecord(encoded);modal
  const chosen=item.scopes.includes('theme')&&api.themes.find(t=>t.id===item.data.theme);
  host.innerHTML=chosen?'<div class="sf-native-detail-art">'+nativeArt(chosen)+'</div>':'<p class="sf-caption">此搭配没有保存整套聊天主题，只有勾选的独立美化项目。</p>';
  if(item.data.icons)await renderSavedIconPreview(host,item.data.icons);
+ if(item.data.bubbles){const cap=document.createElement('p');cap.className='sf-caption';cap.textContent='气泡来自：'+roleName(item.data.bubbles.scope||'global');host.append(cap);}
 }const key=type==='creations'?item.key:item.data.wallpaper?.key;if(key){const url=await global.MAOMAOWallpaperStore.getByKey(key);if(host.isConnected&&url){const img=document.createElement('img');img.src=url;img.className='sf-image';img.alt=item.name;host.prepend(img);}}}
+function askBubbleTarget(encoded,item){
+  const source=String(item.data.bubbles.scope||'global');
+  const current=String(api.scope()||'global');
+  const opts=new Map();
+  opts.set(source,{scope:source,label:'保存时的'+roleName(source),checked:true});
+  const currentValid=current==='global'||knownRoleIds().includes(current);
+  if(current!==source&&currentValid&&!opts.has(current))opts.set(current,{scope:current,label:current==='global'?'全部聊天 · 全局':'当前角色 · '+roleName(current),checked:false});
+  if(source!=='global'&&!opts.has('global'))opts.set('global',{scope:'global',label:'全部聊天 · 全局',checked:false});
+  const radios='<div class="sf-scopes">'+[...opts.values()].map(o=>'<label><input type="radio" name="bubble-target" value="'+e(o.scope)+'"'+(o.checked?' checked':'')+'> '+e(o.label)+'</label>').join('')+'</div>';
+  modal('确认气泡应用位置','<p class="sf-caption">这套气泡来自「'+e(roleName(source))+'」。请选择写入位置；未勾选的其他范围保持不变。</p>'+radios+'<footer>'+button('取消','close')+button('确认应用','confirm-outfit-apply',encoded,'sf-button primary')+'</footer>');
+}
 async function imageData(file){if(!file||!/^image\/(png|jpeg|webp)$/.test(file.type))throw Error('请选择 PNG、JPEG 或 WebP 图片');if(file.size>20*1024*1024)throw Error('请选择小于 20MB 的图片');const url=URL.createObjectURL(file);try{const img=new Image();img.src=url;await img.decode();const scale=Math.min(1,1600/Math.max(img.width,img.height));const canvas=document.createElement('canvas');canvas.width=Math.round(img.width*scale);canvas.height=Math.round(img.height*scale);canvas.getContext('2d').drawImage(img,0,0,canvas.width,canvas.height);return canvas.toDataURL('image/webp',.9);}finally{URL.revokeObjectURL(url);}}
 async function handle(action,id){
  if(action==='close')return close();
@@ -198,7 +219,16 @@ async function handle(action,id){
  if(action==='save-outfit'){modal('保存当前搭配','<label class="sf-field">搭配名称<input id="sfName" maxlength="40" placeholder="例如：周末的留白"></label>'+checkboxes(Object.keys(model.scopes),['theme'])+'<p class="sf-caption">默认只保存当前聊天主题。其他范围按需勾选；气泡使用当前所选角色；图标引用「桌面图标」内已保存的套装.背景、头像、名片不随搭配复制。</p>'+button('保存搭配','confirm-save','','sf-button primary'));return;}
  if(action==='confirm-save'){await model.saveOutfit(overlay.querySelector('#sfName').value,selected(),api.scope());close();api.render();api.toast('搭配已保存');return;}
  if(action==='record-preview')return recordPreview(id);
- if(action==='record-apply'){const {type,item}=getRecord(id);if(type==='outfits')await model.applyOutfit(item,selected());else {const image=await global.MAOMAOWallpaperStore.getByKey(item.key);if(!image)throw Error('素材已缺失');await global.MAOMAOWallpaperStore.saveByKey(global.MAOMAOWallpaperStore.key,image,{requireIDB:true});}close();api.render();api.toast('已应用，返回对应页面查看');return;}
+ if(action==='record-apply'){const {type,item}=getRecord(id);if(type==='outfits'){
+   const chosen=selected();
+   if(chosen.includes('bubbles')&&item.data.bubbles){pendingOutfit={item,selected:chosen};return askBubbleTarget(id,item);}
+   await model.applyOutfit(item,chosen);
+ }else {const image=await global.MAOMAOWallpaperStore.getByKey(item.key);if(!image)throw Error('素材已缺失');await global.MAOMAOWallpaperStore.saveByKey(global.MAOMAOWallpaperStore.key,image,{requireIDB:true});}close();api.render();api.toast('已应用，返回对应页面查看');return;}
+ if(action==='confirm-outfit-apply'){
+   if(!pendingOutfit)throw Error('请重新选择搭配');
+   const target=overlay.querySelector('[name=bubble-target]:checked')?.value||pendingOutfit.item.data.bubbles.scope||'global';
+   await model.applyOutfit(pendingOutfit.item,pendingOutfit.selected,{bubbleTarget:target});
+   pendingOutfit=null;close();api.render();api.toast('已应用，返回对应页面查看');return;}
  if(action==='rename'){const {type,item}=getRecord(id);modal('编辑方案','<label class="sf-field">名称<input id="sfName" maxlength="40" value="'+e(item.name)+'"></label>'+(type==='outfits'?checkboxes(Object.keys(model.scopes))+'<p class="sf-caption">保存修改保留原外观；新增范围或替换内容，请选择用当前外观更新。</p>':'')+button('保存修改','confirm-rename',id,'sf-button primary')+(type==='outfits'?button('用当前外观更新','recapture',id):''));if(type==='outfits')overlay.querySelectorAll('[name=scope]').forEach(box=>box.checked=item.scopes.includes(box.value));return;}
  if(action==='confirm-rename'){const {type,item}=getRecord(id);if(type==='outfits')await model.editOutfit(item.id,overlay.querySelector('#sfName').value,selected(),api.scope(),false);else model.rename(type,item.id,overlay.querySelector('#sfName').value);close();api.render();return;}
  if(action==='recapture'){const {item}=getRecord(id);await model.editOutfit(item.id,overlay.querySelector('#sfName').value,selected(),api.scope(),true);close();api.render();api.toast('已更新搭配内容');return;}

@@ -32,9 +32,9 @@
     if((await currentIconImages()).some(item=>!!item.image))throw Error('请先到「桌面图标」保存当前图标套装，再保存商城搭配');
     return {presetId:''};
   }
-  async function applyIcons(record){
+  async function validateIcons(record){
     if(!record||typeof record.presetId!=='string')throw Error('图标搭配数据不完整');
-    const images=Object.create(null),presetId=record.presetId;
+    const presetId=record.presetId;
     if(presetId){
       const preset=iconPresets().find(item=>item?.id===presetId);
       if(!preset||!Array.isArray(preset.appIds)||preset.appIds.some(id=>!ICON_APPS.includes(id)))
@@ -42,6 +42,16 @@
       for(const appId of [...new Set(preset.appIds)]){
         const image=await global.MAOMAOWallpaperStore.getByKey(ICON_PRESET_IMAGE_PREFIX+presetId+'_'+appId);
         if(!image)throw Error('图标套装图片不完整，未能应用');
+      }
+    }
+  }
+  async function applyIcons(record){
+    await validateIcons(record);
+    const images=Object.create(null),presetId=record.presetId;
+    if(presetId){
+      const preset=iconPresets().find(item=>item?.id===presetId);
+      for(const appId of [...new Set(preset.appIds)]){
+        const image=await global.MAOMAOWallpaperStore.getByKey(ICON_PRESET_IMAGE_PREFIX+presetId+'_'+appId);
         images[appId]=image;
       }
     }
@@ -85,6 +95,42 @@
     if(!Array.isArray(selected)||!selected.length||selected.some(s=>!Object.hasOwn(scopes,s)))throw Error('请选择有效的应用范围');
     return [...new Set(selected)];
   }
+  const THEME_IDS=Object.freeze(['default','wechat','imessage','qq','silver-butterfly','atmosphere']);
+  function roleIds(){
+    let roles;
+    try{roles=JSON.parse(global.localStorage.getItem('ai_custom_characters')||'[]');}catch{return [];}
+    if(!Array.isArray(roles))return [];
+    return roles.filter(r=>r&&r.id!=null).map(r=>String(r.id));
+  }
+  function isValidScope(scope){return scope==='global'||roleIds().includes(String(scope));}
+  // Read-only dependency check for every selected scope. Runs before any write so a
+  // broken/incomplete old outfit fails with a clear error and leaves current appearance intact.
+  async function preflightApply(item,selected,bubbleTarget){
+    selected=selection(selected);
+    if(selected.some(s=>!item.scopes.includes(s)))throw Error('方案没有包含此范围');
+    const data=item.data||{};
+    for(const s of selected){
+      if(s==='theme'){
+        if(typeof data.theme!=='string'||!THEME_IDS.includes(data.theme))throw Error('搭配主题已失效，请重新保存方案');
+      }else if(s==='bubbles'){
+        if(!data.bubbles||typeof data.bubbles!=='object'||!data.bubbles.vars||typeof data.bubbles.vars!=='object')throw Error('气泡搭配数据不完整');
+        const source=String(data.bubbles.scope||'global');
+        if(!isValidScope(source))throw Error('气泡来源角色已不存在，无法安全应用');
+        const target=String(bubbleTarget||source);
+        if(!isValidScope(target))throw Error('目标气泡作用域无效，请重新选择');
+        const defs=Object.keys(global.ChatBeauty.getDefaults());
+        for(const k of Object.keys(data.bubbles.vars))if(!defs.includes(k))throw Error('气泡含有无法识别的设置项');
+      }else if(s==='wallpaper'){
+        let image=data.wallpaper;
+        if(image&&typeof image==='object'&&image.key){image=await global.MAOMAOWallpaperStore.getByKey(image.key);if(!image)throw Error('搭配壁纸已缺失');}
+        else if(image!=null&&typeof image!=='string')throw Error('壁纸搭配数据无效');
+      }else if(s==='icons'){
+        await validateIcons(data.icons);
+      }else if(s==='font'){
+        if(data.font!=null&&typeof data.font!=='object')throw Error('字体搭配数据无效');
+      }
+    }
+  }
   async function capture(selected,scope){
     selected=selection(selected);const data={};
     for(const s of selected){
@@ -109,10 +155,10 @@
     return copy(item);
   }
   function write(key,value){if(value==null)global.localStorage.removeItem(key);else global.localStorage.setItem(key,value);if(global.localStorage.getItem(key)!==(value==null?null:value))throw Error('设置未能保存');}
-  async function applyData(data,selected){
+  async function applyData(data,selected,bubbleTarget){
     for(const s of selected){
       if(s==='theme'){if(!global.ChatBeauty.setThemePreset(data.theme))throw Error('主题应用失败');}
-      else if(s==='bubbles'){if(!global.ChatBeauty.save(data.bubbles.scope,data.bubbles.vars))throw Error('气泡保存失败');}
+      else if(s==='bubbles'){const target=bubbleTarget||data.bubbles.scope;if(!global.ChatBeauty.save(target,data.bubbles.vars))throw Error('气泡保存失败');}
       else if(s==='wallpaper'){let image=data.wallpaper;if(image?.key){image=await global.MAOMAOWallpaperStore.getByKey(image.key);if(!image)throw Error('搭配壁纸已缺失');}if(image)await global.MAOMAOWallpaperStore.saveByKey(global.MAOMAOWallpaperStore.key,image,{requireIDB:true});else await global.MAOMAOWallpaperStore.clear();}
       else if(s==='icons')await applyIcons(data.icons);
       else if(s==='font'){write('active_font_preset_id',data.font.id);write('custom_font_url',data.font.url);}
@@ -120,19 +166,28 @@
     }
   }
   let busy=false;
-  async function applyOutfit(item,selected){
+  async function applyOutfit(item,selected,options){
     if(busy)throw Error('正在应用，请稍候');
-    selected=selection(selected);if(selected.some(s=>!item.scopes.includes(s)))throw Error('方案没有包含此范围');
+    options=options||{};
+    selected=selection(selected);
+    const sourceScope=item.data.bubbles?.scope||'global';
+    const bubbleTarget=String(options.bubbleTarget||sourceScope);
     busy=true;
     const raw={};let before,iconBefore;
     try {
+      // Read-only preflight before any write: a broken/incomplete outfit fails cleanly.
+      await preflightApply(item,selected,bubbleTarget);
       const plainScopes=selected.filter(s=>s!=='icons');
-      before=plainScopes.length?await capture(plainScopes,item.data.bubbles?.scope):{};
+      before=plainScopes.length?await capture(plainScopes,sourceScope):{};
       // Roll back exact current icon bytes even when a user never saved a named preset.
       if(selected.includes('icons'))iconBefore=await currentIconImages();
-      // Exact rollback preserves sparse role overrides instead of flattening resolved defaults.
-      for(const key of ['maomao_chat_theme_preset','beauty_chat_global_v1',...(item.data.bubbles&&item.data.bubbles.scope!=='global'?['beauty_chat_'+item.data.bubbles.scope]:[]),...Object.values(keys),'active_font_preset_id','custom_font_url',ICON_ACTIVE_KEY])raw[key]=global.localStorage.getItem(key);
-      await applyData(item.data,selected);
+      // Snapshot both the source and the (possibly retargeted) target bubble scope so a
+      // cross-role copy can be rolled back without touching the original role's config.
+      const beautyKeys=['maomao_chat_theme_preset','beauty_chat_global_v1'];
+      for(const sc of [sourceScope,bubbleTarget]){if(sc&&sc!=='global')beautyKeys.push('beauty_chat_'+sc);}
+      const allKeys=[...new Set([...beautyKeys,...Object.values(keys),'active_font_preset_id','custom_font_url',ICON_ACTIVE_KEY])];
+      for(const key of allKeys)raw[key]=global.localStorage.getItem(key);
+      await applyData(item.data,selected,bubbleTarget);
     }catch(error){
       if(before){try{if(selected.includes('wallpaper'))await applyData(before,['wallpaper']);if(iconBefore)await restoreIcons(iconBefore);for(const [key,value] of Object.entries(raw))write(key,value);}catch(rollback){throw Error('应用未完成，部分设置未能恢复。请保留当前方案并检查存储空间');}}
       throw error;
@@ -166,6 +221,6 @@
     // Keep referenced image bytes for backup/recovery. Removing metadata never clears active appearance.
     mutate(v=>{v[type]=v[type].filter(x=>x.id!==itemId);});
   }
-  global.MAOMAOMarketCollection=Object.freeze({read,scopes,capture,saveOutfit,applyOutfit,addCreation,editOutfit,rename,remove,
+  global.MAOMAOMarketCollection=Object.freeze({read,scopes,capture,saveOutfit,applyOutfit,preflightApply,addCreation,editOutfit,rename,remove,
     favorite(itemId){return mutate(v=>{const i=v.favorites.indexOf(itemId);if(i<0)v.favorites.push(itemId);else v.favorites.splice(i,1);});}});
 })(window);
