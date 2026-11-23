@@ -240,6 +240,7 @@ test('touchcancel restores original element without persisting a partially moved
   const counts = { placeholder: 0, ghost: 0, cleanup: 0, refresh: 0, writes: 0 };
   const harness = {
     isDragging: true, edgeTimer: null, lastEdgeSide: 'left', edgeCooldown: true,
+    dragOriginPage: null, activePageIndex: 0,
     placeholder: { remove() { counts.placeholder++; } },
     dragClone: { remove() { counts.ghost++; } },
     dragEl: { style: { display: 'none' }, classList: {
@@ -253,4 +254,24 @@ test('touchcancel restores original element without persisting a partially moved
   runInNewContext(match[0] + '\ncancelDrag();', harness);
   assert.equal(harness.isDragging, false);
   assert.deepEqual(counts, { placeholder: 1, ghost: 1, cleanup: 1, refresh: 1, writes: 0 });
+  assert.match(index, /window\.addEventListener\('blur', function \(\) \{[\s\S]*?if \(isDragging\) cancelDrag\(\)/);
+});
+
+test('cancelled cross-page gesture navigates back without storing a drop', () => {
+  const match = index.match(/function cancelDrag\(\) \{[\s\S]*?\n      \}/);
+  assert.ok(match);
+  let returned = -1, writes = 0;
+  const context = {
+    isDragging: true, edgeTimer: null, dragOriginPage: 0, activePageIndex: 1,
+    placeholder: null, dragClone: null, dragEl: null,
+    cleanupEmptyTrailingPages() {}, updateDefaultGridComposition() {},
+    getPages() { return [{}, {}]; },
+    goToPage(page) { returned = page; },
+    persistCurrentDOM() { writes++; },
+    clearTimeout() {}
+  };
+  runInNewContext(match[0] + '\ncancelDrag();', context);
+  assert.equal(returned, 0);
+  assert.equal(context.dragOriginPage, null);
+  assert.equal(writes, 0);
 });
