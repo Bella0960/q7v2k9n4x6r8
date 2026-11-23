@@ -22,6 +22,7 @@ try {
     });
     await page.goto(url);
     await page.locator('.book-card:visible').first().tap();
+    await page.locator('#readerBody').tap({ position: { x: 24, y: 60 } });
     await page.locator('#ctrlSet').tap();
     const readSettings = () => page.evaluate(() => localStorage.getItem('maomao_reader_settings_v1'));
     const before = await readSettings();
@@ -35,6 +36,7 @@ try {
     assert.equal(JSON.parse(await readSettings()).fs, size + 2);
     await page.reload();
     await page.locator('.book-card:visible').first().tap();
+    await page.locator('#readerBody').tap({ position: { x: 24, y: 60 } });
     await page.locator('#ctrlSet').tap();
     assert.equal(Number(await page.locator('#rsFsValue').innerText()), size + 2);
     await page.close();
