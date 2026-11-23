@@ -83,7 +83,10 @@ test('QA release retains all existing gates and verifies the phone-facing domain
 test('QA explicit confirmation and live deployment baselines run BEFORE costly tests', () => {
   const script = readFileSync(new URL('../scripts/qa-direct-release.mjs', import.meta.url), 'utf8');
   const confirm = script.indexOf('if (deploy) {\n    assert.equal(process.env.MAOMAO_QA_DEPLOY_CONFIRM');
-  const baseline = script.indexOf('liveWorkerVersion(QA), liveWorkerVersion(CORE)');
+  // The read-only diagnostic intentionally checks versions before the release
+  // path. Verify the versions used by the REAL deploy branch, not the first
+  // matching call anywhere in the source text.
+  const baseline = script.indexOf('liveWorkerVersion(QA), liveWorkerVersion(CORE)', confirm);
   const suite = requiredGateLoop(script);
   assert.ok(confirm >= 0 && confirm < baseline && baseline < suite);
   assert.match(script, /if \(!deploy\) \{/);
