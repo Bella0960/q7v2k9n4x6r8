@@ -263,17 +263,41 @@
     moments:'maoer_couple_moments_'+roleId,
     goals:'maoer_growth_goals_'+roleId
   };
-  function read(k, d){ try { let v = JSON.parse(localStorage.getItem(k)); return v==null?d:v; } catch(e){ return d; } }
-  /* 只读当前正式角色自己的键。旧全局 _v1 键从未被任何应用写入过，
-     无条件兜底只会把 A 的历史资料广播给所有角色，已按总控意见移除。 */
-  function readData(kind, fallback){
-    if(!canStore) return fallback;
-    let v = read(KEY[kind], null);
-    return v != null ? v : fallback;
+  const observedRaw=Object.create(null), corruptKeys=new Set();
+  function read(k,d){
+    try{
+      const raw=localStorage.getItem(k);
+      observedRaw[k]=raw;
+      if(raw===null)return d;
+      const parsed=JSON.parse(raw);
+      if(parsed===null){corruptKeys.add(k);return d;}
+      return parsed;
+    }catch(e){corruptKeys.add(k);return d;}
+  }
+  /* 只读当前正式角色自己的键。禁止把损坏或类型错误的旧存档当空记录覆盖。 */
+  function readData(kind,fallback){
+    if(!canStore)return fallback;
+    const value=read(KEY[kind],null);
+    if(value===null)return fallback;
+    const valid=Array.isArray(fallback)?Array.isArray(value):
+      (typeof fallback==='object'?typeof value==='object'&&!Array.isArray(value):typeof value===typeof fallback);
+    if(!valid){corruptKeys.add(KEY[kind]);return fallback;}
+    return value;
   }
   function write(k,v){
-    if(!canStore){ toast('还没有绑定正式角色，成长数据只能看不能存'); return false; }
-    try { var payload=JSON.stringify(v);localStorage.setItem(k,payload);if(localStorage.getItem(k)!==payload)throw new Error('Growth storage readback mismatch');return true; } catch(e){ return false; }
+    if(!canStore){toast('还没有绑定正式角色，成长数据只能看不能存');return false;}
+    if(corruptKeys.has(k)){toast('原有成长存档异常，为保护数据已禁止覆盖');return false;}
+    try {
+      const current=localStorage.getItem(k);
+      if(Object.prototype.hasOwnProperty.call(observedRaw,k)&&current!==observedRaw[k]){
+        toast('成长数据在其他标签页已更新，请刷新后重试');return false;
+      }
+      const payload=JSON.stringify(v);
+      localStorage.setItem(k,payload);
+      if(localStorage.getItem(k)!==payload)throw new Error('Growth storage readback mismatch');
+      observedRaw[k]=payload;
+      return true;
+    }catch(e){return false;}
   }
   function toast(s){ let t=$('toast'); t.textContent=s; t.classList.add('show'); clearTimeout(t._t); t._t=setTimeout(()=>t.classList.remove('show'),1800); }
   function esc(s){ return String(s||'').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])); }
