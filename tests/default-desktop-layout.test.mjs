@@ -1,6 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync, existsSync } from 'node:fs';
+import { runInNewContext } from 'node:vm';
 
 const index = readFileSync(new URL('../index.html', import.meta.url), 'utf8');
 const widgetManager = readFileSync(new URL('../desktop/widgets.html', import.meta.url), 'utf8');
@@ -53,7 +54,7 @@ test('the mobile home grid keeps four columns and supports vertical page scrolli
   assert.match(desktopCss, /#gridPage0\.is-default-layout > \[data-drag\]:nth-child\(6\)[^{]*\{ grid-column: 3 \/ 5 !important; grid-row: 3 \/ 5 !important;/);
   assert.match(mobileCss, /#gridPage0\.is-default-layout > \[data-drag\]:nth-child\(7\)[^{]*\{ grid-column: 1 \/ 3 !important; grid-row: 5 \/ 7 !important;/);
   assert.match(mobileCss, /\.maomao-home \.home-page[\s\S]*?overflow-y:\s*auto\s*!important/);
-  assert.match(serviceWorker, /const CACHE_NAME = 'phone-app-pwa-v\d+'/);
+  assert.match(serviceWorker, /const CACHE_NAME = 'phone-app-pwa-v205'/);
 });
 
 
@@ -128,4 +129,128 @@ test('an interrupted touch drag is cancelled without a layout write', () => {
   assert.match(index, /document\.addEventListener\('touchcancel', function \(\) \{[\s\S]*?cancelDrag\(\)/);
   assert.match(index, /dragClone\.removeAttribute\('data-drag'\)/);
   assert.match(index, /dragClone\.querySelectorAll\('\[id\], \[data-drag\]'\)/);
+});
+
+
+// These tests execute the actual embedded widget-manager functions with a mocked
+// localStorage and minimal DOM. They do not use screenshots or paid APIs.
+function createWidgetManagerHarness(seed = {}) {
+  const blocks = [...widgetManager.matchAll(/<script\b[^>]*>([\s\S]*?)<\/script>/g)];
+  const managerScript = blocks.map((m) => m[1]).find((s) => s.includes('function fitsPage(ids)'));
+  assert.ok(managerScript, 'desktop widget manager script must be present');
+  const instrumented = managerScript.replace(
+    /render\(\);\s*\}\)\(\);\s*$/,
+    'window.__desktopLayoutTest = { readLayout, addWidget, removeWidget, fitsPage }; render(); })();'
+  );
+  assert.notEqual(instrumented, managerScript, 'manager test hooks must be injected');
+  const map = new Map(Object.entries(seed));
+  const store = {
+    failWrites: false,
+    getItem(key) { return map.has(key) ? map.get(key) : null; },
+    setItem(key, value) {
+      if (this.failWrites) throw new Error('QuotaExceededError');
+      map.set(key, String(value));
+    }
+  };
+  const note = { textContent: 'Original widget instructions' };
+  const list = { innerHTML: '', appendChild() {} };
+  const document = {
+    getElementById(id) { return id === 'widgetList' ? list : null; },
+    querySelector(selector) { return selector === '.page-note' ? note : null; },
+    createElement() {
+      return { className: '', innerHTML: '', textContent: '',
+        appendChild() {}, addEventListener() {} };
+    }
+  };
+  const window = {};
+  runInNewContext(instrumented, { document, localStorage: store, window, Set });
+  return { ...window.__desktopLayoutTest, map, store, note };
+}
+
+test('widget manager recognizes existing defaults and places by physical 4-column capacity', () => {
+  const h = createWidgetManagerHarness();
+  const layout = h.readLayout();
+  assert.ok(layout.pages[0].includes('clock-lg'));
+  assert.ok(h.fitsPage(layout.pages[0]));
+  assert.equal(h.fitsPage([...layout.pages[0], 'polaroid']), false);
+  assert.equal(h.addWidget(layout, 'polaroid'), true);
+  assert.equal(layout.pages[0].includes('polaroid'), false);
+  assert.equal(layout.pages[1].includes('polaroid'), true);
+  assert.equal(h.readLayout().pages[1].includes('polaroid'), true);
+  assert.equal(h.addWidget(layout, 'polaroid'), true);
+  assert.equal(layout.pages.flat().filter((id) => id === 'polaroid').length, 1);
+});
+
+test('widget removal is persisted; storage failure never reports a successful add', () => {
+  const h = createWidgetManagerHarness();
+  const initial = h.readLayout();
+  assert.equal(h.addWidget(initial, 'polaroid'), true);
+  assert.equal(h.removeWidget(h.readLayout(), 'polaroid'), true);
+  assert.equal(h.readLayout().removed.includes('polaroid'), true);
+  const before = h.map.get('ds_layout_v14');
+  h.store.failWrites = true;
+  assert.equal(h.addWidget(h.readLayout(), 'polaroid'), false);
+  assert.equal(h.map.get('ds_layout_v14'), before);
+  assert.match(h.note.textContent, /保存失败/);
+});
+
+test('widget manager recovers older valid layout when current version is malformed', () => {
+  const old = { v: 13, pages: [['note'], [], []], dock: [], removed: [] };
+  const h = createWidgetManagerHarness({
+    ds_layout_v14: '{corrupted',
+    ds_layout_v13: JSON.stringify(old)
+  });
+  assert.equal(h.readLayout().pages[0][0], 'note');
+  assert.equal(h.readLayout().v, 14);
+  assert.equal(h.map.get('ds_layout_v13'), JSON.stringify(old));
+});
+
+test('widget manager refuses a fifth page and preserves a full user layout', () => {
+  const h = createWidgetManagerHarness();
+  const full = { v: 14, pages: Array.from({ length: 4 }, () => Array(24).fill('app_test')),
+    dock: [], removed: [] };
+  const before = JSON.stringify(full);
+  assert.equal(h.addWidget(full, 'clock'), false);
+  assert.equal(JSON.stringify(full), before);
+  assert.match(h.note.textContent, /桌面空间不足/);
+});
+
+test('real drag-span helper reads wide and tall grid styles, including dock fallback', () => {
+  const match = index.match(/function getDraggedGridSpan\(el, axis\) \{[\s\S]*?\n      \}/);
+  assert.ok(match, 'drag span function must exist');
+  const cases = [
+    [{ gridColumnStart: '1', gridColumnEnd: '5', gridRowStart: '1', gridRowEnd: '3' }, [4, 2]],
+    [{ gridColumnStart: 'span 2', gridColumnEnd: 'auto', gridRowStart: 'auto', gridRowEnd: 'span 2' }, [2, 2]],
+    [{ gridColumnStart: 'span 4', gridColumnEnd: 'auto', gridRowStart: 'auto', gridRowEnd: 'span 3' }, [4, 3]]
+  ];
+  for (const [style, expected] of cases) {
+    const harness = { window: { getComputedStyle() { return style; } } };
+    const source = match[0] + '\nwindow.__span = getDraggedGridSpan;';
+    runInNewContext(source, harness);
+    const element = { closest() { return {}; } };
+    assert.deepEqual([harness.window.__span(element, 'column'),
+      harness.window.__span(element, 'row')], expected);
+    assert.equal(harness.window.__span({ closest() { return null; } }, 'column'), 1);
+  }
+});
+
+test('touchcancel restores original element without persisting a partially moved layout', () => {
+  const match = index.match(/function cancelDrag\(\) \{[\s\S]*?\n      \}/);
+  assert.ok(match, 'cancel drag function must exist');
+  const counts = { placeholder: 0, ghost: 0, cleanup: 0, refresh: 0, writes: 0 };
+  const harness = {
+    isDragging: true, edgeTimer: null, lastEdgeSide: 'left', edgeCooldown: true,
+    placeholder: { remove() { counts.placeholder++; } },
+    dragClone: { remove() { counts.ghost++; } },
+    dragEl: { style: { display: 'none' }, classList: {
+      remove(className) { assert.equal(className, 'is-dragging-source'); }
+    } },
+    cleanupEmptyTrailingPages() { counts.cleanup++; },
+    updateDefaultGridComposition() { counts.refresh++; },
+    persistCurrentDOM() { counts.writes++; },
+    clearTimeout() {}
+  };
+  runInNewContext(match[0] + '\ncancelDrag();', harness);
+  assert.equal(harness.isDragging, false);
+  assert.deepEqual(counts, { placeholder: 1, ghost: 1, cleanup: 1, refresh: 1, writes: 0 });
 });
