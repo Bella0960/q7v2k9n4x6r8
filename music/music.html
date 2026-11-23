@@ -497,6 +497,9 @@
         <div class="m-name" id="miniName">Unsayable</div>
         <div class="m-artist" id="miniArtist">Brambles</div>
       </div>
+      <button class="m-together" id="togetherBtn" type="button" aria-label="和 TA 一起听" onclick="event.stopPropagation();openTogetherSheet()">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="1.6" stroke-linecap="round"><circle cx="9" cy="9" r="4.2"/><circle cx="15.6" cy="10.4" r="3.2"/><path d="M8 20v-3.2M15.6 20v-2.4"/></svg>
+      </button>
       <div class="m-ctrl" onclick="event.stopPropagation();togglePlay()">
         <svg id="miniPlayIcon" width="22" height="22" viewBox="0 0 24 24" fill="#fff"><path d="M8 5v14l11-7z"/></svg>
       </div>
@@ -550,6 +553,36 @@
             #lyricView::-webkit-scrollbar { width: 0; height: 0; display: none; }
           .music-toast{position:fixed;left:50%;bottom:calc(96px + env(safe-area-inset-bottom));transform:translateX(-50%) translateY(8px);max-width:78vw;padding:10px 16px;border-radius:14px;background:rgba(22,22,22,.92);color:#f4f4f4;font-size:12.5px;line-height:1.55;letter-spacing:.01em;opacity:0;transition:opacity .22s ease,transform .22s ease;z-index:120;pointer-events:none;text-align:center;-webkit-backdrop-filter:blur(8px);backdrop-filter:blur(8px)}
 .music-toast.show{opacity:1;transform:translateX(-50%) translateY(0)}
+.m-together{
+  flex:0 0 auto;width:26px;height:26px;margin-right:2px;
+  display:flex;align-items:center;justify-content:center;
+  border-radius:50%;background:rgba(255,255,255,.08);border:0;
+}
+.m-together.on{background:rgba(255,255,255,.2)}
+.tg-sheet{position:fixed;inset:0;z-index:70;display:none}
+.tg-sheet.open{display:block}
+.tg-mask{position:absolute;inset:0;background:rgba(0,0,0,.55);backdrop-filter:blur(3px);-webkit-backdrop-filter:blur(3px)}
+.tg-panel{
+  position:absolute;left:0;right:0;bottom:0;max-height:78vh;overflow:auto;
+  padding:18px 18px calc(20px + env(safe-area-inset-bottom));
+  background:#121212;border-radius:20px 20px 0 0;color:#f2f2f2;
+  box-shadow:0 -12px 40px rgba(0,0,0,.55);
+}
+.tg-head{display:flex;align-items:flex-start;justify-content:space-between;gap:12px}
+.tg-kicker{font-size:9px;letter-spacing:.18em;color:#8b8b8b}
+.tg-title{font-size:15px;font-weight:600;margin-top:2px}
+.tg-state{font-size:10.5px;color:#9a9a9a;padding:3px 8px;border-radius:999px;background:rgba(255,255,255,.07);white-space:nowrap}
+.tg-roles{display:flex;gap:8px;flex-wrap:wrap;margin:14px 0 4px}
+.tg-role{padding:6px 12px;border-radius:999px;background:rgba(255,255,255,.07);color:#cfcfcf;font-size:11.5px;border:0}
+.tg-role.is-on{background:#f2f2f2;color:#111}
+.tg-empty{font-size:11.5px;color:#8b8b8b}
+.tg-note{margin:12px 0 10px;font-size:11px;line-height:1.7;color:rgba(255,255,255,.55)}
+.tg-line{min-height:18px;font-size:12.5px;line-height:1.7;color:rgba(255,255,255,.9)}
+.tg-list{display:flex;flex-direction:column;gap:6px;margin:10px 0 16px}
+.tg-item{font-size:11.5px;line-height:1.6;color:rgba(255,255,255,.5)}
+.tg-item:first-child{color:rgba(255,255,255,.78)}
+.tg-toggle{width:100%;padding:12px;border-radius:14px;border:0;background:rgba(255,255,255,.1);color:#fff;font-size:12.5px;font-weight:600}
+.tg-toggle.is-on{background:rgba(255,255,255,.06);color:rgba(255,255,255,.72);font-weight:400}
 </style>
           <div id="lyrics" style="text-align:center;font-size:14px;color:#999;line-height:1.8;"></div>
         </div>
@@ -757,6 +790,25 @@
 <audio id="audioPlayer" preload="metadata"></audio>
 <!-- 封面上传 -->
 <input type="file" id="coverUpload" accept="image/*" hidden>
+<!-- 和 TA 一起听 -->
+<div class="tg-sheet" id="togetherSheet">
+  <div class="tg-mask" id="togetherMask"></div>
+  <div class="tg-panel" role="dialog" aria-modal="true" aria-labelledby="tgTitle">
+    <div class="tg-head">
+      <div>
+        <div class="tg-kicker">LISTEN TOGETHER</div>
+        <div class="tg-title" id="tgTitle">和 TA 一起听</div>
+      </div>
+      <span class="tg-state" id="togetherState">未开启</span>
+    </div>
+    <div class="tg-roles" id="togetherRoles"></div>
+    <p class="tg-note" id="togetherNote">同设备伴听，不会同步到其他设备。</p>
+    <div class="tg-line" id="togetherLine"></div>
+    <div class="tg-list" id="togetherList"></div>
+    <button class="tg-toggle" type="button" id="togetherToggle">开启一起听</button>
+  </div>
+</div>
+
 <!-- 导入本地音乐 -->
 <input type="file" id="musicImport" accept="audio/*" multiple hidden>
 
@@ -1442,11 +1494,25 @@
     if (!hd) hd = '@music_lover';
     var customColor = document.getElementById('editBgCustom').value;
     var bg = (customColor && customColor !== '#1a1a1a') ? customColor : BG_PRESETS[selectedBg].css;
+    /* 三条资料是一个整体：任何一条写失败都把已写入的还原，避免出现「昵称存了、
+       handle 没存」的半截状态。 */
+    var prev = {
+      name: localStorage.getItem('music_profile_name'),
+      handle: localStorage.getItem('music_profile_handle'),
+      bg: localStorage.getItem('music_profile_bg')
+    };
     var okName = saveLocal('music_profile_name', nm, true);
-    var okHandle = saveLocal('music_profile_handle', hd, true);
-    var okBg = saveLocal('music_profile_bg', bg, true);
+    var okHandle = okName && saveLocal('music_profile_handle', hd, true);
+    var okBg = okHandle && saveLocal('music_profile_bg', bg, true);
     if (!okName || !okHandle || !okBg) {
-      warnMusicStorage('昵称或个人主页背景没能保存，本机存储空间不足；清出空间后再点一次保存');
+      [['music_profile_name', prev.name], ['music_profile_handle', prev.handle], ['music_profile_bg', prev.bg]]
+        .forEach(function (pair) {
+          try {
+            if (pair[1] == null) localStorage.removeItem(pair[0]);
+            else localStorage.setItem(pair[0], pair[1]);
+          } catch (e) {}
+        });
+      warnMusicStorage('资料没能保存（本机存储空间不足），已保持原来的昵称与背景；清出空间后再试一次');
       return;
     }
     renderProfile();
@@ -1489,6 +1555,277 @@
     }
     e.target.value = '';
   });
+
+  /* ===== 和 TA 一起听（同设备本地伴听 · 默认关闭 · 付费护栏） =====
+     1. 只做同设备伴听：跟随本地播放器的曲目/播放状态，不做跨设备同步。
+     2. 只把「角色卡字段 + 曲目标题/歌手 + 播放状态」发给模型；绝不上传音频、
+        本地 Blob、API Key，也不引入 PhoneContext（它仍会混入全量世界书与财务快照）。
+     3. 付费调用默认关闭，需用户手动开启；每首最多 1 次、每 3 分钟最多 1 次、
+        每天最多 10 次（仅本机限制）；不监听 timeupdate，不会逐秒调用。
+     4. 关闭模式 / 切角色 / 切后台立即作废 token，旧结果不回写。 */
+  var TOGETHER_KEY = 'maomao_music_together_v1';
+  var TOGETHER_DAILY_LIMIT = 10;
+  var TOGETHER_MIN_INTERVAL = 3 * 60 * 1000;
+  var together = {
+    enabled: false,
+    roleId: '',
+    busy: false,
+    token: 0,
+    lastAt: 0,
+    degraded: false,
+    perRoleTrack: {},
+    lines: []
+  };
+
+  function togetherDayKey() {
+    var d = new Date();
+    return d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0');
+  }
+  function togetherStore() {
+    try { return JSON.parse(localStorage.getItem(TOGETHER_KEY) || '{}') || {}; } catch (e) { return {}; }
+  }
+  function togetherUsedToday() {
+    var s = togetherStore();
+    return s.day === togetherDayKey() ? (Number(s.used) || 0) : 0;
+  }
+  function togetherRemaining() { return Math.max(0, TOGETHER_DAILY_LIMIT - togetherUsedToday()); }
+  function persistTogether(used) {
+    try {
+      localStorage.setItem(TOGETHER_KEY, JSON.stringify({
+        day: togetherDayKey(),
+        used: used == null ? togetherUsedToday() : used,
+        enabled: together.enabled,
+        roleId: together.roleId
+      }));
+      return true;
+    } catch (e) { return false; }
+  }
+  function bumpTogetherUsed() {
+    var used = togetherUsedToday() + 1;
+    persistTogether(used);            /* 先记账再请求，失败也算一次 */
+    return used;
+  }
+
+  function togetherRoles() {
+    try {
+      if (window.PhoneStorage && typeof PhoneStorage.getCharacters === 'function') {
+        var list = PhoneStorage.getCharacters() || [];
+        if (Array.isArray(list)) return list.filter(function (r) { return r && r.id && r.name; });
+      }
+    } catch (e) {}
+    return [];
+  }
+  function togetherRoleById(id) {
+    var list = togetherRoles();
+    for (var i = 0; i < list.length; i++) if (String(list[i].id) === String(id)) return list[i];
+    return null;
+  }
+  function togetherPersona(r) {
+    return [r.persona, r.description, r.personality, r.character, r.speechStyle, r.prompt]
+      .filter(Boolean).join('\n').slice(0, 1200);
+  }
+  function togetherTrack() { return tracks[currentIdx] || null; }
+  function tgEsc(v) {
+    return String(v == null ? '' : v).replace(/[&<>"']/g, function (c) {
+      return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c];
+    });
+  }
+
+  function togetherLocalLine(track) {
+    var pool = [
+      '这首的鼓点很轻，刚好适合现在。',
+      '刚才那段旋律有点熟悉。',
+      '我听着呢，不用说话也行。',
+      '这首歌我想再听一遍。',
+      '这个前奏一出来，人就安静了。'
+    ];
+    return pool[Math.floor(Math.random() * pool.length)];
+  }
+
+  function togetherShowLine(text) {
+    var box = document.getElementById('togetherLine');
+    if (box) box.textContent = text;
+    var list = document.getElementById('togetherList');
+    if (list) {
+      var item = document.createElement('div');
+      item.className = 'tg-item';
+      item.textContent = text;
+      list.insertBefore(item, list.firstChild);
+      while (list.children.length > 6) list.removeChild(list.lastChild);
+    }
+    var sheet = document.getElementById('togetherSheet');
+    if (sheet && !sheet.classList.contains('open')) toast(text);
+  }
+
+  function renderTogether() {
+    var roles = togetherRoles();
+    var role = togetherRoleById(together.roleId);
+    var btn = document.getElementById('togetherBtn');
+    if (btn) btn.classList.toggle('on', together.enabled);
+    var state = document.getElementById('togetherState');
+    if (state) {
+      state.textContent = !together.enabled ? '未开启'
+        : (together.degraded ? '本地陪伴中（接口不可用）' : (role ? '和 ' + role.name + ' 一起听' : '请选择角色'));
+    }
+    var note = document.getElementById('togetherNote');
+    if (note) {
+      note.textContent = together.enabled
+        ? '同设备伴听：只把曲名、歌手和播放状态发给你配置的付费 AI，不上传音频。每首最多 1 次、间隔 3 分钟、每天 10 次（仅本机限制）。今日剩余 ' + togetherRemaining() + ' 次。'
+        : '和 TA 一起听是本地伴听，不会同步到其他设备。开启后会调用你配置的付费 AI 接口；不开启时只有本地短句，零费用。';
+    }
+    var list = document.getElementById('togetherRoles');
+    if (list) {
+      if (!roles.length) {
+        list.innerHTML = '<div class="tg-empty">还没有可选的正式角色，先在聊天里创建角色。</div>';
+      } else {
+        list.innerHTML = roles.map(function (r) {
+          var on = String(r.id) === String(together.roleId);
+          return '<button type="button" class="tg-role' + (on ? ' is-on' : '') + '" data-tg-role="' + tgEsc(String(r.id)) + '">' + tgEsc(r.name) + '</button>';
+        }).join('');
+      }
+    }
+    var toggle = document.getElementById('togetherToggle');
+    if (toggle) {
+      toggle.textContent = together.enabled ? '关闭一起听' : '开启一起听';
+      toggle.classList.toggle('is-on', together.enabled);
+    }
+  }
+
+  function openTogetherSheet() {
+    renderTogether();
+    var s = document.getElementById('togetherSheet');
+    if (s) s.classList.add('open');
+  }
+  function closeTogetherSheet() {
+    var s = document.getElementById('togetherSheet');
+    if (s) s.classList.remove('open');
+  }
+
+  function setTogetherEnabled(on) {
+    var next = !!on;
+    if (next && !together.roleId) {
+      var list = togetherRoles();
+      if (!list.length) { toast('还没有可选的正式角色'); return; }
+      together.roleId = String(list[0].id);
+    }
+    together.enabled = next;
+    together.token++;                 /* 关闭或重开都作废进行中的结果 */
+    together.busy = false;
+    together.lastAt = 0;
+    together.degraded = false;
+    together.perRoleTrack = {};
+    persistTogether();
+    renderTogether();
+    toast(next ? '已开启和 TA 一起听（本地伴听）' : '已关闭和 TA 一起听，播放器不受影响');
+    if (next) togetherOnTrackChange(togetherTrack(), '刚开始一起听');
+  }
+
+  function setTogetherRole(id) {
+    if (String(id) === String(together.roleId)) return;
+    together.roleId = String(id);
+    together.token++;                 /* 换角色后旧结果不得串到新角色 */
+    together.busy = false;
+    together.perRoleTrack = {};
+    var list = document.getElementById('togetherList');
+    if (list) list.innerHTML = '';
+    var line = document.getElementById('togetherLine');
+    if (line) line.textContent = '';
+    persistTogether();
+    renderTogether();
+    var role = togetherRoleById(together.roleId);
+    toast('现在是和 ' + (role ? role.name : 'TA') + ' 一起听');
+  }
+
+  function togetherShouldCall(track) {
+    if (!together.enabled || !together.roleId) return false;
+    if (!track || !playing) return false;
+    if (document.hidden) return false;
+    if (together.busy) return false;
+    if (togetherRemaining() <= 0) return false;
+    if (Date.now() - together.lastAt < TOGETHER_MIN_INTERVAL) return false;
+    if (together.perRoleTrack[together.roleId + '|' + track.id]) return false;   /* 每首最多 1 次 */
+    return true;
+  }
+
+  function togetherOnTrackChange(track, trigger) {
+    if (!together.enabled) return;
+    if (!togetherShouldCall(track)) return;
+    requestTogetherLine(track, trigger || '切到这首歌');
+  }
+
+  function requestTogetherLine(track, trigger) {
+    var role = togetherRoleById(together.roleId);
+    if (!role) { renderTogether(); return; }
+    var token = together.token;
+    together.perRoleTrack[together.roleId + '|' + track.id] = true;
+    together.lastAt = Date.now();
+    bumpTogetherUsed();
+    together.busy = true;
+
+    var cfg = (window.PhoneStorage && typeof PhoneStorage.getApiConfig === 'function') ? (PhoneStorage.getApiConfig() || {}) : {};
+    var canCall = String(cfg.apiKey || '').trim() && window.PhoneAPI && typeof PhoneAPI.complete === 'function';
+    if (!canCall) {
+      together.busy = false;
+      together.degraded = true;
+      renderTogether();
+      togetherShowLine(role.name + '：' + togetherLocalLine(track));   /* 无接口：本地兜底，零费用 */
+      return;
+    }
+    var system = '你正在和用户戴着同一副耳机听歌。你是「' + role.name + '」，用第一人称说一两句很自然、很短的听歌感受。人设：'
+      + (togetherPersona(role) || '自然、克制的日常表达')
+      + '。要求：不要复述歌词、不要罗列歌名、不要提到 AI 或模型、不超过 40 字、不要加引号。';
+    var user = '当前曲目：' + track.name + '\n歌手：' + track.artist + '\n状态：' + trigger;
+    PhoneAPI.complete({ system: system, user: user, temperature: 0.9, timeoutMs: 12000 }).then(function (raw) {
+      if (token !== together.token) return;                 /* 关闭/换角色/切后台：旧结果丢弃 */
+      together.busy = false;
+      var line = String(raw == null ? '' : raw).trim().replace(/^["“”'「」]+|["“”'「」]+$/g, '').slice(0, 60);
+      together.degraded = false;
+      renderTogether();
+      togetherShowLine(role.name + '：' + (line || togetherLocalLine(track)));
+    }).catch(function () {
+      if (token !== together.token) return;
+      together.busy = false;
+      together.degraded = true;                              /* 失败不重试，直接本地兜底 */
+      renderTogether();
+      togetherShowLine(role.name + '：' + togetherLocalLine(track));
+    });
+  }
+
+  /* 播放器挂接：包一层，不修改原播放逻辑；不监听 timeupdate，避免逐秒调用 */
+  var __togetherPlayTrack = playTrack;
+  playTrack = function (trackId) {
+    var result = __togetherPlayTrack.apply(this, arguments);
+    togetherOnTrackChange(getTrackById(trackId), '切到这首歌');
+    return result;
+  };
+  var __togetherTogglePlay = togglePlay;
+  togglePlay = function () {
+    var result = __togetherTogglePlay.apply(this, arguments);
+    if (together.enabled && playing) togetherOnTrackChange(togetherTrack(), '接着刚才继续听');
+    return result;
+  };
+
+  document.addEventListener('visibilitychange', function () {
+    if (document.hidden) { together.token++; together.busy = false; }
+  });
+  (function initTogether() {
+    var saved = togetherStore();
+    together.enabled = !!saved.enabled;
+    together.roleId = saved.roleId ? String(saved.roleId) : '';
+    if (together.roleId && !togetherRoleById(together.roleId)) together.roleId = '';
+    var b = document.getElementById('togetherBtn');
+    if (b) b.addEventListener('click', function (e) { e.stopPropagation(); openTogetherSheet(); });
+    var mask = document.getElementById('togetherMask');
+    if (mask) mask.addEventListener('click', closeTogetherSheet);
+    var tg = document.getElementById('togetherToggle');
+    if (tg) tg.addEventListener('click', function () { setTogetherEnabled(!together.enabled); });
+    var roleList = document.getElementById('togetherRoles');
+    if (roleList) roleList.addEventListener('click', function (e) {
+      var btn = e.target.closest('[data-tg-role]');
+      if (btn) setTogetherRole(btn.getAttribute('data-tg-role'));
+    });
+    renderTogether();
+  })();
 
   // ===== 断点续播 =====
   function saveState() {
