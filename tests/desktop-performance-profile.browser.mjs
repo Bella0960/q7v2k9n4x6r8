@@ -100,7 +100,15 @@ try{
         return {wallpaperEncodedChars:length};
       },scenario);
       await page.addInitScript(()=>{
-        const p=window.__desktopPerf={wallReads:0,iconReads:0,toneCalls:0,toneMs:[],longTasks:[],fontOpens:0};
+        const p=window.__desktopPerf={wallReads:0,iconReads:0,toneCalls:0,toneMs:[],longTasks:[],fontOpens:0,fontLoads:[]};
+        try{
+          const nativeLoad=FontFaceSet.prototype.load;
+          FontFaceSet.prototype.load=function(spec,...args){
+            if(!String(spec).includes('MAOMAOUserFont'))return nativeLoad.call(this,spec,...args);
+            const started=performance.now();
+            return nativeLoad.call(this,spec,...args).then(faces=>{p.fontLoads.push({started,ready:performance.now(),faces:faces.length});return faces;});
+          };
+        }catch{}
         try{new PerformanceObserver(list=>{for(const e of list.getEntries())p.longTasks.push({start:e.startTime,duration:e.duration});}).observe({type:'longtask',buffered:true});}catch{}
         const originalOpen=IDBFactory.prototype.open;
         IDBFactory.prototype.open=function(name,...args){if(name==='maomao-font-presets')p.fontOpens++;return originalOpen.call(this,name,...args);};
@@ -137,7 +145,7 @@ try{
         const nav=performance.getEntriesByType('navigation')[0];
         const icons=[...document.querySelectorAll('#gridPage0 .app-icon,.dock-bar .app-icon')];
         const filtered=icons.filter(n=>{const s=getComputedStyle(n);const pseudo=getComputedStyle(n,'::before');return [s.backdropFilter,s.webkitBackdropFilter,pseudo.backdropFilter,pseudo.webkitBackdropFilter].some(x=>x&&x!=='none');}).length;
-        return {readyMs:performance.now(),dclMs:nav.domContentLoadedEventEnd,fontStatus:useFont?[...document.fonts].find(f=>f.family.replace(/"/g,'')==='MAOMAOUserFont')?.status||'missing':'default',visibleIconFilters:filtered,glassIcons:document.querySelectorAll('.maomao-liquid-glass-icon').length};
+        return {readyMs:performance.now(),dclMs:nav.domContentLoadedEventEnd,fontLoadSamples:window.__desktopPerf.fontLoads.slice(),fontStatus:useFont?[...document.fonts].find(f=>f.family.replace(/"/g,'')==='MAOMAOUserFont')?.status||'missing':'default',visibleIconFilters:filtered,glassIcons:document.querySelectorAll('.maomao-liquid-glass-icon').length};
       },!!scenario.font);
       if(scenario.font)assert.equal(loaded.fontStatus,'loaded','fixture font not loaded');
       const home=page.locator('#homeScreen'),box=await home.boundingBox();
@@ -181,12 +189,12 @@ try{
       const appNavMs=Date.now()-start;
       const input=await page.evaluate(()=>{
         let c;try{c=JSON.parse(sessionStorage.getItem('__desktop_perf_click')||'null');}catch{}
-        return c?{queue:c.queue,clickToDcl:performance.timeOrigin+performance.now()-c.at}:null;
+        return c?{queue:c.queue,clickToDcl:performance.timeOrigin+(performance.getEntriesByType('navigation')[0]?.domContentLoadedEventEnd||performance.now())-c.at}:null;
       });
       const result={case:scenario.name,width:scenario.width,cpu:scenario.cpu,
         fixtureBytes:scenario.font?font.length:0,cjkFixture:scenario.font?cjkFixture:null,
         hdEncodedChars:fixture.wallpaperEncodedChars,dclMs:round(loaded.dclMs),readyMs:round(loaded.readyMs),
-        fontStatus:loaded.fontStatus,fontDbOpens:before.f,refocusFontDbOpens:after.f-before.f,
+        fontStatus:loaded.fontStatus,fontReadyFromNavigationMs:loaded.fontLoadSamples.length?round(Math.min(...loaded.fontLoadSamples.map(x=>x.ready))):null,fontFirstLoadMs:loaded.fontLoadSamples.length?round(loaded.fontLoadSamples[0].ready-loaded.fontLoadSamples[0].started):null,fontDbOpens:before.f,refocusFontDbOpens:after.f-before.f,
         swipeMoved:swipe.scrollLeft>swipe.pageWidth*.5,frameSamples:swipe.frames.length,
         rafFps:avg?round(1000/avg):null,frameP95Ms:percentile(swipe.frames,.95),
         slowFramePct:swipe.frames.length?round(100*swipe.frames.filter(t=>t>34).length/swipe.frames.length):null,
