@@ -7,7 +7,8 @@
   <title>管理中心 · 小手机</title>
   <link rel="stylesheet" href="./admin-center.css?v=20261117-ui1">
   <link rel="stylesheet" href="./admin-center-editorial.css?v=20261123-v1">
-  <script src="./admin-center.js?v=20261123-editorial1" defer></script>
+  <link rel="stylesheet" href="./admin-operations.css?v=20261123-v1">
+  <script src="./admin-center.js?v=20261123-operations1" defer></script>
 </head>
 <body>
   <main class="admin-shell">
@@ -42,13 +43,49 @@
 
     <div class="section-caption workspace-caption" aria-hidden="true"><span>管理工作台</span><span>WORKSPACE</span></div>
     <nav class="admin-tabs" aria-label="管理项目">
-      <button class="tab-button active" type="button" data-tab="users">用户管理</button>
+      <button class="tab-button active" type="button" data-tab="overview">工作台</button>
+      <button class="tab-button" type="button" data-tab="users">用户管理</button>
       <button class="tab-button" type="button" data-tab="invites">邀请码管理</button>
       <button class="tab-button" type="button" data-tab="audit">操作审计</button>
       <button class="tab-button" type="button" data-tab="settings">后台设置</button>
     </nav>
 
-    <section class="admin-view" id="usersView">
+    <section class="admin-view operations-view" id="overviewView" aria-label="管理工作台总览">
+      <div class="view-heading operations-header">
+        <div><span class="view-kicker">01 / DASHBOARD</span><h2>运营总览</h2><p>授权、账号与云端运行情况，集中查看。</p></div>
+        <button type="button" class="refresh-button" id="refreshOverview">更新状态</button>
+      </div>
+      <div class="operations-grid">
+        <article class="operations-feature">
+          <div class="operations-kicker">需要关注 <span>PRIORITIES</span></div>
+          <div class="operations-headline" id="overviewHeadline" aria-live="polite">正在核对工作台…</div>
+          <p id="overviewDescription">统计以服务器已确认的账号记录为准。</p>
+          <div class="operations-actions">
+            <button type="button" data-quick-tab="users" data-quick-filter="pending_invite">查看待授权账号</button>
+            <button type="button" data-quick-tab="invites">邀请码记录</button>
+          </div>
+        </article>
+        <article class="operations-system">
+          <div class="operations-kicker">云端状态 <span>LIVE CHECK</span></div>
+          <div class="operations-state" id="overviewCloudStatus" aria-live="polite">尚未核对</div>
+          <p id="overviewCloudDetail">只读检测，不修改后台任务和数据库。</p>
+          <div class="operations-system-actions">
+            <button type="button" id="overviewCloudRetry">重新检测</button>
+            <a href="./cloud.html">诊断详情 <span aria-hidden="true">↗</span></a>
+          </div>
+        </article>
+      </div>
+      <div class="operations-section-title"><span>快捷管理</span><small>SHORTCUTS</small></div>
+      <div class="operations-links">
+        <button type="button" data-quick-tab="users"><strong>账号与权限</strong><span>查看用户、核对授权状态</span></button>
+        <button type="button" data-quick-tab="invites"><strong>邀请与准入</strong><span>查看发码、核销及撤销记录</span></button>
+        <button type="button" data-quick-tab="audit"><strong>操作审计</strong><span>核对账号与邀请操作历史</span></button>
+        <button type="button" data-quick-tab="settings"><strong>安全规则</strong><span>查看现有强制保护与限制</span></button>
+      </div>
+      <p class="operations-footnote" id="overviewUpdatedAt">尚未完成首次同步</p>
+    </section>
+
+    <section class="admin-view" id="usersView" hidden>
       <div class="view-heading"><div><span class="view-kicker">01 / ACCOUNTS</span><h2>账号列表</h2><p>按永久账号 ID 管理独立账号</p></div><button class="refresh-button" id="refreshUsers" type="button">刷新</button></div>
       <label class="search-box"><input id="accountSearch" type="search" placeholder="搜索永久 ID、用户名或邮箱" aria-label="搜索账号"></label>
       <div class="account-filter-row" role="group" aria-label="按账号状态筛选">
