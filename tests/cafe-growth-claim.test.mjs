@@ -53,7 +53,7 @@ function buildSandbox() {
   vm.createContext(sandbox);
   vm.runInContext(
     slice('function claimGrowthReward(', '\nfunction renderGrowthDashboard(') +
-    'function bindGrowthClaim(root){const nodes={records:root};\n'+slice(" nodes.records.addEventListener('click'", " panel.addEventListener('click'")+'}',
+    slice('var growthClaimDelegated=false;', 'function syncArchiveState('),
     sandbox
   );
   return sandbox;

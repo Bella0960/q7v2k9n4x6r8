@@ -294,7 +294,7 @@ main{margin-top:10px}main>section[hidden]{display:none!important}
 </head>
 <body>
 <div class="shell">
-<header class="topbar"><button class="icon-btn" id="goHome" aria-label="返回桌面"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="m15 18-6-6 6-6"/></svg></button><span class="wordmark">小店经营</span><button class="cafe-tools-trigger" type="button" data-open-cafe="menu">功能 +</button></header>
+<header class="topbar"><button class="icon-btn" id="goHome" aria-label="返回桌面"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="m15 18-6-6 6-6"/></svg></button><span class="wordmark">小店经营</span><button class="cafe-tools-trigger" type="button" id="openArchive" aria-controls="view-extra" aria-expanded="false">档案</button></header>
 <section class="hero"><div class="eyebrow">YOUR LITTLE BUSINESS</div><h1>把一家小店，<br>慢慢经营好。</h1><p>从第一杯咖啡开始。选菜单、管库存、处理客人，和你选中的角色一起把小店做起来。</p><div class="hero-num" id="heroDay">01</div></section>
 <div class="partner"><div class="avatar" id="partnerAvatar">店</div><div class="partner-meta"><strong id="partnerName">今日经营搭档</strong><span id="partnerCaption">和你一起做决定</span></div><div class="select-wrap"><select class="role-select" id="partnerSelect" aria-label="选择经营搭档"></select></div></div>
 <nav class="tabs" aria-label="咖啡馆功能"><button class="tab active" data-tab="overview">今日经营</button><button class="tab" data-tab="menu">菜单定价</button><button class="tab" data-tab="stock">原料库存</button><button class="tab" data-tab="shop">店铺升级</button><button class="tab" data-tab="partner">伙伴回忆</button></nav>
@@ -423,9 +423,9 @@ function renderPartner(){$('partnerSelect').innerHTML=roles.map(function(r){retu
 function toast(t){var el=$('toast');el.textContent=t;el.classList.add('show');clearTimeout(toast.timer);toast.timer=setTimeout(function(){el.classList.remove('show');},2000);}
 function ing(id){return ING.find(function(x){return x.id===id;});}function item(id){return (st.itemOverrides||{})[id]||ITEMS.concat(st.customItems||[]).find(function(x){return x.id===id;});}
 function price(p){return Number(st.prices[p.id]||p.price);}function stat(k,d){st[k]=clamp((Number(st[k])||0)+d,0,100);}function needed(){return st.level*60;}function eventNow(){return EVENTS[clamp(st.event,0,EVENTS.length-1)];}
-function setTab(tab){TAB=tab;document.querySelectorAll('[data-tab]').forEach(function(b){b.classList.toggle('active',b.dataset.tab===tab);});['overview','menu','stock','shop','partner'].forEach(function(x){$('view-'+x).hidden=x!==tab;});renderTab();}
-function renderAll(){$('heroDay').textContent=String(st.day).padStart(2,'0');renderPartner();document.querySelectorAll('[data-tab]').forEach(function(b){b.classList.toggle('active',b.dataset.tab===TAB);});['overview','menu','stock','shop','partner'].forEach(function(x){$('view-'+x).hidden=x!==TAB;});renderTab();if(cafeCompactUI&&cafeCompactUI.drawer.classList.contains('open'))cafeCompactUI.show(cafeCompactUI.currentPanel,true);}
-function renderTab(){if(TAB==='overview')renderOverview();if(TAB==='menu')renderMenu();if(TAB==='stock')renderStock();if(TAB==='shop')renderShop();if(TAB==='partner')renderPartnerTab();}
+function setTab(tab){TAB=tab;document.querySelectorAll('[data-tab]').forEach(function(b){b.classList.toggle('active',b.dataset.tab===tab);});['overview','menu','stock','shop','partner','extra'].forEach(function(x){$('view-'+x).hidden=x!==tab;});renderTab();syncArchiveState();}
+function renderAll(){$('heroDay').textContent=String(st.day).padStart(2,'0');renderPartner();document.querySelectorAll('[data-tab]').forEach(function(b){b.classList.toggle('active',b.dataset.tab===TAB);});['overview','menu','stock','shop','partner','extra'].forEach(function(x){$('view-'+x).hidden=x!==TAB;});renderTab();if(cafeCompactUI&&cafeCompactUI.drawer.classList.contains('open'))cafeCompactUI.show(cafeCompactUI.currentPanel,true);syncArchiveState();}
+function renderTab(){if(TAB==='overview')renderOverview();if(TAB==='menu')renderMenu();if(TAB==='stock')renderStock();if(TAB==='shop')renderShop();if(TAB==='partner')renderPartnerTab();if(TAB==='extra')renderCafeDetails();}
 function metrics(){return '<div class="metrics"><div class="metric"><div class="metric-label">店铺等级</div><div class="metric-value">LV.'+st.level+'</div><div class="progress"><span style="width:'+Math.round(st.xp/needed()*100)+'%"></span></div><div class="metric-sub">'+st.xp+' / '+needed()+' EXP</div></div><div class="metric"><div class="metric-label">口碑指数</div><div class="metric-value">'+st.rep+'</div><div class="progress"><span style="width:'+st.rep+'%"></span></div><div class="metric-sub">熟客与新客</div></div><div class="metric"><div class="metric-label">顾客满意度</div><div class="metric-value">'+st.sat+'</div><div class="progress"><span style="width:'+st.sat+'%"></span></div><div class="metric-sub">服务与等待</div></div></div>';}
 function businessStatusLabel(){return st.businessStatus==='operating'?'营业中':'筹备中';}
 function finance(){return '<div class="cash-card"><div class="cash-head"><span>DAILY CASHFLOW</span><span class="day-chip">第 '+st.day+' 天 · '+businessStatusLabel()+'</span></div><div class="cash-label">可用经营资金</div><div class="cash-value">'+money(st.cash)+'</div><div class="cash-foot"><span>累计营收<strong>'+money(st.totalRevenue)+'</strong></span><span>累计客人<strong>'+st.totalCustomers+' 位</strong></span><span>在售菜单<strong>'+st.menu.length+' 款</strong></span></div></div>';}
@@ -777,10 +777,21 @@ function claimGrowthReward(id){
 }
 function renderGrowthDashboard(){var ls=st.lifeStats||{},hist=(st.history||[]).slice(0,7).reverse(),max=Math.max(1,...hist.map(function(h){return Math.abs(Number(h.profit)||0);}));var bars=hist.length?hist.map(function(h){var p=Number(h.profit)||0,height=Math.max(5,Math.round(Math.abs(p)/max*42));return '<div class="growth-bar-col"><div class="growth-bar-value '+(p<0?'negative':'')+'">'+(p<0?'−':'+')+money(Math.abs(p))+'</div><div class="growth-bar-track"><span class="'+(p<0?'negative':'positive')+'" style="height:'+height+'px"></span></div><small>D'+h.day+'</small></div>';}).join(''):'<div class="growth-empty">完成第一次营业后，这里会开始记录经营趋势。</div>';var milestones=growthMilestones(),next=milestones.find(function(m){return m.value<m.target&&!st.growthClaims[m.id];})||null;var milestoneHtml=milestones.map(function(m){var claimed=!!st.growthClaims[m.id],done=m.value>=m.target,pct=clamp(m.value/m.target*100,0,100),progress=m.id==='visitors50'?m.value+' / '+m.target+' 位':m.id==='profit300'?money(m.value)+' / '+money(m.target):m.value+' / '+m.target+' 天';return '<div class="growth-milestone '+(claimed?'claimed':done?'done':'')+'"><div class="growth-milestone-top"><div><strong>'+esc(m.title)+'</strong><span>'+esc(m.desc)+'</span></div><b>'+(claimed?'已领取':done?'已达成':Math.floor(pct)+'%')+'</b></div><div class="growth-track"><span style="width:'+pct+'%"></span></div><small>'+progress+'</small>'+(done&&!claimed?'<button type="button" class="growth-claim" data-growth-claim="'+m.id+'">领取奖励 · 解锁内容 + '+money(m.reward)+'</button>':'')+'</div>';}).join('');return '<section class="growth-dashboard"><div class="growth-heading"><div><div class="growth-kicker">BUSINESS JOURNAL / LONG VIEW</div><div class="growth-title">经营数据与成长</div></div><span class="growth-days">DAY '+String(Math.max(1,st.day-1)).padStart(2,'0')+'</span></div><div class="growth-total"><span>累计营业额</span><strong>'+money(st.totalRevenue||0)+'</strong><small>沿用当前存档的累计营业收入</small></div><div class="growth-metric-grid"><div><span>已结算天数</span><strong>'+(ls.days||0)+'</strong></div><div><span>累计净利润*</span><strong>'+(Number(ls.totalProfit)>=0?'+':'−')+money(Math.abs(Number(ls.totalProfit)||0))+'</strong></div><div><span>累计接待</span><strong>'+(ls.totalServed||0)+' 位</strong></div><div><span>盈利天数</span><strong>'+(ls.profitableDays||0)+' 天</strong></div><div><span>历史最佳单日</span><strong>'+money(ls.bestDailyProfit||0)+'</strong></div><div><span>最长盈利连胜</span><strong>'+(ls.bestProfitStreak||0)+' 天</strong></div><div><span>累计原料成本</span><strong>'+money(ls.totalIngredientCost||0)+'</strong></div><div><span>累计流失订单</span><strong>'+(ls.totalLostOrders||0)+' 单</strong></div></div><div class="growth-footnote">*新统计从本次启用后累计；旧存档的历史明细不会被猜测补齐。</div><div class="growth-section"><div class="growth-section-head"><span>RECENT PROFIT / 最近结算</span><span>最多 7 天</span></div><div class="growth-chart">'+bars+'</div><div class="growth-chart-legend"><span><i></i> 正利润</span><span><i class="loss"></i> 负利润</span></div></div><div class="growth-section"><div class="growth-section-head"><span>NEXT MILESTONES / 成长目标</span><span>'+(next?'下一阶段：'+esc(next.title):'阶段目标已完成')+'</span></div><div class="growth-milestones">'+milestoneHtml+'</div></div></section>';}
 
+var growthClaimDelegated=false;
+function bindGrowthClaim(root){
+ if(!root||growthClaimDelegated)return;
+ growthClaimDelegated=true;
+ root.addEventListener('click',function(e){
+  var btn=e.target&&e.target.closest?e.target.closest('[data-growth-claim]'):null;
+  if(!btn)return;
+  claimGrowthReward(btn.getAttribute('data-growth-claim'));
+ });
+}
+function syncArchiveState(){var btn=$('openArchive');if(btn)btn.setAttribute('aria-expanded',TAB==='extra'?'true':'false');}
 function renderCafeDetails(){
  var root=$('view-extra');if(!root)return;
  var focus=cafeCompactUI&&cafeCompactUI.focusAdvisor;
- var html='<div class="head-row"><div><div class="kicker">ARCHIVE / DETAILS</div><div class="section-title">经营档案</div></div><span class="aside">第 '+st.day+' 天</span></div>';
+ var html='<div class="head-row"><div><div class="kicker">ARCHIVE / DETAILS</div><div class="section-title">经营档案</div></div><span class="aside">第 '+st.day+' 天 · <button type="button" class="menu-edit" id="closeArchive">返回</button></span></div>';
  html+=renderGrowthDashboard();
  html+=accWrap('goal','DAILY MISSION','今日目标','',renderDailyGoal(),accOpenState.goal||focus==='goal');
  html+=accWrap('advisor','PARTNER / ADVISOR','搭档建议','你做最后决定',renderAdvisor(),accOpenState.advisor||focus==='advisor');
@@ -788,6 +799,7 @@ function renderCafeDetails(){
  if(st.history.length)html+=accWrap('history','RECENT DAYS','营业记录','最近 '+st.history.length+' 天','<div class="history">'+st.history.slice(0,6).map(function(h){return '<div class="history-row"><div><strong>第 '+h.day+' 天 · '+esc(h.eventTitle)+'</strong><span>'+h.served+' 位客人 · '+esc(h.serviceName)+'</span></div><div class="history-value">'+(h.profit>=0?'+':'−')+money(Math.abs(h.profit))+'</div></div>';}).join('')+'</div>',accOpenState.history||focus==='history');
  html+=accWrap('achievements','MILESTONES','经营成就',countAchievements()+' / '+ACHIEVEMENTS.length+' 已解锁',renderAchievements());
  root.innerHTML=html;
+ var closeArchive=$('closeArchive');if(closeArchive)closeArchive.addEventListener('click',function(){setTab('overview');});
  var ask=$('askPlan');if(ask)ask.addEventListener('click',askPlan);
  var accept=$('acceptPlan');if(accept)accept.addEventListener('click',acceptPlan);
  var reject=$('rejectPlan');if(reject)reject.addEventListener('click',function(){if(advisorPlan){advisorPlan.status='rejected';renderOverview();}});
@@ -854,7 +866,7 @@ function renderOverview(){
  var fp=$('followPartner');if(fp)fp.addEventListener('click',function(){if(st.businessStatus==='operating'){toast('营业中不能更改今日事件。');return;}var a=adviceForToday();chooseEvent(Number(a.choice));});
  var fa=$('askAdviceAgain');if(fa)fa.addEventListener('click',askPartnerOpinion);
  var open=$('openShop');if(open)open.addEventListener('click',function(){if(st.businessStatus==='operating'){runDay();}else{startBusiness();}});
- renderCafeDetails();
+ if(TAB==='extra')renderCafeDetails();
 }
 function renderPartnerTab(){
  var html='<div class="head-row"><div><div class="kicker">PARTNER / MEMORIES</div><div class="section-title">伙伴与回忆</div></div><span class="aside">第 '+st.day+' 天</span></div>'+renderActiveDecor()+renderPartnerProfile()+renderPartnerEpisode()+renderGalleryStory();
@@ -1002,7 +1014,8 @@ function initCafeCompactUI(){
  var routes=[{key:'menu',label:'菜单',id:'view-menu'},{key:'stock',label:'库存',id:'view-stock'},{key:'shop',label:'装修',id:'view-shop'},{key:'partner',label:'搭档',id:'view-partner'},{key:'records',label:'记录',id:'view-extra'}],nodes={};
  routes.forEach(function(route){
   var b=document.createElement('button');b.type='button';b.textContent=route.label;b.dataset.cafePanel=route.key;nav.append(b);
-  var node=$(route.id);if(!node)return;
+  var node=route.id==='view-extra'?document.createElement('section'):$(route.id);if(!node)return;
+  if(route.id==='view-extra')node.id=route.id;
   node.hidden=true;contentBox.append(node);nodes[route.key]=node;
  });
  panel.append(head,nav,contentBox);drawer.append(panel);body.append(drawer);
@@ -1033,10 +1046,6 @@ function initCafeCompactUI(){
  nav.addEventListener('click',function(e){var b=e.target.closest('[data-cafe-panel]');if(b)show(b.dataset.cafePanel,true);});
  close.addEventListener('click',hide);
  drawer.addEventListener('click',function(e){if(e.target===drawer)hide();});
- nodes.records.addEventListener('click',function(e){
-  var reward=e.target.closest('[data-growth-claim]');
-  if(reward)claimGrowthReward(reward.getAttribute('data-growth-claim'));
- });
  panel.addEventListener('click',function(e){var b=e.target.closest('[data-open-cafe]');if(b)open(b.dataset.openCafe,b.dataset.focusAdvisor||b.dataset.focusRecord||'');});
  body.addEventListener('click',function(e){var b=e.target.closest('[data-open-cafe]');if(b&&!drawer.contains(b))open(b.dataset.openCafe,b.dataset.focusAdvisor||b.dataset.focusRecord||'');});
  document.addEventListener('keydown',function(e){if(e.key==='Escape')hide();});
@@ -1047,6 +1056,8 @@ function bind(){
  document.querySelectorAll('[data-tab]').forEach(function(b){b.addEventListener('click',function(){setTab(b.getAttribute('data-tab'));});});
  $('partnerSelect').addEventListener('change',function(){var r=roles.find(function(x){return String(x.id)===String($('partnerSelect').value);});if(!r)return;partnerOpinionToken++;partnerOpinionBusy=false;partnerOpinionTarget='';role=r;localStorage.setItem('maomao_cafe_partner',String(r.id));advisorPlan=null;renderAll();toast('经营搭档已切换。');});
  $('goHome').addEventListener('click',function(){location.href='../index.html';});
+ var archiveBtn=$('openArchive');if(archiveBtn)archiveBtn.addEventListener('click',function(){setTab(TAB==='extra'?'overview':'extra');});
+ bindGrowthClaim($('view-extra'));
  /* 手风琴展开/收起（事件委托，重渲染后仍有效） */
  document.addEventListener('click',function(e){var h=(e.target.closest)?e.target.closest('[data-acc-toggle]'):null;if(h)accToggle(h.closest('.acc'));});
 }
