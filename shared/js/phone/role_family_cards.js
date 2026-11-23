@@ -263,6 +263,12 @@
       }
     }
 
+    // Keep every recorded transaction ID available for replay detection. Once the
+    // bounded receipt index is full, reject new payments rather than evicting an
+    // old ID and silently allowing that transaction to be charged again.
+    if (paymentId && Array.isArray(card.paymentReceipts) && card.paymentReceipts.length >= 500) {
+      return { ok: false, reason: 'receipt-capacity', card: card };
+    }
     if (!canUse(card, amount)) return { ok: false, reason: 'limit', card: card };
     if (!Array.isArray(card.history)) card.history = [];
     var row = {
@@ -280,7 +286,6 @@
         appId: row.appId,
         time: row.time
       });
-      while (card.paymentReceipts.length > 500) card.paymentReceipts.shift();
     }
     card.history.push(row);
     while (card.history.length > 80) card.history.shift();
