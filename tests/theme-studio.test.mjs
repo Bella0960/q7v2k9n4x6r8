@@ -90,6 +90,46 @@ test('detail and bubble preview mirror the native chat detail structure',()=>{
   }
 });
 
+test('legacy presets keep id/name/tab/values with null scope',()=>{
+  const s=boot();
+  const state=s.api.read();
+  state.presets=[{id:'old-1',name:'旧方案',tab:'bubble',values:{myBubbleBg:'#222222'}}];
+  assert.equal(s.api.save(state),true);
+  const back=boot('/theme-studio/theme-studio.html',s.storage).api.read();
+  assert.equal(back.presets.length,1);
+  assert.equal(back.presets[0].id,'old-1');
+  assert.equal(back.presets[0].name,'旧方案');
+  assert.equal(back.presets[0].tab,'bubble');
+  assert.equal(back.presets[0].scope,null);
+  assert.equal(back.presets[0].values.myBubbleBg,'#222222');
+});
+
+test('bubble preset keeps allowlisted scope; list/detail and invalid scope are dropped',()=>{
+  const s=boot();
+  const state=s.api.read();
+  state.presets=[
+    {id:'b-global',name:'全局泡',tab:'bubble',scope:'global',values:{myBubbleBg:'#111111'}},
+    {id:'b-role',name:'角色泡',tab:'bubble',scope:'role-a',values:{myBubbleBg:'#333333'}},
+    {id:'l-1',name:'列表',tab:'list',scope:'role-a',values:{itemRadius:12}},
+    {id:'bad',name:'非法',tab:'bubble',scope:{x:1},values:{myBubbleBg:'#444444'}}
+  ];
+  assert.equal(s.api.save(state),true);
+  const back=boot('/theme-studio/theme-studio.html',s.storage).api.read();
+  const byId=Object.fromEntries(back.presets.map(p=>[p.id,p]));
+  assert.equal(byId['b-global'].scope,'global');
+  assert.equal(byId['b-role'].scope,'role-a');
+  assert.equal(byId['l-1'].scope,null);
+  assert.equal(byId['bad'].scope,null);
+});
+
+test('presets are capped at 20',()=>{
+  const s=boot();
+  const state=s.api.read();
+  for(let i=0;i<25;i++)state.presets.push({id:'p'+i,name:'方案'+i,tab:'list',values:{itemRadius:10}});
+  assert.equal(s.api.save(state),true);
+  assert.equal(boot('/theme-studio/theme-studio.html',s.storage).api.read().presets.length,20);
+});
+
 test('runtime CSS is opt-in and scoped to native chat pages',()=>{
   const css=readFileSync(new URL('../shared/css/theme-studio-runtime.css',import.meta.url),'utf8');
   assert.match(css,/data-ts-list="1"/);
