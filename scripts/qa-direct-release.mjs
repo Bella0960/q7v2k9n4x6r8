@@ -27,7 +27,7 @@ const QA_DB = '4a24ce58079f468c87c2f75e107c4d1c';
 const CORE_DB = 'e1b78d3813ae4a819841e8c5c3e9e8ec';
 const QA_DO = '4a10d3dab4e16639445f4afdb0b7e5e2462cf06894cb4ae85f0ac3cd3cdba101';
 const CORE_DO = 'dba114c7b0abd8e53d1d78e579924852b8e40907e50213634aeeaeb41ab51a98';
-const BRANCH = 'integration/qa-hd-wallpaper-on-v145-20261123';
+const BRANCH = 'integration/qa-theme-studio-batch12-on-v146-20261124';
 const QA_SETUP_OPEN = 'isolated_authority';
 const QA_SETUP_CLOSED = 'disabled';
 const TESTS = [
@@ -79,6 +79,13 @@ const TESTS = [
   ['node', ['tests/music-mobile-browser.mjs']],
   // Chat whitespace and iMessage layout must pass on real built pages at 375/390/430px.
   ['node', ['tests/chat-light-surfaces-browser.mjs']],
+  // Isolated theme-studio batch 1+2: import security, preset management and retained previews.
+  ['node', ['tests/theme-studio-import-browser.mjs']],
+  ['node', ['tests/theme-studio-preset-browser.mjs']],
+  ['node', ['tests/theme-studio-browser.mjs']],
+  // Preserve v146 desktop HD wallpaper and widget/data stability on this combined candidate.
+  ['node', ['tests/desktop-wallpaper-hd.browser.mjs']],
+  ['node', ['tests/desktop-personalization.browser.mjs']],
   // A full Node suite catches regressions outside the narrower account/chat scripts.
   // Full Node discovery includes multiple real Chromium suites. Running those
   // concurrently on the small QA runner can exhaust browser resources and
