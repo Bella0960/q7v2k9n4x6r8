@@ -281,7 +281,8 @@ function storyWrite(key, value, quiet){
   }catch(e){ if(!quiet) warnStoryStorage(); return false; }
 }
 function getPlayerName(){
-  try{ return (PhoneStorage && PhoneStorage.rawGet) ? (PhoneStorage.rawGet(PLAYER_KEY,'') || '') : (localStorage.getItem(PLAYER_KEY) || ''); }catch(e){ return ''; }
+  var v = storyRead(PLAYER_KEY, '');
+  return (typeof v === 'string') ? v : '';
 }
 function setPlayerName(n){
   state.playerName = n;
@@ -296,11 +297,9 @@ function loadNpc(){
     defaults.chen = cn.chen || '角色2';
     defaults.su = cn.su || '角色3';
   }
-  try{
-    var raw = (PhoneStorage && PhoneStorage.rawGet) ? PhoneStorage.rawGet(npcKey(),null) : null;
-    if(typeof raw === 'string'){ try{ raw = JSON.parse(raw); }catch(e){ raw = null; } }
-    if(raw && typeof raw==='object') return {jiang:raw.jiang||defaults.jiang, chen:raw.chen||defaults.chen, su:raw.su||defaults.su};
-  }catch(e){}
+  var raw = storyRead(npcKey(), null);
+  if(typeof raw === 'string'){ try{ raw = JSON.parse(raw); }catch(e){ raw = null; } }
+  if(raw && typeof raw==='object') return {jiang:raw.jiang||defaults.jiang, chen:raw.chen||defaults.chen, su:raw.su||defaults.su};
   return defaults;
 }
 function saveNpc(n){
@@ -308,7 +307,8 @@ function saveNpc(n){
   if(!storyWrite(npcKey(), n, true)) warnStoryStorage('角色名没能保存，刷新后会恢复默认称呼');
 }
 function loadDiff(){
-  try{ return (PhoneStorage && PhoneStorage.rawGet) ? (PhoneStorage.rawGet(DIFF_KEY,'normal')||'normal') : (localStorage.getItem(DIFF_KEY)||'normal'); }catch(e){ return 'normal'; }
+  var v = storyRead(DIFF_KEY, 'normal');
+  return (typeof v === 'string' && v) ? v : 'normal';
 }
 function saveDiff(d){
   state.difficulty = d;
