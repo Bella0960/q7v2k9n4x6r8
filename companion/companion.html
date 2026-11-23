@@ -56,6 +56,9 @@ footer{border-top:1px solid var(--ink);margin-top:38px;padding-top:12px;display:
 .toast.show{opacity:1;transform:translate(-50%,0)}
 @media(min-width:600px){.page{padding-left:32px;padding-right:32px}.top{height:64px}}
 </style>
+<!-- 独立页面必须自己加载共享存储：否则 window.PhoneStorage 不存在，
+     角色绑定会静默回落到旧的 currentRoleId / default 共享桶。 -->
+<script src="../shared/js/phone/phone_storage.js?v=20261031-envelope1"></script>
 </head>
 <body>
 <main class="page">
@@ -111,17 +114,35 @@ footer{border-top:1px solid var(--ink);margin-top:38px;padding-top:12px;display:
     }catch(e){}
     return null;
   }
+  /* ?id= 深链必须能在正式角色列表里查到，否则视为无效，不再猜一个 ID 去写信件。 */
+  function roleById(id){
+    if(id==null||id==='')return null;
+    try{
+      const ps=window.PhoneStorage;
+      if(ps&&typeof ps.getCharacters==='function'){
+        const list=ps.getCharacters()||[];
+        const hit=(Array.isArray(list)?list:[]).filter(r=>r&&r.id!=null&&String(r.id)===String(id))[0];
+        if(hit)return{id:String(hit.id),name:String(hit.name||'')};
+      }
+    }catch(e){}
+    return null;
+  }
   const boundRole=(function(){
-    const id=urlParams.get('id');
-    if(id)return{id:String(id),name:''};
+    const rawId=urlParams.get('id');
+    if(rawId){
+      /* 深链带了角色 ID 就必须真实存在：查不到说明链接失效，不做任何猜测，直接只读。 */
+      const fromUrl=roleById(rawId);
+      return fromUrl?{id:fromUrl.id,name:fromUrl.name,valid:true}:{id:'',name:'',valid:false};
+    }
     const shared=sharedRole();
-    if(shared)return shared;
-    let legacy='';
-    try{legacy=localStorage.getItem('currentRoleId')||'';}catch(e){}
-    return{id:String(legacy||'default'),name:''};
+    if(shared)return{id:shared.id,name:shared.name,valid:true};
+    return{id:'',name:'',valid:false};      /* 没有合法正式角色：只读，不写共享桶 */
   })();
   const roleId = boundRole.id;
+  /* 隐私写入闸门：没有合法角色时不允许往任何桶里写，避免两个角色共用同一份数据。 */
+  function canStore(){return !!boundRole.valid && !!roleId;}
   const KEY_Q='maoer_daily_questions_'+roleId, KEY_E='maoer_anniversaries_'+roleId;
+  const READONLY_TIP='还没有绑定正式角色，回答只能看不能存。请先在聊天里选择一位角色。';
   const bank=[
     ['今天有什么小事让你觉得还不错？','如果今天可以重来一次，你会想改变什么？','现在最想和我分享的一件事是什么？'],
     ['最近有没有什么事情一直放在心上？','什么样的陪伴会让你觉得安心？','今天想给未来的自己留一句什么话？'],
@@ -133,15 +154,16 @@ footer{border-top:1px solid var(--ink);margin-top:38px;padding-top:12px;display:
   const dayKey=()=>{const d=new Date();return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0')};
   const safeRead=(key,fallback)=>{try{const v=JSON.parse(localStorage.getItem(key));return v==null?fallback:v}catch(e){return fallback}};
   const esc=s=>String(s||'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
-  let answers=safeRead(KEY_Q,{});
+  let answers=canStore()?safeRead(KEY_Q,{}):{};
   if(!answers||typeof answers!=='object'||Array.isArray(answers))answers={};
-  let events=safeRead(KEY_E,[]);
+  let events=canStore()?safeRead(KEY_E,[]):[];
   if(!Array.isArray(events))events=[];
   let toastTimer, storeWarned=false;
   function toast(msg){const el=$('toast');el.textContent=msg;el.classList.add('show');clearTimeout(toastTimer);toastTimer=setTimeout(()=>el.classList.remove('show'),2100)}
   /* 写失败必须如实反馈：原来直接 setItem，配额满时抛异常、界面却可能已经提示成功。
      单键写入本身是原子的，失败时磁盘上的旧数据不会被改坏。 */
   function storeSet(key,value){
+    if(!canStore()){toast(READONLY_TIP);return false;}
     try{localStorage.setItem(key,JSON.stringify(value));return true}
     catch(e){
       if(!storeWarned){storeWarned=true;toast('本机存储空间不足，这次没能保存');}
@@ -159,7 +181,8 @@ footer{border-top:1px solid var(--ink);margin-top:38px;padding-top:12px;display:
   }
   function questionsForToday(){const n=Number(dayKey().replace(/-/g,''));return bank[(n%bank.length)]}
   function renderRoleLabel(){
-    $('roleLabel').textContent=boundRole.name?('与 '+boundRole.name+' · 只存本机'):'本地保存 · 不消耗 API';
+    $('roleLabel').textContent=!boundRole.valid?'未绑定角色 · 只读'
+      :(boundRole.name?('与 '+boundRole.name+' · 只存本机'):'本地保存 · 不消耗 API');
   }
   function renderQuestions(){
     const key=dayKey(), saved=(draft[key]||answers[key]||['','','']);
@@ -226,6 +249,7 @@ footer{border-top:1px solid var(--ink);margin-top:38px;padding-top:12px;display:
     events=next;renderEvents();toast('已删除纪念日');
   });
   renderRoleLabel();renderQuestions();renderEvents();
+  if(!boundRole.valid) $('saveStatus').textContent=READONLY_TIP;
 })();
 </script>
 </body>
