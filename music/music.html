@@ -1612,6 +1612,17 @@
     return Math.max(togetherStoredUsed(), togetherSession.used);
   }
   function togetherRemaining() { return Math.max(0, TOGETHER_DAILY_LIMIT - togetherUsedToday()); }
+  /* 总控 P1：写预算必须写进去并且读回一致，才允许发付费请求。
+     之前只在内存记账后继续请求——配额拒写的手机上刷新即可重置会话计数，
+     长期限额形同虚设。写不进去就 fail-closed：0 次 PhoneAPI.complete，只走本地短句。 */
+  function persistTogetherVerified() {
+    try {
+      var payload = { day: togetherDayKey(), used: togetherUsedToday() };
+      localStorage.setItem(TOGETHER_KEY, JSON.stringify(payload));
+      var back = JSON.parse(localStorage.getItem(TOGETHER_KEY) || '{}') || {};
+      return back.day === payload.day && Number(back.used) === Number(payload.used);
+    } catch (e) { return false; }
+  }
   function persistTogether() {
     try {
       localStorage.setItem(TOGETHER_KEY, JSON.stringify({
@@ -1623,13 +1634,16 @@
       return true;
     } catch (e) { return false; }
   }
-  /* 记账：返回 false 表示这次不允许发请求（额度真的用完了）。 */
+  /* 记账：返回 false 表示这次不允许发请求（额度用完，或本机预算写不进去）。 */
   function togetherChargeBudget() {
     togetherSessionSync();
     var used = togetherUsedToday();
     if (used >= TOGETHER_DAILY_LIMIT) return false;
     togetherSession.used = used + 1;          /* 会话内单调，任何开关都不回退 */
-    if (!persistTogether()) togetherSession.persistBroken = true;
+    if (!persistTogetherVerified()) {
+      togetherSession.persistBroken = true;
+      return false;                            /* fail-closed：0 次付费请求 */
+    }
     return true;
   }
   function togetherCanCallApi() {
@@ -1811,7 +1825,12 @@
       together.degraded = true;
       renderTogether();
       togetherShowLine(role.name + '：' + togetherLocalLine(track));
-      toast('今日伴听额度已用完，先只听歌（仅本机限制）');
+      /* 区分原因：写不进本机 ≠ 额度用完。fail-closed 时必须告诉用户真相。 */
+      if (togetherSession.persistBroken) {
+        toast('本机预算没能写入，伴听已暂停付费回应（避免绕开限额）');
+      } else {
+        toast('今日伴听额度已用完，先只听歌（仅本机限制）');
+      }
       return;
     }
     if (togetherSession.persistBroken) toast('本机预算没能保存，本次仍按已消耗处理');
