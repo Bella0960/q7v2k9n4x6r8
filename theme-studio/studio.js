@@ -228,15 +228,23 @@
   }
   function parseCssImport(text) {
     var pending = { list: {}, detail: {}, bubble: {} };
-    var found = 0, match, regex = /--ts-(list|detail|bubble)-([a-z0-9-]+)\s*:\s*([^;{}]+);/gi;
+    var KNOWN = ['list', 'detail', 'bubble'];
+    var found = 0, match;
+    // Scan every --ts-* declaration, including a last rule that legally omits the
+    // trailing semicolon. An unknown group or unknown key rejects the whole file;
+    // no declaration may be silently skipped. The value stops at ; { or }.
+    var regex = /--ts-([a-z0-9]+(?:-[a-z0-9]+)*)\s*:\s*([^;{}]+)/gi;
     while ((match = regex.exec(text))) {
-      var group = match[1].toLowerCase();
-      var rawKey = match[2];
-      var key = rawKey.replace(/-([a-z])/g, function (_, c) { return c.toUpperCase(); });
+      var name = match[1].toLowerCase();
+      var group = KNOWN.find(function (g) { return name === g || name.indexOf(g + '-') === 0; });
+      if (!group) throw new Error('不支持的配置组 --ts-' + name);
+      var rest = name === group ? '' : name.slice(group.length + 1);
+      var rawKey = rest;
+      var key = rest.replace(/-([a-z])/g, function (_, c) { return c.toUpperCase(); });
       var spec = fieldSpec(group, key);
       // Unknown --ts-* item rejects the whole file; it is not silently skipped.
-      if (!spec) throw new Error('不支持的配置项 --ts-' + group + '-' + rawKey);
-      var value = match[3].trim();
+      if (!spec) throw new Error('不支持的配置项 --ts-' + name);
+      var value = match[2].trim();
       if (spec.type === 'color') {
         if (!/^#[0-9a-f]{6}$/i.test(value)) throw new Error('颜色格式不正确：' + key + ' 需为 6 位十六进制色值');
         pending[group][key] = value;

@@ -12,7 +12,7 @@
 1. **字段真值表 `fieldSpec(group,key)`**
    - 气泡段取自 `BUBBLE` 行（类型 `[2]`、下限 `[4]`、上限 `[5]`、单位 `[6]`）；列表/详情段取自 `api.SPECS`，其中 `avatarRadius` 单位为 `%`，其余数值字段单位为 `px`。颜色仅接受 6 位 hex。
 2. **CSS 导入整文件严格校验、原子提交**
-   - `parseCssImport(text)`：先把全部 `--ts-*` 变量解析进局部 `pending`；任一变量名未知、色值非 6 位 hex、数值无单位/错单位/越界/非有限数，都直接抛错并**整文件拒绝**，不再跳过错误项做部分成功。普通 CSS 规则不匹配 `--ts-*`，不会作为可执行样式进入工作台。全部合法后才由 `unpackImport` 合并进草稿，解析期间不触碰现有草稿。
+   - `parseCssImport(text)`：扫描输入中**所有** `--ts-*` 声明（含块内末行合法省略分号的规则）；组名只允许 `list/detail/bubble`，未知组名直接报错；任一变量名未知、色值非 6 位 hex、数值无单位/错单位/越界/非有限数，都抛错并**整文件拒绝**，不再跳过错误项做部分成功。普通 CSS 规则不匹配 `--ts-*`，不会作为可执行样式进入工作台。全部合法后才由 `unpackImport` 合并进草稿，解析期间不触碰现有草稿。
 3. **JSON 导入独立严格校验，拒绝静默钳制**
    - 新增 `strictValidateSection(group,raw,label)`：逐 key 查白名单字段；未知 key 报错；颜色必须是 6 位 hex 字符串；数值必须是 JSON number 类型、有限且在上下限内。返回仅含已校验白名单字段的对象，之后才由 `api.clean` / `cleanBubble` 补默认值——非法值不会被改成默认值后误报成功。
    - `parseJsonImport(text)`：`JSON.parse` 失败给具体错误；根节点必须是对象（拒绝数组/null）；仅接受 `format === 'maomao-theme-studio'` 且 `version === 1`；`list/detail/bubble` 三段全缺直接报「配置为空」。
@@ -25,6 +25,7 @@
 - 新增 `tests/theme-studio-import-browser.mjs`（自带 Vite 服务；视口 375/390/430），覆盖：
   - 畸形 JSON、不兼容格式、空配置（三段全缺）、含非法字段的 JSON（越界/非法颜色/未知 key/字符串数字）整份拒绝，草稿与存储逐项不变。
   - 混合非法 CSS（合法行＋越界＋错单位 em＋未知变量）整文件拒绝，快照与导入前深相等；单位互换（`%` 字段给 px、`px` 字段给 `%`）拒绝。
+  - 尾行省略分号的越界规则仍被扫到并整文件拒绝；未知组名（非 list/detail/bubble）声明报错忽略不掉；合法尾行与工作台导出 CSS 不回归。
   - 合法 CSS 完整往返（含 `%` 字段 `avatarRadius`、`bubbleMaxWidth`）进入预览草稿；超 64KB 文件在读取前被拒。
   - 角色 A/B 作用域＋读取竞态：劫持 `File.text()` 为延迟 Promise，读取期间切到角色 B 再释放，断言草稿未被 A 的气泡值污染、scope 未被静默切换、beauty 存储为空。
   - 合法 list/detail JSON 往返只落草稿、不写 localStorage；点「应用」后才持久化，刷新页面保留；模拟 `setItem` 抛错时应用失败、不覆盖旧配置。
@@ -34,7 +35,7 @@
 
 | 风险 | 现状处理 |
 |---|---|
-| CSS 混有非法配置被部分成功（P1-1） | 整文件先全量校验：未知变量、非法色值、越界、错单位任一出现即整文件拒绝；拒绝时三个草稿、当前 tab/scope、已应用配置逐项不变；普通 CSS 规则不进入工作台 |
+| CSS 混有非法配置被部分成功（P1-1） | 扫描所有 `--ts-*` 声明（含尾行无分号规则）：未知组名、未知变量、非法色值、越界、错单位任一出现即整文件拒绝；拒绝时三个草稿、当前 tab/scope、已应用配置逐项不变；普通 CSS 规则不进入工作台 |
 | 数值单位未按字段严格校验（P1-2） | `avatarRadius`、`bubbleMaxWidth` 必须 `%`，其余数值字段必须 `px`；无单位、em、单位互换、越界均使整文件失败；工作台自身导出的 CSS 可完整回导 |
 | JSON 非法值被静默钳制/回退默认、空配置报成功（P1-3） | 先经 `strictValidateSection` 独立校验类型/上下限/颜色/结构，非法值整份拒绝；未知字段按白名单拒绝；三段全缺报错；仅合法 v1 配置原子导入，clean 只补默认、不改非法值 |
 | 异步读取竞态串角色（P2） | 读取前快照 tab/scope，完成时核对；已切换则拒绝过期结果并提示重新导入；不改 ChatBeauty 底层，专项测试覆盖 A→B 切换 |
@@ -47,7 +48,7 @@
 - `npm run test:studio:import:browser`：3/3 PASS（375 / 390 / 430）。
 - `node --test tests/theme-studio.test.mjs`：9/9 PASS（既有工作台 Node 合同，无回归）。
 - `node tests/theme-studio-preview-browser.mjs`：3/3 PASS（既有预览对齐，无回归）。
-- `npx vite build`：通过（约 8.22s）。
+- `npx vite build`：通过（约 11.20s）。
 
 ## 4. 数据与兼容边界
 

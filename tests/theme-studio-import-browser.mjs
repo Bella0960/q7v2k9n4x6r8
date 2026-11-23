@@ -123,6 +123,24 @@ try {
     await uploadImport(page, 'unit.css', unitCss, 'text/css');
     assert.deepEqual(await snapshot(page), before, width + 'px swapped-unit CSS rejects whole file');
 
+    // 6a. Last rule omits its trailing semicolon (valid CSS syntax): the out-of-range
+    //     value must still be scanned and the whole file rejected, not skipped.
+    const noSemiCss = [
+      ':root {',
+      '  --ts-list-item-radius: 18px;',
+      '  --ts-list-item-gap: 1000px',
+      '}'
+    ].join('\n');
+    await uploadImport(page, 'no-semicolon.css', noSemiCss, 'text/css');
+    assert.deepEqual(await snapshot(page), before, width + 'px trailing-semicolon-less out-of-range CSS rejects whole file');
+    assert.ok((await page.locator('#notice').textContent()).length > 0, width + 'px no-semicolon CSS shows an error');
+
+    // 6b. Unknown group prefix (not list/detail/bubble) must error, not be ignored.
+    const unknownGroupCss = ':root { --ts-unknown-my-style: 5px; }';
+    await uploadImport(page, 'unknown-group.css', unknownGroupCss, 'text/css');
+    assert.deepEqual(await snapshot(page), before, width + 'px unknown CSS group rejects whole file');
+    assert.ok((await page.locator('#notice').textContent()).length > 0, width + 'px unknown group shows an error');
+
     // 7. Valid CSS round-trip: legal variables apply to the preview only; nothing persisted.
     const validCss = [
       ':root {',
