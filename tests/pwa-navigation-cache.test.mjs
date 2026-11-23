@@ -9,7 +9,7 @@ const serviceWorker = read('sw.js');
 const pwaCacheVersion = Number((serviceWorker.match(/^const CACHE_NAME = 'phone-app-pwa-v(\d+)'/m) || [])[1] || 0);
 const desktopScript = read('desktop/js/script.js');
 const homePage = read('index.html');
-assert.ok(pwaCacheVersion >= 203, 'navigation cache behaviour requires PWA cache version >= 203');
+assert.ok(pwaCacheVersion >= 204, 'PWA cache version must not regress below v204');
 const viteConfig = read('vite.config.js');
 
 test('build emits a manifest containing every HTML entry point', () => {

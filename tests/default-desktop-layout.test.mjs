@@ -56,7 +56,7 @@ test('the mobile home grid keeps four columns and supports vertical page scrolli
   assert.match(desktopCss, /#gridPage0 > \[data-drag\]:nth-child\(6\)[^{]*\{ grid-column: 3 \/ 5 !important; grid-row: 3 \/ 5 !important;/);
   assert.match(mobileCss, /#gridPage0 > \[data-drag\]:nth-child\(7\)[^{]*\{ grid-column: 1 \/ 3 !important; grid-row: 5 \/ 7 !important;/);
   assert.match(mobileCss, /\.maomao-home \.home-page[\s\S]*?overflow-y:\s*auto\s*!important/);
-  assert.ok(pwaCacheVersion >= 203, 'the default desktop layout requires PWA cache version >= 203');
+  assert.ok(pwaCacheVersion >= 204, 'PWA cache version must not regress below v204');
 });
 
 

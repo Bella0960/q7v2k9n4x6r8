@@ -403,7 +403,9 @@ Evidence (verified on `40b671bb`, Windows checkout, Node 22.22.2):
 
 Fix: derive the cache version floor from `sw.js` (plus a guard that rejects frozen revisions), match the current passthrough expression, normalise line endings at the read boundary, and spread vm-realm results before comparing. Test-only change; no production code, storage key, or UI touched.
 
-Verification: all 23 `npm run test:*` Node scripts pass. `npx vite build` passes. Playwright/manual browser scripts (`test:chat:bubbles`, `test:wechat:browser`, `test:clock:palette`, `test:chat:isolation:browser`, `test:forum:mobile`) were NOT VERIFIED in this run.
+Relation to earlier work: PR #266 (`fix/pwa-cache-contract-min-version-20261112`, draft, base `533ca273`) introduced the same "extract the revision and require a floor" idea for eight test files when `sw.js` was at v204, but it never covered `chat-regression-contract.test.mjs` (twelve frozen assertions), `forum-world-events`, the CRLF anchors, the worker contract, or the guard. Two of its files (`role-avatar-library`, `chat-reply-bubble-mode`) were already fixed on main by later commits. This task inherits #266's floor value (>= 204) and message wording, and extends coverage; #266 should be retired by its owner, not merged.
+
+Verification: all 23 `npm run test:*` Node scripts pass. `npx vite build` passes. Playwright/manual browser scripts (`test:chat:bubbles`, `test:wechat:browser`, `test:clock:palette`, `test:chat:isolation:browser`, `test:forum:mobile`) were NOT VERIFIED in this run; they are browser/device checks and are not covered by the 23 Node scripts.
 
 Remaining risk: the same CRLF anchoring can reappear in any new source-contract test. Normalising inside a shared read helper for every test file is still open work.
 

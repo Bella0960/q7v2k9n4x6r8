@@ -46,7 +46,7 @@ test('service worker serves cached font assets from a same-origin route', () => 
 });
 
 test('font asset cache survives app-shell version upgrades', () => {
-  assert.ok(pwaCacheVersion >= 203, 'the font asset cache needs PWA cache version >= 203');
+  assert.ok(pwaCacheVersion >= 204, 'PWA cache version must not regress below v204');
   assert.match(serviceWorker, /keys\.filter\(key => key\.startsWith\('phone-app-'\) && key !== CACHE_NAME\)/);
   assert.doesNotMatch(serviceWorker, /key\.startsWith\('maomao-font-assets/);
 });
