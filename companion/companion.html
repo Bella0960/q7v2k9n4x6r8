@@ -164,7 +164,7 @@ footer{border-top:1px solid var(--ink);margin-top:38px;padding-top:12px;display:
      单键写入本身是原子的，失败时磁盘上的旧数据不会被改坏。 */
   function storeSet(key,value){
     if(!canStore()){toast(READONLY_TIP);return false;}
-    try{localStorage.setItem(key,JSON.stringify(value));return true}
+    try{const payload=JSON.stringify(value);localStorage.setItem(key,payload);if(localStorage.getItem(key)!==payload)throw new Error('Calendar storage readback mismatch');return true}
     catch(e){
       if(!storeWarned){storeWarned=true;toast('本机存储空间不足，这次没能保存');}
       return false;
