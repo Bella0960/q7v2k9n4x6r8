@@ -89,7 +89,7 @@ try {
     payload: {
       bootstrapSecret: boot, username: 'runtime_test_admin',
       password, confirmPassword: password,
-      qqEmail: 'runtime-admin@example.test'
+      qqEmail: '87654321@qq.com'
     }
   });
   assert.equal(created.status, 200, 'local synthetic founder bootstrap');
@@ -133,7 +133,7 @@ try {
     method: 'POST', payload: {
       bootstrapSecret: boot, username: 'fake_founder',
       password, confirmPassword: password,
-      qqEmail: 'local-authority@example.test'
+      qqEmail: '87654322@qq.com'
     }
   });
   assert.equal(refused.status, 403, 'delegated mode must refuse local founder creation');
