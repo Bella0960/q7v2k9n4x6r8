@@ -78,7 +78,7 @@
       <button type="button" data-tab="bubble" aria-pressed="false">聊天气泡</button>
     </nav>
     <main class="editor" id="editor">
-      <div class="section-heading"><div><small id="panelSubtitle">布局与配色</small><h2 id="panelTitle">聊天列表</h2></div><button type="button" id="restoreDraft">还原草稿</button></div>
+      <div class="section-heading"><div><small id="panelSubtitle">布局与配色</small><h2 id="panelTitle">聊天列表</h2></div><div class="heading-actions"><span id="dirtyTag" class="dirty-tag" hidden>未应用</span><button type="button" id="undoButton" class="history-btn" aria-label="撤销" disabled><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M9 14 4 9l5-5"/><path d="M4 9h10a6 6 0 0 1 0 12h-3"/></svg></button><button type="button" id="redoButton" class="history-btn" aria-label="重做" disabled><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m15 14 5-5-5-5"/><path d="M20 9H10a6 6 0 0 0 0 12h3"/></svg></button><button type="button" id="restoreDraft">还原草稿</button></div></div>
       <div class="scope" id="bubbleScopeRow" hidden><label for="bubbleScope">应用范围</label><select id="bubbleScope"><option value="global">全部角色</option></select></div>
       <div id="editorFields" class="fields"></div>
       <div class="subsection image-panel" id="imagePanel">
