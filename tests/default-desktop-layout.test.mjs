@@ -283,3 +283,50 @@ test('all 2x2 utility widgets occupy the two physical grid rows advertised in th
     assert.match(widgetManager, new RegExp("id: '" + id + "',[^\\n]*cols: 2, rows: 2"));
   }
 });
+
+
+function createHomeLayoutHarness(seed = {}) {
+  const match = index.match(/function getDefaultLayout\(\) \{[\s\S]*?\n      var currentLayout = loadLayout\(\);/);
+  assert.ok(match, 'home default/load/save layout functions must be present');
+  const map = new Map(Object.entries(seed));
+  const localStorage = {
+    failWrites: false,
+    getItem(key) { return map.has(key) ? map.get(key) : null; },
+    setItem(key, value) {
+      if (this.failWrites) throw new Error('QuotaExceededError');
+      map.set(key, String(value));
+    }
+  };
+  const window = {};
+  runInNewContext("var LS_KEY = 'ds_layout_v14';\n" + match[0] +
+    '\nwindow.__test = { loadLayout, saveLayout, getDefaultLayout };', { localStorage, window });
+  return { ...window.__test, map, localStorage };
+}
+
+test('home screen migrates a valid old layout without deleting its record', () => {
+  const old = { v: 13, pages: [['duo', 'clock-lg'], ['app_forum']], dock: ['app_chat'], removed: [] };
+  const h = createHomeLayoutHarness({ ds_layout_v13: JSON.stringify(old) });
+  const loaded = h.loadLayout();
+  assert.equal(loaded.pages[0][0], 'duo');
+  assert.equal(loaded.pages[0][1], 'clock-lg');
+  assert.equal(loaded.pages.length, 3);
+  assert.equal(loaded.v, 14);
+  assert.equal(h.saveLayout(loaded), true);
+  assert.equal(JSON.parse(h.map.get('ds_layout_v14')).pages[0][0], 'duo');
+  assert.equal(h.map.get('ds_layout_v13'), JSON.stringify(old));
+});
+
+test('home screen recovers from malformed v14 and protects storage on failed write', () => {
+  const old = { v: 13, pages: [['note'], []], dock: [], removed: [] };
+  const h = createHomeLayoutHarness({
+    ds_layout_v14: '{invalid-json',
+    ds_layout_v13: JSON.stringify(old)
+  });
+  const loaded = h.loadLayout();
+  assert.equal(loaded.pages[0][0], 'note');
+  const before = h.map.get('ds_layout_v14');
+  h.localStorage.failWrites = true;
+  assert.equal(h.saveLayout(loaded), false);
+  assert.equal(h.map.get('ds_layout_v14'), before);
+  assert.equal(h.map.get('ds_layout_v13'), JSON.stringify(old));
+});
