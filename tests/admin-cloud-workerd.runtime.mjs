@@ -14,7 +14,7 @@ import { join } from 'node:path';
 const temp = await mkdtemp(join(tmpdir(), 'maomao-admin-workerd-'));
 const boot = randomBytes(32).toString('hex');
 const pepper = randomBytes(32).toString('hex');
-const version = 'latest'; // No project-local Wrangler dependency; use current workerd for 2026-10-27.
+const version = '4.166.0'; // Pinned to the Cloudflare Workerd runtime accepted by public QA.
 const password = 'local-synthetic-password-12345';
 const sleep = ms => new Promise(resolve => setTimeout(resolve, ms));
 let worker = null;
