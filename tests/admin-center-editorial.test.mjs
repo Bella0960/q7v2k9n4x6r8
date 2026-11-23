@@ -54,8 +54,9 @@ test('missing context shows a useful explanation without guessing or persisting 
   assert.ok(start >= 0 && end > start);
   const handler = core.slice(start, end);
   assert.ok(handler.includes('/账号上下文|服务器注入/'));
-  assert.ok(handler.includes('返回桌面'));
-  assert.ok(handler.includes("window.location.assign('/index.html')"));
+  assert.ok(handler.includes('登录已有账号'));
+  assert.ok(handler.includes("window.location.assign('/account/index.html?admin=1')"));
+  assert.doesNotMatch(handler, /window\.location\.assign\('\/index\.html'\)/);
   assert.ok(handler.includes('await retry()'));
   assert.doesNotMatch(handler.replace(/\/\/[^\n]*/g, ''), /localStorage|sessionStorage|document\.cookie/);
   assert.match(core, /headers\.set\('x-mao-account-context', accountId\)/);
@@ -69,5 +70,5 @@ test('admin documents and scripts are not intercepted or precached by the common
   assert.ok(!sw.includes("'./admin/admin-center-editorial.css?"));
   const cacheVersion = Number((sw.match(/const CACHE_NAME = 'phone-app-pwa-v(\d+)'/) || [])[1]);
   assert.ok(Number.isInteger(cacheVersion) && cacheVersion >= 307, 'latest desktop wallpaper PWA cache must not be rolled back');
-  assert.ok(html.includes('./admin-center.js?v=20261123-workspace1'));
+  assert.ok(html.includes('./admin-center.js?v=20261124-account-recovery1'));
 });
