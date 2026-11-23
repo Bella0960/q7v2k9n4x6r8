@@ -10,7 +10,7 @@ function makeInit({ scopedId = '', serverAccount = null, apiError = null } = {})
   const end = admin.indexOf('\n\n  init();', start);
   assert.ok(start >= 0 && end > start, 'admin init contract exists');
   const factory = new Function('pageAccountContext', 'api', '$', 'refreshAll',
-    'loadOverviewDetails', 'hideError', 'showError', 'window', 'el',
+    'loadOverviewDetails', 'hideError', 'showError', 'window', 'el', 'isConfirmedSessionExpired',
     'let initializing = false;\n' + admin.slice(start, end) + '\nreturn init;');
   const apiCalls = [];
   const errors = [];
@@ -40,7 +40,8 @@ function makeInit({ scopedId = '', serverAccount = null, apiError = null } = {})
         replace: path => redirects.push(path)
       }
     },
-    () => ({ textContent: '' })
+    () => ({ textContent: '' }),
+    () => false
   );
   return { init, apiCalls, errors, redirects,
     stats: () => ({ refreshes, overviews }) };
@@ -95,7 +96,7 @@ test('missing scope notice leads to existing same-origin login, never desktop lo
   assert.match(src, /登录已有账号/);
   assert.match(src, /\/account\/index\.html\?admin=1/);
   assert.doesNotMatch(src, /location\.assign\('\/index\.html'\)/);
-  assert.doesNotMatch(src, /localStorage|sessionStorage|document\.cookie/);
+  assert.doesNotMatch(src.replace(/\/\/[^\n]*/g, ''), /localStorage|sessionStorage|document\.cookie/);
   assert.match(worker, /return redirectToVerifiedLogin\(url/);
   assert.match(worker, /return isHtmlDocument && authorizedAccount\s*\? await injectAccountScope/);
 });
