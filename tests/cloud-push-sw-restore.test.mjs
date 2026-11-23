@@ -111,9 +111,9 @@ test('notification clicks recheck account session and reject external navigation
 });
 
 test('cache version and existing navigation remain unchanged in this isolated patch', () => {
-  assert.match(source, /const CACHE_NAME = 'phone-app-pwa-v205'/);
+  assert.match(source, /const CACHE_NAME = 'phone-app-pwa-v206'/);
   assert.match(source, /APP_SHELL\.concat\(pageEntries\)/);
-  assert.match(source, /event\.waitUntil\(updatePromise/);
+  assert.match(source, /fetch\\(req, \\{ cache: 'no-store' \\}\\)/);
   assert.match(source, /self\.addEventListener\('push'/);
   assert.match(source, /self\.addEventListener\('notificationclick'/);
 });
