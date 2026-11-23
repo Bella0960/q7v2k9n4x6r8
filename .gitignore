@@ -48,6 +48,7 @@ logs/
 bug-fix-list.md
 perf/diag-hl.mjs
 perf/virtual-regression.mjs
+test-results/
 
 # ===== 杂项 =====
 .zip
