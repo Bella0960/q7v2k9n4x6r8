@@ -158,5 +158,5 @@ test('源码守卫：设置写入不再被空 catch 吞掉', () => {
   const line = page.split('\n').find((l) => l.includes('localStorage.setItem(READER_SETTINGS_KEY'));
   assert.ok(line, 'settings write line must exist');
   assert.equal(/catch\(e\)\{\s*\}/.test(line), false, 'settings write must not be silently swallowed');
-  assert.ok(page.includes('if (!saved) warnSettingsSaveFailed();'), 'failure must surface to the user');
+  assert.ok(page.includes('if (!saved || (!backgroundSaved && !img)) warnSettingsSaveFailed();'), 'failure must surface to the user');
 });

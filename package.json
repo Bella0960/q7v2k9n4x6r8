@@ -14,6 +14,8 @@
     "test:storage:reliability": "node --test tests/storage-quota-reliability.test.mjs",
     "test:bugfix:blockers": "node --test tests/forum-chat-blockers.test.mjs",
     "test:tutorial": "node --test tests/tutorial-page-contract.test.mjs",
+    "test:admin:cloud": "node --test tests/admin-cloud-api.test.mjs tests/admin-cloud-sanitize.test.mjs tests/admin-cloud-contract.test.mjs tests/admin-cloud-ui-core.test.mjs",
+    "test:admin:cloud:browser": "node tests/admin-cloud-mobile.browser.mjs",
     "test:inspect:contract": "node --test tests/inspect-feature-contract.test.mjs",
     "test:detective:unlock": "node --test tests/detective-case-unlock.test.mjs",
     "perf:bench": "node perf/bench.mjs",
