@@ -6,6 +6,10 @@
 <meta name="theme-color" content="#F7F7F9">
 <title>角色陪伴 · MAOMAO</title>
 <link rel="stylesheet" href="../shared/css/mobile-fit.css">
+<!-- 独立页面必须自己加载共享模块：否则正式角色与 AI 通道在真实浏览器里都不可达，
+     一切都会静默退回本地兜底。与 envelope.html 使用同一版本号。 -->
+<script src="../shared/js/phone/phone_storage.js?v=20261031-envelope1"></script>
+<script src="../shared/js/phone/phone_api.js?v=20261031-envelope1"></script>
 <style>
 :root{color-scheme:light;--ink:#111;--muted:#777;--line:#e6e6e8;--paper:#fff;--wash:#f7f7f9}
 *{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
@@ -54,8 +58,32 @@ h1{font-family:Georgia,"Times New Roman",serif;font-size:clamp(42px,12vw,64px);f
 (function(){
 'use strict';
 const $=id=>document.getElementById(id);
-const KEY='maomao_companion_v1';
-const state=(()=>{try{return JSON.parse(localStorage.getItem(KEY))||{role:'',alarms:[],steps:0,stepDate:'',shakes:0,likes:0,comments:[],song:'',listening:false}}catch(e){return {role:'',alarms:[],steps:0,stepDate:'',shakes:0,likes:0,comments:[],song:'',listening:false}}})();
+/* 角色私有数据按正式角色 ID 分桶：留言、步数、闹钟不能混在一起。
+   旧全局键 maomao_companion_v1 只在「它记录的 role 名与当前正式角色一致」时只读兼容，
+   绝不把 A 的私人留言以 B 的身份带进模型。 */
+const sharedRolesNow=(()=>{try{if(window.PhoneStorage&&typeof PhoneStorage.getCharacters==='function'){const l=PhoneStorage.getCharacters()||[];return Array.isArray(l)?l.filter(r=>r&&r.id!=null&&r.name):[];}}catch(e){}return[];})();
+const sharedCurrentId=(()=>{try{return (window.PhoneStorage&&typeof PhoneStorage.getCurrentContactId==='function')?String(PhoneStorage.getCurrentContactId()||''):'';}catch(e){return'';}})();
+const boundRoleNow=sharedRolesNow.filter(r=>String(r.id)===sharedCurrentId)[0]||null;
+const companionOwnerId=(boundRoleNow&&String(boundRoleNow.id))||'';
+const KEY=companionOwnerId?('maomao_companion_v1_'+companionOwnerId):'maomao_companion_v1_orphan';
+function legacyStateOwner(){
+  try{const raw=JSON.parse(localStorage.getItem('maomao_companion_v1'));return raw&&typeof raw==='object'?String(raw.role||''):'';}catch(e){return'';}
+}
+const state=(()=>{
+  const empty={role:'',alarms:[],steps:0,stepDate:'',shakes:0,likes:0,comments:[],song:'',listening:false};
+  try{
+    const perRole=JSON.parse(localStorage.getItem(KEY));
+    if(perRole&&typeof perRole==='object')return perRole;
+  }catch(e){}
+  /* 旧全局键只有在明确归属当前角色时才作为兼容来源（按 role 名匹配正式角色）。 */
+  if(companionOwnerId&&boundRoleNow){
+    const legacy=legacyStateOwner();
+    if(legacy&&(String(boundRoleNow.name)===legacy)){
+      try{const raw=JSON.parse(localStorage.getItem('maomao_companion_v1'));if(raw&&typeof raw==='object')return raw;}catch(e){}
+    }
+  }
+  return empty;
+})();
 // Playback cannot survive a reload; keep the saved song but reset its transient playing state.
 state.listening=false;
 /* 必须优先用共享层里的正式角色（正式 ID + 人设），而不是一个自由输入的名字。
@@ -134,15 +162,21 @@ function replySessionSync(){if(replySession.day!==replyDay()){replySession.day=r
 function replyStoredUsed(){try{const s=JSON.parse(localStorage.getItem(REPLY_KEY)||'{}')||{};return s.day===replyDay()?(Number(s.used)||0):0}catch(e){return 0}}
 function replyUsed(){replySessionSync();return Math.max(replyStoredUsed(),replySession.used)}
 function replyRemaining(){return Math.max(0,REPLY_DAILY_LIMIT-replyUsed())}
-function persistReply(){
- try{localStorage.setItem(REPLY_KEY,JSON.stringify({day:replyDay(),used:replyUsed()}));return true}
- catch(e){return false}
+/* 写入并读回确认：只有本机真的记上这笔账，才允许发付费请求。
+   之前只在内存记账后继续请求，配额拒写的手机上刷新即可重置，长期限额形同虚设。 */
+function persistReplyVerified(){
+ try{
+  const payload={day:replyDay(),used:replyUsed()};
+  localStorage.setItem(REPLY_KEY,JSON.stringify(payload));
+  const back=JSON.parse(localStorage.getItem(REPLY_KEY)||'{}')||{};
+  return back.day===payload.day&&Number(back.used)===Number(payload.used);
+ }catch(e){return false}
 }
 function chargeReply(){
  replySessionSync();
  if(replyUsed()>=REPLY_DAILY_LIMIT)return false;
- replySession.used=replyUsed()+1;
- if(!persistReply())replySession.broken=true;
+ replySession.used=replyUsed()+1;       /* 会话计数照常推进 */
+ if(!persistReplyVerified()){replySession.broken=true;return false;}   /* fail-closed：0 请求 */
  return true;
 }
 const localReplies=[
@@ -161,12 +195,20 @@ function rolePersona(){
    .filter(Boolean).join('\n');
   if(text)return String(text).slice(0,1800);
  }
- let profile={};
- try{
-  const list=JSON.parse(localStorage.getItem('ai_custom_characters')||'[]');
-  if(Array.isArray(list)&&state.role)profile=list.filter(x=>String(x.name||'')===String(state.role))[0]||{};
- }catch(e){}
- return String(profile.personality||profile.description||profile.prompt||profile.systemPrompt||profile.characterDescription||'请用自然、温和、有个性的日常口吻回应。').slice(0,1800);
+ /* 只在「旧全局键明确归属当前正式角色」时才借用它的资料；自由输入的名字不进模型。 */
+ if(companionOwnerId&&boundRoleNow){
+  const legacyOwner=legacyStateOwner();
+  if(legacyOwner===String(boundRoleNow.name)){
+   try{
+    const list=JSON.parse(localStorage.getItem('ai_custom_characters')||'[]');
+    if(Array.isArray(list)&&state.role){
+     const profile=list.filter(x=>String(x.name||'')===String(state.role))[0]||{};
+     return String(profile.personality||profile.description||profile.prompt||profile.systemPrompt||profile.characterDescription||'').slice(0,1800);
+    }
+   }catch(e){}
+  }
+ }
+ return '请用自然、温和、有个性的日常口吻回应。';
 }
 async function inviteRoleReply(){
  const btn=$('askRoleBtn');
@@ -177,7 +219,9 @@ async function inviteRoleReply(){
  if(replySession.broken){toast('本机预算没能写入，已暂停付费回应');return}
  if(replyRemaining()<=0){toast('今天的角色回应次数已用完（每天 '+REPLY_DAILY_LIMIT+' 次，仅本机限制）');return}
  if(Date.now()-(state.lastReplyAt||0)<REPLY_MIN_INTERVAL){toast('刚回应过，稍等十秒再邀请');return}
- if(!chargeReply()){toast('今天的角色回应次数已用完');return}
+ /* 付费人设必须绑定合法正式角色：自由输入的名字不能拿来调用模型。 */
+ if(!roleObj||!companionOwnerId){localReply();toast('先在聊天里选择一位正式角色，再邀请 AI 回应');return}
+ if(!chargeReply()){replySession.broken=true;toast('本机预算没能写入，已暂停付费回应（避免绕开限额）');return}
  state.lastReplyAt=Date.now();
  const persona=rolePersona();
  const history=(state.comments||[]).slice(-10).map(x=>String(x).slice(0,180)).join('\n')||'直播间刚刚开始，还没有留言。';
