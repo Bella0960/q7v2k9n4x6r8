@@ -165,3 +165,13 @@ test('源码守卫：偷看开关检查写入结果，失败不再假装切换�
   assert.equal(/catch\(err\)\{\s*\}/.test(block), false, 'peek switch write must not be silently swallowed');
   assert.ok(block.includes('peekSaved'), 'peek switch must branch on the write result');
 });
+
+test('旧照片迁移未完成时，更新文字标记保留原照片字段', () => {
+  const entry = { id: 'legacy', date: '2026-11-23', photo: 'data:image/png;base64,fixture' };
+  const store = makeStore({ maomao_diary_entries_v1: JSON.stringify([entry]) });
+  const { sb } = makeSandbox({ store, entries: [{ ...entry, pinned: true }] });
+  assert.equal(sb.persist(), true);
+  const saved = JSON.parse(store.getItem('maomao_diary_entries_v1'))[0];
+  assert.equal(saved.photo, entry.photo);
+  assert.equal(saved.pinned, true);
+});
