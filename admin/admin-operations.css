@@ -1,0 +1,57 @@
+/* ADMIN-OPS-001: read-only, mobile-first operations home. */
+.operations-view{padding-top:1px}
+.operations-header{margin-bottom:22px}
+.operations-grid{display:grid;grid-template-columns:minmax(0,1.4fr) minmax(0,1fr);gap:13px}
+.operations-feature,.operations-system{
+  min-height:206px;padding:23px 24px;border:1px solid #e6e6e8;
+  border-radius:18px;background:#fff;display:flex;flex-direction:column;
+  box-shadow:0 5px 19px rgba(17,17,22,.025)
+}
+.operations-feature{background:#272729;color:#fafafa;border-color:#272729}
+.operations-kicker{display:flex;justify-content:space-between;gap:15px;
+  font-size:10px;letter-spacing:.08em;font-weight:600;color:#77767c}
+.operations-feature .operations-kicker{color:#c8c8cb}
+.operations-kicker span{font:10px/1.2 Georgia,serif;letter-spacing:.1em;opacity:.75}
+.operations-headline{font:400 clamp(23px,3.2vw,31px)/1.3 Georgia,"Songti SC",serif;
+  letter-spacing:-.045em;margin-top:25px;overflow-wrap:anywhere}
+.operations-feature p,.operations-system p{margin:9px 0 18px;font-size:11px;line-height:1.8}
+.operations-feature p{color:#babac0}
+.operations-system p{color:#929198}
+.operations-state{margin-top:23px;font:400 24px/1.3 Georgia,"Songti SC",serif;color:#29292d}
+.operations-actions,.operations-system-actions{display:flex;flex-wrap:wrap;align-items:center;gap:9px;margin-top:auto}
+.operations-actions button,.operations-system-actions button,.operations-system-actions a{
+  min-height:38px;padding:9px 13px;border-radius:9px;font-size:11px;
+  text-decoration:none;display:inline-flex;align-items:center;justify-content:center;
+  border:1px solid #e2e2e5;color:#44444a;background:#fff
+}
+.operations-actions button{border-color:#66656b;background:#fff;color:#242428}
+.operations-actions button+button{background:transparent;color:#ededee;border-color:#626268}
+.operations-system-actions a{background:transparent;border:0;color:#77767d;padding-inline:4px}
+.operations-section-title{display:flex;justify-content:space-between;align-items:center;
+  margin:29px 1px 13px;font-size:12px;font-weight:650;color:#434247}
+.operations-section-title small{font:10px Georgia,serif;color:#abaab0;letter-spacing:.13em}
+.operations-links{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px}
+.operations-links button{text-align:left;min-height:94px;background:#fff;border:1px solid #e9e9eb;
+  border-radius:15px;padding:18px 19px;display:flex;flex-direction:column;align-items:flex-start;
+  gap:9px;transition:border-color .16s ease,transform .16s ease}
+.operations-links button:hover{border-color:#bdbdc2;transform:translateY(-1px)}
+.operations-links strong{font-size:13px;color:#242428;font-weight:610}
+.operations-links span{font-size:11px;line-height:1.6;color:#939298}
+.operations-footnote{margin-top:19px;color:#a09fa5;font-size:10px;line-height:1.7}
+.operations-view button:focus-visible,.operations-system-actions a:focus-visible{
+  outline:2px solid #9999a0;outline-offset:3px}
+@media(max-width:620px){
+ .operations-grid{grid-template-columns:1fr}
+ .operations-feature,.operations-system{min-height:177px;padding:20px}
+ .operations-headline{font-size:26px;margin-top:19px}
+ .operations-system{min-height:156px}
+ .operations-state{margin-top:16px;font-size:23px}
+ .operations-links{gap:9px}
+ .operations-links button{padding:17px 15px;min-height:89px}
+}
+@media(max-width:380px){
+ .operations-links{grid-template-columns:1fr}
+ .operations-links button{min-height:72px;gap:5px}
+ .operations-feature,.operations-system{padding:17px}
+}
+@media(prefers-reduced-motion:reduce){.operations-links button{transition:none}}
