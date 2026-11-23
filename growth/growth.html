@@ -284,13 +284,15 @@
     if(!valid){corruptKeys.add(KEY[kind]);return fallback;}
     return value;
   }
+  let writeFailureReason='';
   function write(k,v){
-    if(!canStore){toast('还没有绑定正式角色，成长数据只能看不能存');return false;}
-    if(corruptKeys.has(k)){toast('原有成长存档异常，为保护数据已禁止覆盖');return false;}
+    writeFailureReason='';
+    if(!canStore){writeFailureReason='还没有绑定正式角色，成长数据只能看不能存';return false;}
+    if(corruptKeys.has(k)){writeFailureReason='原有成长存档异常，为保护数据已禁止覆盖';return false;}
     try {
       const current=localStorage.getItem(k);
       if(Object.prototype.hasOwnProperty.call(observedRaw,k)&&current!==observedRaw[k]){
-        toast('成长数据在其他标签页已更新，请刷新后重试');return false;
+        writeFailureReason='成长数据在其他标签页已更新，请刷新后重试';return false;
       }
       const payload=JSON.stringify(v);
       localStorage.setItem(k,payload);
@@ -382,7 +384,7 @@
 
   window.toggleGoal = function(id){
     let goals = readData('goals', []).map(g => g.id===id ? {...g, done:!g.done} : g);
-    if(!write(KEY.goals, goals)){ toast('目标没能保存，请清理本机存储后再试'); return; }
+    if(!write(KEY.goals, goals)){ toast(writeFailureReason || '目标没能保存，请清理本机存储后再试'); return; }
     render();
     let target = goals.filter(g => g.id===id)[0];
     toast(target && target.done ? '完成一项小目标 +15' : '已取消完成，点数同步减少');
@@ -390,7 +392,7 @@
   window.delGoal = function(id){
     if(!confirm('删除这个目标？')) return;
     let goals = readData('goals', []).filter(g => g.id!==id);
-    if(!write(KEY.goals, goals)){ toast('删除没能保存，请清理本机存储后再试'); return; }
+    if(!write(KEY.goals, goals)){ toast(writeFailureReason || '删除没能保存，请清理本机存储后再试'); return; }
     render(); toast('已删除');
   };
 
@@ -400,7 +402,7 @@
     if(!v) return;
     let goals = readData('goals', []);
     goals.push({id:Date.now().toString(36), text:v, done:false, created:new Date().toISOString().slice(0,10)});
-    if(!write(KEY.goals, goals)){ toast('目标没能保存，请清理本机存储后再试'); return; }
+    if(!write(KEY.goals, goals)){ toast(writeFailureReason || '目标没能保存，请清理本机存储后再试'); return; }
     $('goalInput').value = '';
     render(); toast('已加入成长清单');
   });
