@@ -3021,26 +3021,36 @@
   'use strict';
   var store = window.MAOMAOWallpaperStore;
   var root = document.documentElement;
-  var lastApplied = '';
+  var lastApplied = null;
+  var lastReadAt = 0;
+  var readSequence = 0;
+  var focusRefreshTimer = null;
 
   function setDesktopWallpaper(dataUrl) {
+    dataUrl = dataUrl || '';
+    // Returning from an app used to reassign multi-megabyte CSS backgrounds and
+    // decode the full-size wallpaper again just to detect its tone. Do neither
+    // when the wallpaper is unchanged; keep the original HD bytes in IndexedDB.
+    if (dataUrl === lastApplied) return;
+    lastApplied = dataUrl;
     if (dataUrl) {
       root.style.setProperty('--desktop-bg-img', 'url("' + dataUrl + '")');
       root.setAttribute('data-home-wallpaper', 'custom');
-      lastApplied = dataUrl;
     } else {
       root.style.removeProperty('--desktop-bg-img');
       root.removeAttribute('data-home-wallpaper');
-      lastApplied = '';
     }
     /* 深色壁纸 → 主屏文字自动转白；浅色壁纸保持黑字。 */
-    if (store && typeof store.applyTone === 'function') store.applyTone(dataUrl || '');
+    if (store && typeof store.applyTone === 'function') store.applyTone(dataUrl);
   }
 
   function applyDesktopWallpaper() {
     if (!store || typeof store.get !== 'function') return Promise.resolve('');
+    lastReadAt = Date.now();
+    var currentRead = ++readSequence;
     return store.get().then(function (dataUrl) {
-      setDesktopWallpaper(dataUrl || '');
+      // A newer explicit refresh after upload must win over a slow old read.
+      if (currentRead === readSequence) setDesktopWallpaper(dataUrl || '');
       return dataUrl || '';
     }).catch(function (error) {
       console.warn('[MAOMAO wallpaper] Unable to read saved wallpaper', error);
@@ -3048,14 +3058,28 @@
     });
   }
 
-  /* Initial load, return from Settings, and tab/app refocus all re-read the saved image. */
+  function refreshAfterRefocus() {
+    if (document.visibilityState === 'hidden') return;
+    // pageshow, focus and visibilitychange usually arrive together on mobile.
+    // Avoid repeated multi-MB IndexedDB reads during these bursts.
+    if (Date.now() - lastReadAt < 1200 || focusRefreshTimer !== null) return;
+    focusRefreshTimer = window.setTimeout(function () {
+      focusRefreshTimer = null;
+      applyDesktopWallpaper();
+    }, 100);
+  }
+
+  /* Explicit calls (including immediately after an upload) always read fresh data. */
   if (document.readyState === 'loading') {
     document.addEventListener('DOMContentLoaded', applyDesktopWallpaper, { once: true });
   } else {
     applyDesktopWallpaper();
   }
-  window.addEventListener('pageshow', applyDesktopWallpaper);
-  window.addEventListener('focus', applyDesktopWallpaper);
+  window.addEventListener('pageshow', refreshAfterRefocus);
+  window.addEventListener('focus', refreshAfterRefocus);
+  document.addEventListener('visibilitychange', function () {
+    if (document.visibilityState === 'visible') refreshAfterRefocus();
+  });
   window.addEventListener('storage', function (event) {
     if (!event.key || event.key === 'home_custom_wallpaper') applyDesktopWallpaper();
   });
