@@ -11,6 +11,7 @@ import {
 import '../../shared/js/phone/character-schedule-policy.js';
 import { planTask, nextRetryAt } from './scheduler-policy.js';
 import { createSchedulerGate } from './scheduler-gate.js';
+import { createAdminCloud, createAdminGuard } from './admin-cloud/index.js';
 
 const DEVICE_ID_PATTERN = /^[A-Za-z0-9_-]{16,64}$/;
 const DEVICE_SECRET_PATTERN = /^[A-Za-z0-9_-]{32,128}$/;
@@ -459,6 +460,8 @@ export async function dispatchPendingOutboundPushes({
 
 export function createApp({ store, env = {}, now = () => Date.now(), fetchImpl = fetch }) {
   const accountAuth = createAccountAuth({ store, env, now });
+  // Read-only cloud diagnostics; retain the unified super_admin session guard.
+  const adminCloud = createAdminCloud({ store, env, now, requireAdmin: createAdminGuard(accountAuth) });
 
   async function authenticate(request) {
     const parsed = deviceAuthHeader(request);
@@ -1999,6 +2002,10 @@ export function createApp({ store, env = {}, now = () => Date.now(), fetchImpl =
     try {
       assertSameOriginMutation(request);
       await assertAccountPageContext(request, path);
+      // Place the dedicated, internally authorized /api/admin/cloud route before
+      // accountAuth's delegated-preview blanket /api/admin/* handler.
+      const adminCloudResponse = await adminCloud.handle(request, path, method);
+      if (adminCloudResponse) return adminCloudResponse;
       const accountResponse = await accountAuth.handle(request, path, method);
       if (accountResponse) return accountResponse;
 

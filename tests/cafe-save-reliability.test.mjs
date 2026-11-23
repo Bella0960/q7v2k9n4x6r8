@@ -168,7 +168,7 @@ test('失败提示文案不含成功语义', () => {
   }
 });
 
-const TX_FUNCTIONS = ['chooseEvent', 'runDay', 'claimGrowthReward', 'chooseStory', 'chooseGalleryStory', 'choosePartnerEpisode'];
+const TX_FUNCTIONS = ['chooseEvent', 'runDay', 'chooseStory', 'chooseGalleryStory', 'choosePartnerEpisode'];
 
 function functionBody(name) {
   const start = name === 'chooseEvent' ? cafe.lastIndexOf('function ' + name + '(') : cafe.indexOf('function ' + name + '(');
@@ -176,7 +176,7 @@ function functionBody(name) {
   return cafe.slice(start, cafe.indexOf('\nfunction ', start + 10));
 }
 
-test('六条路径都先快照、失败即回滚、且不再无条件提示成功', () => {
+test('五条路径都先快照、失败即回滚、且不再无条件提示成功', () => {
   for (const name of TX_FUNCTIONS) {
     const body = functionBody(name);
     assert.ok(body.includes('cafeStateSnapshot()'), name + ' does not snapshot the state before mutating');
@@ -216,5 +216,5 @@ test('成长奖励失败后可重新领取（回滚会撤销领取标记）', ()
 
 test('存档不再使用静默空 catch，存储键与载荷未变', () => {
   assert.equal(/setItem\('maomao_cafe_state_v1',JSON\.stringify\(st\)\);\}catch\(e\)\{\}/.test(cafe), false);
-  assert.ok(stateSource.includes("localStorage.setItem('maomao_cafe_state_v1',JSON.stringify(st))"));
+  assert.ok(stateSource.includes("key='maomao_cafe_state_v1'") && stateSource.includes("payload=JSON.stringify(st)") && stateSource.includes("localStorage.getItem(key)===payload"));
 });
