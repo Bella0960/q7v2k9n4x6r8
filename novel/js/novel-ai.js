@@ -36,20 +36,8 @@
         return null;
     }
 
-    // 调用日志：PhoneStorage 可用时顺带记一笔，失败绝不影响主流程
-    function pushLog(status, model, startMs, errorMsg) {
-        if (!global.PhoneStorage || typeof global.PhoneStorage.pushApiLog !== 'function') return;
-        try {
-            global.PhoneStorage.pushApiLog({
-                id: Date.now().toString(36) + Math.floor(Math.random() * 1000),
-                time: Date.now(),
-                model: model || 'unknown',
-                status: status,
-                duration: Date.now() - startMs,
-                errorMsg: (status === 'error' && errorMsg) ? String(errorMsg).slice(0, 200) : ''
-            });
-        } catch (e) {}
-    }
+    // 调用日志统一由 PhoneAPI.complete 记录；此适配层不再重复写入。
+    // 一笔请求无需在小说模块另造一条成功/失败日志。
 
     async function novelAI(system, user) {
         var cfg = null;
@@ -62,9 +50,6 @@
             throw new Error('AI 通道不可用：请刷新页面后重试');
         }
 
-        var model = cfg.model || 'unknown';
-        var startMs = Date.now();
-
         try {
             var out = await global.PhoneAPI.complete({
                 system: system,
@@ -74,25 +59,17 @@
             });
 
             var text = String(out == null ? '' : out).trim();
-            if (!text) {
-                pushLog('error', model, startMs, '模型返回内容为空');
-                throw new Error('模型返回内容为空');
-            }
-
-            pushLog('success', model, startMs);
+            if (!text) throw new Error('模型返回内容为空');
             return text;
 
         } catch (e) {
             var msg = String((e && e.message) || '');
             if (msg.indexOf('超时') >= 0) {
-                pushLog('error', model, startMs, 'AI 请求超时');
                 throw new Error('AI 请求超时，请稍后重试');
             }
             if (msg.indexOf('API Key') >= 0 || msg.indexOf('配置') >= 0) {
-                pushLog('error', model, startMs, msg);
                 throw new Error('请先打开「设置 → API 设置」配置模型与 API Key');
             }
-            pushLog('error', model, startMs, msg || '请求失败');
             throw e;   // 其余错误（HTTP 状态等）透传共享通道的原文
         }
     }
