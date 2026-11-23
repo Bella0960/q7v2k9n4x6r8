@@ -404,6 +404,12 @@
 
   async function loadOverviewDetails() {
     const requestSequence = ++overviewRequestSequence;
+    const expectedAccountId = pageAccountContext();
+    if (!expectedAccountId) {
+      const error = new Error('管理中心缺少服务器账号上下文，请返回桌面重新进入。');
+      error.code = 'ACCOUNT_CONTEXT_REQUIRED';
+      throw error;
+    }
     setOverviewConnection('overviewAuditStatus', 'loading');
     $('overviewPendingList').replaceChildren(overviewEmpty('正在核对授权队列…'));
     $('overviewActivityList').replaceChildren(overviewEmpty('正在读取操作记录…'));
@@ -420,6 +426,14 @@
         .then(payload => verifiedDirectoryPayload(payload, 'records'))
     ]);
     if (requestSequence !== overviewRequestSequence) return;
+    if (pageAccountContext() !== expectedAccountId) {
+      const error = new Error('管理中心账号上下文已变化，请返回桌面重新进入。');
+      error.code = 'ACCOUNT_CONTEXT_CHANGED';
+      $('overviewPendingList').replaceChildren(overviewEmpty('身份已变化，管理数据不再显示。'));
+      $('overviewActivityList').replaceChildren(overviewEmpty('身份已变化，管理数据不再显示。'));
+      setOverviewConnection('overviewAuditStatus', 'error');
+      throw error;
+    }
 
     // These auth failures are not ordinary empty-state conditions.
     const denied = results.find(result => result.status === 'rejected' &&
@@ -1411,8 +1425,10 @@
       sessionVerified = true;
       await refreshAll();
       const requested = new URLSearchParams(window.location.search).get('tab');
-      if (['users', 'invites', 'audit', 'settings'].includes(requested)) activateTab(requested);
-      else await loadOverviewDetails();
+      if (['users', 'invites', 'audit', 'settings'].includes(requested)) {
+        activateTab(requested);
+        if (requested === 'audit') await loadGlobalAudit(true);
+      } else await loadOverviewDetails();
       hideError();
     } catch (error) {
       if (error.code === 'ACCOUNT_DISABLED') {
