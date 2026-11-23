@@ -147,3 +147,13 @@ On the next turn/session, read this file and the current `AGENTS.md` first. Cont
 
 - **2026-11-22 storage hardening:** Prevent damaged/non-array primary `chat_memories_<id>` content from being overwritten; reject invalid memory targets; stop memory-library delete, dedupe, and AI merge success displays when write fails; capture AI-merge role ID before network await. Added the corresponding regression tests. **16/16 V8-isolated production-module/DOM-contract checks passed** (not full Node). Parsed all changed JS/inline scripts successfully.
 - **Verification handoff:** PR source remains unmerged; next QA must use the exact pinned branch SHA and the existing public-only verification channel. Do not run exhausted legacy private Actions or bypass existing safety guards.
+
+## 2026-11-23 · APP-CAFE-004 · 咖啡馆存档写入可信性
+
+- **分支 / PR：** `APP-CAFE-004-save-reliability` · Draft PR。基线 main `40b671bb`。未合并、未部署。
+- **审计结论：** `save()` 原实现 `try{localStorage.setItem('maomao_cafe_state_v1',JSON.stringify(st));}catch(e){}` 静默吞异常；全页 23 处 `save();` 调用中有 6 处紧接着给出成功提示（事件选择、营业结算、成长奖励、画廊剧情、章节剧情、专属剧情）。配额满或写入失败时，界面照常提示「已选择 / 已领取 / 已记录 / 结算完成」，刷新后进度丢失。
+- **修改：** `save()` 返回布尔并保留异常不外抛；新增 `CAFE_SAVE_FAIL_MSG`；上述 6 条路径改为 `var savedOk=save(); ... toast(savedOk?成功文案:CAFE_SAVE_FAIL_MSG)`。存储键、存档结构、经营数值逻辑、内存状态均不变。
+- **未做（需总控决策）：** 不做隐式回滚 —— 写入失败后内存状态仍领先于存档。备选方案：①保持现状（已提示，重启回滚）②失败即回滚本次内存改动 ③重试队列 / 降级写入。②③涉及每个业务动作的最小事务边界与副作用，需先确认。
+- **未覆盖（后续 CAFE-004b）：** 补货、解锁菜品、自定义菜品、装修、采纳方案、开始营业、搭档切换、`saveOpinion` 仍是无条件提示；这些多涉及现金变更，风险更高，需连同事务边界一起定。
+- **测试：** 新增 `tests/cafe-save-reliability.test.mjs`（8 项，Node 真实执行，全部通过）：正常写入、QuotaExceededError 不破坏旧存档、失败可检测、刷新回读、失败文案不含成功语义、6 条路径都根据结果分支、无静默空 catch、存储键未变。内联脚本 `node --check` 通过（期间发现并修正了 3 处多余右花括号）。
+- **未验证：** Vite 全站构建、Chromium 375/390/430、真机、真实 localStorage 配额场景。
