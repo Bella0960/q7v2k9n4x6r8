@@ -387,6 +387,13 @@ function loadState(){try{var x=localStorage.getItem('maomao_cafe_state_v1');if(!
 var st=loadState();
 var CAFE_SAVE_FAIL_MSG='本地存储写入失败，这次进度可能无法保留，请清理空间后重试。';
 function save(){try{localStorage.setItem('maomao_cafe_state_v1',JSON.stringify(st));return true;}catch(e){return false;}}
+/* 写入失败即回滚：快照为深拷贝，恢复时原地写回 st 的字段，避免替换对象引用导致其他闭包读到旧引用。 */
+function cafeStateSnapshot(){return clone(st);}
+function cafeStateRestore(snapshot){
+ if(!snapshot||typeof snapshot!=='object')return;
+ Object.keys(st).forEach(function(k){delete st[k];});
+ Object.keys(snapshot).forEach(function(k){st[k]=snapshot[k];});
+}
 
 /* 手风琴：展开状态跨重渲染保持 */
 var accOpenState={};
@@ -610,9 +617,10 @@ function renderGalleryStory(){
 }
 function chooseGalleryStory(which){
  if(!galleryStoryReady())return;
+ var before=cafeStateSnapshot();
  if(which==='memory'){stat('rep',3);st.galleryStoryLog='你把照片背后的故事写进了小店手记。后来有客人停下脚步读完它，也开始分享自己的故事。';}
  else{stat('sat',3);st.xp+=12;st.galleryStoryLog='你邀请熟客一起挑选下一期主题。画廊从装饰变成了大家共同参与的小小展览。';}
- st.galleryStoryChoice=which;st.storyLog.unshift({key:'gallery-'+st.day,day:st.day,title:'画廊里的第一张照片',text:st.galleryStoryLog,choice:which==='memory'?'写下照片背后的故事':'做成每月主题展',roleName:nameOf(role)});st.storyLog=st.storyLog.slice(0,8);checkAchievements();var savedOk=save();renderAll();toast(savedOk?'画廊事件已记录，新的店铺回忆已加入档案。':CAFE_SAVE_FAIL_MSG);
+ st.galleryStoryChoice=which;st.storyLog.unshift({key:'gallery-'+st.day,day:st.day,title:'画廊里的第一张照片',text:st.galleryStoryLog,choice:which==='memory'?'写下照片背后的故事':'做成每月主题展',roleName:nameOf(role)});st.storyLog=st.storyLog.slice(0,8);checkAchievements();var savedOk=save();if(!savedOk){cafeStateRestore(before);renderAll();toast(CAFE_SAVE_FAIL_MSG);return;}renderAll();toast('画廊事件已记录，新的店铺回忆已加入档案。');
 }
 function renderStory(){
  var s=currentStory();if(!s)return '';
@@ -623,7 +631,7 @@ function renderStory(){
 }
 function chooseStory(which){
  var s=currentStory();if(!s)return;var key=String(s.idx);if(st.storyChoices[key]!==undefined)return;
- var option=which==='a'?s.arc.a:s.arc.b,ef=option.effect||{};
+ var before=cafeStateSnapshot();var option=which==='a'?s.arc.a:s.arc.b,ef=option.effect||{};
  if(st.cash+Number(ef.cash||0)<0){toast('现金不够，先积累一点资金再做这个决定。');return;}
  st.cash+=Number(ef.cash||0);if(ef.rep)stat('rep',ef.rep);if(ef.sat)stat('sat',ef.sat);
  /* 故事选择也会影响搭档默契，并写入搭档的合作档案 */
@@ -634,7 +642,7 @@ function chooseStory(which){
  partner.history=Array.isArray(partner.history)?partner.history:[];
  partner.history.unshift({day:st.day,type:'chapter-story',eventTitle:s.arc.title,choice:option.title,reward:'口碑 '+(ef.rep>0?'+'+ef.rep:'±0')+' · 满意度 '+(ef.sat>0?'+'+ef.sat:'±0')});
  partner.history=partner.history.slice(0,8);
- st.storyChoices[key]=which;st.storyLog.unshift({key:key,day:st.day,title:s.arc.title,text:option.log,choice:option.title,roleId:String(role&&role.id||'default-partner'),roleName:nameOf(role)});st.storyLog=st.storyLog.slice(0,8);checkAchievements();var savedOk=save();renderAll();toast(savedOk?'这段故事记下来了，搭档也记住了你的选择。':CAFE_SAVE_FAIL_MSG);
+ st.storyChoices[key]=which;st.storyLog.unshift({key:key,day:st.day,title:s.arc.title,text:option.log,choice:option.title,roleId:String(role&&role.id||'default-partner'),roleName:nameOf(role)});st.storyLog=st.storyLog.slice(0,8);checkAchievements();var savedOk=save();if(!savedOk){cafeStateRestore(before);renderAll();toast(CAFE_SAVE_FAIL_MSG);return;}renderAll();toast('这段故事记下来了，搭档也记住了你的选择。');
 }
 function renderRegulars(){
  if(!st.regulars.length)return '<p class="story-copy">每一天好好招待客人，就有机会遇到愿意反复光顾的人。熟客会记住喜欢的饮品，也会带来口碑和额外客流。</p>';
@@ -723,11 +731,11 @@ function renderPartnerEpisode(){
 }
 function choosePartnerEpisode(i){
  var ep=partnerEpisodeToday();if(!ep||!ep.options[i]||st.partnerEpisodeDay===st.day)return;
- var o=ep.options[i];if(st.cash<o.cost){toast('资金不够，先保留现金吧。');return;}
+ var o=ep.options[i];var before=cafeStateSnapshot();if(st.cash<o.cost){toast('资金不够，先保留现金吧。');return;}
  var p=getPartnerProfile(role),r=o.reward||{};st.cash-=o.cost;if(r.cash)st.cash+=r.cash;if(r.rep)stat('rep',r.rep);if(r.sat)stat('sat',r.sat);if(r.xp)st.xp+=r.xp;if(r.stock)Object.keys(r.stock).forEach(function(k){st.stock[k]=(st.stock[k]||0)+r.stock[k];});
  st.partnerEpisodeDay=st.day;p.episodeCount=(Number(p.episodeCount)||0)+1;p.rapport=clamp(p.rapport+4,0,100);p.lastLine=styleLine(p.style,true);p.lastDecision=o.title;p.history.unshift({day:st.day,type:'exclusive-episode',eventTitle:ep.title,choice:o.title,reward:o.label});p.history=p.history.slice(0,8);
  st.partnerEpisodeResult={day:st.day,roleId:String(role&&role.id||'default-partner'),roleName:nameOf(role),title:ep.title,summary:'你选择了「'+o.title+'」。'+nameOf(role)+' 把这次合作记在心里。',line:p.lastLine,reward:o.label,choice:o.title};
- checkAchievements();var savedOk=save();renderAll();toast(savedOk?'专属剧情完成，奖励已领取。':CAFE_SAVE_FAIL_MSG);
+ checkAchievements();var savedOk=save();if(!savedOk){cafeStateRestore(before);renderAll();toast(CAFE_SAVE_FAIL_MSG);return;}renderAll();toast('专属剧情完成，奖励已领取。');
 }
 
 function renderCompactEvent(){
@@ -748,7 +756,7 @@ function renderCompactControls(){
  return '<section class="compact-plan"><div class="compact-plan-head"><span class="compact-plan-title">营业准备</span><span class="aside">'+(operating?'SERVICE IN PROGRESS':'PREPARATION')+'</span></div>'+(operating?'<div class="shelf-note">今日营业已经开始。宣传预算、服务方式与今日事件已锁定；打烊结算后进入下一天。</div>':'<div class="compact-plan-head"><span class="compact-plan-title">宣传预算</span><div class="compact-budget"><button type="button" data-ad="-20" aria-label="减少预算" '+(st.ad<=0?'disabled':'')+'>−</button><span class="compact-budget-value">'+money(st.ad)+'</span><button type="button" data-ad="20" aria-label="增加预算" '+(st.ad>=max?'disabled':'')+'>+</button></div></div><div class="compact-service"><span class="compact-service-label">服务方式</span><div class="compact-service-options">'+modes.map(function(m){return '<button type="button" class="'+(st.service===m.id?'active':'')+'" data-service="'+m.id+'">'+m.n+'</button>';}).join('')+'</div></div>')+'<button class="compact-open-shop" id="openShop" type="button" '+(!operating&&!ready?'disabled':'')+'>'+(operating?'打烊并结算今日账本':'开始营业')+'</button><p class="compact-hint">'+(operating?'营业中不可重复开店；打烊后才会结算并进入下一天。':ready?'确认菜单、库存和预算后开始今日营业。':'先处理今日事件并保留至少一款在售菜品。')+'</p></section>';
 }
 function growthMilestones(){var ls=st.lifeStats||{};return [{id:'days3',title:'经营满 3 天',desc:'解锁「黑白画廊」装修',value:ls.days||0,target:3,reward:80,unlock:'decor'},{id:'visitors50',title:'累计接待 50 位顾客',desc:'解锁一款新菜单商品',value:ls.totalServed||0,target:50,reward:100,unlock:'menu'},{id:'streak3',title:'连续盈利 3 天',desc:'解锁「临窗长桌」装修',value:ls.bestProfitStreak||0,target:3,reward:120,unlock:'window'},{id:'profit300',title:'创造单日利润 ¥300',desc:'解锁一款进阶菜单商品',value:ls.bestDailyProfit||0,target:300,reward:150,unlock:'menu'}];}
-function claimGrowthReward(id){var m=growthMilestones().find(function(x){return x.id===id;});if(!m||m.value<m.target||st.growthClaims[id])return;var unlockedText='';if(m.unlock==='decor'||m.unlock==='window'){var did=m.unlock==='decor'?'gallery':'window';if(st.decorUnlocked.indexOf(did)<0){st.decorUnlocked.push(did);unlockedText='装修「'+(DECORS.find(function(d){return d.id===did;})||{}).name+'」';}else{st.cash+=m.reward;unlockedText='经营资金奖励';}}else{var next=ITEMS.find(function(p){return st.unlocked.indexOf(p.id)<0;});if(next){st.unlocked.push(next.id);unlockedText='菜单「'+next.name+'」';}else{st.cash+=m.reward;unlockedText='经营资金奖励';}}st.growthClaims[id]={day:st.day};if(unlockedText==='经营资金奖励'){}else st.cash+=m.reward;var savedOk=save();renderAll();toast(savedOk?'成长奖励已领取：'+unlockedText+' · +'+money(m.reward):CAFE_SAVE_FAIL_MSG);}
+function claimGrowthReward(id){var m=growthMilestones().find(function(x){return x.id===id;});if(!m||m.value<m.target||st.growthClaims[id])return;var before=cafeStateSnapshot(),unlockedText='';if(m.unlock==='decor'||m.unlock==='window'){var did=m.unlock==='decor'?'gallery':'window';if(st.decorUnlocked.indexOf(did)<0){st.decorUnlocked.push(did);unlockedText='装修「'+(DECORS.find(function(d){return d.id===did;})||{}).name+'」';}else{st.cash+=m.reward;unlockedText='经营资金奖励';}}else{var next=ITEMS.find(function(p){return st.unlocked.indexOf(p.id)<0;});if(next){st.unlocked.push(next.id);unlockedText='菜单「'+next.name+'」';}else{st.cash+=m.reward;unlockedText='经营资金奖励';}}st.growthClaims[id]={day:st.day};if(unlockedText==='经营资金奖励'){}else st.cash+=m.reward;var savedOk=save();if(!savedOk){cafeStateRestore(before);renderAll();toast(CAFE_SAVE_FAIL_MSG);return;}renderAll();toast('成长奖励已领取：'+unlockedText+' · +'+money(m.reward));}
 function renderGrowthDashboard(){var ls=st.lifeStats||{},hist=(st.history||[]).slice(0,7).reverse(),max=Math.max(1,...hist.map(function(h){return Math.abs(Number(h.profit)||0);}));var bars=hist.length?hist.map(function(h){var p=Number(h.profit)||0,height=Math.max(5,Math.round(Math.abs(p)/max*42));return '<div class="growth-bar-col"><div class="growth-bar-value '+(p<0?'negative':'')+'">'+(p<0?'−':'+')+money(Math.abs(p))+'</div><div class="growth-bar-track"><span class="'+(p<0?'negative':'positive')+'" style="height:'+height+'px"></span></div><small>D'+h.day+'</small></div>';}).join(''):'<div class="growth-empty">完成第一次营业后，这里会开始记录经营趋势。</div>';var milestones=growthMilestones(),next=milestones.find(function(m){return m.value<m.target&&!st.growthClaims[m.id];})||null;var milestoneHtml=milestones.map(function(m){var claimed=!!st.growthClaims[m.id],done=m.value>=m.target,pct=clamp(m.value/m.target*100,0,100),progress=m.id==='visitors50'?m.value+' / '+m.target+' 位':m.id==='profit300'?money(m.value)+' / '+money(m.target):m.value+' / '+m.target+' 天';return '<div class="growth-milestone '+(claimed?'claimed':done?'done':'')+'"><div class="growth-milestone-top"><div><strong>'+esc(m.title)+'</strong><span>'+esc(m.desc)+'</span></div><b>'+(claimed?'已领取':done?'已达成':Math.floor(pct)+'%')+'</b></div><div class="growth-track"><span style="width:'+pct+'%"></span></div><small>'+progress+'</small>'+(done&&!claimed?'<button type="button" class="growth-claim" data-growth-claim="'+m.id+'">领取奖励 · 解锁内容 + '+money(m.reward)+'</button>':'')+'</div>';}).join('');return '<section class="growth-dashboard"><div class="growth-heading"><div><div class="growth-kicker">BUSINESS JOURNAL / LONG VIEW</div><div class="growth-title">经营数据与成长</div></div><span class="growth-days">DAY '+String(Math.max(1,st.day-1)).padStart(2,'0')+'</span></div><div class="growth-total"><span>累计营业额</span><strong>'+money(st.totalRevenue||0)+'</strong><small>沿用当前存档的累计营业收入</small></div><div class="growth-metric-grid"><div><span>已结算天数</span><strong>'+(ls.days||0)+'</strong></div><div><span>累计净利润*</span><strong>'+(Number(ls.totalProfit)>=0?'+':'−')+money(Math.abs(Number(ls.totalProfit)||0))+'</strong></div><div><span>累计接待</span><strong>'+(ls.totalServed||0)+' 位</strong></div><div><span>盈利天数</span><strong>'+(ls.profitableDays||0)+' 天</strong></div><div><span>历史最佳单日</span><strong>'+money(ls.bestDailyProfit||0)+'</strong></div><div><span>最长盈利连胜</span><strong>'+(ls.bestProfitStreak||0)+' 天</strong></div><div><span>累计原料成本</span><strong>'+money(ls.totalIngredientCost||0)+'</strong></div><div><span>累计流失订单</span><strong>'+(ls.totalLostOrders||0)+' 单</strong></div></div><div class="growth-footnote">*新统计从本次启用后累计；旧存档的历史明细不会被猜测补齐。</div><div class="growth-section"><div class="growth-section-head"><span>RECENT PROFIT / 最近结算</span><span>最多 7 天</span></div><div class="growth-chart">'+bars+'</div><div class="growth-chart-legend"><span><i></i> 正利润</span><span><i class="loss"></i> 负利润</span></div></div><div class="growth-section"><div class="growth-section-head"><span>NEXT MILESTONES / 成长目标</span><span>'+(next?'下一阶段：'+esc(next.title):'阶段目标已完成')+'</span></div><div class="growth-milestones">'+milestoneHtml+'</div></div></section>';}
 
 function renderCafeDetails(){
@@ -840,7 +848,7 @@ function renderPartnerTab(){
  document.querySelectorAll('[data-gallery-story]').forEach(function(b){b.addEventListener('click',function(){chooseGalleryStory(b.getAttribute('data-gallery-story'));});});
  document.querySelectorAll('[data-partner-episode]').forEach(function(b){b.addEventListener('click',function(){choosePartnerEpisode(Number(b.getAttribute('data-partner-episode')));});});
 }
-function chooseEvent(i){var ev=eventNow(),o=ev.options[i];if(!o)return;if(st.cash<o.cost){toast('资金不足，换一个应对方案吧。');return;}var e=o.e||{};st.cash-=Number(e.cash||0);if(e.stock)Object.keys(e.stock).forEach(function(k){st.stock[k]=(st.stock[k]||0)+e.stock[k];});if(e.rep)stat('rep',e.rep);if(e.sat)stat('sat',e.sat);st.eventFx={customers:e.customers||0,priceFactor:e.priceFactor||1};st.eventChoice=i;var savedOk=save();renderOverview();toast(savedOk?'已选择：'+o.title:CAFE_SAVE_FAIL_MSG);}
+function chooseEvent(i){var ev=eventNow(),o=ev.options[i];if(!o)return;var before=cafeStateSnapshot();if(st.cash<o.cost){toast('资金不足，换一个应对方案吧。');return;}var e=o.e||{};st.cash-=Number(e.cash||0);if(e.stock)Object.keys(e.stock).forEach(function(k){st.stock[k]=(st.stock[k]||0)+e.stock[k];});if(e.rep)stat('rep',e.rep);if(e.sat)stat('sat',e.sat);st.eventFx={customers:e.customers||0,priceFactor:e.priceFactor||1};st.eventChoice=i;var savedOk=save();if(!savedOk){cafeStateRestore(before);renderOverview();toast(CAFE_SAVE_FAIL_MSG);return;}renderOverview();toast('已选择：'+o.title);}
 function askPlan(){
  if(advisorBusy)return;advisorBusy=true;renderOverview();
  var cfg=window.PhoneStorage&&window.PhoneStorage.getApiConfig?window.PhoneStorage.getApiConfig():{};
@@ -921,6 +929,7 @@ function runDay(){
  if(st.businessStatus!=='operating'){toast('请先开始营业，再进行打烊结算。');return;}
  if(st.eventChoice===null||st.eventChoice===undefined){toast('先处理今日事件。');return;}
  if(!st.menu.length){toast('先选择至少一款在售商品。');return;}
+ var before=cafeStateSnapshot();
  var ad=Math.min(st.ad,Math.floor(st.cash/20)*20);st.cash-=ad;
  var mode=st.service,serviceName={warm:'温柔待客',standard:'标准服务',fast:'快速出杯'}[mode]||'标准服务',modeDemand=mode==='fast'?3:mode==='warm'?1:0;
  var partnerBonus=partnerBusinessBonus(),decorBonus=decorBusinessBonus();
@@ -936,7 +945,7 @@ function runDay(){
  wp.daysTogether++;report.partnerName=nameOf(role);report.partnerStyle=(PARTNER_STYLES[wp.style]||PARTNER_STYLES.balanced).label;report.partnerLine=partnerResultLine(wp.style,report,decision?decision.followedAdvice:null);wp.lastLine=report.partnerLine;wp.lastResult=report.profit>=0?'positive':'tight';
  var prev=wp.history.find(function(h){return h.day===report.day&&h.eventId===eventNow().id;});if(prev){prev.profit=report.profit;prev.served=report.served;prev.line=report.partnerLine;}else{wp.history.unshift({day:report.day,eventId:eventNow().id,eventTitle:report.eventTitle,choice:decision?decision.choiceTitle:'自主经营',followed:decision?decision.followedAdvice:null,profit:report.profit,served:report.served,line:report.partnerLine});}wp.history=wp.history.slice(0,8);
  recordClosedDay(report);evaluateGoal(report);checkAchievements();
- st.report=report;st.history.unshift(report);st.history=st.history.slice(0,8);st.day++;st.businessStatus='prep';st.event=rand(EVENTS.length);st.eventChoice=null;st.eventFx={};st.ad=20;st.service='warm';var savedOk=save();advisorPlan=null;TAB='overview';renderAll();showDailyReport(report);toast(savedOk?'今日结算完成：净利润 '+(profit>=0?'+':'−')+money(Math.abs(profit)):CAFE_SAVE_FAIL_MSG);
+ st.report=report;st.history.unshift(report);st.history=st.history.slice(0,8);st.day++;st.businessStatus='prep';st.event=rand(EVENTS.length);st.eventChoice=null;st.eventFx={};st.ad=20;st.service='warm';var savedOk=save();TAB='overview';if(!savedOk){cafeStateRestore(before);renderAll();toast(CAFE_SAVE_FAIL_MSG);return;}advisorPlan=null;renderAll();showDailyReport(report);toast('今日结算完成：净利润 '+(profit>=0?'+':'−')+money(Math.abs(profit)));
 }
 
 /* Lightweight feedback, delegated interactions, and animated transitions */

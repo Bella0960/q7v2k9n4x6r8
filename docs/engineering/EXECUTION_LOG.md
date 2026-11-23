@@ -157,3 +157,12 @@ On the next turn/session, read this file and the current `AGENTS.md` first. Cont
 - **未覆盖（后续 CAFE-004b）：** 补货、解锁菜品、自定义菜品、装修、采纳方案、开始营业、搭档切换、`saveOpinion` 仍是无条件提示；这些多涉及现金变更，风险更高，需连同事务边界一起定。
 - **测试：** 新增 `tests/cafe-save-reliability.test.mjs`（8 项，Node 真实执行，全部通过）：正常写入、QuotaExceededError 不破坏旧存档、失败可检测、刷新回读、失败文案不含成功语义、6 条路径都根据结果分支、无静默空 catch、存储键未变。内联脚本 `node --check` 通过（期间发现并修正了 3 处多余右花括号）。
 - **未验证：** Vite 全站构建、Chromium 375/390/430、真机、真实 localStorage 配额场景。
+
+## 2026-11-23 · APP-CAFE-004 返工 · 写入失败即回滚（PR #429）
+
+- **审查结论：** 仅切换 toast 文案不够，失败后内存仍领先于存档，后续任一成功 save 会把失败操作写进去；`runDay` 还会弹结算弹窗并推进日数。总控选择方案②：失败即回滚本次内存状态。
+- **修改：** 新增 `cafeStateSnapshot()`（深拷贝，复用既有 `clone`）与 `cafeStateRestore(snapshot)`（原地清空并写回字段，保持 `st` 对象引用不变，避免闭包持有旧引用）。六条路径（事件选择、营业结算、成长奖励、画廊剧情、章节剧情、专属剧情）在改动 `st` 之前取快照；`save()` 失败时恢复整份状态、重新渲染、给出失败提示并 `return`，不执行成功分支。
+- **副作用复核：** `runDay` 的 `showDailyReport(report)` 移到成功分支之后；`advisorPlan` 仅在成功时清空；`recordClosedDay` / `evaluateRegulars` / `evaluateGoal` / `checkAchievements` / `getPartnerProfile` 都只写 `st`，回滚后一并还原。六条路径均无网络请求或已发出的不可逆外部副作用，因此全部可安全回滚，没有需要单独阻断的路径。
+- **测试：** `tests/cafe-save-reliability.test.mjs` 重写为 11 项（真实 `clone/save/cafeStateSnapshot/cafeStateRestore` 在 VM 执行）：正常写入、配额失败旧存档字节不变、整份回滚含嵌套、引用不变且旧引用不复活、失败操作不混入下一次成功写入、刷新回读、失败文案、六路径事务边界、结算失败不弹窗不推进、领奖失败可重领、无静默空 catch。11/11 通过；内联脚本 `node --check` 通过。
+- **未覆盖：** 其余 17 处写入点（补货、解锁菜品、自定义菜品、装修、采纳方案、开始营业、搭档切换、`saveOpinion`）留在 CAFE-004b。
+- **未验证：** Vite 全站构建、Chromium 375/390/430、真机、真实配额场景。
