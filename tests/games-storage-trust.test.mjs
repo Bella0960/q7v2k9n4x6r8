@@ -48,6 +48,7 @@ function makeSandbox({ store, roles = [{ id: 'a', name: '甲' }, { id: 'b', name
     roleList: roles,
     rolePickerOpen: true,
     reactionSequence: 0,
+    detectiveGenToken: 0,   // selectRole 会递增它：换角色后旧生成结果作废
     gameStorageWarned: false,
     byId: (id) => (id === 'toast' ? toastEl : { textContent: '', innerHTML: '', style: {}, classList: { add() {}, remove() {}, toggle() {} } }),
     showToast: (t) => toasts.push(t),

@@ -167,3 +167,21 @@ On the next turn/session, read this file and the current `AGENTS.md` first. Cont
 - **测试：** 新增 `tests/games-storage-trust.test.mjs`（9 项，VM 跑真实 `saveRaw/saveJSON/saveCaseProgress/selectRole/saveStat`），9/9 通过；7 段内联脚本全部 `vm.Script` 解析通过。
 - **登记未做（需产品决策）：** 游戏大厅只读角色卡 + 记忆无关；不产出世界事件（依赖 `ECO-LINK-002`）；侦探案件生成为付费调用，无次数限制或失败重试预算控制。
 - **未验证：** Vite 全站构建、Chromium 375/390/430、真机、真实配额场景。
+
+## 2026-11-23 · APP-GAMES-002 · 侦探新案付费调用预算（DETECTIVE-API-BUDGET-001）
+
+- **分支 / PR：** `APP-GAMES-002-detective-budget`（基于 #442 分支，因其已提供 `saveJSON`）。Draft。基线 main `40b671bb`。未合并、未部署。
+- **共享重试核实（证据）：** `shared/js/phone/phone_api.js` 的 `NS.complete` 只有一次 `fetch` + 一个 `AbortController` 超时定时器，**没有任何重试循环**。因此「一次确认 = 最多一次实际请求」成立，无需改动共享层。
+- **实现：**
+  - 常量 `DETECTIVE_DAILY_LIMIT=3`（每个本地账号/安装每天最多 3 次实际请求尝试，失败与超时同样计入）。
+  - 计数按「角色(账号) + 日期」分桶存 `maomao_detective_gen_budget_v1`：换一天自动归零；当天计数已落盘，刷新页面无法绕过。
+  - **先记账后发请求**：确认之后立即 `consumeDetectiveBudget()`，失败也照扣。
+  - 发请求前 `confirm()`：文案写明「会调用你配置的付费 AI 接口，失败也可能产生费用」，并给出今日剩余次数与「不会自动重试」。用户取消 → 不扣次数、不发请求。
+  - `detectiveGenBusy` 保证同一时刻最多 1 个进行中；`detectiveGenToken` 在 `selectRole` 与 `returnLobby` 递增，换角色/离开页面后旧响应一律丢弃。
+  - 零自动重试：超时 / JSON 解析失败 / 结构校验失败 / 模型空内容全部走同一条 catch，只把按钮换成「重试生成 · 今日剩余 N」，再点会再确认并占用新一次预算。
+  - 紧凑次数提示只改按钮文案（`生成新案 · 今日剩余 N`），未新增控件、未改布局、未动旧案件/进度键、未删除任何案件。
+  - 额度是**本机限制**，文案明确写「仅本机限制」，不假装云端硬限额。预算落盘失败时提示「刷新后可能重置」，且本会话内仍按内存计数继续限制。
+- **测试：** 新增 `tests/detective-api-budget.test.mjs`（14 项，VM 跑真实 `generateDetectiveCase` / `consumeDetectiveBudget` / `detectiveRemaining`，全部 mock，无真实请求），14/14 通过；`tests/games-storage-trust.test.mjs` 9/9 无回归；7 段内联脚本解析通过。
+  - 覆盖：取消 0 请求 0 扣次 / 一次确认恰好 1 请求 / 连点仍 1 请求 / 失败不重试且计入 / 达上限 0 请求 / 跨日重置 / 刷新不归零 / 角色隔离 / 切角色丢弃旧结果 / 存盘失败不假报 / 预算落盘失败提示 / 无 key 0 请求。
+- **BLOCKED：** 无法做跨设备服务端强制配额，已按「本机限制」如实标注。
+- **未验证：** Vite 全站构建、Chromium 375/390/430、真机；`confirm()` 在 PWA 独立窗口下的样式未实测。

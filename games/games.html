@@ -681,6 +681,7 @@ function selectRole(id){
   reactionSequence++;
   var next=roleList.find(function(r){return String(r.id)===String(id);});
   if(!next)return;
+  detectiveGenToken++;   /* 换角色后旧生成结果不得写回 */
   activeRole=next;rolePickerOpen=false;
   var roleSaved=saveRaw('maomao_game_role',String(next.id),true);
   renderRoles();
@@ -815,6 +816,7 @@ function showGame(id){
   window.scrollTo({top:0,behavior:'smooth'});
 }
 function returnLobby(){
+  detectiveGenToken++;   /* 离开页面后旧生成结果不得写回 */
   reactionSequence++;setDetectiveVersionBadge(false);
   activeGame='';
   document.body.classList.remove('detective-case-mode','case-modal-open');
@@ -1056,23 +1058,94 @@ function startCase(){
  byId('gameContent').querySelectorAll('[data-team-role]').forEach(function(b){b.addEventListener('click',function(){toggleDetectiveRole(b.getAttribute('data-team-role'));});});
  byId('gameContent').querySelectorAll('[data-open-case]').forEach(function(b){b.addEventListener('click',function(){openCase(Number(b.getAttribute('data-open-case')));});});
  var gen=byId('generateDetectiveCase');if(gen)gen.addEventListener('click',generateDetectiveCase);
+ detectiveGenFailed=false;detectiveBudgetHint();
  byId('roleQuote').textContent='案件不急着下结论。先把每一份记录看清楚，再决定谁的说法站不住脚。';
 }
+/* ===== 侦探新案生成：付费调用预算（本机限制，不是云端硬限额） =====
+   每个本地账号/安装每天最多 DETECTIVE_DAILY_LIMIT 次「实际请求尝试」，失败与超时同样计入。
+   共享 PhoneAPI.complete 内部只有单次 fetch、没有隐式重试（shared/js/phone/phone_api.js），
+   因此「一次确认 = 最多一次实际请求」成立；本函数也不做任何自动重试。 */
+var DETECTIVE_DAILY_LIMIT=3;
+var DETECTIVE_BUDGET_KEY='maomao_detective_gen_budget_v1';
+var detectiveGenBusy=false;      /* 同一时刻最多 1 个进行中 */
+var detectiveGenToken=0;         /* 换角色/离开页面后让旧结果失效 */
+var detectiveGenFailed=false;    /* 上一轮失败时把按钮文案改成「重试生成」 */
+var detectiveBudgetCache=null;
+
+function detectiveDayKey(d){d=d||new Date();return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0');}
+function detectiveBudgetOwner(){return String(activeRole&&activeRole.id||'local');}
+function readDetectiveBudgetRaw(){
+  try{var all=JSON.parse(localStorage.getItem(DETECTIVE_BUDGET_KEY)||'{}');return all&&typeof all==='object'?all:{};}catch(e){return{};}
+}
+/* 计数按「角色(账号) + 日期」分桶：换一天自动归零；当天计数已落盘，刷新页面无法绕过。 */
+function detectiveBudgetState(){
+  var day=detectiveDayKey(),owner=detectiveBudgetOwner();
+  if(!detectiveBudgetCache||detectiveBudgetCache.day!==day||detectiveBudgetCache.owner!==owner){
+    var all=readDetectiveBudgetRaw(),rec=all[owner];
+    var used=(rec&&rec.day===day&&Number(rec.used)>0)?Number(rec.used):0;
+    detectiveBudgetCache={day:day,owner:owner,used:used};
+  }
+  return detectiveBudgetCache;
+}
+function detectiveRemaining(){return Math.max(0,DETECTIVE_DAILY_LIMIT-detectiveBudgetState().used);}
+/* 先记账再发请求：即使请求超时或失败，也如实占用一次预算。 */
+function consumeDetectiveBudget(){
+  var st=detectiveBudgetState();
+  st.used+=1;
+  var all=readDetectiveBudgetRaw();
+  all[st.owner]={day:st.day,used:st.used};
+  if(!saveJSON(DETECTIVE_BUDGET_KEY,all,true)){
+    warnGameStorage('今日次数已在本机记账，但没能写入存储；刷新后可能重置，请清理存储空间');
+  }
+  return st.used;
+}
+/* 紧凑次数提示：只用按钮文案，不新增控件、不改布局。 */
+function detectiveBudgetHint(){
+  var left=detectiveRemaining();
+  var b=byId('generateDetectiveCase');
+  if(b&&!detectiveGenBusy)b.textContent=(detectiveGenFailed?'重试生成':'生成新案')+' · 今日剩余 '+left;
+  return left;
+}
 function generateDetectiveCase(){
- var cfg=window.PhoneStorage&&window.PhoneStorage.getApiConfig?window.PhoneStorage.getApiConfig():{};
- if(!cfg||!String(cfg.apiKey||'').trim()||!window.PhoneAPI||typeof window.PhoneAPI.complete!=='function'){showToast('请先在小手机设置中配置可用的 AI API。');return;}
- var button=byId('generateDetectiveCase');if(button){button.disabled=true;button.textContent='正在构思…';}
- var team=detectiveTeam(),history=CASES.slice(-5).map(function(c){return c.title;}).join('、');
- var system='你是悬疑推理游戏编剧。创作适合青少年的非血腥推理案件，必须有可验证线索、逻辑闭环，不能靠猜测或超自然力量定案。只返回严格 JSON，不要 Markdown。结构：{"title":"标题","intro":"案情","evidence":[{"title":"证据名称","detail":"可核验线索"}],"suspects":[{"name":"人物","job":"身份"},{"name":"人物","job":"身份"},{"name":"人物","job":"身份"}],"answer":0,"explain":"逐条解释线索如何支持结论并排除其他人","chapter":"本案留下的主线伏笔"}。至少4条证据，恰好3名嫌疑人，answer是0到2整数。';
- var user='为 MAOMAO 长线侦探游戏生成新案件。调查队成员：'+team.map(detectivePersona).join('。')+'。不要重复这些已有案件：'+history+'。必须有唯一且逻辑闭合的真相，证据至少4条且至少两条能独立支持结论，三名嫌疑人都要有合理动机或机会，证词中至少一处可被已公开证据验证的矛盾。案件需与既有主线相连但不能改写旧案真相。跨案记忆：'+campaignBrief()+'。加入一条未来章节可以回收的主线伏笔。';
- window.PhoneAPI.complete({system:system,user:user,temperature:0.75,timeoutMs:45000}).then(function(raw){
-  var txt=String(raw||'').trim().replace(/^```(?:json)?s*/i,'').replace(/s*```$/,'');var a=txt.indexOf('{'),z=txt.lastIndexOf('}');if(a>=0&&z>a)txt=txt.slice(a,z+1);
-  var c=JSON.parse(txt);if(!c.title||!c.intro||!Array.isArray(c.evidence)||c.evidence.length<4||!Array.isArray(c.suspects)||c.suspects.length!==3||![0,1,2].includes(Number(c.answer))||!c.explain)throw new Error('invalid case');
-  c.answer=Number(c.answer);c.generated=true;c.chapter=String(c.chapter||'');c.evidence=c.evidence.slice(0,7);
-  var saved=JSON.parse(localStorage.getItem('maomao_detective_generated_cases_v1')||'[]');saved.push(c);
-  var caseSaved=saveJSON('maomao_detective_generated_cases_v1',saved,true);CASES.push(c);
-  showToast(caseSaved?'新案件已加入案件档案':('新案件已生成，但本机存储空间不足，没能存下，刷新后会消失'));startCase();
- }).catch(function(){showToast('生成失败，请检查 API 配置或稍后重试。');}).finally(function(){var b=byId('generateDetectiveCase');if(b){b.disabled=false;b.textContent='生成新案';}});
+  if(detectiveGenBusy){showToast('上一次生成还在进行中，请稍等');return;}
+  var cfg=window.PhoneStorage&&window.PhoneStorage.getApiConfig?window.PhoneStorage.getApiConfig():{};
+  if(!cfg||!String(cfg.apiKey||'').trim()||!window.PhoneAPI||typeof window.PhoneAPI.complete!=='function'){showToast('请先在小手机设置中配置可用的 AI API。');return;}
+  var left=detectiveRemaining();
+  if(left<=0){showToast('今天的生成次数已用完（每天 '+DETECTIVE_DAILY_LIMIT+' 次，仅本机限制），明天再来');detectiveBudgetHint();return;}
+  var confirmed=false;
+  try{confirmed=confirm('生成新案件会调用你配置的付费 AI 接口，失败也可能产生费用。\n\n今日剩余 '+left+' 次，本次占用 1 次；不会自动重试。\n\n继续生成吗？');}catch(e){confirmed=false;}
+  if(!confirmed)return;                       /* 取消：不扣次数、不发请求 */
+
+  detectiveGenBusy=true;detectiveGenFailed=false;
+  var attempt=++detectiveGenToken,attemptRole=detectiveBudgetOwner();
+  consumeDetectiveBudget();                   /* 确认之后、发请求之前记账 */
+  var button=byId('generateDetectiveCase');
+  if(button){button.disabled=true;button.textContent='正在构思…';}
+  var team=detectiveTeam(),history=CASES.slice(-5).map(function(c){return c.title;}).join('、');
+  var system='你是悬疑推理游戏编剧。创作适合青少年的非血腥推理案件，必须有可验证线索、逻辑闭环，不能靠猜测或超自然力量定案。只返回严格 JSON，不要 Markdown。结构：{"title":"","chapter":"","intro":"","evidence":["","","",""],"suspects":[{"name":"","desc":""},{"name":"","desc":""},{"name":"","desc":""}],"answer":0,"explain":""}。answer 是凶手的下标（0/1/2）。';
+  var user='为 MAOMAO 长线侦探游戏生成新案件。调查队成员：'+team.map(detectivePersona).join('。')+'。不要重复这些已有案件：'+history+'。必须有唯一且逻辑闭合的真相，证据至少4条且都能在叙述中被读者看到，嫌疑人恰好3位。';
+  /* 过期判定：换角色、重复点击、离开页面后，旧响应一律丢弃，不写档案、不弹成功。 */
+  function stale(){return attempt!==detectiveGenToken||detectiveBudgetOwner()!==attemptRole;}
+  window.PhoneAPI.complete({system:system,user:user,temperature:0.75,timeoutMs:45000}).then(function(raw){
+    if(stale())return;
+    var txt=String(raw||'').trim().replace(/^```(?:json)?s*/i,'').replace(/s*```$/,'');var a=txt.indexOf('{'),z=txt.lastIndexOf('}');if(a>=0&&z>a)txt=txt.slice(a,z+1);
+    if(!txt)throw new Error('empty');
+    var c=JSON.parse(txt);if(!c.title||!c.intro||!Array.isArray(c.evidence)||c.evidence.length<4||!Array.isArray(c.suspects)||c.suspects.length!==3||![0,1,2].includes(Number(c.answer))||!c.explain)throw new Error('invalid case');
+    c.answer=Number(c.answer);c.generated=true;c.chapter=String(c.chapter||'');c.evidence=c.evidence.slice(0,7);
+    var saved=JSON.parse(localStorage.getItem('maomao_detective_generated_cases_v1')||'[]');saved.push(c);
+    var caseSaved=saveJSON('maomao_detective_generated_cases_v1',saved,true);CASES.push(c);
+    showToast(caseSaved?'新案件已加入案件档案':('新案件已生成，但本机存储空间不足，没能存下，刷新后会消失'));
+  }).catch(function(err){
+    if(stale())return;
+    detectiveGenFailed=true;                 /* 不自动重试，只把按钮换成「重试生成」 */
+    var reason=String(err&&err.message||'');
+    var msg=reason.indexOf('请求超时')>=0?'生成超时':(reason==='empty'?'模型没有返回内容':'生成失败');
+    showToast(msg+'，不会自动重试。可点「重试生成」，会再确认并占用一次次数');
+  }).finally(function(){
+    if(attempt===detectiveGenToken)detectiveGenBusy=false;
+    var b=byId('generateDetectiveCase');
+    if(b){b.disabled=false;detectiveBudgetHint();}
+  });
 }
 function installFloatingInvestigationTools(){
  var root=byId('gameContent');if(!root||root.querySelector('#floatingToolLauncher'))return;
