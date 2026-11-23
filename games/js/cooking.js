@@ -71,6 +71,7 @@ function dishPlatingArt(list){
 }
 var selected={},activeCategory='all',roles=[],activeRole=null,currentDish=null,history=[],tasteMemory={},discoveries=[],progress={dishes:0,feedback:0,ingredients:[],unlocked:[]};
 var cookBy='me'; // 'me' = 用户做的, 'them' = 角色做的
+var tastingLock=false,reactionToken=0;
 var CUSTOM_RECIPES_KEY='maomao_custom_recipes_v1';
 var customRecipes=[];
 function loadCustomRecipes(){
@@ -216,6 +217,7 @@ function cook(){
   $('cookButton').innerHTML=isThem?'等TA做饭 <span>→</span>':'开始烹饪 ';
   $('cookButton').disabled=false;
   var profile=tasteProfile(list);
+  tastingLock=false;
   currentDish={id:'dish_'+Date.now(),name:profile.dishName,profile:profile,roleId:activeRole.id,roleName:roleName(activeRole),createdAt:new Date().toISOString(),reaction:'',cookBy:cookBy};
   registerCookedDish(profile);
   $('dishName').value=currentDish.name;
@@ -242,8 +244,13 @@ function localReaction(profile){
  if(/活泼|开朗|热情/.test(personality))lines=['哇，居然还不错！再给我一口！','这个组合好有创意，你是不是偷偷练过？','我宣布，这道菜今天有资格上桌！'];
  var flavorScore=(tasteMemory.flavors&&tasteMemory.flavors[profile.flavor])||0,ingredientScore=(profile.ingredients||[]).reduce(function(sum,item){return sum+((tasteMemory.ingredients&&tasteMemory.ingredients[item.name])||0)},0);var eventLine=profile.specialRecipe?({ 'midnight-rice':'你居然做出了深夜酱香蛋炒饭……这组合有种被认真照顾到的感觉。','sunset-egg':'番茄和芝士的味道意外合拍。这个配方，我想记住。','rainy-noodles':'这碗面很适合慢慢吃。今天好像真的被安慰到了。','midnight-toast':'蜂蜜和巧克力？这份甜点有点犯规，我想再尝一口。'}[profile.specialRecipe.id]||'这个隐藏配方让我有点惊喜。'):null;if(eventLine)lines=[eventLine];else if(flavorScore>0||ingredientScore>=2)lines=['你记得我喜欢这样的味道吧？这次真的很合口味。','这份搭配很对我的胃口，感觉你有认真记住之前的反馈。','嗯，这次比上次更合适了。我愿意把它列进喜欢的菜。'];else if(flavorScore<0||ingredientScore<=-2)lines=['这次的味道和我平常喜欢的有点不一样，不过我能感受到你的用心。','好像有一点点不太合口味。下次我们可以试着调整一下搭配。'];return {title:profile.specialRecipe?'发现隐藏料理！':profile.odd?'TA 有点意外。':profile.flavor.indexOf('均衡')>=0?'TA 看起来很满意。':'TA 认真尝了一口。',copy:profile.specialRecipe?name+'触发了「'+profile.specialRecipe.event+'」。':name+'先看了看菜品，然后终于尝了一口。',quote:lines[Math.floor(Math.random()*lines.length)]};
 }
+/* 试吃请求的归属判定：角色切换、重做、改菜都会让旧请求失效。 */
+function reactionIsCurrent(token,dish){return token===reactionToken&&currentDish===dish}
 function beginTasting(){
- if(!currentDish)return;currentDish.tasteFeedback='';currentDish.name=$('dishName').value.trim()||currentDish.profile.dishName;
+ if(!currentDish||tastingLock)return;
+ tastingLock=true;
+ var dish=currentDish,token=++reactionToken;
+ currentDish.tasteFeedback='';currentDish.name=$('dishName').value.trim()||currentDish.profile.dishName;
  var isThem=cookBy==='them';
  setStage('tastingStage');$('tastingActions').hidden=true;$('tasteFeedback').hidden=true;$('tasteLiked').classList.remove('selected');$('tasteDisliked').classList.remove('selected');
  $('tasteFeedbackNote').textContent='你的选择会记进 TA 的口味档案，影响之后的试吃反应。';
@@ -276,15 +283,18 @@ function beginTasting(){
  $('reactionQuote').classList.add('loading');
  $('tastingScene').classList.remove('reacted');
  setTimeout(function(){
+  /* 延迟窗口内可能已切换角色 / 重做 / 改菜：先校验归属，无效任务不动 UI、不发请求。 */
+  if(!reactionIsCurrent(token,dish))return;
   $('reactionKicker').textContent='FIRST BITE';$('reactionTitle').textContent='TA 试吃了一口。';$('reactionCopy').textContent='味道如何？让 TA 自己来告诉你。';$('reactionQuote').textContent='正在等 TA 的评价……';
-  requestReaction();
+  requestReaction(token,dish);
  },900);
 }
-function requestReaction(){
- var profile=currentDish.profile,local=localReaction(profile),cfg=window.PhoneStorage&&PhoneStorage.getApiConfig?window.PhoneStorage.getApiConfig():{};
+function requestReaction(token,dish){
+ if(!reactionIsCurrent(token,dish))return;
+ var profile=dish.profile,local=localReaction(profile),cfg=window.PhoneStorage&&PhoneStorage.getApiConfig?window.PhoneStorage.getApiConfig():{};
  var canCall=cfg&&String(cfg.apiKey||'').trim()&&window.PhoneAPI&&typeof window.PhoneAPI.complete==='function';
  function finish(text,source){
-  if(!currentDish)return;
+  if(!reactionIsCurrent(token,dish))return;
   var clean=String(text||local.quote).trim().replace(/^["“”'「」]+|["“”'「」]+$/g,'').slice(0,420);
   currentDish.reaction=clean;currentDish.reactionSource=source;currentDish.name=$('dishName').value.trim()||currentDish.name;
   $('reactionKicker').textContent='THE VERDICT';$('reactionTitle').textContent=local.title;$('reactionCopy').textContent=local.copy;$('reactionQuote').textContent='“'+clean+'”';$('reactionQuote').classList.remove('loading');$('tastingScene').classList.add('reacted');$('tastingActions').hidden=false;
@@ -300,6 +310,8 @@ function requestReaction(){
  var userPrompt=isThem
    ? '你（'+roleName(activeRole)+'）刚刚在你们俩的厨房里亲手做了一道菜，端到用户面前。菜名：'+currentDish.name+'。食材：'+items+'。风味：'+profile.flavor+'。组合特点：'+profile.description+'。'+(profile.specialRecipe?'这是你们一起发现的隐藏料理「'+profile.specialRecipe.name+'」，触发了「'+profile.specialRecipe.event+'」的专属时刻。':'')+memoryLine+'\n\n请以你本人的身份，说出你端出这道菜时会对用户说的话——带着点期待、有点小得意，或者温柔地看着用户尝第一口。像真实情侣在厨房里的互动，不要客服口吻，不要分析菜谱，不超过90个汉字。'
    : '用户刚刚在你们俩的厨房里亲手做了一道菜，端到你（'+roleName(activeRole)+'）面前请你试吃。菜名：'+currentDish.name+'。食材：'+items+'。风味：'+profile.flavor+'。组合特点：'+profile.description+'。'+(profile.specialRecipe?'这是你们一起发现的隐藏料理「'+profile.specialRecipe.name+'」，触发了「'+profile.specialRecipe.event+'」的专属时刻。':'')+memoryLine+'\n\n请以你本人的身份，说出你看到这道菜、尝第一口时会说的话——可以惊喜、吐槽、温柔回应，或者有点小感动。这是你们在自己厨房里的亲密互动，不是外面买的外卖，也不是餐厅点菜。像真实情侣在家做饭的感觉，不要客服口吻，不要分析菜谱，不超过90个汉字。';
+ /* 真正花钱的一步：发请求前再确认一次，避免为已失效的试吃付一次调用。 */
+ if(!reactionIsCurrent(token,dish))return;
  window.PhoneAPI.complete({system:'你正在 MAOMAO 小手机里扮演用户选定的聊天角色。保持角色人设和语气，不要声称真实存在。角色设定：'+rolePrompt+'\n\n【场景说明】\n这是你们两个人的专属厨房——不是外面的餐厅，不是外卖，不是买的菜。是你们俩一起在厨房里，一个人做饭、另一个人等着尝，或者两个人一起忙活的亲密日常。\n你要清楚地知道：这道菜是谁做的、是在你们自己的厨房里做的，而不是外面买来的。你的反应要带着「我们在自己家厨房」的那种熟悉感和亲密感。\n只输出角色会说的话，不要解释场景，不要分析菜谱。',user:userPrompt,temperature:0.85,timeoutMs:12000}).then(function(text){finish(text||local.quote,text?'ai':'local')}).catch(function(){finish(local.quote,'local')});
 }
 function saveHistory(){try{localStorage.setItem(HISTORY_KEY,JSON.stringify(history));return true}catch(e){showToast('记录空间不足，这次菜品没有记进历史');return false}}
@@ -332,9 +344,11 @@ function continueChat(){
  location.href='../chat/chat/chat-detail.html?id='+encodeURIComponent(activeRole.id)+'&cooking='+(carried?'1':'0');
 }
 $('backButton').onclick=function(){if(window.history.length>1)window.history.back();else location.href='games.html'};
-$('changeRole').onclick=function(){var box=$('roleOptions');if(!roles.length){showToast('暂未找到角色，请先在聊天角色管理中创建');return}box.hidden=!box.hidden;if(!box.hidden){box.innerHTML='';roles.forEach(function(r){var b=document.createElement('button');b.type='button';b.className='role-option'+(String(r.id)===String(activeRole.id)?' active':'');b.textContent=roleName(r);b.onclick=function(){activeRole=r;localStorage.setItem(ROLE_KEY,String(r.id));renderRole();box.hidden=true};box.appendChild(b)})}};
+$('changeRole').onclick=function(){var box=$('roleOptions');if(!roles.length){showToast('暂未找到角色，请先在聊天角色管理中创建');return}box.hidden=!box.hidden;if(!box.hidden){box.innerHTML='';roles.forEach(function(r){var b=document.createElement('button');b.type='button';b.className='role-option'+(String(r.id)===String(activeRole.id)?' active':'');b.textContent=roleName(r);b.onclick=function(){reactionToken++;tastingLock=false;currentDish=null;activeRole=r;
+ try{localStorage.setItem(ROLE_KEY,String(r.id))}catch(e){showToast('本次切换没能保存，刷新后会恢复上次选择')}
+ renderRole();setStage('cookStage');box.hidden=true};box.appendChild(b)})}};
 $('clearIngredients').onclick=function(){selected={};renderIngredients();renderPot()};
-$('cookButton').onclick=cook;$('editDish').onclick=function(){setStage('cookStage')};$('serveButton').onclick=beginTasting;$('continueChat').onclick=continueChat;$('cookAgain').onclick=function(){selected={};currentDish=null;renderIngredients();renderPot();setStage('cookStage')};
+$('cookButton').onclick=cook;$('editDish').onclick=function(){reactionToken++;tastingLock=false;setStage('cookStage')};$('serveButton').onclick=beginTasting;$('continueChat').onclick=continueChat;$('cookAgain').onclick=function(){reactionToken++;tastingLock=false;selected={};currentDish=null;renderIngredients();renderPot();setStage('cookStage')};
 $('historyButton').onclick=openHistory;$('closeHistory').onclick=function(){$('historyPanel').hidden=true};
 $('tasteLiked').onclick=function(){saveTasteFeedback(true)};$('tasteDisliked').onclick=function(){saveTasteFeedback(false)};
 
