@@ -9,7 +9,7 @@ function makeInit({ scopedId = '', serverAccount = null, apiError = null } = {})
   const start = admin.indexOf('  async function init() {');
   const end = admin.indexOf('\n\n  init();', start);
   assert.ok(start >= 0 && end > start, 'admin init contract exists');
-  const factory = new Function('scope', 'api', '$', 'refreshAll',
+  const factory = new Function('pageAccountContext', 'api', '$', 'refreshAll',
     'loadOverviewDetails', 'hideError', 'showError', 'window', 'el',
     'let initializing = false;\n' + admin.slice(start, end) + '\nreturn init;');
   const apiCalls = [];
