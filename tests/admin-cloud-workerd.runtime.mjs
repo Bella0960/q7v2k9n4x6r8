@@ -7,7 +7,7 @@
 import assert from 'node:assert/strict';
 import { spawn } from 'node:child_process';
 import { randomBytes } from 'node:crypto';
-import { mkdtemp, open, rm } from 'node:fs/promises';
+import { mkdtemp, open, readFile, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
@@ -46,6 +46,18 @@ async function start(port, vars = {}) {
     } catch { /* Wrangler is still booting. */ }
     await sleep(1500);
   }
+  const raw = await readFile(join(temp, 'workerd-' + port + '.log'), 'utf8').catch(() => '');
+  const signatures = [
+    ['WRANGLER_PACKAGE_VERSION', /No matching version found|ETARGET/i],
+    ['NPM_NETWORK_FAILURE', /ENETUNREACH|EAI_AGAIN|ETIMEDOUT|ECONNREFUSED|ENOTFOUND/i],
+    ['UNSUPPORTED_NODE_ENGINE', /Unsupported engine|requires Node\.js|EBADENGINE/i],
+    ['WRANGLER_CLI_FLAGS', /Unknown argument|Unknown option|unexpected argument/i],
+    ['WRANGLER_BUILD_ERROR', /Could not resolve|Unable to resolve|Failed to resolve|Build failed/i],
+    ['WORKERD_SQLITE_INIT', /Durable Object|SqliteError|SQLITE_ERROR|migration/i],
+    ['WORKERD_MODULE_ERROR', /SyntaxError|TypeError|ReferenceError/i]
+  ];
+  const category = signatures.find(([, re]) => re.test(raw))?.[0] || 'UNCLASSIFIED';
+  console.error('WORKERD_START_CATEGORY=' + category + ' code=' + (worker.exitCode ?? 'unknown'));
   throw new Error('WORKERD_LOCAL_START_FAILED');
 }
 
