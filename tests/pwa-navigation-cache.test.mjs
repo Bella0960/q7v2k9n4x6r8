@@ -8,7 +8,7 @@ const read = (file) => fs.readFileSync(path.join(root, file), 'utf8');
 const serviceWorker = read('sw.js');
 const desktopScript = read('desktop/js/script.js');
 const homePage = read('index.html');
-assert.match(serviceWorker, /const CACHE_NAME = 'phone-app-pwa-v205'/);
+assert.match(serviceWorker, /const CACHE_NAME = 'phone-app-pwa-v206'/);
 const viteConfig = read('vite.config.js');
 
 test('build emits a manifest containing every HTML entry point', () => {
@@ -50,12 +50,12 @@ test('service worker precaches all HTML routes listed by the build manifest', ()
   assert.match(serviceWorker, /cache\.add\(url\)/);
 });
 
-test('mobile navigation serves cached app pages before waiting for network', () => {
-  assert.match(serviceWorker, /var cachedPromise = caches\.match\(req\)/);
-  assert.match(serviceWorker, /if \(cached\) return cached/);
-  assert.match(serviceWorker, /event\.waitUntil\(updatePromise/);
+test('private HTML navigation is network-only and fails closed offline', () => {
+  assert.match(serviceWorker, /req\\.mode === 'navigate'/);
+  assert.match(serviceWorker, /fetch\\(req, \\{ cache: 'no-store' \\}\\)/);
+  assert.match(serviceWorker, /!pathname\\.endsWith\\('\\.html'\\)/);
+  assert.match(serviceWorker, /无法安全验证账号/);
 });
-
 
 test('desktop app navigation has one valid capture-phase owner', () => {
   assert.doesNotMatch(desktopScript, /data-href 点击跳转|target\.closest\('\[data-href\]'\)/,
