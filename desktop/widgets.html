@@ -199,57 +199,149 @@
 
         var listEl = document.getElementById('widgetList');
 
+        var MAX_PAGES = 4;
+        // Match the four-column grid used by the desktop, not an item-count limit.
+        var MAX_ROWS = 6;
+        var FALLBACK_LAYOUT = {
+          v: 14,
+          pages: [
+            ['clock-lg', 'app_inspect', 'app_worldbook', 'app_memory', 'app_forum', 'duo', 'photowall', 'app_wallet', 'app_music', 'app_beauty', 'app_theme_store'],
+            ['app_characters', 'app_footprint', 'app_settings', 'app_tutorial', 'app_finance', 'app_takeout', 'app_couple', 'app_growth', 'app_companion', 'app_games', 'app_cafe', 'app_live_room', 'app_poster'],
+            ['app_library', 'app_envelope', 'app_diary', 'app_novelstudio', 'app_dreamtravel', 'app_date']
+          ],
+          dock: ['app_chat', 'app_shop'],
+          removed: ['image', 'postcard', 'polaroid', 'dialog', 'music', 'clock', 'todo', 'calendar', 'countdown', 'note', 'social', 'triple', 'ins', 'profile', 'stack']
+        };
+        var catalogById = {};
+        CATALOG.forEach(function (widget) { catalogById[widget.id] = widget; });
+        var noteEl = document.querySelector('.page-note');
+        var originalNoteText = noteEl ? noteEl.textContent : '';
+
+        function showStatus(message) {
+          if (noteEl) noteEl.textContent = message || originalNoteText;
+        }
+
+        function isValidLayout(layout) {
+          return !!(layout && Array.isArray(layout.pages) && layout.pages.length > 0 &&
+            layout.pages.every(function (page) { return Array.isArray(page); }) &&
+            Array.isArray(layout.dock));
+        }
+
+        function parseLayout(key) {
+          try { return JSON.parse(localStorage.getItem(key)); }
+          catch (e) { return null; }
+        }
+
         function readLayout() {
-          try {
-            var v = JSON.parse(localStorage.getItem(LS_KEY));
-            if (v && Array.isArray(v.pages) && v.pages.length && Array.isArray(v.dock)) {
-              if (!Array.isArray(v.removed)) v.removed = [];
-              return v;
-            }
-          } catch (e) {}
-          return null;
-        }
-
-        function saveLayout(layout) {
-          try { localStorage.setItem(LS_KEY, JSON.stringify(layout)); } catch (e) {}
-        }
-
-        function isOnDesktop(layout, id) {
-          if (!layout) return false;
-          return layout.pages.some(function (p) { return p.indexOf(id) !== -1; });
-        }
-
-        function addWidget(layout, id) {
-          if (!layout) return;
-          var ri = layout.removed.indexOf(id);
-          if (ri !== -1) layout.removed.splice(ri, 1);
-          if (!isOnDesktop(layout, id)) {
-            // 每个页面最多 8 个项目，找第一个有空位的页面
-            var MAX_PER_PAGE = 8;
-            var placed = false;
-            for (var i = 0; i < layout.pages.length; i++) {
-              if (layout.pages[i].length < MAX_PER_PAGE) {
-                layout.pages[i].push(id);
-                placed = true;
+          var result = parseLayout(LS_KEY);
+          if (!isValidLayout(result)) {
+            result = null;
+            for (var version = 13; version >= 1; version--) {
+              var oldLayout = parseLayout('ds_layout_v' + version);
+              if (isValidLayout(oldLayout)) {
+                result = oldLayout;
                 break;
               }
             }
-            // 都满了就新建一页
-            if (!placed) {
-              layout.pages.push([id]);
+          }
+          if (!result) result = FALLBACK_LAYOUT;
+          // Never mutate the shared fallback or a value taken directly from storage.
+          var layout = JSON.parse(JSON.stringify(result));
+          if (!Array.isArray(layout.removed)) layout.removed = [];
+          layout.v = 14;
+          return layout;
+        }
+
+        function saveLayout(layout) {
+          try {
+            var serialized = JSON.stringify(layout);
+            localStorage.setItem(LS_KEY, serialized);
+            return localStorage.getItem(LS_KEY) === serialized;
+          } catch (e) {
+            return false;
+          }
+        }
+
+        function isOnDesktop(layout, id) {
+          return !!(layout && layout.pages.some(function (page) { return page.indexOf(id) !== -1; }));
+        }
+
+        function dimensions(id) {
+          var item = catalogById[id];
+          return item ? [Math.min(4, item.cols), Math.min(MAX_ROWS, item.rows)] : [1, 1];
+        }
+
+        // Simulate grid-auto-flow: row with no dense packing: a candidate must fit
+        // the first six rows without overlapping a wider widget.
+        function fitsPage(ids) {
+          var used = new Set();
+          var cursor = 0;
+          for (var i = 0; i < ids.length; i++) {
+            var dims = dimensions(ids[i]);
+            var w = dims[0], h = dims[1];
+            var found = false;
+            for (var cell = cursor; cell < 4 * MAX_ROWS; cell++) {
+              var x = cell % 4, y = Math.floor(cell / 4);
+              if (x + w > 4 || y + h > MAX_ROWS) continue;
+              var clear = true;
+              for (var dy = 0; dy < h && clear; dy++) {
+                for (var dx = 0; dx < w; dx++) {
+                  if (used.has((y + dy) * 4 + x + dx)) { clear = false; break; }
+                }
+              }
+              if (!clear) continue;
+              for (var dy = 0; dy < h; dy++) {
+                for (var dx = 0; dx < w; dx++) used.add((y + dy) * 4 + x + dx);
+              }
+              cursor = cell + w;
+              found = true;
+              break;
+            }
+            if (!found) return false;
+          }
+          return true;
+        }
+
+        function addWidget(layout, id) {
+          if (!layout || isOnDesktop(layout, id)) return true;
+          var placed = false;
+          for (var i = 0; i < layout.pages.length; i++) {
+            if (fitsPage(layout.pages[i].concat(id))) {
+              layout.pages[i].push(id);
+              placed = true;
+              break;
             }
           }
-          saveLayout(layout);
+          if (!placed) {
+            if (layout.pages.length >= MAX_PAGES || !fitsPage([id])) {
+              showStatus('桌面空间不足：请先移除部分组件，或整理其他页面。');
+              return false;
+            }
+            layout.pages.push([id]);
+          }
+          var removeIndex = layout.removed.indexOf(id);
+          if (removeIndex !== -1) layout.removed.splice(removeIndex, 1);
+          if (!saveLayout(layout)) {
+            showStatus('保存失败：桌面存储空间不足，请先备份并清理空间。');
+            return false;
+          }
+          showStatus('');
+          return true;
         }
 
         function removeWidget(layout, id) {
-          if (!layout) return;
-          layout.pages.forEach(function (p) {
-            var i = p.indexOf(id);
-            if (i !== -1) p.splice(i, 1);
+          if (!layout) return false;
+          layout.pages.forEach(function (page) {
+            var i = page.indexOf(id);
+            if (i !== -1) page.splice(i, 1);
           });
           if (layout.removed.indexOf(id) === -1) layout.removed.push(id);
-          saveLayout(layout);
+          if (!saveLayout(layout)) {
+            showStatus('保存失败：原有桌面布局未被覆盖。');
+            return false;
+          }
+          showStatus('');
+          return true;
         }
 
         function render() {
@@ -278,7 +370,6 @@
             btn.textContent = on ? '移除' : '添加';
             btn.addEventListener('click', function () {
               var cur = readLayout();
-              if (!cur) { cur = { v: 14, pages: [['clock-lg', 'app_inspect', 'app_worldbook', 'app_memory', 'app_forum', 'duo', 'photowall', 'app_wallet', 'app_music', 'app_beauty', 'app_theme_store'], ['app_characters', 'app_footprint', 'app_settings', 'app_tutorial', 'app_finance', 'app_takeout', 'app_couple', 'app_growth', 'app_companion', 'app_games', 'app_cafe', 'app_live_room', 'app_poster'], ['app_library', 'app_envelope', 'app_diary', 'app_novelstudio', 'app_dreamtravel', 'app_date']], dock: ['app_chat', 'app_shop'], removed: ['image', 'postcard', 'polaroid', 'dialog', 'music', 'clock', 'todo', 'calendar', 'countdown', 'note', 'social', 'triple', 'ins', 'profile', 'stack'] }; }
               if (isOnDesktop(cur, w.id)) {
                 removeWidget(cur, w.id);
               } else {

@@ -217,6 +217,7 @@ function cook(){
   $('cookButton').innerHTML=isThem?'等TA做饭 <span>→</span>':'开始烹饪 ';
   $('cookButton').disabled=false;
   var profile=tasteProfile(list);
+  tastingLock=false;
   currentDish={id:'dish_'+Date.now(),name:profile.dishName,profile:profile,roleId:activeRole.id,roleName:roleName(activeRole),createdAt:new Date().toISOString(),reaction:'',cookBy:cookBy};
   registerCookedDish(profile);
   $('dishName').value=currentDish.name;
@@ -247,7 +248,7 @@ function localReaction(profile){
 function reactionIsCurrent(token,dish){return token===reactionToken&&currentDish===dish}
 function beginTasting(){
  if(!currentDish||tastingLock)return;
- tastingLock=true;setTimeout(function(){tastingLock=false},700);
+ tastingLock=true;
  var dish=currentDish,token=++reactionToken;
  currentDish.tasteFeedback='';currentDish.name=$('dishName').value.trim()||currentDish.profile.dishName;
  var isThem=cookBy==='them';
@@ -330,9 +331,11 @@ function continueChat(){
  location.href='../chat/chat/chat-detail.html?id='+encodeURIComponent(activeRole.id)+'&cooking=1';
 }
 $('backButton').onclick=function(){if(window.history.length>1)window.history.back();else location.href='games.html'};
-$('changeRole').onclick=function(){var box=$('roleOptions');if(!roles.length){showToast('暂未找到角色，请先在聊天角色管理中创建');return}box.hidden=!box.hidden;if(!box.hidden){box.innerHTML='';roles.forEach(function(r){var b=document.createElement('button');b.type='button';b.className='role-option'+(String(r.id)===String(activeRole.id)?' active':'');b.textContent=roleName(r);b.onclick=function(){reactionToken++;activeRole=r;localStorage.setItem(ROLE_KEY,String(r.id));renderRole();box.hidden=true};box.appendChild(b)})}};
+$('changeRole').onclick=function(){var box=$('roleOptions');if(!roles.length){showToast('暂未找到角色，请先在聊天角色管理中创建');return}box.hidden=!box.hidden;if(!box.hidden){box.innerHTML='';roles.forEach(function(r){var b=document.createElement('button');b.type='button';b.className='role-option'+(String(r.id)===String(activeRole.id)?' active':'');b.textContent=roleName(r);b.onclick=function(){reactionToken++;tastingLock=false;currentDish=null;activeRole=r;
+ try{localStorage.setItem(ROLE_KEY,String(r.id))}catch(e){showToast('本次切换没能保存，刷新后会恢复上次选择')}
+ renderRole();setStage('cookStage');box.hidden=true};box.appendChild(b)})}};
 $('clearIngredients').onclick=function(){selected={};renderIngredients();renderPot()};
-$('cookButton').onclick=cook;$('editDish').onclick=function(){reactionToken++;setStage('cookStage')};$('serveButton').onclick=beginTasting;$('continueChat').onclick=continueChat;$('cookAgain').onclick=function(){reactionToken++;selected={};currentDish=null;renderIngredients();renderPot();setStage('cookStage')};
+$('cookButton').onclick=cook;$('editDish').onclick=function(){reactionToken++;tastingLock=false;setStage('cookStage')};$('serveButton').onclick=beginTasting;$('continueChat').onclick=continueChat;$('cookAgain').onclick=function(){reactionToken++;tastingLock=false;selected={};currentDish=null;renderIngredients();renderPot();setStage('cookStage')};
 $('historyButton').onclick=openHistory;$('closeHistory').onclick=function(){$('historyPanel').hidden=true};
 $('tasteLiked').onclick=function(){saveTasteFeedback(true)};$('tasteDisliked').onclick=function(){saveTasteFeedback(false)};
 
