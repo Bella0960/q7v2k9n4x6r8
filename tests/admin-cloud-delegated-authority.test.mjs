@@ -51,7 +51,9 @@ function authorityHarness(role = 'super_admin') {
       MAO_IDENTITY_MODE: 'delegated_preview',
       MAO_IDENTITY_AUTHORITY_MODE: 'existing_worker',
       MAO_IDENTITY_AUTHORITY: binding,
-      MAO_IDENTITY_CANONICAL_ADMIN_REQUIRED: 'true'
+      MAO_IDENTITY_CANONICAL_ADMIN_REQUIRED: 'true',
+      // Latest QA restricts all admin endpoints to its pre-approved founder ID.
+      MAO_EXPECTED_FOUNDER_ID: id
     })
   });
   return { h, state, id };
