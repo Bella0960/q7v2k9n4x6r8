@@ -238,9 +238,11 @@ test('P1-01 续：无 key 之后配好 key，同一首歌仍可正常触发一�
 
 /* ---------- P1-02：预算落盘失败必须 fail-closed ---------- */
 
-test('P1-02 存储拒写：仍按会话内单调计数，最多只有 10 次真实请求', async () => {
+/* 总控最新复审 P1：预算写入必须读回确认成功，否则 0 次付费请求。
+   之前的「会话内 10 次上限」在刷新后消失，配额拒写的手机可以反复花钱。 */
+test('P1-02 存储拒写：第一次就 fail-closed，0 次付费请求', async () => {
   const store = makeStore();
-  const { sb, calls } = makeRuntime({ store });
+  const { sb, calls, toasts } = makeRuntime({ store });
   sb.setTogetherEnabled(true);
   store.failWrites(true);                 /* 配额已满：setItem 全部抛 QuotaExceededError */
 
@@ -250,23 +252,24 @@ test('P1-02 存储拒写：仍按会话内单调计数，最多只有 10 次真�
   }
   await flush();
 
-  assert.equal(calls.length, 10, '写不进存储也必须停在每日上限');
-  assert.equal(sb.togetherRemaining(), 0);
+  assert.equal(calls.length, 0, '预算写不进本机就绝不发付费请求');
   assert.equal(sb.togetherSession.persistBroken, true, 'must surface the persistence failure');
+  assert.ok(sb.togetherRemaining() <= 9, '每次尝试都按保守计数占用额度，但绝不产生付费请求');
+  assert.ok(toasts.some((t) => t.includes('预算没能')), '必须告知用户原因');
 });
 
-test('P1-02 续：关掉再打开不会重置已消耗额度', async () => {
+test('P1-02 续：拒写状态下关掉再打开，仍然是 0 次付费请求', async () => {
   const store = makeStore();
   const { sb, calls } = makeRuntime({ store });
   sb.setTogetherEnabled(true);
   store.failWrites(true);
 
-  for (let i = 0; i < 10; i++) {
+  for (let i = 0; i < 6; i++) {
     sb.together.lastAt = 0;
     sb.requestTogetherLine({ id: 'y' + i, name: '曲' + i, artist: '人' }, '测试');
   }
   await flush();
-  assert.equal(calls.length, 10);
+  assert.equal(calls.length, 0);
 
   sb.setTogetherEnabled(false);
   sb.setTogetherEnabled(true);
@@ -274,8 +277,40 @@ test('P1-02 续：关掉再打开不会重置已消耗额度', async () => {
   sb.requestTogetherLine({ id: 'z', name: '再来一首', artist: '人' }, '测试');
   await flush();
 
-  assert.equal(calls.length, 10, '重开开关不得绕过每日上限');
-  assert.equal(sb.togetherRemaining(), 0);
+  assert.equal(calls.length, 0, '重开开关不能绕过 fail-closed');
+});
+
+test('P1-02 续：模拟刷新（新运行时）后拒写状态仍然 0 请求', async () => {
+  const store = makeStore();
+  const first = makeRuntime({ store });
+  first.sb.setTogetherEnabled(true);
+  store.failWrites(true);
+  first.sb.requestTogetherLine({ id: 'f1', name: '曲', artist: '人' }, '测试');
+  await flush();
+  assert.equal(first.sb.calls === undefined ? 0 : 0, 0);
+
+  const second = makeRuntime({ store });    // 模拟刷新：会话计数清零，存储依旧拒写
+  second.sb.setTogetherEnabled(true);
+  second.sb.together.lastAt = 0;
+  second.sb.requestTogetherLine({ id: 'f2', name: '曲2', artist: '人' }, '测试');
+  await flush();
+  assert.equal(second.calls.length, 0, '刷新重入仍 fail-closed');
+});
+
+test('P1-02 续：预算写入读回被改也视为失败（不只看有没有抛异常）', async () => {
+  const raw = {};
+  const store = {
+    getItem: (k) => (k in raw ? raw[k] : null),
+    setItem: (k, v) => { raw[k] = String(v) + '!corrupted'; },   /* 读回内容不匹配 */
+    removeItem: (k) => { delete raw[k]; },
+    failWrites: () => {},
+    raw,
+  };
+  const { sb, calls } = makeRuntime({ store });
+  sb.setTogetherEnabled(true);
+  sb.requestTogetherLine({ id: 'w1', name: '曲', artist: '人' }, '测试');
+  await flush();
+  assert.equal(calls.length, 0, '读回校验失败也必须 fail-closed');
 });
 
 test('P1-02 续：开关不刷新「同一首」名额与 3 分钟间隔', async () => {
