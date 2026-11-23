@@ -173,6 +173,10 @@ self.addEventListener('fetch', event => {
   const url = new URL(req.url);
   if (url.origin !== self.location.origin) return;
 
+  // Account-owned API responses must never enter the shared Service Worker cache.
+  // The server verifies the current HttpOnly session for each API request.
+  if (url.pathname === '/api' || url.pathname.startsWith('/api/')) return;
+
   // Administrator pages and diagnostics must always reach the server's session gate.
   if (url.pathname.startsWith('/admin/') || url.pathname === '/api/admin/cloud' ||
       url.pathname.startsWith('/api/admin/cloud/')) return;
@@ -261,5 +265,146 @@ self.addEventListener('fetch', event => {
       return cached || fresh;
     })
   );
+});
+
+
+/* ------------------------------------------------------------------
+ * Web Push（Milestone 1）
+ * 上面的缓存与离线导航逻辑保持不变；这里只新增推送展示与点击路由。
+ * 风险控制：通知里的跳转地址只接受本站 scope 内的相对路径，防止被外站劫持。
+ * ------------------------------------------------------------------ */
+
+function pushTargetUrl(value) {
+  var scopeUrl = new URL(self.registration.scope);
+  var fallback = new URL('./index.html', scopeUrl).href;
+  var raw = String(value || '').trim();
+  if (!raw) return fallback;
+  try {
+    var target = new URL(raw, scopeUrl);
+    // 既要同源，也必须留在当前 Service Worker scope 的路径内。
+    // 只检查 origin 会放行同域名下其他应用或站点目录的地址。
+    var scopePath = scopeUrl.pathname.endsWith('/')
+      ? scopeUrl.pathname
+      : scopeUrl.pathname + '/';
+    var insideScope = target.pathname === scopeUrl.pathname ||
+      target.pathname.startsWith(scopePath);
+    if (target.origin !== scopeUrl.origin ||
+        target.username || target.password ||
+        !insideScope) return fallback;
+    return target.href;
+  } catch (error) {
+    return fallback;
+  }
+}
+
+self.addEventListener('push', event => {
+  let payload = {};
+  try {
+    payload = event.data ? event.data.json() : {};
+  } catch (error) {
+    payload = {};
+  }
+
+  event.waitUntil((async function () {
+    // Notifications are private to the MAO account that owns the target device.
+    // Re-check the HttpOnly session at display time so a logged-out or switched
+    // browser cannot show another account's previously queued push.
+    const accountId = String(payload.accountId || '');
+    if (!/^MAO-[A-Z0-9]{12,24}$/.test(accountId)) return;
+    let authResponse;
+    try {
+      authResponse = await fetch('/api/accounts/me', {
+        method: 'GET',
+        credentials: 'same-origin',
+        cache: 'no-store',
+        headers: {
+          'accept': 'application/json',
+          'x-mao-account-context': accountId
+        }
+      });
+    } catch (error) {
+      return;
+    }
+    if (!authResponse || !authResponse.ok) return;
+    let authPayload = {};
+    try { authPayload = await authResponse.json(); } catch (error) { return; }
+    const currentAccount = authPayload && authPayload.account;
+    if (!currentAccount ||
+        currentAccount.id !== accountId ||
+        currentAccount.status !== 'active') return;
+
+    const title = String(payload.title || '新消息');
+    const body = String(payload.body || '你有一条新消息。');
+    const targetUrl = pushTargetUrl(payload.url);
+    // 相同 tag 的通知会在系统里合并，避免多端/重试造成重复提醒。
+    const tag = String(payload.tag || payload.dedupeKey || 'maomao-cloud').slice(0, 64);
+    await self.registration.showNotification(title, {
+      body,
+      tag,
+      data: {
+        url: targetUrl,
+        accountId,
+        dedupeKey: String(payload.dedupeKey || '').slice(0, 96),
+        type: String(payload.type || 'message').slice(0, 32)
+      },
+      icon: './assets/mao-bunny-192.png',
+      badge: './assets/icon-192.png',
+      renotify: false,
+      silent: false
+    });
+  })());
+});
+
+self.addEventListener('notificationclick', event => {
+  event.notification.close();
+  const notificationData = event.notification.data || {};
+  const targetUrl = pushTargetUrl(notificationData.url);
+  const accountId = String(notificationData.accountId || '');
+
+  event.waitUntil((async function () {
+    // A notification may remain in the OS tray after logout or account switch.
+    // Re-validate the account when clicked; old unbound notifications fail closed.
+    if (!/^MAO-[A-Z0-9]{12,24}$/.test(accountId)) return;
+    let authResponse;
+    try {
+      authResponse = await fetch('/api/accounts/me', {
+        method: 'GET',
+        credentials: 'same-origin',
+        cache: 'no-store',
+        headers: {
+          'accept': 'application/json',
+          'x-mao-account-context': accountId
+        }
+      });
+    } catch (error) {
+      return;
+    }
+    if (!authResponse || !authResponse.ok) return;
+    let authPayload = {};
+    try { authPayload = await authResponse.json(); } catch (error) { return; }
+    const currentAccount = authPayload && authPayload.account;
+    if (!currentAccount ||
+        currentAccount.id !== accountId ||
+        currentAccount.status !== 'active') return;
+
+    const windowClients = await self.clients.matchAll({ type: 'window', includeUncontrolled: true });
+    for (const client of windowClients) {
+      if (client.url === targetUrl && 'focus' in client) return client.focus();
+    }
+    for (const client of windowClients) {
+      // 已有本站窗口时，直接在该窗口内跳到目标聊天页，避免重复开窗。
+      if (client.url.indexOf(self.registration.scope) === 0 && 'navigate' in client) {
+        try {
+          await client.navigate(targetUrl);
+          return client.focus ? client.focus() : undefined;
+        } catch (error) {
+          // navigate 失败（例如页面正在卸载）时退回 openWindow。
+        }
+      }
+    }
+    if (self.clients.openWindow) return self.clients.openWindow(targetUrl);
+    return undefined;
+  })());
+
 });
 
