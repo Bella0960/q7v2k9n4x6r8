@@ -92,11 +92,18 @@ button:disabled{opacity:.45;cursor:not-allowed}
 .subsection-head{display:flex;justify-content:space-between;align-items:center}
 .subsection h3{font-size:13px;font-weight:500}
 .subsection button{background:#f6f6f7;border:0;border-radius:9px;padding:10px;color:#333;font-size:11px}
-.preset-list{display:flex;flex-wrap:wrap;gap:8px;margin-top:10px}
+.preset-list{display:flex;flex-direction:column;gap:8px;margin-top:10px}
 .preset-list p{font-size:11px;color:#999}
-.preset-entry{display:flex;align-items:center;border:1px solid #ececef;border-radius:8px;overflow:hidden}
-.preset-entry button{background:white;border:0;border-radius:0;max-width:130px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-.preset-entry .remove{font-size:15px;color:#999;padding:7px}
+.preset-entry{display:grid;grid-template-columns:1fr 38px;border:1px solid #ececef;border-radius:10px;background:#fff;overflow:hidden}
+.preset-use{grid-column:1;grid-row:1;display:flex;flex-direction:column;align-items:flex-start;gap:2px;min-width:0;background:#fff;border:0;padding:11px 12px;text-align:left}
+.preset-use .preset-name{font-size:12px;color:#111;max-width:100%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.preset-use .preset-scope{font-size:10px;color:#999}
+.preset-menu-btn{grid-column:2;grid-row:1;flex:none;width:38px;height:38px;background:#fff;border:0;color:#777;display:flex;align-items:center;justify-content:center}
+.preset-menu-btn svg{width:16px;height:16px}
+.preset-menu{grid-column:1/-1;grid-row:2;display:none;flex-direction:column;border-top:1px solid #f1f1f3}
+.preset-entry.menu-open .preset-menu{display:flex}
+.preset-menu button{background:#fff;border:0;padding:11px 12px;font-size:11px;color:#333;text-align:left}
+.preset-menu button.danger{color:#b33}
 .utilities{display:flex;gap:8px;flex-wrap:wrap;margin-top:19px}
 .utilities button,.utilities a{padding:9px 10px;border:1px solid #e5e5e9;border-radius:9px;background:#fff;text-decoration:none;color:#555;font-size:11px}
 .explain{font-size:11px;line-height:1.65;color:#999;margin-top:20px}

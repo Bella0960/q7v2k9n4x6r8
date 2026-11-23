@@ -109,26 +109,137 @@
     $('mockList').hidden=!showList;$('mockDetail').hidden=showList;
     $('previewLabel').textContent=showList?'聊天列表':tab==='detail'?'聊天详情':'聊天气泡';
   }
+  function roleNameById(id) {
+    try {
+      var roles=JSON.parse(localStorage.getItem('ai_custom_characters')||'[]');
+      if(!Array.isArray(roles))return null;
+      var hit=roles.find(function(r){return r&&String(r.id)===String(id);});
+      return hit?String(hit.name||'未命名角色'):null;
+    } catch(e){return null;}
+  }
+  // Bubble presets carry an allowlisted source scope; legacy presets without one
+  // are labelled as generic and never silently bound to a role.
+  function scopeLabel(p) {
+    if(p.tab!=='bubble')return '';
+    if(p.scope==null)return '旧版通用方案';
+    if(p.scope==='global')return '全局';
+    return roleNameById(p.scope)||('角色 '+String(p.scope).slice(0,8));
+  }
+  function persistPresets(next) {
+    next.updatedAt=Date.now();
+    if(!api.save(next)){toast('操作失败，请检查存储空间');return false;}
+    state=api.read();renderPresets();return true;
+  }
+  function presetId() {
+    return 'ts-' + Date.now().toString(36) + '-' + Math.random().toString(36).slice(2, 8);
+  }
+  // A bubble preset owned by another role (or a legacy generic one) must never be
+  // overwritten from this scope: update creates a new entry for the current scope
+  // instead, leaving the original id/values/scope untouched.
+  function isCrossScopeBubble(p) {
+    return p.tab === 'bubble' && (p.scope == null || p.scope !== scope);
+  }
+  function scopeName(value) {
+    if (value === 'global') return '全局';
+    return roleNameById(value) || '当前角色';
+  }
+  function applyPresetToDraft(p) {
+    if(p.tab==='bubble'){
+      if(isCrossScopeBubble(p)){
+        var from=p.scope==null?'旧版通用方案':scopeLabel(p);
+        var to=scopeName(scope);
+        if(!window.confirm('该方案来自「'+from+'」，载入到「'+to+'」草稿？仅作模板，不会自动应用。'))return;
+      }
+      drafts.bubble=cleanBubble(p.values);
+    } else {
+      drafts[p.tab]=api.clean(p.tab,p.values);
+    }
+    drawFields();drawPreview();toast('已载入草稿，点应用后生效');
+  }
+  function renamePreset(p) {
+    var input=window.prompt('重命名方案',p.name);
+    if(input==null)return;
+    var nextName=input.trim().slice(0,24);
+    if(!nextName){toast('方案名称不能为空');return;}
+    var next=api.read();
+    var target=next.presets.find(function(item){return item.id===p.id;});
+    if(!target){toast('方案不存在或已被删除');return;}
+    target.name=nextName;
+    if(!persistPresets(next))return;
+    toast('方案已重命名');
+  }
+  function updatePresetFromDraft(p) {
+    if (isCrossScopeBubble(p)) {
+      var from = p.scope == null ? '旧版通用方案' : scopeLabel(p);
+      var to = scopeName(scope);
+      var copy = window.confirm('该方案来自「' + from + '」，不能在「' + to + '」下直接覆盖原方案。\n点确定将当前草稿另存为「' + to + '」的新方案；点取消放弃，原方案保持不变。');
+      if (!copy) return;
+      var asked = window.prompt('另存为新方案的名字', p.name + '（' + to + '）');
+      if (asked == null) return;
+      var newName = asked.trim().slice(0, 24);
+      if (!newName) { toast('方案名称不能为空'); return; }
+      var next = api.read();
+      if (next.presets.length >= 20) { toast('最多保存 20 个方案'); return; }
+      var entry = { id: presetId(), name: newName, tab: p.tab,
+        values: JSON.parse(JSON.stringify(drafts[p.tab])) };
+      if (p.tab === 'bubble') entry.scope = scope;
+      next.presets.push(entry);
+      if (!persistPresets(next)) return;
+      toast('已另存为「' + to + '」的新方案，原方案未改动');
+      return;
+    }
+    if(!window.confirm('用当前草稿更新方案「'+p.name+'」？'))return;
+    var next=api.read();
+    var target=next.presets.find(function(item){return item.id===p.id;});
+    if(!target){toast('方案不存在或已被删除');return;}
+    target.values=JSON.parse(JSON.stringify(drafts[p.tab]));
+    if(target.tab==='bubble')target.scope=scope;
+    if(!persistPresets(next))return;
+    toast('方案已更新（未自动应用）');
+  }
+  function deletePreset(p) {
+    var label=scopeLabel(p);
+    var source=label?'（来源：'+label+'）':'';
+    if(!window.confirm('删除方案「'+p.name+'」'+source+'？此操作不可撤销。'))return;
+    var next=api.read();
+    next.presets=next.presets.filter(function(item){return item.id!==p.id;});
+    if(!persistPresets(next))return;
+    toast('方案已删除');
+  }
   function renderPresets() {
     var box=$('presetList');box.replaceChildren();
     var presets=state.presets.filter(function(p){return p.tab===tab;});
-    if(!presets.length){var p=document.createElement('p');p.textContent='还没有保存方案';box.appendChild(p);return;}
+    if(!presets.length){var empty=document.createElement('p');empty.textContent='还没有保存方案';box.appendChild(empty);return;}
     presets.forEach(function(p){
       var wrap=document.createElement('div');wrap.className='preset-entry';
-      var use=document.createElement('button');use.type='button';use.textContent=p.name;
-      use.addEventListener('click',function(){
-        drafts[tab]=tab==='bubble'?cleanBubble(p.values):api.clean(tab,p.values);
-        drawFields();drawPreview();toast('已载入草稿，点应用后生效');
+      var main=document.createElement('button');main.type='button';main.className='preset-use';
+      var name=document.createElement('span');name.className='preset-name';name.textContent=p.name;
+      main.appendChild(name);
+      var label=scopeLabel(p);
+      if(label){var tag=document.createElement('span');tag.className='preset-scope';tag.textContent=label;main.appendChild(tag);}
+      main.addEventListener('click',function(){applyPresetToDraft(p);});
+
+      var menuBtn=document.createElement('button');menuBtn.type='button';menuBtn.className='preset-menu-btn';
+      menuBtn.setAttribute('aria-label','管理方案「'+p.name+'」');
+      menuBtn.innerHTML='<svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><circle cx="12" cy="5" r="1.6"/><circle cx="12" cy="12" r="1.6"/><circle cx="12" cy="19" r="1.6"/></svg>';
+      var menu=document.createElement('div');menu.className='preset-menu';
+      var rename=document.createElement('button');rename.type='button';rename.textContent='重命名';
+      rename.addEventListener('click',function(){renamePreset(p);});
+      var update=document.createElement('button');update.type='button';
+      update.textContent=isCrossScopeBubble(p)?'另存为…':'更新草稿';
+      update.addEventListener('click',function(){updatePresetFromDraft(p);});
+      var remove=document.createElement('button');remove.type='button';remove.className='danger';remove.textContent='删除';
+      remove.addEventListener('click',function(){deletePreset(p);});
+      menu.appendChild(rename);menu.appendChild(update);menu.appendChild(remove);
+
+      menuBtn.addEventListener('click',function(){
+        var willOpen=!wrap.classList.contains('menu-open');
+        box.querySelectorAll('.preset-entry.menu-open').forEach(function(el){el.classList.remove('menu-open');});
+        if(willOpen)wrap.classList.add('menu-open');
       });
-      var remove=document.createElement('button');remove.type='button';remove.textContent='×';remove.className='remove';remove.setAttribute('aria-label','删除 '+p.name);
-      remove.addEventListener('click',function(){
-        if(!window.confirm('删除方案「'+p.name+'」？'))return;
-        var next=api.read();next.presets=next.presets.filter(function(item){return item.id!==p.id;});
-        next.updatedAt=Date.now();
-        if(!api.save(next)){toast('删除失败，请检查存储空间');return;}
-        state=api.read();renderPresets();toast('方案已删除');
-      });
-      wrap.appendChild(use);wrap.appendChild(remove);box.appendChild(wrap);
+
+      wrap.appendChild(main);wrap.appendChild(menuBtn);wrap.appendChild(menu);
+      box.appendChild(wrap);
     });
   }
   function setTab(next) {
@@ -174,8 +285,10 @@
     name=name.trim().slice(0,24);
     var next=api.read();
     if(next.presets.length>=20){toast('最多保存 20 个方案');return;}
-    next.presets.push({id:'ts-'+Date.now().toString(36)+'-'+Math.random().toString(36).slice(2,8),
-      name:name,tab:tab,values:JSON.parse(JSON.stringify(drafts[tab]))});
+    var entry={id:presetId(),
+      name:name,tab:tab,values:JSON.parse(JSON.stringify(drafts[tab]))};
+    if(tab==='bubble')entry.scope=scope;
+    next.presets.push(entry);
     next.updatedAt=Date.now();
     if(!api.save(next)){toast('方案保存失败，请检查存储空间');return;}
     state=api.read();renderPresets();toast('方案已保存（未自动应用）');

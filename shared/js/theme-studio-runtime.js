@@ -54,8 +54,15 @@
         return p && typeof p.name === 'string' && p.name.length <= 32 &&
           ['list','detail','bubble'].indexOf(p.tab) >= 0 && p.values && typeof p.values === 'object';
       }).map(function (p) {
+        // Scope is an allowlisted bubble-only metadata: 'global' or a current role id.
+        // Legacy presets without scope stay null (never silently bound to a role).
+        var scope = null;
+        if (p.tab === 'bubble' && typeof p.scope === 'string' && p.scope.trim()) {
+          scope = p.scope.trim().slice(0, 72);
+        }
         return { id: String(p.id || '').slice(0, 72), name: p.name,
-          tab: p.tab, values: p.tab === 'bubble' ? JSON.parse(JSON.stringify(p.values)) : clean(p.tab, p.values) };
+          tab: p.tab, scope: scope,
+          values: p.tab === 'bubble' ? JSON.parse(JSON.stringify(p.values)) : clean(p.tab, p.values) };
       });
     }
     out.updatedAt = Number(value.updatedAt) || 0;
