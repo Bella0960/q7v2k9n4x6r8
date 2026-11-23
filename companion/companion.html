@@ -56,6 +56,9 @@ footer{border-top:1px solid var(--ink);margin-top:38px;padding-top:12px;display:
 .toast.show{opacity:1;transform:translate(-50%,0)}
 @media(min-width:600px){.page{padding-left:32px;padding-right:32px}.top{height:64px}}
 </style>
+<!-- 独立页面必须自己加载共享存储：否则 window.PhoneStorage 不存在，
+     角色绑定会静默回落到旧的 currentRoleId / default 共享桶。 -->
+<script src="../shared/js/phone/phone_storage.js?v=20261031-envelope1"></script>
 </head>
 <body>
 <main class="page">
@@ -65,7 +68,7 @@ footer{border-top:1px solid var(--ink);margin-top:38px;padding-top:12px;display:
   <div class="kicker">A small place for us</div>
   <h1>陪伴<br>日历。</h1>
   <p class="intro">把想问的话、认真回答的瞬间，以及值得记住的日期，留在同一个地方。</p>
-  <div class="date-line"><span id="todayLabel">TODAY</span><span>本地保存 · 不消耗 API</span></div>
+  <div class="date-line"><span id="todayLabel">TODAY</span><span id="roleLabel">本地保存 · 不消耗 API</span></div>
   <nav class="tabs" aria-label="陪伴功能">
     <button class="tab active" type="button" data-tab="questions">每日问题</button>
     <button class="tab" type="button" data-tab="anniversaries">纪念日</button>
@@ -94,10 +97,52 @@ footer{border-top:1px solid var(--ink);margin-top:38px;padding-top:12px;display:
 <script>
 (function(){
   'use strict';
-  // 读取当前角色ID，绑定到具体角色
+  // 绑定到具体角色：优先 URL 指定，其次共享的当前角色（PhoneStorage），最后才是旧键。
+  // 原来只读 localStorage.currentRoleId → 多数用户落到 'default'，不同角色共用同一份回答。
   const urlParams = new URLSearchParams(window.location.search);
-  const roleId = urlParams.get('id') || localStorage.getItem('currentRoleId') || 'default';
+  function sharedRole(){
+    try{
+      const ps=window.PhoneStorage;
+      if(ps&&typeof ps.getCharacters==='function'){
+        const list=ps.getCharacters()||[];
+        if(Array.isArray(list)&&list.length){
+          const id=typeof ps.getCurrentContactId==='function'?ps.getCurrentContactId():'';
+          const hit=list.filter(r=>r&&r.id!=null&&String(r.id)===String(id))[0]||null;
+          if(hit)return{id:String(hit.id),name:String(hit.name||'')};
+        }
+      }
+    }catch(e){}
+    return null;
+  }
+  /* ?id= 深链必须能在正式角色列表里查到，否则视为无效，不再猜一个 ID 去写信件。 */
+  function roleById(id){
+    if(id==null||id==='')return null;
+    try{
+      const ps=window.PhoneStorage;
+      if(ps&&typeof ps.getCharacters==='function'){
+        const list=ps.getCharacters()||[];
+        const hit=(Array.isArray(list)?list:[]).filter(r=>r&&r.id!=null&&String(r.id)===String(id))[0];
+        if(hit)return{id:String(hit.id),name:String(hit.name||'')};
+      }
+    }catch(e){}
+    return null;
+  }
+  const boundRole=(function(){
+    const rawId=urlParams.get('id');
+    if(rawId){
+      /* 深链带了角色 ID 就必须真实存在：查不到说明链接失效，不做任何猜测，直接只读。 */
+      const fromUrl=roleById(rawId);
+      return fromUrl?{id:fromUrl.id,name:fromUrl.name,valid:true}:{id:'',name:'',valid:false};
+    }
+    const shared=sharedRole();
+    if(shared)return{id:shared.id,name:shared.name,valid:true};
+    return{id:'',name:'',valid:false};      /* 没有合法正式角色：只读，不写共享桶 */
+  })();
+  const roleId = boundRole.id;
+  /* 隐私写入闸门：没有合法角色时不允许往任何桶里写，避免两个角色共用同一份数据。 */
+  function canStore(){return !!boundRole.valid && !!roleId;}
   const KEY_Q='maoer_daily_questions_'+roleId, KEY_E='maoer_anniversaries_'+roleId;
+  const READONLY_TIP='还没有绑定正式角色，回答只能看不能存。请先在聊天里选择一位角色。';
   const bank=[
     ['今天有什么小事让你觉得还不错？','如果今天可以重来一次，你会想改变什么？','现在最想和我分享的一件事是什么？'],
     ['最近有没有什么事情一直放在心上？','什么样的陪伴会让你觉得安心？','今天想给未来的自己留一句什么话？'],
@@ -107,49 +152,104 @@ footer{border-top:1px solid var(--ink);margin-top:38px;padding-top:12px;display:
   ];
   const $=id=>document.getElementById(id);
   const dayKey=()=>{const d=new Date();return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0')};
-  const safeRead=(key,fallback)=>{try{return JSON.parse(localStorage.getItem(key))||fallback}catch(e){return fallback}};
+  const safeRead=(key,fallback)=>{try{const v=JSON.parse(localStorage.getItem(key));return v==null?fallback:v}catch(e){return fallback}};
   const esc=s=>String(s||'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
-  let answers=safeRead(KEY_Q,{});
-  let events=safeRead(KEY_E,[]);
-  let toastTimer;
+  let answers=canStore()?safeRead(KEY_Q,{}):{};
+  if(!answers||typeof answers!=='object'||Array.isArray(answers))answers={};
+  let events=canStore()?safeRead(KEY_E,[]):[];
+  if(!Array.isArray(events))events=[];
+  let toastTimer, storeWarned=false;
   function toast(msg){const el=$('toast');el.textContent=msg;el.classList.add('show');clearTimeout(toastTimer);toastTimer=setTimeout(()=>el.classList.remove('show'),2100)}
+  /* 写失败必须如实反馈：原来直接 setItem，配额满时抛异常、界面却可能已经提示成功。
+     单键写入本身是原子的，失败时磁盘上的旧数据不会被改坏。 */
+  function storeSet(key,value){
+    if(!canStore()){toast(READONLY_TIP);return false;}
+    try{const payload=JSON.stringify(value);localStorage.setItem(key,payload);if(localStorage.getItem(key)!==payload)throw new Error('Calendar storage readback mismatch');return true}
+    catch(e){
+      if(!storeWarned){storeWarned=true;toast('本机存储空间不足，这次没能保存');}
+      return false;
+    }
+  }
+  /* 未保存的输入不能因为切换 Tab 就丢掉：单独留一份内存草稿。 */
+  const draft={};
+  function stashCurrent(){
+    const fields=[...document.querySelectorAll('[data-answer]')];
+    if(!fields.length)return;
+    const key=dayKey(), values=fields.map(x=>x.value), saved=answers[key]||['','',''];
+    const same=values.length===saved.length&&values.every((v,i)=>String(v)===String(saved[i]||''));
+    if(same)delete draft[key];else draft[key]=values;
+  }
   function questionsForToday(){const n=Number(dayKey().replace(/-/g,''));return bank[(n%bank.length)]}
+  function renderRoleLabel(){
+    $('roleLabel').textContent=!boundRole.valid?'未绑定角色 · 只读'
+      :(boundRole.name?('与 '+boundRole.name+' · 只存本机'):'本地保存 · 不消耗 API');
+  }
   function renderQuestions(){
-    const key=dayKey(), saved=answers[key]||['','',''];
+    const key=dayKey(), saved=(draft[key]||answers[key]||['','','']);
     $('todayLabel').textContent=new Date().toLocaleDateString('zh-CN',{year:'numeric',month:'long',day:'numeric',weekday:'long'});
     $('questionList').innerHTML=questionsForToday().map((q,i)=>'<article class="question"><div class="q-meta">QUESTION / 0'+(i+1)+'</div><div class="q-title">'+esc(q)+'</div><textarea data-answer="'+i+'" maxlength="1200" placeholder="写下你的回答……">'+esc(saved[i]||'')+'</textarea></article>').join('');
     updateAnswered();
-    $('saveStatus').textContent=answers[key]?'已保存今天的回答。':'';
+    $('saveStatus').textContent=draft[key]?'有未保存的修改。':((answers[key]||[]).some(v=>v&&String(v).trim())?'已保存今天的回答。':'');
   }
   function updateAnswered(){const fields=[...document.querySelectorAll('[data-answer]')];const n=fields.filter(x=>x.value.trim()).length;$('answeredCount').textContent=n+'/3'}
-  function saveAnswers(){const fields=[...document.querySelectorAll('[data-answer]')];answers[dayKey()]=fields.map(x=>x.value.trim());localStorage.setItem(KEY_Q,JSON.stringify(answers));updateAnswered();$('saveStatus').textContent='已保存 · '+new Date().toLocaleTimeString('zh-CN',{hour:'2-digit',minute:'2-digit'});toast('今天的回答已保存')}
+  function saveAnswers(){
+    const fields=[...document.querySelectorAll('[data-answer]')];
+    const next=fields.map(x=>x.value.trim());
+    const key=dayKey(), prev=answers[key];
+    answers[key]=next;
+    if(!storeSet(KEY_Q,answers)){
+      if(prev===undefined)delete answers[key];else answers[key]=prev;
+      $('saveStatus').textContent='没能保存：本机存储空间不足，请清理后重试。';
+      return;
+    }
+    delete draft[key];
+    updateAnswered();
+    $('saveStatus').textContent='已保存 · '+new Date().toLocaleTimeString('zh-CN',{hour:'2-digit',minute:'2-digit'});
+    toast('今天的回答已保存');
+  }
   function daysBetween(a,b){const start=new Date(a+'T00:00:00');const end=new Date(b+'T00:00:00');return Math.round((end-start)/86400000)}
   function renderEvents(){
     $('eventCount').textContent=String(events.length).padStart(2,'0');
     if(!events.length){$('eventList').innerHTML='<div class="empty">这里还没有纪念日。<br>先添加一个对你有意义的日期吧。</div>';return}
     const today=dayKey();
-    $('eventList').innerHTML=events.slice().sort((a,b)=>a.date.localeCompare(b.date)).map(e=>{
-      const elapsed=daysBetween(e.date,today), nextYear=e.date.slice(0,4)+'-'+e.date.slice(5), upcomingDate=(nextYear>=today?nextYear:(String(Number(e.date.slice(0,4))+1)+e.date.slice(4)));
-      const until=daysBetween(today,upcomingDate);
+    $('eventList').innerHTML=events.slice().sort((a,b)=>String(a.date||'').localeCompare(String(b.date||''))).map(e=>{
+      const elapsed=daysBetween(e.date,today);
+      if(!isFinite(elapsed)){
+        return '<article class="event"><div><div class="event-name">'+esc(e.name)+'</div><div class="event-date">'+esc(e.date)+(e.note?' · '+esc(e.note):'')+'</div><div class="note">日期无法识别</div></div><div class="event-days">—<small>NO DATE</small></div><div class="event-tools"><button class="delete" type="button" data-delete="'+esc(e.id)+'">删除</button></div></article>';
+      }
+      const upcoming=(e.date.slice(0,4)+e.date.slice(4))>=today?e.date:(String(Number(e.date.slice(0,4))+1)+e.date.slice(4));
+      const until=daysBetween(today,upcoming);
       const since=elapsed>=0?'已经第 '+(elapsed+1)+' 天':'还有 '+Math.abs(elapsed)+' 天';
       return '<article class="event"><div><div class="event-name">'+esc(e.name)+'</div><div class="event-date">'+esc(e.date)+(e.note?' · '+esc(e.note):'')+'</div><div class="note">'+(elapsed>=0?since:'距离这一天')+'</div></div><div class="event-days">'+(elapsed>=0?elapsed:until)+'<small>'+(elapsed>=0?'DAYS AGO':'DAYS LEFT')+'</small></div><div class="event-tools"><button class="delete" type="button" data-delete="'+esc(e.id)+'">删除</button></div></article>';
     }).join('');
   }
   document.querySelectorAll('[data-tab]').forEach(btn=>btn.addEventListener('click',()=>{
+    /* 离开问题页前把当前输入存进草稿，切回来还在 */
+    stashCurrent();
     document.querySelectorAll('[data-tab]').forEach(b=>b.classList.toggle('active',b===btn));
     const isQ=btn.dataset.tab==='questions';$('questionsPanel').hidden=!isQ;$('anniversariesPanel').hidden=isQ;
     (isQ?renderQuestions:renderEvents)();
   }));
   $('questionList').addEventListener('input',updateAnswered);
   $('saveAnswers').addEventListener('click',saveAnswers);
-  $('clearAnswers').addEventListener('click',()=>{if(!confirm('清空今天的三个回答？'))return;answers[dayKey()]=['','',''];localStorage.setItem(KEY_Q,JSON.stringify(answers));renderQuestions();toast('已清空今天的回答')});
+  $('clearAnswers').addEventListener('click',()=>{if(!confirm('清空今天的三个回答？'))return;const key=dayKey(),prev=answers[key];delete answers[key];if(!storeSet(KEY_Q,answers)){if(prev!==undefined)answers[key]=prev;toast('没能清空：本机存储空间不足');return}delete draft[key];renderQuestions();toast('已清空今天的回答')});
   $('eventForm').addEventListener('submit',e=>{
-    e.preventDefault();const name=$('eventName').value.trim(),date=$('eventDate').value;if(!name||!date)return;
-    events.push({id:Date.now().toString(36)+Math.random().toString(36).slice(2,6),name,date,note:$('eventNote').value.trim()});
-    localStorage.setItem(KEY_E,JSON.stringify(events));e.target.reset();renderEvents();toast('纪念日已添加');
+    e.preventDefault();
+    const name=$('eventName').value.trim(),date=$('eventDate').value;
+    if(!name||!date){toast('请填写纪念日名称和日期');return}
+    if(!/^\d{4}-\d{2}-\d{2}$/.test(date)||!isFinite(new Date(date+'T00:00:00').getTime())){toast('日期格式不正确');return}
+    const next=events.slice();next.push({id:Date.now().toString(36)+Math.random().toString(36).slice(2,6),name,date,note:$('eventNote').value.trim()});
+    if(!storeSet(KEY_E,next)){toast('纪念日没能保存，请清理存储空间后重试');return}
+    events=next;e.target.reset();renderEvents();toast('纪念日已添加');
   });
-  $('eventList').addEventListener('click',e=>{const btn=e.target.closest('[data-delete]');if(!btn)return;events=events.filter(item=>item.id!==btn.dataset.delete);localStorage.setItem(KEY_E,JSON.stringify(events));renderEvents();toast('已删除纪念日')});
-  renderQuestions();renderEvents();
+  $('eventList').addEventListener('click',e=>{
+    const btn=e.target.closest('[data-delete]');if(!btn)return;
+    const next=events.filter(item=>item.id!==btn.dataset.delete);
+    if(!storeSet(KEY_E,next)){toast('删除没能保存，请清理存储空间后重试');return}
+    events=next;renderEvents();toast('已删除纪念日');
+  });
+  renderRoleLabel();renderQuestions();renderEvents();
+  if(!boundRole.valid) $('saveStatus').textContent=READONLY_TIP;
 })();
 </script>
 </body>

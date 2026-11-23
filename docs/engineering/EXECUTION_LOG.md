@@ -147,3 +147,139 @@ On the next turn/session, read this file and the current `AGENTS.md` first. Cont
 
 - **2026-11-22 storage hardening:** Prevent damaged/non-array primary `chat_memories_<id>` content from being overwritten; reject invalid memory targets; stop memory-library delete, dedupe, and AI merge success displays when write fails; capture AI-merge role ID before network await. Added the corresponding regression tests. **16/16 V8-isolated production-module/DOM-contract checks passed** (not full Node). Parsed all changed JS/inline scripts successfully.
 - **Verification handoff:** PR source remains unmerged; next QA must use the exact pinned branch SHA and the existing public-only verification channel. Do not run exhausted legacy private Actions or bypass existing safety guards.
+
+## 2026-11-23 · 应用功能组 · 4 项 P1 返工 + 陪伴/信封/情侣/成长 4 个模块
+
+- **返工（均在原 Draft PR 上追加 commit，未合并、未部署）**
+  - #450 `a41c2816`：`getPlayerName/loadNpc/loadDiff` 统一走 `storyRead()`；补「无 PhoneStorage 写→刷新→三项完整回读」回归。13/13。
+  - #448 `91eabf02`：伴听 P1-01 无 API 不扣额不占名额、P1-02 会话单调预算 + 落盘失败 fail-closed、P1-03 等 `audio playing` 事件才请求、P2 资料单键原子写 + 读回校验。24/24。
+  - #446 `ae74503f`：`aiAudienceDaily` 会话单调镜像 + `persistBroken` fail-closed，`setAiAudience` 不再重置 `sessionUsed/lastAt`。21/21。
+  - #445 `c815be71`：恢复案件对象形状提示词与 `campaignBrief()`、`normalizeDetectiveCase()` 严格校验、旧存档兜底；限额由角色改为 `'device'` 且升级当天兼容旧分桶。21/21（另回归 games-storage-trust 9/9）。
+- **新模块 Draft PR**
+  - #456：陪伴日历绑正式角色 + `storeSet` 失败回滚 + 切 Tab 草稿。12/12。
+  - #457：仪式页改共享 `PhoneAPI`/`getApiConfig`、正式角色人设、每日 20 次 + 10s 间隔 + 进行中锁 + 无 API 零费用本地回应。10/10。
+  - #460：信封写盘 `mutateAndPersist` 回滚、离开写信页自动存草稿、动画 `paperAnimToken` 可取消 + `finally` 解锁、图片并发锁、排版 4s 兜底。12/12。
+  - #461：情侣空间修复 `doCheckin` 未暴露到 window（P0 打卡按钮不可用）、绑正式角色、写入先算后写、头像 `safeSrc` 白名单；新增「内联 onclick 必须全局可用」通用回归。11/11。
+  - #463：成长页改读 `maoer_couple_*_<roleId>` 真实键（此前读 `_v1` 永不匹配，点数/勋章恒 0），旧键只读兼容、写失败提示。11/11。
+- **Executed:** 全部为 `node --test` 本地真实执行，共 133 个用例通过（13+24+21+21+12+10+12+11+9 分组统计见各 PR）；所有改动文件 `vm.Script` 语法解析通过。
+- **Not verified:** Vite 生产构建、Chromium 375/390/430、真机 iOS/Android、真实配额写满、真实模型调用（全部 mock，0 额度消耗）。
+- **Blocked / 依赖:** 世界书按角色绑定、RP 协议注入、`ECO-LINK-002` 世界事件接入、聊天发送 API 仍依赖共享底层，未自建并行实现。外卖需总控协调钱包边界；聊天美化与主题商店归豆包。
+
+
+## 2026-11-23 晚 · 应用功能组 · 6 项复审返工 + 海报/小说工坊两个新模块
+
+- **返工（原 PR 追加 commit，均 Draft）**
+  - #445 `0acb3fd2`：预算写入+读回确认才发请求（读回被改也判失败）；失败 0 请求、释放 busy；恢复成功保存后 `startCase()` 刷新列表。24/24。
+  - #446 `b6ca3ef0`：`persistAiAudienceVerified()` 写+读回；第一次预算写失败即 0 请求（按总控要求改写测试目标）；补模拟刷新与读回被改用例。22/22。
+  - #448 `dd04b555`：`persistTogetherVerified()` 写+读回；拒写即 fail-closed 0 请求；QuotaExceededError 下测试目标改为 0 调用；补刷新重入与读回被改用例。26/26。
+  - #456 `5157b31d`：companion.html 真实加载 phone_storage.js；`?id=` 必须经 getCharacters 验证；无合法角色只读、不再制造 default 共享桶。15/15。
+  - #457 `f99e1c20`：rituals.html 加载共享两件套；预算写+读回后才允许付费；状态按正式角色分桶；旧全局键只对归属角色只读兼容；自由名字不进模型。15/15。
+  - #460 `f56eb93f`：composeSignature 补图片指纹（长度+头尾采样）与信封颜色。16/16。
+  - #463 `db5e8ef8`：growth.html 加载共享存储；`?id=` 验证；无角色只读；移除无条件旧全局键兜底（该键从未被任何应用写入）。14/14。
+- **新模块 Draft PR**
+  - #468 海报：保存竞态锁定目标（FileReader 异步期间切换作品不再写错目标）、校验前置、art 白名单；旧数据键不变。8/8。
+  - #471 小说工坊：novel-ai.js 从自建 fetch 收敛到共享 PhoneAPI.complete + 共享配置，删除旧 api_settings 兜底；七个调用页补真实脚本链；错误文案兼容、global.novelAI 签名不变；作品数据键不动。7/7（另七页内联脚本语法解析通过）。
+- **Executed:** 本轮新增/改写测试 105 个用例全部通过（24+22+26+15+15+16+14+8+7 分组统计见各 PR）；全部为 `node --test` 本地真实执行；改动文件语法解析通过。
+- **Not verified:** Vite 生产构建、Chromium 375/390/430、真机、真实配额写满、真实模型调用（全 mock，0 额度）。
+- **P2 登记：** 海报 alert 错误提示与 O(n²) 渲染；小说 read/readers/stats 移动端与长列表性能；付费生成次数预算待总控确认产品预期（长文写作与单次互动不同，硬性日上限可能打断连载）。
+- **依赖边界不变：** 世界书按角色绑定、RP 协议、ECO-LINK-002、聊天发送 API 仍 BLOCKED；beauty/主题商店/主题工作台未触碰；外卖待钱包组确认。
+
+### ADMIN-CLOUD-001 主线候选核验（北京时间 2026-11-24）
+
+- 以主线 `00d6012d` 为基线应用 #435 的独立只读诊断补丁。QA v150 的管理中心恢复界面依赖主线仍缺少的 `account/index.html` 和管理中心页面，未直接移植。
+- 保留管理员服务端会话校验和预缓存排除，补上主线 Service Worker 对管理员页面及诊断 API 的缓存绕过，防止已打开过的页面或响应由缓存直接返回。对齐两处主线已有的旧缓存版本断言。
+- Node 管理员专项 65/65、委托权限 5/5、PWA/图标 11/11、Vite 全量构建及产物隔离 3/3。浏览器脚本的 Worker 页面权限预检通过，Chromium 因当前运行环境拒绝创建套接字，未执行完整浏览器测试。
+- 公共隔离 QA 尚未运行，候选未合入 main。主线的私有 Actions 会在匹配的 PR 或 main push 上自动运行，本次未提交远端 PR、未部署。
+
+## 2026-11-23 · APP-CAFE-001 · 咖啡馆搭档决策链路
+- **分支 / PR：** `APP-CAFE-001-cafe-partner-decision` · Draft PR（见 PR 链接）。未合并、未部署。
+- **基线：** main `40b671bb`（Merge PR #413）。
+- **实际发现（源码核对，非功能名推断）：** `cafe/cafe.html` 中 `function chooseEvent(` 出现两次（约 L555 与 L842）。函数声明提升使后一份简化版覆盖前一份，于是 `st.partnerDecision`、`p.decisions++`、默契 `p.rapport`、`p.history`、`checkAchievements()` 全部变成不可达代码：搭档决策从未落盘，`listen-partner` 每日目标与「搭档信任」成就无法正常达成，结算时的搭档复盘拿不到当日决策。
+- **修改：** 删除被覆盖的重复实现并留档说明；在保留的实现内增加 `businessStatus==='operating'` 拒绝分支，避免营业中经任何入口改写今日事件。无存储键、无数据结构、无 UI 结构变更。
+- **测试：** 新增 `tests/cafe-app-contract.test.mjs`（4 项，全部通过）；内联脚本经 `node --check` 通过。Vite 构建与浏览器/真机验收 **NOT VERIFIED**（本轮无完整工作区与浏览器运行时）。
+- **回滚：** 纯代码回退，无数据迁移。
+- **未完成依赖：** 世界事件仓储仍只有 forum 局部实现，应用侧统一接口未合并；咖啡馆事件与角色生活线的联动记录为依赖，不另建系统。
+
+## 2026-11-23 · APP-CAFE-002 · 经营档案入口
+- **分支 / PR：** `APP-CAFE-002-archive-entry` · Draft PR。未合并、未部署。
+- **实际发现：** `<main>` 内没有 `#view-extra`，`renderCafeDetails()` 第一行 `if(!root)return;` 直接返回。于是成长面板、每日目标、搭档建议（`askPlan`/`acceptPlan`）、结算复盘、成就列表全部没有渲染出口；页头 `功能 +` 只有 `data-open-cafe` 属性，处理器绑在首行即 `return` 的 `initCafeCompactUI()` 内，属于无逻辑按钮。
+- **修改：** 挂载 `#view-extra`；`setTab`/`renderAll`/`renderTab` 增加 `extra` 路由；页头控件改为 `#openArchive`（`aria-controls`/`aria-expanded`），点击在档案与今日经营间切换；档案顶部提供「返回」；总览重渲染时仅在档案打开状态下刷新档案，避免移动端无谓重绘。样式复用既有 `#view-extra` 规则，未新增视觉语言。
+- **测试：** 新增 `tests/cafe-archive-entry.test.mjs`（4/4 通过）；内联脚本 `node --check` 通过。本轮未重新执行 Vite 构建（`vite build` 会清空 `dist/`，被沙箱策略拒绝），也未做浏览器/真机验收 → **NOT VERIFIED**。
+- **回滚：** 纯代码回退。无存储键、无存档结构变化。
+- **待确认（产品）：** 页头文案由「功能 +」改为「档案」。原控件无任何行为，若希望恢复成功能菜单形态，需要单独设计，不在本 PR 范围。
+## 2026-11-23 · APP-CAFE-002 · 总控审查返工（PR #427）
+- **审查意见：** P1 成长奖励按钮无监听器；P2 档案入口 `aria-expanded` 不同步。产品决定：保留「档案」入口，不扩展为功能菜单。
+- **复核确认：** `renderCafeDetails()` 在 `root.innerHTML=html` **之前**执行 `document.querySelectorAll('[data-growth-claim]')` 绑定，监听器挂在即将被替换的旧节点上，因此每次渲染后「领取奖励」都点不动。
+- **修改：** 改为容器级一次性事件委托 `bindGrowthClaim(#view-extra)`（含 `growthClaimDelegated` 去重），点击经 `closest('[data-growth-claim]')` 命中后调用既有 `claimGrowthReward`，其内部 `st.growthClaims[id]` 判重继续防重复领取；新增 `syncArchiveState()`，由 `setTab`/`renderAll` 统一维护 `aria-expanded`。
+- **测试：** 新增 `tests/cafe-growth-claim.test.mjs`——从源码截取 `claimGrowthReward` 与 `bindGrowthClaim` 真实实现，在 `node:vm` 隔离上下文里模拟点击：发放一次、重复点击不再发放、未达成/未知奖励不发放、非领奖区域不触发、重复绑定只注册一次，另加「不得在 innerHTML 前绑定」的源码守卫。连续运行 10/10 通过（含 `cafe-archive-entry` 4 项）；内联脚本 `node --check` 通过。
+- **仍未验证：** 浏览器/真机实际点击、Vite 全站构建（`vite build` 清空 `dist/` 被沙箱策略拒绝）、屏幕阅读器下的 `aria-expanded` 播报。
+
+## 2026-11-23 · APP-STORY-001 · 剧情应用存档读写一致性
+- **分支 / PR：** `APP-STORY-001-storage-trust` · Draft。基线 main `40b671bb`。未合并、未部署。
+- **应用构成：** `games/story.html`（676 行单文件）。剧情本数据在 `story-books.js`。键：`maomao_story_player`、`maomao_story_difficulty`、`maomao_story_npc_names`、`maomao_story_npc_<bookId>`、`maomao_story_save_<bookId>`。
+- **P1 已修：**
+  1. **读写后端不一致（真实功能 Bug）**：`writeSave()` 在 `PhoneStorage` 缺失时写 `localStorage`，但 `loadSave()` 与 `renderCover()` 只从 `PhoneStorage.rawGet` 读 → **存了但封面永远看不到进度**。统一为 `storyRead()/storyWrite()`（共享存储优先，回落 localStorage）。
+  2. `PhoneStorage.rawSet` 的布尔返回被忽略（未包在 if 里），写失败当作成功。
+  3. `writeSave()` 的 `catch(e){}` 全空 → 失败无任何提示；`$('btnSave')` 更是无条件 `toast('已保存')`。改为返回布尔并分支提示。
+  4. `setPlayerName` / `saveNpc` / `saveDiff` 静默吞异常 → 改为失败时给具体原因（名字/角色名/难度分别提示），同会话只提示一次。
+- **测试：** 新增 `tests/story-storage-trust.test.mjs`（9 项，VM 跑真实 `storyRead/storyWrite/writeSave/loadSave/setPlayerName`），9/9 通过；内联脚本解析通过。
+- **登记未做：** 剧情应用不产出世界事件（依赖 `ECO-LINK-002`）；`PhoneContext` 未接入（#428）；封面进度条只显示有无存档，不显示百分比（既有设计，未改）。
+- **未验证：** Vite 全站构建、Chromium 375/390/430、真机。
+
+## 2026-11-23 · APP-KITCHEN-001 · 投喂厨房存档写入可信性
+
+- **分支 / PR：** `APP-KITCHEN-001-storage-trust` · Draft PR。基线 main `40b671bb`。未合并、未部署。
+- **首轮扫描结论（源码级）：** 投喂厨房 = `games/cooking.html` + `games/js/cooking.js`（392 行）+ `games/css/cooking.css`；角色取自 `PhoneStorage.getCharacters()`；口味档案按 `maomao_cooking_taste_v1_<roleId>` 分桶，历史/图鉴/成就/自定义配方为全局键。
+- **P0/P1 已修：**
+  1. `saveTasteFeedback` 先改内存再写盘，写失败后 `tasteFeedback` 已标记，再点提示「已经记过啦」而实际没保存 → 改为先写盘、成功才落内存与界面，失败可重试。
+  2. `saveCustomRecipes` 失败仍提示「已添加到图鉴」→ 返回布尔，失败回滚 `customRecipes`。
+  3. 历史「入栈 → 写盘」导致界面条数领先存档 → 新增 `pushHistory()`，失败撤销入栈。
+  4. `continueChat` 空 catch 写 pending，失败仍以 `cooking=1` 跳转会读到上一次菜品 → 记录写入结果，失败清陈旧 pending 并以 `cooking=0` 跳转。
+- **测试：** `tests/cooking-storage-trust.test.mjs` 8 项（VM 执行真实 `saveHistory/pushHistory/writeTasteMemory/saveCustomRecipes` + 源码顺序守卫），8/8 通过；`node --check games/js/cooking.js` 通过。
+- **登记未修（P2 / 待产品决策）：** 历史与图鉴为全局键不按角色过滤（口味档案已隔离）；`progress.dishes` 出锅即计数；自定义配方可重复添加同名组合。
+- **BLOCKED：** 世界事件等待 `ECO-LINK-002`；角色世界书/记忆/人设协议未接入（共享 `PhoneContext` 仍会拼入全量世界书与财务快照），本应用只用角色卡 + 本应用口味记忆，不复制世界书实现。
+- **未验证：** Vite 全站构建、Chromium 375/390/430、真机、真实配额场景。
+
+**2026-11-24 总控续接：** PR #431 代码已在原分支补齐 #432 已入主线的试吃并发/旧响应防串写守卫；`games/js/cooking.js` 完整语法检查通过。专项 Node/浏览器 QA 待独立复核，不据此声明发布。
+
+## 2026-11-23 · APP-MUSIC-001 · 音乐应用提示与写入可信性
+
+- **分支 / PR：** `APP-MUSIC-001-storage-trust` · Draft PR。基线 main `40b671bb`。未合并、未部署。
+- **应用构成：** `music/music.html`（1653 行单文件），引入 `home-indicator.js` 与 `phone_storage.js`。键：`music_state`、`music_recent`、`music_fav_list`、`music_fav_count`、`music_played_count`、`music_profile_name/handle/bg`、本地曲目元信息键。
+- **P0 已修（本轮最重要的发现）：**
+  - 页面里有 4 处调用 `toast(...)`，但**整个文件既没有定义 `toast`，也没有 `#toast` 节点**，`home-indicator.js` 也不提供。这些调用会抛 `ReferenceError`：
+    - `if(!t){toast('曲目不存在');return;}` → 变成抛错而不是安全返回
+    - 本地音频缺失时的「已从历史/收藏中移除」提示 → 抛进外层 `catch` 再抛一次 → `playTrack` 变 unhandled rejection，播放器卡住
+    - `catch(e){toast('音频加载失败')}` → 用户看不到任何原因
+    - 导入失败分支 `catch(err){tracks.pop();toast('本地导入失败…')}` → 错误原因不可见
+  - 修法：补一个统一 `toast()` 实现（自建 `#musicToast` 节点 + 自动收起 + 复用节点不堆叠），并补 `env(safe-area-inset-bottom)` 的样式，不依赖新增外部文件。
+- **P1 已修：**
+  1. `saveProfileEdit()` 三条 `setItem` 裸调后立刻 `renderProfile(); closeProfileEdit();` → 容量满时抛异常，昵称没存上、编辑面板留在原地且没有任何说明。改为按结果分支：任一失败就提示「没能保存，清出空间后再点一次保存」并保持面板打开。
+  2. `music_played_count` / `music_fav_count` 裸调 → 抛未捕获异常打断 `saveState()` 与 `showNP()`。改走统一入口。
+  3. `saveRecentIds` / `saveFavIds` / `saveLocalTracksMeta` 的空 catch → 收藏、历史、本地曲目元信息静默丢失。改为返回布尔 + 同会话只提示一次。
+  4. `saveState()` 断点续播写入失败保持静默（低频、非关键），但不再吞掉异常对象。
+- **测试：** 新增 `tests/music-storage-trust.test.mjs`（8 项，VM 跑真实 `toast` / `saveLocal` / `saveFavIds` / `saveProfileEdit`），8/8 通过。
+- **登记未做：** 音乐应用不接角色人设/记忆（只有 `getMyProfile` 读取本机资料）；不产出世界事件（依赖 `ECO-LINK-002`）；本地音频走 IndexedDB，配额错误提示依赖浏览器实现。
+- **未验证：** Vite 全站构建、Chromium 375/390/430、真机、真实音频播放与配额场景。
+
+**2026-11-24 总控续接：** 在原 PR 上与当前 main 进行源代码对齐；原先 `saveProfileEdit()` 三字段写入仍可能部分成功，现补写入前快照、逐字段写入回读、失败反向回滚、回滚不能完成时明确提示部分数据风险；旧存储键不迁移。新增第三字段失败专项测试。尚需公共 QA 门禁，未合并/未部署。
+
+## 2026-11-23 · APP-GAMES-001 · 游戏大厅首轮核查与存档写入可信性
+
+- **分支 / PR：** `APP-GAMES-001-storage-trust` · Draft PR。基线 main `40b671bb`。未合并、未部署。
+- **应用构成：** `games/games.html`（3441 行，7 段内联脚本，305 KB）。依赖 `native-feel.js`、`nav.js`、`phone_storage.js`、`phone_api.js`、`js/immersive-v21.js`、`js/interrogation-v20.js`。存储键：`maomao_game_role`、`maomao_game_stats_v1`、`maomao_game_pending_<roleId>`、`maomao_detective_progress_v1`、`maomao_detective_team_v1`、`maomao_detective_theme_v1`、`maomao_detective_generated_cases_v1`、`immCasesDone`、`maomao_code_len`。
+- **核查结论（源码级）：**
+  - 角色接入：`loadRoles()` 走 `PhoneStorage.getCharacters()`，`activeRole` 由 `maomao_game_role` 记住，侦探进度按 `activeRoleKey()` 分桶，AI 请求按当前角色构造人设——**角色隔离正确**。
+  - 侦探玩法链路完整：案件档案、调查队、审讯、线索、结案、生成新案、主题切换都有真实处理器。
+  - **写入层是短板：10 处 `localStorage.setItem` 全部裸调，没有任何 try/catch 或结果判断。**
+- **P1 已修：**
+  1. `saveCaseProgress()`（侦探核心存档，被审讯/线索/结案等多处调用）裸调 → 容量满时抛未捕获异常，调用方后续渲染直接中断。改为返回布尔。
+  2. `saveStat()` 裸调 → 抛异常导致 `renderRoles()` 不执行，战绩界面停在旧值但没有任何提示。
+  3. `selectRole()` 裸调后无条件提示「已切换搭档」→ 实际没存上，刷新回到上一位。改为按结果分支提示。
+  4. `generateDetectiveCase()` → AI 已成功、只是存不下时，`setItem` 抛错被 `.catch()` 捕获，提示变成「生成失败，请检查 API 配置」——**错误归因**，用户会去乱改 API。改为区分「AI 失败」与「存不下」，并说明刷新后会消失。
+  5. `addChatAfterGame()` 的 `catch(e){}` → 战场小结没写进去仍跳转，聊天页会读到**上一次的旧草稿**冒充这一局。改为失败时清除陈旧 key、明确提示、延迟跳转。
+  6. `toggleDetectiveRole()` 裸调 → 抛异常导致 `startCase()` 不执行，点队伍按钮像卡死。
+- **做法：** 新增 `saveRaw(key,value,quiet)` / `saveJSON(key,value,quiet)` 与 `warnGameStorage()`（同会话只提示一次，避免连点刷屏），10 处写入全部路由到统一入口；`quiet` 用于迁移/默认值这类无感写入。
+- **测试：** 新增 `tests/games-storage-trust.test.mjs`（9 项，VM 跑真实 `saveRaw/saveJSON/saveCaseProgress/selectRole/saveStat`），9/9 通过；7 段内联脚本全部 `vm.Script` 解析通过。
+- **登记未做（需产品决策）：** 游戏大厅只读角色卡 + 记忆无关；不产出世界事件（依赖 `ECO-LINK-002`）；侦探案件生成为付费调用，无次数限制或失败重试预算控制。
+- **未验证：** Vite 全站构建、Chromium 375/390/430、真机、真实配额场景。
