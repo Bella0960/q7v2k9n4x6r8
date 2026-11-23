@@ -40,11 +40,19 @@ function makeRuntime({ apiKey = 'test-key', behavior = 'resolve', reply = '生�
     sandbox.localStorage = { getItem: () => (legacyKey !== null ? JSON.stringify(legacyKey) : null) };
   }
   sandbox.PhoneAPI = {
+    /* 真实 PhoneAPI.complete 自己写调用日志；此桩模拟已写入一条的共享层。
+       novelAI() 适配层不能再重复记录。 */
     complete: (payload) => {
       calls.push(payload);
-      if (behavior === 'reject-timeout') return Promise.reject(new Error('请求超时（60000ms）'));
-      if (behavior === 'reject-http') return Promise.reject(new Error('请求失败（HTTP 401）'));
-      if (behavior === 'reject-key') return Promise.reject(new Error('API Key 无效或已过期'));
+      const emit = (status) => {
+        if (sandbox.PhoneStorage && typeof sandbox.PhoneStorage.pushApiLog === 'function') {
+          sandbox.PhoneStorage.pushApiLog({ status, model: 'test-model' });
+        }
+      };
+      if (behavior === 'reject-timeout') { emit('error'); return Promise.reject(new Error('请求超时（60000ms）')); }
+      if (behavior === 'reject-http') { emit('error'); return Promise.reject(new Error('请求失败（HTTP 401）')); }
+      if (behavior === 'reject-key') { emit('error'); return Promise.reject(new Error('API Key 无效或已过期')); }
+      emit('success');
       return Promise.resolve(reply);
     },
   };
@@ -76,14 +84,16 @@ test('共享通道：走 PhoneAPI.complete，不自建 fetch，参数透传', as
   assert.equal(calls[0].timeoutMs, 60000, '60s 超时与旧实现一致');
 });
 
-test('成功与失败都写调用日志', async () => {
+test('调用日志仅由共享层记录：成功、失败各一条，不双计费统计', async () => {
   const ok = makeRuntime({});
   await ok.sb.novelAI('s', 'u');
-  assert.equal(ok.logs.filter((l) => l.status === 'success').length, 1);
+  assert.equal(ok.logs.length, 1, '成功请求不能出现小说层重复成功日志');
+  assert.equal(ok.logs[0].status, 'success');
 
   const bad = makeRuntime({ behavior: 'reject-timeout' });
   await assert.rejects(() => bad.sb.novelAI('s', 'u'), /AI 请求超时，请稍后重试/);
-  assert.equal(bad.logs.filter((l) => l.status === 'error').length, 1);
+  assert.equal(bad.logs.length, 1, '失败请求不能出现小说层重复失败日志');
+  assert.equal(bad.logs[0].status, 'error');
 });
 
 test('错误文案兼容：超时与配置类错误保持旧文案', async () => {
@@ -123,6 +133,6 @@ test('源码守卫：novel-ai.js 不再自建 fetch、不读旧键', () => {
   assert.equal(codeOnly.includes('api_settings'), false, '不得再读旧 api_settings 裸键');
   assert.ok(aiSrc.includes('PhoneAPI.complete'), '必须走共享通道');
   assert.ok(aiSrc.includes('getApiConfig'), '必须走共享配置');
-  assert.ok(aiSrc.includes('pushApiLog'), '保留调用日志');
+  assert.equal(/pushApiLog\s*\(/.test(codeOnly), false, '调用日志由共享层负责，小说层不能重复写');
   assert.ok(aiSrc.includes('global.novelAI = novelAI'), '全局签名不变，调用方零改动');
 });
