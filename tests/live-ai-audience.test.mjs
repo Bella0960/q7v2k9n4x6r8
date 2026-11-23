@@ -289,3 +289,93 @@ test('源码守卫：默认关闭、护栏常量与关闭即作废', () => {
   assert.ok(page.includes('bumpAiAudienceToken();'), 'turning it off / hiding the page must invalidate in-flight results');
   assert.ok(page.includes('if(document.hidden)return;'), 'must not call while backgrounded');
 });
+
+/* ---------- 总控 P1：预算落盘失败必须 fail-closed ---------- */
+
+test('P1 存储拒写：只允许第一批，之后 0 次付费调用', async () => {
+  const store = makeStore();
+  const { sb, calls, toasts } = makeRuntime({ store });
+  sb.setAiAudience(true);          /* 此时存储正常，先成功开启 */
+  store.failWrites(true);          /* 过程中配额写满 */
+
+  sb.aiAudienceTick();
+  await flush();
+  assert.equal(calls.length, 1, '第一批照常（已记账）');
+  assert.equal(sb.aiAudienceDaily.persistBroken, true, '必须标记预算写入失败');
+
+  for (let i = 0; i < 8; i++) {
+    sb.aiAudience.lastAt = 0;
+    sb.aiAudienceTick();
+    sb.requestAiAudienceBatch();
+    await flush();
+  }
+  assert.equal(calls.length, 1, '预算写不进本机时必须停止新的付费调用');
+  assert.ok(toasts.some((t) => t.includes('暂停付费调用')), 'must tell the user why it stopped');
+});
+
+test('P1 续：拒写状态下关闭再打开，仍然 0 次新调用', async () => {
+  const store = makeStore();
+  const { sb, calls } = makeRuntime({ store });
+  sb.setAiAudience(true);
+  store.failWrites(true);
+  sb.aiAudienceTick();
+  await flush();
+  assert.equal(calls.length, 1);
+
+  sb.setAiAudience(false);
+  sb.setAiAudience(true);
+  sb.aiAudience.lastAt = 0;
+  sb.aiAudienceTick();
+  sb.requestAiAudienceBatch();
+  await flush();
+
+  assert.equal(calls.length, 1, '重开开关不得放开 fail-closed');
+  assert.equal(sb.aiAudienceDaily.persistBroken, true);
+});
+
+test('P1 续：开关不重置本场已用批次与 3 分钟间隔', async () => {
+  const store = makeStore();
+  const { sb, calls } = makeRuntime({ store });
+  sb.setAiAudience(true);
+  sb.aiAudienceTick();
+  await flush();
+  assert.equal(calls.length, 1);
+
+  const usedBefore = sb.aiAudience.sessionUsed;
+  const lastBefore = sb.aiAudience.lastAt;
+  sb.setAiAudience(false);
+  sb.setAiAudience(true);
+
+  assert.equal(sb.aiAudience.sessionUsed, usedBefore, 'sessionUsed 不能被开关清零');
+  assert.equal(sb.aiAudience.lastAt, lastBefore, 'lastAt 不能被开关清零');
+
+  sb.aiAudienceTick();
+  await flush();
+  assert.equal(calls.length, 1, '间隔未到不得因为重开开关而立刻再请求');
+});
+
+test('P1 续：本场上限用满后，即使重开开关也是 0 请求', async () => {
+  const store = makeStore();
+  const { sb, calls } = makeRuntime({ store });
+  sb.setAiAudience(true);
+  sb.aiAudience.sessionUsed = sb.AI_AUDIENCE_SESSION_LIMIT;
+
+  sb.setAiAudience(false);
+  sb.setAiAudience(true);
+  sb.aiAudience.lastAt = 0;
+  sb.aiAudienceTick();
+  sb.requestAiAudienceBatch();
+  await flush();
+
+  assert.equal(calls.length, 0);
+});
+
+test('P1 源码守卫：setAiAudience 不再清 sessionUsed / lastAt，且预算写失败即停', () => {
+  const start = page.indexOf('function setAiAudience(on){');
+  const end = page.indexOf('function openAudienceSheet()', start);
+  const body = page.slice(start, end);
+  assert.equal(/aiAudience\.sessionUsed\s*=\s*0/.test(body), false, '不得在开关里清零本场批次');
+  assert.equal(/aiAudience\.lastAt\s*=\s*0/.test(body), false, '不得在开关里清零间隔');
+  assert.ok(page.includes('aiAudienceDaily.persistBroken'), '必须有落盘失败标记');
+  assert.ok(page.includes('max(aiAudienceStoredUsed(),aiAudienceDaily.used)'), '日额度取落盘与会话计数的较大值');
+});
