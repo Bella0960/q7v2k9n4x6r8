@@ -217,7 +217,32 @@
 <script>
 (function(){
   const $ = id => document.getElementById(id);
+  /* 数据必须和情侣空间写在同一组键上：couple.html 实际用的是「按正式角色 ID 命名」的键，
+     之前这里读的是另一套 maoer_couple_*_v1，两个键永远对不上，
+     所以成长点数、统计、勋章从来没有真正生效过。 */
+  function sharedRoleId(){
+    try{
+      var ps=window.PhoneStorage;
+      if(ps&&typeof ps.getCurrentContactId==='function')return String(ps.getCurrentContactId()||'');
+    }catch(e){}
+    return '';
+  }
+  var roleId=(function(){
+    try{
+      var fromUrl=new URLSearchParams(location.search).get('id');
+      if(fromUrl)return fromUrl;
+    }catch(e){}
+    return sharedRoleId()||(function(){try{return localStorage.getItem('currentRoleId')||''}catch(e){return ''}})()||'default';
+  })();
   const KEY = {
+    profile:'maoer_couple_profile_'+roleId,
+    mood:'maoer_couple_mood_'+roleId,
+    bucket:'maoer_couple_bucket_'+roleId,
+    moments:'maoer_couple_moments_'+roleId,
+    goals:'maoer_growth_goals_'+roleId
+  };
+  /* 旧版本把成长数据写在共享的 _v1 键上：仅当新键还没有数据时作为一次性兼容来源。 */
+  const LEGACY = {
     profile:'maoer_couple_profile_v1',
     mood:'maoer_couple_mood_v1',
     bucket:'maoer_couple_bucket_v1',
@@ -225,6 +250,12 @@
     goals:'maoer_growth_goals_v1'
   };
   function read(k, d){ try { let v = JSON.parse(localStorage.getItem(k)); return v==null?d:v; } catch(e){ return d; } }
+  function readData(kind, fallback){
+    let v = read(KEY[kind], null);
+    if(v != null) return v;
+    let legacy = read(LEGACY[kind], null);
+    return legacy != null ? legacy : fallback;
+  }
   function write(k,v){ try { localStorage.setItem(k, JSON.stringify(v)); return true; } catch(e){ return false; } }
   function toast(s){ let t=$('toast'); t.textContent=s; t.classList.add('show'); clearTimeout(t._t); t._t=setTimeout(()=>t.classList.remove('show'),1800); }
   function esc(s){ return String(s||'').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])); }
@@ -255,12 +286,17 @@
 
   function render(){
     let d = {
-      profile: read(KEY.profile, {}),
-      moods: read(KEY.mood, {}),
-      bucket: read(KEY.bucket, []),
-      moments: read(KEY.moments, []),
-      goals: read(KEY.goals, [])
+      profile: readData('profile', {}),
+      moods: readData('mood', {}),
+      bucket: readData('bucket', []),
+      moments: readData('moments', []),
+      goals: readData('goals', [])
     };
+    d.profile = d.profile && typeof d.profile === 'object' ? d.profile : {};
+    d.moods = d.moods && typeof d.moods === 'object' && !Array.isArray(d.moods) ? d.moods : {};
+    d.bucket = Array.isArray(d.bucket) ? d.bucket : [];
+    d.moments = Array.isArray(d.moments) ? d.moments : [];
+    d.goals = Array.isArray(d.goals) ? d.goals : [];
     let completed = d.bucket.filter(x=>x.done).length;
     let moodDays = Object.values(d.moods).filter(a=>Array.isArray(a)&&a.some(x=>String(x||'').trim())).length;
     let earned = milestones.filter(m => { try { return m.test(d); } catch(e){ return false; } }).length;
@@ -303,13 +339,16 @@
   }
 
   window.toggleGoal = function(id){
-    let goals = read(KEY.goals, []).map(g => g.id===id ? {...g, done:!g.done} : g);
-    write(KEY.goals, goals); render();
-    toast('完成一项小目标 +15');
+    let goals = readData('goals', []).map(g => g.id===id ? {...g, done:!g.done} : g);
+    if(!write(KEY.goals, goals)){ toast('目标没能保存，请清理本机存储后再试'); return; }
+    render();
+    let target = goals.filter(g => g.id===id)[0];
+    toast(target && target.done ? '完成一项小目标 +15' : '已取消完成，点数同步减少');
   };
   window.delGoal = function(id){
     if(!confirm('删除这个目标？')) return;
-    write(KEY.goals, read(KEY.goals, []).filter(g => g.id!==id));
+    let goals = readData('goals', []).filter(g => g.id!==id);
+    if(!write(KEY.goals, goals)){ toast('删除没能保存，请清理本机存储后再试'); return; }
     render(); toast('已删除');
   };
 
@@ -317,9 +356,9 @@
     e.preventDefault();
     let v = $('goalInput').value.trim();
     if(!v) return;
-    let goals = read(KEY.goals, []);
+    let goals = readData('goals', []);
     goals.push({id:Date.now().toString(36), text:v, done:false, created:new Date().toISOString().slice(0,10)});
-    write(KEY.goals, goals);
+    if(!write(KEY.goals, goals)){ toast('目标没能保存，请清理本机存储后再试'); return; }
     $('goalInput').value = '';
     render(); toast('已加入成长清单');
   });
