@@ -44,6 +44,9 @@
   let generatedCode = '';
   let busy = false;
   let initializing = false;
+  let overviewSyncedAt = 0;
+  let cloudReadSequence = 0;
+  let cloudReading = false;
   const busyButtonState = new WeakMap();
 
   function pageAccountContext() {
@@ -301,6 +304,74 @@
     }
   }
 
+  function renderOperationsOverview() {
+    const headline = $('overviewHeadline');
+    const note = $('overviewDescription');
+    if (!accountSummary || accountPageError) {
+      headline.textContent = '账号数据尚未确认';
+      note.textContent = '读取失败或尚未完成，不能据此判断无待办。';
+    } else {
+      const pending = Number(accountSummary.pending);
+      const restricted = Number(accountSummary.restricted);
+      if (!Number.isSafeInteger(pending) || pending < 0 ||
+          !Number.isSafeInteger(restricted) || restricted < 0) {
+        headline.textContent = '统计数据有待核对';
+        note.textContent = '服务器返回了不完整的账号汇总信息。';
+      } else if (pending) {
+        headline.textContent = pending + ' 个账号等待授权';
+        note.textContent = restricted
+          ? '另有 ' + restricted + ' 个受限账号，请到账号列表核对。'
+          : '进入账号列表核对后再决定是否授权。';
+      } else if (restricted) {
+        headline.textContent = restricted + ' 个受限账号';
+        note.textContent = '暂无待授权账号，请核对受限账号的管理历史。';
+      } else {
+        headline.textContent = '暂无待处理授权';
+        note.textContent = '仅表示服务器账号汇总未发现待授权或受限账号。';
+      }
+    }
+    $('overviewUpdatedAt').textContent = overviewSyncedAt
+      ? '账号数据核对于 ' + formatTime(overviewSyncedAt) + ' · 云端状态单独核验'
+      : '账号统计尚未同步';
+  }
+
+  async function refreshCloudOverview() {
+    if (cloudReading) return;
+    const originalAccount = pageAccountContext();
+    if (!originalAccount) {
+      $('overviewCloudStatus').textContent = '账号身份未确认';
+      $('overviewCloudDetail').textContent = '请返回桌面重新进入，不能使用其他账号缓存数据。';
+      return;
+    }
+    const sequence = ++cloudReadSequence;
+    cloudReading = true;
+    $('overviewCloudStatus').textContent = '正在检测…';
+    $('overviewCloudDetail').textContent = '从现有只读诊断接口读取。';
+    $('overviewCloudRetry').disabled = true;
+    try {
+      const payload = await api('/api/admin/cloud/overview');
+      if (sequence !== cloudReadSequence || pageAccountContext() !== originalAccount) return;
+      if (!Array.isArray(payload.sections) || !payload.sections.length ||
+          !payload.sections.every(x => x && typeof x.id === 'string' && typeof x.state === 'string')) {
+        throw new Error('诊断信息不完整');
+      }
+      const count = payload.sections.filter(x => !['ok', 'healthy', 'normal', 'ready'].includes(x.state)).length;
+      $('overviewCloudStatus').textContent = count ? '部分状态需要关注' : '状态检查已完成';
+      $('overviewCloudDetail').textContent = count
+        ? payload.sections.length + ' 个分区中，' + count + ' 个未标记正常。请到诊断详情核对。'
+        : '已检查 ' + payload.sections.length + ' 个诊断分区，可查看详细指标。';
+    } catch {
+      if (sequence !== cloudReadSequence || pageAccountContext() !== originalAccount) return;
+      $('overviewCloudStatus').textContent = '暂时无法核对';
+      $('overviewCloudDetail').textContent = '诊断接口没有返回可验证的状态，不代表系统正常。';
+    } finally {
+      if (sequence === cloudReadSequence) {
+        cloudReading = false;
+        $('overviewCloudRetry').disabled = false;
+      }
+    }
+  }
+
   function updateStats() {
     const totals = accountSummary || {
       total: accounts.length,
@@ -312,6 +383,8 @@
     $('statPending').textContent = String(totals.pending);
     $('statActive').textContent = String(totals.active);
     $('statDisabled').textContent = String(totals.restricted);
+    overviewSyncedAt = Date.now();
+    renderOperationsOverview();
   }
 
   function updateAccountFilterCounts() {
@@ -503,6 +576,8 @@
         accountHasMore = false;
         accountTotalCount = 0;
         accountSummary = null;
+        overviewSyncedAt = 0;
+        renderOperationsOverview();
         renderAccounts();
         for (const id of ['statTotal', 'statPending', 'statActive', 'statDisabled',
           'filterCountAll', 'filterCountPending', 'filterCountActive', 'filterCountRestricted']) {
@@ -1152,10 +1227,11 @@
   });
 
   function activateTab(name) {
-    const selected = ['invites', 'audit', 'settings'].includes(name) ? name : 'users';
+    const selected = ['overview', 'users', 'invites', 'audit', 'settings'].includes(name) ? name : 'overview';
     document.querySelectorAll('[data-tab]').forEach(item => {
       item.classList.toggle('active', item.dataset.tab === selected);
     });
+    $('overviewView').hidden = selected !== 'overview';
     $('usersView').hidden = selected !== 'users';
     $('invitesView').hidden = selected !== 'invites';
     $('auditView').hidden = selected !== 'audit';
@@ -1184,6 +1260,32 @@
       await openAccount(accountId);
     });
   }
+
+  document.querySelectorAll('[data-quick-tab]').forEach(button => {
+    button.addEventListener('click', () => {
+      const tab = button.dataset.quickTab;
+      activateTab(tab);
+      if (tab === 'users' && button.dataset.quickFilter) {
+        accountFilter = button.dataset.quickFilter;
+        document.querySelectorAll('[data-account-filter]').forEach(item => {
+          const active = item.dataset.accountFilter === accountFilter;
+          item.classList.toggle('active', active);
+          item.setAttribute('aria-pressed', active ? 'true' : 'false');
+        });
+        if (busy) accountSearchRefreshPending = true;
+        else run(() => loadAccountPage(true));
+      }
+      if (tab === 'audit') {
+        if (busy) globalAuditSearchRefreshPending = true;
+        else run(() => loadGlobalAudit(true));
+      }
+    });
+  });
+  $('refreshOverview').addEventListener('click', () => run(async () => {
+    await refreshAll();
+    await refreshCloudOverview();
+  }));
+  $('overviewCloudRetry').addEventListener('click', refreshCloudOverview);
 
   document.querySelectorAll('[data-tab]').forEach(button => {
     button.addEventListener('click', () => {
@@ -1223,7 +1325,9 @@
       }
       sessionVerified = true;
       await refreshAll();
-      if (new URLSearchParams(window.location.search).get('tab') === 'invites') activateTab('invites');
+      await refreshCloudOverview();
+      const requestedTab = new URLSearchParams(window.location.search).get('tab');
+      if (['users', 'invites', 'audit', 'settings'].includes(requestedTab)) activateTab(requestedTab);
       hideError();
     } catch (error) {
       if (error.code === 'ACCOUNT_DISABLED') {
