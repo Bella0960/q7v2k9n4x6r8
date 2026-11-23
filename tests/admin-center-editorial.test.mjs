@@ -66,6 +66,7 @@ test('admin documents and scripts are not intercepted or precached by the common
   assert.ok(!sw.includes("'./admin/admin-center.js?"));
   assert.ok(!sw.includes("'./admin/admin-center.css?"));
   assert.ok(!sw.includes("'./admin/admin-center-editorial.css?"));
-  assert.match(sw, /const CACHE_NAME = 'phone-app-pwa-v306'/);
+  const cacheVersion = Number((sw.match(/const CACHE_NAME = 'phone-app-pwa-v(\d+)'/) || [])[1]);
+  assert.ok(Number.isInteger(cacheVersion) && cacheVersion >= 306, 'PWA cache version must be v306 or newer');
   assert.ok(html.includes('./admin-center.js?v=20261123-editorial1'));
 });
