@@ -59,7 +59,7 @@ function makeStore(seed = {}) {
   };
 }
 
-function makeRuntime({ store, confirmAnswer = true, aiBehavior = 'resolve', saveWorks = true, reply = null }) {
+function makeRuntime({ store, confirmAnswer = true, aiBehavior = 'resolve', saveWorks = true, failKey = null, reply = null }) {
   const toasts = [];
   const calls = [];
   const confirms = [];
@@ -77,10 +77,11 @@ function makeRuntime({ store, confirmAnswer = true, aiBehavior = 'resolve', save
     confirm: (msg) => { confirms.push(msg); return confirmAnswer; },
     warnGameStorage: (m) => toasts.push(m),
     saveJSON: (key, value, quiet) => {
-      if (!saveWorks) return false;
+      if (!saveWorks || (failKey && key === failKey)) return false;
       try { store.setItem(key, JSON.stringify(value)); return true; } catch (e) { return false; }
     },
     detectiveTeam: () => [{ id: 'roleA', name: '阿岚' }],
+    startCase: () => { sandbox.__startCaseCalls = (sandbox.__startCaseCalls || 0) + 1; },
     detectivePersona: () => '阿岚；性格：温柔',
     campaignBrief: () => '过往选择：旧案：选择 相信队长；结果 结案。持续伏笔：旧案留下：一枚旧钥匙。调查队信任记录：阿岚：2。',
     JSON, Object, String, Number, Array, Math, Date, Promise, Error, console,
@@ -325,7 +326,8 @@ test('切角色后旧结果不写入：不串角色、不弹成功', async () =>
 
 test('存盘失败不谎报「加入档案」', async () => {
   const store = makeStore();
-  const { sb, toasts } = makeRuntime({ store, saveWorks: false });
+  /* 只让「案件存档」这一键失败：预算能正常记账（否则走 fail-closed，根本不会发请求） */
+  const { sb, toasts } = makeRuntime({ store, failKey: 'maomao_detective_generated_cases_v1' });
 
   sb.generateDetectiveCase();
   await flush();
@@ -333,15 +335,54 @@ test('存盘失败不谎报「加入档案」', async () => {
   assert.ok(toasts.some((t) => t.includes('没能存下')), 'must state that it will not survive a refresh');
 });
 
-test('预算落盘失败时明确提示并仍按本机内存继续限制', async () => {
+test('总控 P1 续：保存成功后列表立即刷新，刚付费生成的案件立刻可见', async () => {
+  const store = makeStore();
+  const { sb, calls } = makeRuntime({ store });
+  const before = sb.__startCaseCalls || 0;
+  sb.generateDetectiveCase();
+  await flush();
+  assert.equal(calls.length, 1);
+  assert.equal((sb.__startCaseCalls || 0) > before, true, '成功保存后必须调用 startCase() 刷新');
+});
+
+/* 总控最新复审 P1：预算写入+读回确认成功才允许付费请求；失败 0 请求并释放 busy。 */
+test('预算落盘失败：0 请求、释放 busy、明确提示', async () => {
   const store = makeStore();
   const { sb, toasts, calls } = makeRuntime({ store, saveWorks: false });
 
   sb.generateDetectiveCase();
   await flush();
-  assert.equal(calls.length, 1);
-  assert.ok(toasts.some((t) => t.includes('刷新后可能重置')), 'must disclose that the local limit may reset');
-  assert.equal(sb.detectiveRemaining(), 2, 'in-session counting must keep working');
+  assert.equal(calls.length, 0, '预算写不进本机就绝不发付费请求');
+  assert.equal(sb.detectiveGenBusy, false, '必须释放 busy，界面不能永久转圈');
+  assert.ok(toasts.some((t) => t.includes('暂停生成新案')), '必须说明原因');
+});
+
+test('预算落盘失败：读回被改也视为失败（不只看有没有抛异常）', async () => {
+  const raw = {};
+  const store = {
+    getItem: (k) => (k in raw ? raw[k] : null),
+    setItem: (k, v) => { raw[k] = String(v) + '!corrupted'; },   /* 读回不匹配 */
+    removeItem: (k) => { delete raw[k]; },
+    failWrites: () => {},
+    raw,
+  };
+  const { sb, calls } = makeRuntime({ store });
+  sb.generateDetectiveCase();
+  await flush();
+  assert.equal(calls.length, 0, '读回校验失败也必须 fail-closed');
+});
+
+test('预算落盘失败：模拟刷新后重试同样 0 请求', async () => {
+  const store = makeStore({ saveWorks: true });
+  const first = makeRuntime({ store, saveWorks: false });
+  first.sb.generateDetectiveCase();
+  await flush();
+  assert.equal(first.calls.length, 0);
+
+  const second = makeRuntime({ store, saveWorks: false });   // 模拟刷新
+  second.sb.generateDetectiveCase();
+  await flush();
+  assert.equal(second.calls.length, 0, '刷新重入仍 fail-closed');
 });
 
 test('无 API 配置时 0 请求、不扣次数', async () => {
