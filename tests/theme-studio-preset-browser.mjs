@@ -47,11 +47,19 @@ const readPresets = page => page.evaluate(k => {
   return raw ? JSON.parse(raw).presets : [];
 }, STUDIO_KEY);
 
-// Register a one-shot dialog handler: accept(prompt value) or dismiss(confirm).
-function onDialog(page, action, value) {
-  page.once('dialog', async d => {
-    if (action === 'accept') await d.accept(value); else await d.dismiss();
-  });
+// Queue dialog actions: a save-as flow opens a confirm then a prompt, so two
+// handlers must consume consecutive dialogs instead of both binding to the first.
+const dialogQueue = [];
+function onDialog(page, action, value, record) {
+  dialogQueue.push({ action, value, record });
+  if (!page.__dialogBound) {
+    page.__dialogBound = true;
+    page.on('dialog', async d => {
+      const next = dialogQueue.shift() || { action: 'dismiss' };
+      if (next.record) next.record(d.message());
+      if (next.action === 'accept') await d.accept(next.value); else await d.dismiss();
+    });
+  }
 }
 
 async function savePresetViaUI(page, name) {
@@ -61,6 +69,11 @@ async function savePresetViaUI(page, name) {
 }
 
 async function openEntryMenu(page, index) {
+  // Reset any open menu first: a dismissed dialog leaves the menu expanded, so a
+  // naive second toggle on the same entry would close it instead of opening it.
+  await page.evaluate(() => {
+    document.querySelectorAll('.preset-entry.menu-open').forEach(el => el.classList.remove('menu-open'));
+  });
   const entries = await page.$$('.preset-entry');
   await entries[index].$('.preset-menu-btn').then(b => b.click());
   await delay(80);
@@ -88,6 +101,7 @@ try {
     const pageErrors = [];
     page.on('pageerror', e => pageErrors.push(e.message));
 
+    dialogQueue.length = 0;
     await page.goto(origin + '/theme-studio/theme-studio.html', { waitUntil: 'domcontentloaded' });
     await page.waitForSelector('.chat-slim-card', { timeout: 15000 });
     await delay(200);
@@ -211,6 +225,49 @@ try {
     afterRace = await snapshot(page);
     assert.equal(afterRace.bubble.myBubbleBg, '#333333', width + 'px accepted cross-role load fills draft');
     assert.deepEqual(await beautyKeys(page), [], width + 'px cross-role draft load writes no beauty scope');
+
+    // 7b. Cross-role update must not overwrite role A's preset. Dismiss leaves the
+    //     original id/values/scope untouched; accepting saves a new entry owned by B.
+    let crossMenu = await openEntryMenu(page, 1);
+    onDialog(page, 'dismiss');
+    await clickMenuAction(crossMenu, '另存为…');
+    presets = await readPresets(page);
+    let aPreset = presets.find(p => p.id === 'role-a-p');
+    assert.equal(aPreset.scope, 'role-a', width + 'px dismissed cross-role update keeps source scope');
+    assert.equal(aPreset.values.myBubbleBg, '#333333', width + 'px dismissed cross-role update keeps values');
+    assert.equal(presets.length, 3, width + 'px dismissed cross-role update adds no entry');
+
+    crossMenu = await openEntryMenu(page, 1);
+    onDialog(page, 'accept');
+    onDialog(page, 'accept', 'B 副本');
+    await clickMenuAction(crossMenu, '另存为…');
+    presets = await readPresets(page);
+    assert.equal(presets.length, 4, width + 'px save-as adds a new slot');
+    aPreset = presets.find(p => p.id === 'role-a-p');
+    assert.equal(aPreset.scope, 'role-a', width + 'px original role-A preset preserved after save-as');
+    assert.equal(aPreset.values.myBubbleBg, '#333333', width + 'px original role-A values preserved');
+    const bCopy = presets.find(p => p.name === 'B 副本');
+    assert.ok(bCopy, width + 'px save-as created a new entry');
+    assert.equal(bCopy.scope, 'role-b', width + 'px new entry belongs to current role B');
+
+    // 7c. Legacy preset must not be silently bound to a role on update. Dismiss the
+    //     save-as prompt; legacy scope stays null and values stay untouched.
+    const legacyMenu = await openEntryMenu(page, 0);
+    onDialog(page, 'dismiss');
+    await clickMenuAction(legacyMenu, '另存为…');
+    presets = await readPresets(page);
+    const legacyAfter = presets.find(p => p.id === 'legacy');
+    assert.equal(legacyAfter.scope, null, width + 'px legacy preset stays null after dismissed update');
+    assert.equal(legacyAfter.values.myBubbleBg, '#222222', width + 'px legacy values untouched');
+
+    // 7d. Delete confirmation names the source scope; dismiss keeps the entry.
+    let deleteDialog = null;
+    onDialog(page, 'dismiss', null, m => { deleteDialog = m; });
+    const delMenu = await openEntryMenu(page, 1);
+    await clickMenuAction(delMenu, '删除');
+    assert.ok(deleteDialog && deleteDialog.includes('角色 A'), width + 'px delete prompt names the source role');
+    presets = await readPresets(page);
+    assert.ok(presets.find(p => p.id === 'role-a-p'), width + 'px dismissed delete keeps the entry');
 
     // 8. Region isolation: loading a list preset must not overwrite detail/bubble drafts.
     await page.click('[data-tab="list"]');

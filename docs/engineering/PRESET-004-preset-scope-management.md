@@ -12,8 +12,8 @@
 1. **预设管理操作（按稳定 id 定位）**
    - 每条方案支持：使用为草稿、重命名、以当前草稿更新方案、删除。
    - 重命名：`prompt` 取当前名，空名/纯空格拒绝；名称 `trim` 后截 24；按 `id` 定位，找不到则提示方案不存在，不误改同名另一项。
-   - 更新：`confirm` 确认后按 `id` 用当前草稿覆盖 `values`；不新增名额；气泡条目把来源 scope 刷新为当前作用域。
-   - 删除：`confirm` 确认后按 `id` 过滤；写失败/读回不一致时提示失败，不在 UI 假删或假更新。
+   - 更新：**同作用域**（列表/详情，或气泡来源与当前作用域一致）`confirm` 后按 `id` 用当前草稿覆盖 `values`，不新增名额。**跨作用域气泡方案**（来源为别的角色或旧版通用）禁止直接覆盖原条目：菜单动作变为「另存为…」，`confirm` 说明「原来源 → 当前作用域、将覆盖并改来源」，取消则原 `id/values/scope` 完全不动；确认后 `prompt` 命名并新建一条归当前作用域的条目，原条目保留。旧无 scope 预设不会被静默归属某角色。
+   - 删除：`confirm` 文案带来源标注 `scopeLabel`（全局/角色名/旧版通用方案），避免两角色同名误判；按 `id` 精确过滤；写失败/读回不一致时提示失败，不在 UI 假删或假更新。
    - 所有持久化经 `persistPresets`：`api.save` 返回 false 即中断提示，成功后回读 `api.read()` 再渲染；runtime `save` 自带写后读回校验。
 2. **三类方案独立**
    - 列表/详情/气泡各自只渲染和操作本区域预设；「使用为草稿」只更新当前区域草稿，不写聊天、不改全局主题、不写角色气泡；仍需点「应用到聊天」才实际生效。
@@ -29,9 +29,10 @@
 
 ### 测试
 - 新增 `tests/theme-studio-preset-browser.mjs`（自带 Vite，端口 4194；视口 375/390/430），覆盖：
-  - 两条同名不同 id；重命名按 id 定位、不串同名；更新已有方案不占新名额；删除成功。
+  - 两条同名不同 id；重命名按 id 定位、不串同名；同作用域更新已有方案不占新名额；删除成功。
   - 注入 quota 错误时重命名失败不假报、旧预设名不变。
   - 旧无 scope 预设标注「旧版通用方案」；跨作用域载入 dismiss 不改草稿、accept 只填草稿；跨角色 A→B 同样先确认。
+  - 跨角色更新：dismiss 后原方案 `id/values/scope` 不变、不新增名额；接受另存后新条目归当前角色 B，角色 A 原条目保留；旧无 scope 方案被拒后仍为 null、不被静默归属角色；删除确认文案带来源角色名，dismiss 不删除。
   - 载入只改草稿，beauty 全局/角色存储为空；list 载入不覆盖 detail/bubble 草稿；持久化后重新打开恢复。
 - `tests/theme-studio.test.mjs` 新增 Node 合同：老预设保留 id/name/tab/values 且 scope=null；气泡 scope 透传、列表/详情与非法 scope 被丢弃；预设 20 条上限。
 - `package.json` 新增脚本 `test:studio:preset:browser`（未挂入 build 链）。
@@ -53,7 +54,13 @@
 - `node --test tests/theme-studio.test.mjs`：**12/12 PASS**（含新增 3 条预设合同，既有 9 条无回归）。
 - `node tests/theme-studio-import-browser.mjs`：**3/3 PASS**（导入隔离专项，无回归）。
 - `node tests/theme-studio-preview-browser.mjs`：**3/3 PASS**（预览对齐，无回归）。
-- `npx vite build`：**PASS**（约 8.14s）。
+- `npx vite build`：**PASS**（返修轮 9.47s）。
+
+## 3a. 返修记录（#455 总控评论 `7103697454`）
+
+- P1：跨角色「更新草稿」原本可无来源提示地覆盖别的角色方案的 `values` 并改写 `scope`。已改为跨作用域气泡方案只允许「另存为…」新建当前作用域条目，原条目 `id/values/scope` 不动；旧无 scope 不被静默归属角色。
+- 删除确认文案补带来源 `scopeLabel`，按 `id` 精确删除。
+- 浏览器专项补：跨角色更新 dismiss/另存两条路径、旧无 scope 拒改、删除确认带来源角色；dialog 改为队列式消费（confirm + prompt 连续弹窗）。
 
 ## 4. 数据与兼容边界
 

@@ -130,12 +130,24 @@
     if(!api.save(next)){toast('操作失败，请检查存储空间');return false;}
     state=api.read();renderPresets();return true;
   }
+  function presetId() {
+    return 'ts-' + Date.now().toString(36) + '-' + Math.random().toString(36).slice(2, 8);
+  }
+  // A bubble preset owned by another role (or a legacy generic one) must never be
+  // overwritten from this scope: update creates a new entry for the current scope
+  // instead, leaving the original id/values/scope untouched.
+  function isCrossScopeBubble(p) {
+    return p.tab === 'bubble' && (p.scope == null || p.scope !== scope);
+  }
+  function scopeName(value) {
+    if (value === 'global') return '全局';
+    return roleNameById(value) || '当前角色';
+  }
   function applyPresetToDraft(p) {
     if(p.tab==='bubble'){
-      var cross=p.scope==null||p.scope!==scope;
-      if(cross){
+      if(isCrossScopeBubble(p)){
         var from=p.scope==null?'旧版通用方案':scopeLabel(p);
-        var to=scope==='global'?'全局':(roleNameById(scope)||'当前角色');
+        var to=scopeName(scope);
         if(!window.confirm('该方案来自「'+from+'」，载入到「'+to+'」草稿？仅作模板，不会自动应用。'))return;
       }
       drafts.bubble=cleanBubble(p.values);
@@ -157,6 +169,25 @@
     toast('方案已重命名');
   }
   function updatePresetFromDraft(p) {
+    if (isCrossScopeBubble(p)) {
+      var from = p.scope == null ? '旧版通用方案' : scopeLabel(p);
+      var to = scopeName(scope);
+      var copy = window.confirm('该方案来自「' + from + '」，不能在「' + to + '」下直接覆盖原方案。\n点确定将当前草稿另存为「' + to + '」的新方案；点取消放弃，原方案保持不变。');
+      if (!copy) return;
+      var asked = window.prompt('另存为新方案的名字', p.name + '（' + to + '）');
+      if (asked == null) return;
+      var newName = asked.trim().slice(0, 24);
+      if (!newName) { toast('方案名称不能为空'); return; }
+      var next = api.read();
+      if (next.presets.length >= 20) { toast('最多保存 20 个方案'); return; }
+      var entry = { id: presetId(), name: newName, tab: p.tab,
+        values: JSON.parse(JSON.stringify(drafts[p.tab])) };
+      if (p.tab === 'bubble') entry.scope = scope;
+      next.presets.push(entry);
+      if (!persistPresets(next)) return;
+      toast('已另存为「' + to + '」的新方案，原方案未改动');
+      return;
+    }
     if(!window.confirm('用当前草稿更新方案「'+p.name+'」？'))return;
     var next=api.read();
     var target=next.presets.find(function(item){return item.id===p.id;});
@@ -167,7 +198,9 @@
     toast('方案已更新（未自动应用）');
   }
   function deletePreset(p) {
-    if(!window.confirm('删除方案「'+p.name+'」？'))return;
+    var label=scopeLabel(p);
+    var source=label?'（来源：'+label+'）':'';
+    if(!window.confirm('删除方案「'+p.name+'」'+source+'？此操作不可撤销。'))return;
     var next=api.read();
     next.presets=next.presets.filter(function(item){return item.id!==p.id;});
     if(!persistPresets(next))return;
@@ -192,7 +225,8 @@
       var menu=document.createElement('div');menu.className='preset-menu';
       var rename=document.createElement('button');rename.type='button';rename.textContent='重命名';
       rename.addEventListener('click',function(){renamePreset(p);});
-      var update=document.createElement('button');update.type='button';update.textContent='更新草稿';
+      var update=document.createElement('button');update.type='button';
+      update.textContent=isCrossScopeBubble(p)?'另存为…':'更新草稿';
       update.addEventListener('click',function(){updatePresetFromDraft(p);});
       var remove=document.createElement('button');remove.type='button';remove.className='danger';remove.textContent='删除';
       remove.addEventListener('click',function(){deletePreset(p);});
@@ -251,7 +285,7 @@
     name=name.trim().slice(0,24);
     var next=api.read();
     if(next.presets.length>=20){toast('最多保存 20 个方案');return;}
-    var entry={id:'ts-'+Date.now().toString(36)+'-'+Math.random().toString(36).slice(2,8),
+    var entry={id:presetId(),
       name:name,tab:tab,values:JSON.parse(JSON.stringify(drafts[tab]))};
     if(tab==='bubble')entry.scope=scope;
     next.presets.push(entry);
