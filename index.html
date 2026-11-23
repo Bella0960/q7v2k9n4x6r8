@@ -608,6 +608,7 @@
       var dragEl = null;
       var dragClone = null;
       var placeholder = null;
+      var dragOriginPage = null;
 
       var activePageIndex = 0;
       var edgeTimer = null;
@@ -1126,6 +1127,8 @@
 
         var dragCols = getDraggedGridSpan(targetItem, 'column');
         var dragRows = getDraggedGridSpan(targetItem, 'row');
+        var originalPageElement = targetItem.closest('.home-page');
+        dragOriginPage = originalPageElement ? getPages().indexOf(originalPageElement) : null;
         isDragging = true;
         dragEl = targetItem;
         var firstGrid = document.getElementById('gridPage0');
@@ -1364,6 +1367,12 @@
         }
         cleanupEmptyTrailingPages();
         updateDefaultGridComposition();
+        // A cancelled cross-page drop should return to the page that owns the source.
+        if (dragOriginPage !== null && dragOriginPage >= 0 &&
+            dragOriginPage < getPages().length && activePageIndex !== dragOriginPage) {
+          goToPage(dragOriginPage);
+        }
+        dragOriginPage = null;
       }
 
       function endDrag() {
@@ -1403,6 +1412,7 @@
         }
 
         dragEl = null;
+        dragOriginPage = null;
 
         // 清理空页与持久化
         cleanupEmptyTrailingPages();
@@ -1486,6 +1496,15 @@
         if (isDragging) {
           cancelDrag();
         }
+      });
+
+      // Interruption outside the page must not leave a hidden source or a ghost.
+      window.addEventListener('blur', function () {
+        if (pressTimer) {
+          clearTimeout(pressTimer);
+          pressTimer = null;
+        }
+        if (isDragging) cancelDrag();
       });
 
       // 2. Mouse Events
