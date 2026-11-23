@@ -737,11 +737,20 @@ button{font:inherit;color:inherit;cursor:pointer;border:0;background:transparent
       return saved;
     } catch (e) { return {}; }
   }
+  /* 设置写入失败原先被空 catch 吞掉：滑杆照动、界面照变，刷新后又回到旧值，
+     用户完全不知道为什么。改为返回结果，并在本会话内只提示一次，避免拖动滑杆时刷屏。 */
+  var settingsSaveWarned = false;
+  function warnSettingsSaveFailed() {
+    if (settingsSaveWarned) return;
+    settingsSaveWarned = true;
+    showToast('阅读设置没能存到本机（存储空间不足），刷新后会回到上一次保存的设置');
+  }
   function saveReaderSettings() {
     // 文字类设置照常存到 READER_SETTINGS_KEY；背景图是大体积 DataURL，独立存 READER_BG_KEY
     var compact = Object.assign({}, settings);
     delete compact.image;
-    try { localStorage.setItem(READER_SETTINGS_KEY, JSON.stringify(compact)); } catch (e) {}
+    var saved = true;
+    try { localStorage.setItem(READER_SETTINGS_KEY, JSON.stringify(compact)); } catch (e) { saved = false; }
     // 背景图：有则存、空则删；超限则提示并保留上一张
     var img = settings && settings.image;
     if (img && typeof img === 'string') {
@@ -755,6 +764,8 @@ button{font:inherit;color:inherit;cursor:pointer;border:0;background:transparent
     } else {
       try { localStorage.removeItem(READER_BG_KEY); } catch (e) {}
     }
+    if (!saved) warnSettingsSaveFailed();
+    return saved;
   }
   function readStoredBookFallback() {
     try {
@@ -818,6 +829,8 @@ button{font:inherit;color:inherit;cursor:pointer;border:0;background:transparent
       } catch (e) {}
     });
   }
+  /* IndexedDB 不可用时回落到 localStorage；回落也失败时必须给出可读原因，
+     否则调用方只能拿到 "QuotaExceededError" 这类原始异常文案，用户看不懂。 */
   function saveReaderComment(comment) {
     return idbPut('comments', comment).catch(function () {
       var items = [];
@@ -825,7 +838,11 @@ button{font:inherit;color:inherit;cursor:pointer;border:0;background:transparent
       if (!Array.isArray(items)) items = [];
       var index = items.findIndex(function (item) { return item.id === comment.id; });
       if (index >= 0) items[index] = comment; else items.push(comment);
-      localStorage.setItem('maomao_reader_comments_v1', JSON.stringify(items));
+      try {
+        localStorage.setItem('maomao_reader_comments_v1', JSON.stringify(items));
+      } catch (e) {
+        throw new Error('本机存储空间不足，这条段评没能保存');
+      }
     }).then(function () { commentCache[comment.id] = comment; });
   }
   function getReaderRoles() {

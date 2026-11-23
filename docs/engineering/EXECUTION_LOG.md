@@ -147,3 +147,22 @@ On the next turn/session, read this file and the current `AGENTS.md` first. Cont
 
 - **2026-11-22 storage hardening:** Prevent damaged/non-array primary `chat_memories_<id>` content from being overwritten; reject invalid memory targets; stop memory-library delete, dedupe, and AI merge success displays when write fails; capture AI-merge role ID before network await. Added the corresponding regression tests. **16/16 V8-isolated production-module/DOM-contract checks passed** (not full Node). Parsed all changed JS/inline scripts successfully.
 - **Verification handoff:** PR source remains unmerged; next QA must use the exact pinned branch SHA and the existing public-only verification channel. Do not run exhausted legacy private Actions or bypass existing safety guards.
+
+## 2026-11-23 · APP-LIBRARY-001 · 阅读应用首轮核查与写入可信性
+
+- **分支 / PR：** `APP-LIBRARY-001-storage-trust` · Draft PR。基线 main `40b671bb`。未合并、未部署。
+- **应用构成：** `library/library.html`（1944 行单文件）。依赖 `native-feel.js`、`phone_storage.js`、`phone_api.js`。设置键 `maomao_reader_settings_v1`、背景图 `maomao_reader_bg_v1`、本地书 `maomao_reader_local_books_v1`、段评 `maomao_reader_comments_v1`（IndexedDB 优先，localStorage 回落）。
+- **核查结论（源码级）：**
+  - 角色接入：**已用正式角色 ID**。`getReaderRoles()` 走 `PhoneStorage.getCharacters()`，段评按 `bookId|chapterIndex|paragraphIndex|roleId` 建键，不会串角色。
+  - AI 请求：读角色卡 8 个字段 + `getChatHistory(roleId)` 最近 8 条 + `getMemories(roleId)` 最近 5 条，字段级按角色隔离，可接受。
+  - 本地书导入：`persistLocalBook()` 失败会 reject，`confirmImportedBook` 有 try/catch 与失败提示，且失败时不 `books.unshift`——链路正确。
+  - 段评写入：IDB 优先、localStorage 回落，结构与键正确。
+- **P1 已修（本 PR）：**
+  1. `saveReaderSettings()` 的 `setItem(READER_SETTINGS_KEY)` 是空 catch：拖滑杆、换底色时界面照变，写入失败无任何提示，刷新后静默回到旧值。改为返回布尔，失败时本会话只提示一次（避免拖滑杆刷屏）。
+  2. `saveReaderComment()` 在 IDB 不可用且 localStorage 也满时，会把原始 `QuotaExceededError` 抛给调用方，用户看到的是英文异常名。改为抛出可读文案「本机存储空间不足，这条段评没能保存」，且失败时不写入 `commentCache`（不会看起来已保存）。
+- **测试：** 新增 `tests/library-storage-trust.test.mjs`（9 项，VM 跑真实 `saveReaderSettings` / `saveReaderComment`），9/9 通过；内联脚本 `node --check` 通过。
+- **登记未做（需产品决策，不在本 PR）：**
+  - **没有阅读进度记忆**：全页无 progress / lastRead 之类字段，退出阅读器再进来只能从章节开头开始。属功能缺口，需产品确认要做「记忆阅读位置」还是「每次从头」。
+  - 不产出也不读取世界事件，`ECO-LINK-002` 前不自建。
+  - 世界书未接入（共享 `PhoneContext` 仍不安全，#428 已证），保持只读角色卡 + 记忆 + 近期聊天。
+- **未验证：** Vite 全站构建、Chromium 375/390/430、真机、真实配额与 IDB 被禁用场景。
