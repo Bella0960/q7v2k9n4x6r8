@@ -14,21 +14,6 @@
     <link rel="manifest" href="%BASE_URL%manifest.json" />
     <link rel="icon" type="image/png" sizes="192x192" href="%BASE_URL%assets/mao-bunny-192.png" />
     <link rel="apple-touch-icon" href="%BASE_URL%assets/mao-bunny-192.png" />
-    <script>
-      // Start with the approved component-first desktop. Remove obsolete layout records only;
-      // wallpaper, widget content, chat, profiles, and other app data remain untouched.
-      (function () {
-        try {
-          Object.keys(localStorage).forEach(function (key) {
-            if (/^ds_layout_v\d+$/.test(key) && key !== 'ds_layout_v14') {
-              localStorage.removeItem(key);
-            }
-          });
-          localStorage.removeItem('ds_home_default_revision');
-          localStorage.removeItem('maomao_home_layout_backup_20261106');
-        } catch (err) {}
-      })();
-    </script>
     <title>MAo</title>
     <meta name="description" content="MAo · 私人互动小手机，支持聊天、论坛、音乐、记忆、世界书等完整手机功能" />
     <meta property="og:title" content="MAo" />
@@ -623,6 +608,7 @@
       var dragEl = null;
       var dragClone = null;
       var placeholder = null;
+      var dragOriginPage = null;
 
       var activePageIndex = 0;
       var edgeTimer = null;
@@ -676,9 +662,20 @@
 
       function loadLayout() {
         var v = readJSON(LS_KEY);
+        // Preserve old records. Only fall back to them when the current key is invalid.
+        if (!isValidLayout(v)) {
+          for (var version = 13; version >= 1; version--) {
+            var legacy = readJSON('ds_layout_v' + version);
+            if (isValidLayout(legacy)) {
+              v = legacy;
+              break;
+            }
+          }
+        }
         if (isValidLayout(v)) {
           if (!Array.isArray(v.removed)) v.removed = [];
           while (v.pages.length < 3) v.pages.push([]);
+          v.v = 14;
           return v;
         }
         return getDefaultLayout();
@@ -686,8 +683,12 @@
 
       function saveLayout(data) {
         try {
-          localStorage.setItem(LS_KEY, JSON.stringify(data));
-        } catch (e) {}
+          var serialized = JSON.stringify(data);
+          localStorage.setItem(LS_KEY, serialized);
+          return localStorage.getItem(LS_KEY) === serialized;
+        } catch (e) {
+          return false;
+        }
       }
 
       var currentLayout = loadLayout();
@@ -776,6 +777,20 @@
         if (!el) return;
         el.classList.remove('is-dragging-source');
         getShelf().appendChild(el);
+      }
+
+      // Preserve the art-directed first screen only while its original order is intact.
+      // Custom orders must be laid out by widget spans rather than nth-child positions.
+      function updateDefaultGridComposition() {
+        var grid = document.getElementById('gridPage0');
+        if (!grid) return;
+        var expected = getDefaultLayout().pages[0];
+        var ids = Array.from(grid.children).filter(function (el) {
+          return !!(el.dataset && el.dataset.drag);
+        }).map(function (el) { return el.dataset.drag; });
+        var matchesDefault = !isDragging && ids.length === expected.length &&
+          ids.every(function (id, i) { return id === expected[i]; });
+        grid.classList.toggle('is-default-layout', matchesDefault);
       }
 
       // ===== 恢复布局到 DOM =====
@@ -869,6 +884,7 @@
         }
 
         updateDotsUI();
+        updateDefaultGridComposition();
       }
 
       // 样式归一化转换
@@ -1084,8 +1100,24 @@
           if (el.dataset && el.dataset.drag) removedOrder.push(el.dataset.drag);
         });
 
-        currentLayout = { v: 6, pages: pagesOrder, dock: dockOrder, removed: removedOrder };
-        saveLayout(currentLayout);
+        currentLayout = { v: 14, pages: pagesOrder, dock: dockOrder, removed: removedOrder };
+        if (!saveLayout(currentLayout)) {
+          showTip('桌面布局保存失败，请检查存储空间');
+        }
+        updateDefaultGridComposition();
+      }
+
+      // Measure actual grid occupancy (e.g. 4×2 clock, 4×3 social card).
+      function getDraggedGridSpan(el, axis) {
+        if (!el || !el.closest('.desktop-grid')) return 1;
+        var style = window.getComputedStyle(el);
+        var start = axis === 'column' ? style.gridColumnStart : style.gridRowStart;
+        var end = axis === 'column' ? style.gridColumnEnd : style.gridRowEnd;
+        var fromSpan = /span\s+(\d+)/.exec(start) || /span\s+(\d+)/.exec(end);
+        if (fromSpan) return Math.max(1, Math.min(10, Number(fromSpan[1])));
+        var first = Number(start), last = Number(end);
+        return Number.isInteger(first) && Number.isInteger(last) && last > first
+          ? Math.min(10, last - first) : 1;
       }
 
       // ===== 拖拽系统核心实现 =====
@@ -1093,23 +1125,20 @@
         if (!targetItem) return;
         if (!editing) enterEdit();
 
+        var dragCols = getDraggedGridSpan(targetItem, 'column');
+        var dragRows = getDraggedGridSpan(targetItem, 'row');
+        var originalPageElement = targetItem.closest('.home-page');
+        dragOriginPage = originalPageElement ? getPages().indexOf(originalPageElement) : null;
         isDragging = true;
         dragEl = targetItem;
+        var firstGrid = document.getElementById('gridPage0');
+        if (firstGrid) firstGrid.classList.remove('is-default-layout');
 
-        var isWidget = dragEl.classList.contains('ds-widget');
-        var dragId = dragEl.dataset.drag;
-
-        // 创建占位符（保持尺寸，确保 CSS 网格其他元素自然推移让位）
+        // Match the occupied grid span, not a hardcoded list of widget IDs.
         placeholder = document.createElement('div');
         placeholder.className = 'drag-placeholder';
-
-        if (isWidget) {
-          if (dragId === 'postcard' || dragId === 'image') {
-            placeholder.classList.add('span-4');
-          } else {
-            placeholder.classList.add('span-2');
-          }
-        }
+        placeholder.style.gridColumn = 'span ' + Math.min(4, dragCols);
+        placeholder.style.gridRow = 'span ' + dragRows;
 
         // 把占位符插入源位置
         if (dragEl.parentNode) {
@@ -1123,6 +1152,13 @@
         dragClone = dragEl.cloneNode(true);
         dragClone.classList.add('drag-avatar');
         dragClone.classList.remove('is-dragging-source');
+        // Ghosts must not duplicate live widget IDs or appear as placeable items.
+        dragClone.removeAttribute('data-drag');
+        dragClone.removeAttribute('id');
+        dragClone.querySelectorAll('[id], [data-drag]').forEach(function (node) {
+          node.removeAttribute('id');
+          node.removeAttribute('data-drag');
+        });
         var delIcon = dragClone.querySelector('.ds-del');
         if (delIcon) delIcon.remove();
 
@@ -1305,6 +1341,40 @@
         }
       }
 
+      // A system-interrupted touch is not a completed drop.
+      // The original DOM element stays in its original parent until endDrag().
+      function cancelDrag() {
+        if (!isDragging) return;
+        isDragging = false;
+        if (edgeTimer) {
+          clearTimeout(edgeTimer);
+          edgeTimer = null;
+        }
+        lastEdgeSide = null;
+        edgeCooldown = false;
+        if (placeholder) {
+          placeholder.remove();
+          placeholder = null;
+        }
+        if (dragClone) {
+          dragClone.remove();
+          dragClone = null;
+        }
+        if (dragEl) {
+          dragEl.classList.remove('is-dragging-source');
+          dragEl.style.display = '';
+          dragEl = null;
+        }
+        cleanupEmptyTrailingPages();
+        updateDefaultGridComposition();
+        // A cancelled cross-page drop should return to the page that owns the source.
+        if (dragOriginPage !== null && dragOriginPage >= 0 &&
+            dragOriginPage < getPages().length && activePageIndex !== dragOriginPage) {
+          goToPage(dragOriginPage);
+        }
+        dragOriginPage = null;
+      }
+
       function endDrag() {
         if (!isDragging) return;
         isDragging = false;
@@ -1342,6 +1412,7 @@
         }
 
         dragEl = null;
+        dragOriginPage = null;
 
         // 清理空页与持久化
         cleanupEmptyTrailingPages();
@@ -1423,8 +1494,17 @@
           pressTimer = null;
         }
         if (isDragging) {
-          endDrag();
+          cancelDrag();
         }
+      });
+
+      // Interruption outside the page must not leave a hidden source or a ghost.
+      window.addEventListener('blur', function () {
+        if (pressTimer) {
+          clearTimeout(pressTimer);
+          pressTimer = null;
+        }
+        if (isDragging) cancelDrag();
       });
 
       // 2. Mouse Events
@@ -2502,40 +2582,96 @@
         });
       });
 
-      // 照片上传通用
+      // 社交资料卡照片单独存在 IndexedDB；旧版内联图片仅在迁移确认后压缩出 metadata。
+      var photoStore = window.MAOMAOWallpaperStore;
+      function compactSocialLegacy(field) {
+        if (!data[field] || typeof data[field] !== 'string') return;
+        var next = Object.assign({}, data);
+        delete next[field];
+        try {
+          var json = JSON.stringify(next);
+          localStorage.setItem(KEY, json);
+          if (localStorage.getItem(KEY) === json) data = next;
+        } catch (error) { /* Keep the legacy original if metadata cannot be updated. */ }
+      }
+      function photoError(error) {
+        console.warn('[desktop social photo] save failed', error);
+        if (typeof window.showToast === 'function')
+          window.showToast('照片保存失败，请检查存储空间后重试');
+      }
       function bindPhoto(container, dataKey, innerSelector) {
+        if (!container) return;
         var file = container.querySelector('.sc-file');
         var inner = container.querySelector(innerSelector);
-        if (data[dataKey]) inner.style.backgroundImage = 'url(' + data[dataKey] + ')';
-        container.addEventListener('click', function (e) {
-          e.stopPropagation();
+        if (!file || !inner) return;
+        var key = 'home_widget_photo_v2_social_' + dataKey;
+        var version = 0;
+        var legacy = typeof data[dataKey] === 'string' ? data[dataKey] : '';
+        function paint(src) { if (src) inner.style.backgroundImage = 'url("' + src + '")'; }
+        if (legacy) paint(legacy);
+        if (photoStore && typeof photoStore.getByKey === 'function') {
+          photoStore.getByKey(key).then(function(saved) {
+            if (version) return;
+            if (saved) {
+              paint(saved);
+              if (legacy) compactSocialLegacy(dataKey);
+            } else if (legacy && typeof photoStore.saveByKey === 'function') {
+              return photoStore.saveByKey(key, legacy).then(function() {
+                if (!version) compactSocialLegacy(dataKey);
+              });
+            }
+          }).catch(function(error) {
+            console.warn('[desktop social photo] old image migration postponed', error);
+          });
+        }
+        container.addEventListener('click', function(event) {
+          event.stopPropagation();
           if (document.body.classList.contains('home-editing')) return;
+          file.value = '';
           file.click();
         });
-        file.addEventListener('change', function () {
-          var f = file.files[0];
-          if (!f) return;
+        file.addEventListener('change', function() {
+          var picked = file.files && file.files[0];
+          if (!picked) return;
+          var uploadVersion = ++version;
           var reader = new FileReader();
-          reader.onload = function () {
-            // 压缩到最长边 600
+          reader.onerror = function() { photoError(reader.error); };
+          reader.onload = function() {
             var img = new Image();
-            img.onload = function () {
-              var canvas = document.createElement('canvas');
-              var max = 600;
-              var w = img.width, h = img.height;
-              if (w > max || h > max) {
-                if (w > h) { h = h * max / w; w = max; } else { w = w * max / h; h = max; }
-              }
-              canvas.width = w; canvas.height = h;
-              canvas.getContext('2d').drawImage(img, 0, 0, w, h);
-              var url = canvas.toDataURL('image/jpeg', 0.8);
-              data[dataKey] = url;
-              inner.style.backgroundImage = 'url(' + url + ')';
-              save(KEY, data);
+            img.onerror = function() { photoError(new Error('Invalid image')); };
+            img.onload = function() {
+              try {
+                var scale = Math.min(1, 600 / Math.max(img.width, img.height));
+                var w = Math.max(1, Math.round(img.width * scale));
+                var h = Math.max(1, Math.round(img.height * scale));
+                var canvas = document.createElement('canvas');
+                canvas.width = w;
+                canvas.height = h;
+                var context = canvas.getContext('2d');
+                if (!context) throw new Error('Image canvas unavailable');
+                context.drawImage(img, 0, 0, w, h);
+                var url = canvas.toDataURL('image/jpeg', 0.8);
+                var saving = photoStore && typeof photoStore.saveByKey === 'function'
+                  ? photoStore.saveByKey(key, url)
+                  : Promise.resolve().then(function() {
+                      var next = Object.assign({}, data);
+                      next[dataKey] = url;
+                      var json = JSON.stringify(next);
+                      localStorage.setItem(KEY, json);
+                      if (localStorage.getItem(KEY) !== json) throw new Error('Unverified image save');
+                      data = next;
+                    });
+                saving.then(function() {
+                  if (version !== uploadVersion) return;
+                  if (photoStore && typeof photoStore.saveByKey === 'function')
+                    compactSocialLegacy(dataKey);
+                  paint(url);
+                }).catch(photoError);
+              } catch (error) { photoError(error); }
             };
             img.src = reader.result;
           };
-          reader.readAsDataURL(f);
+          reader.readAsDataURL(picked);
         });
       }
       bindPhoto(card.querySelector('.sc-avatar'), 'avatar', '.sc-photo-inner');
@@ -2546,6 +2682,9 @@
     // ===== 图片组件：点击上传图片（Canvas 压缩，最长边 900px，JPEG 0.7） =====
     (function () {
       var KEY = 'ds_image_v1';
+      var imageStore = window.MAOMAOWallpaperStore;
+      var imageStoreKey = 'home_widget_photo_v2_image_single';
+      var uploadRevision = 0;
       var data = null;
       try { data = JSON.parse(localStorage.getItem(KEY)) || null; } catch (e) {}
       var el = document.querySelector('[data-drag="image"]');
@@ -2558,7 +2697,43 @@
         el.style.backgroundPosition = 'center';
         if (ph) ph.style.display = 'none';
       }
-      if (data && data.img) applyImg(data.img);
+      var legacyPhoto = data && typeof data.img === 'string' ? data.img : '';
+      function compactLegacyImage() {
+        if (!data || !data.img) return;
+        var compact = Object.assign({}, data);
+        delete compact.img;
+        try {
+          if (Object.keys(compact).length) {
+            var json = JSON.stringify(compact);
+            localStorage.setItem(KEY, json);
+            if (localStorage.getItem(KEY) === json) data = compact;
+          } else {
+            localStorage.removeItem(KEY);
+            if (localStorage.getItem(KEY) === null) data = compact;
+          }
+        } catch (error) { /* Keep the original until safely removed. */ }
+      }
+      function imageSaveError(error) {
+        console.warn('[desktop image widget] save failed', error);
+        if (typeof window.showToast === 'function')
+          window.showToast('图片保存失败，请检查存储空间后重试');
+      }
+      if (legacyPhoto) applyImg(legacyPhoto);
+      if (imageStore && typeof imageStore.getByKey === 'function') {
+        imageStore.getByKey(imageStoreKey).then(function(saved) {
+          if (uploadRevision) return;
+          if (saved) {
+            applyImg(saved);
+            if (legacyPhoto) compactLegacyImage();
+          } else if (legacyPhoto && typeof imageStore.saveByKey === 'function') {
+            return imageStore.saveByKey(imageStoreKey, legacyPhoto).then(function() {
+              if (!uploadRevision) compactLegacyImage();
+            });
+          }
+        }).catch(function(error) {
+          console.warn('[desktop image widget] old image migration postponed', error);
+        });
+      }
 
       el.addEventListener('click', function (e) {
         e.stopPropagation();
@@ -2568,6 +2743,7 @@
         fi.accept = 'image/*';
         fi.onchange = function () {
           if (!fi.files[0]) return;
+          var activeUpload = ++uploadRevision;
           var reader = new FileReader();
           reader.onload = function () {
             var img = new Image();
@@ -2583,10 +2759,20 @@
               ctx.fillRect(0, 0, w, h);
               ctx.drawImage(img, 0, 0, w, h);
               var out = canvas.toDataURL('image/jpeg', 0.7);
-              applyImg(out);
-              try {
-                localStorage.setItem(KEY, JSON.stringify({ img: out }));
-              } catch (err) {}
+              var saving = imageStore && typeof imageStore.saveByKey === 'function'
+                ? imageStore.saveByKey(imageStoreKey, out)
+                : Promise.resolve().then(function() {
+                    var json = JSON.stringify({ img: out });
+                    localStorage.setItem(KEY, json);
+                    if (localStorage.getItem(KEY) !== json) throw new Error('Unverified image save');
+                    data = { img: out };
+                  });
+              saving.then(function() {
+                if (activeUpload !== uploadRevision) return;
+                if (imageStore && typeof imageStore.saveByKey === 'function')
+                  compactLegacyImage();
+                applyImg(out);
+              }).catch(imageSaveError);
             };
             img.src = reader.result;
           };

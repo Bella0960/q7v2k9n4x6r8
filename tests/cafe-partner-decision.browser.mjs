@@ -1,0 +1,82 @@
+import assert from 'node:assert/strict';
+import { spawn } from 'node:child_process';
+import { chromium } from 'playwright';
+
+const origin = 'http://127.0.0.1:4179';
+const server = spawn(process.execPath, ['node_modules/vite/bin/vite.js', 'preview', '--host', '127.0.0.1', '--port', '4179', '--strictPort'], { stdio: 'ignore' });
+let browser;
+try {
+  const url = origin + '/cafe/cafe.html';
+  for (let attempt = 0; attempt < 40; attempt++) {
+    if (await fetch(url).then(response => response.ok).catch(() => false)) break;
+    await new Promise(resolve => setTimeout(resolve, 250));
+  }
+  browser = await chromium.launch();
+  for (const width of [375, 390, 430]) {
+    const page = await browser.newPage({ viewport: { width, height: 844 }, isMobile: true, hasTouch: true });
+    const errors = [];
+    page.on('pageerror', error => errors.push(error.message));
+    await page.addInitScript(() => {
+      const write = Storage.prototype.setItem;
+      Storage.prototype.setItem = function (key, value) {
+        if (key === 'maomao_cafe_state_v1' && window.ignoreCafeWrites) return;
+        return write.call(this, key, value);
+      };
+    });
+    await page.goto(url);
+    const option = page.locator('#view-overview [data-event]:enabled').first();
+    const choice = Number(await option.getAttribute('data-event'));
+    const before = await page.evaluate(() => localStorage.getItem('maomao_cafe_state_v1'));
+    await page.evaluate(() => { window.ignoreCafeWrites = true; });
+    await option.tap();
+    assert.match(await page.locator('#toast').innerText(), /写入失败/);
+    assert.equal(await page.evaluate(() => localStorage.getItem('maomao_cafe_state_v1')), before);
+    await page.evaluate(() => { window.ignoreCafeWrites = false; });
+    await option.tap();
+    const readState = () => page.evaluate(() => JSON.parse(localStorage.getItem('maomao_cafe_state_v1')));
+    const state = await readState();
+    assert.equal(state.eventChoice, choice);
+    assert.equal(state.partnerDecision.choice, choice);
+    const partner = state.partnerProfiles[state.partnerDecision.roleId];
+    assert.equal(partner.decisions, 1);
+    assert.equal(partner.history[0].choice, state.partnerDecision.choiceTitle);
+    await page.reload();
+    assert.deepEqual((await readState()).partnerDecision, state.partnerDecision);
+    await page.evaluate(() => {
+      const key = 'maomao_cafe_state_v1';
+      const state = JSON.parse(localStorage.getItem(key));
+      state.lifeStats.days = 3;
+      localStorage.setItem(key, JSON.stringify(state));
+    });
+    await page.reload();
+    await page.locator('[data-tab="menu"]:visible').first().tap();
+    await page.locator('#view-menu').waitFor();
+    await page.locator('#openArchive').tap();
+    const reward = page.locator('#view-extra [data-growth-claim="days3"]');
+    await reward.tap();
+    await reward.waitFor({ state: 'detached' });
+    const rewarded = await readState();
+    assert.equal(rewarded.growthClaims.days3.day, state.day);
+    await page.locator('#closeArchive').tap();
+    await page.locator('#view-overview').waitFor();
+    await page.reload();
+    assert.deepEqual((await readState()).growthClaims.days3, rewarded.growthClaims.days3);
+    await page.locator('[data-tab="stock"]:visible').first().tap();
+    const buy = page.locator('#view-stock [data-buy="beans"]');
+    const stockBefore = await readState();
+    await page.evaluate(() => { window.ignoreCafeWrites = true; });
+    await buy.tap();
+    assert.deepEqual(await readState(), stockBefore);
+    assert.match(await page.locator('#toast').innerText(), /写入失败/);
+    await page.evaluate(() => { window.ignoreCafeWrites = false; });
+    await buy.tap();
+    const stockAfter = await readState();
+    assert.equal(stockAfter.stock.beans, stockBefore.stock.beans + 1);
+    assert.ok(stockAfter.cash < stockBefore.cash);
+    assert.deepEqual(errors, []);
+    await page.close();
+  }
+} finally {
+  await browser?.close();
+  server.kill();
+}
