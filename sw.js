@@ -1,7 +1,7 @@
 /* 小手机 PWA Service Worker
  * 页面与静态资源均采用缓存优先+后台更新，断网/慢网时秒开。
  */
-const CACHE_NAME = 'phone-app-pwa-v305';
+const CACHE_NAME = 'phone-app-pwa-v306';
 const FONT_ASSET_CACHE = 'maomao-font-assets-v1';
 function cacheablePublicResponse(response) {
   return !!(response && response.ok && !response.redirected &&
@@ -38,8 +38,6 @@ const APP_SHELL = [
   './account/bootstrap.js',
   './account/bootstrap.html',
   './account/index.html',
-  './admin/admin-center.js?v=20261117-ui3',
-  './admin/admin-center.css?v=20261117-ui1',
   './account/settings-link.js?v=1',
   './account/manage.js',
   './account/manage.css',
@@ -259,6 +257,9 @@ self.addEventListener('fetch', event => {
   const url = new URL(req.url);
   if (url.origin !== self.location.origin) return;
 
+  // Administrator documents AND their versioned UI assets are always network-served.
+  // Do not read/write them in the app-shell cache (even after an older PWA install).
+  if (url.pathname.startsWith('/admin/')) return;
   // Authenticated API responses are account-private; never store them in the shared origin cache.
   if (url.pathname === '/api' || url.pathname.startsWith('/api/')) return;
 
