@@ -225,3 +225,19 @@ On the next turn/session, read this file and the current `AGENTS.md` first. Cont
 - **测试：** 新增 `tests/story-storage-trust.test.mjs`（9 项，VM 跑真实 `storyRead/storyWrite/writeSave/loadSave/setPlayerName`），9/9 通过；内联脚本解析通过。
 - **登记未做：** 剧情应用不产出世界事件（依赖 `ECO-LINK-002`）；`PhoneContext` 未接入（#428）；封面进度条只显示有无存档，不显示百分比（既有设计，未改）。
 - **未验证：** Vite 全站构建、Chromium 375/390/430、真机。
+
+## 2026-11-23 · APP-KITCHEN-001 · 投喂厨房存档写入可信性
+
+- **分支 / PR：** `APP-KITCHEN-001-storage-trust` · Draft PR。基线 main `40b671bb`。未合并、未部署。
+- **首轮扫描结论（源码级）：** 投喂厨房 = `games/cooking.html` + `games/js/cooking.js`（392 行）+ `games/css/cooking.css`；角色取自 `PhoneStorage.getCharacters()`；口味档案按 `maomao_cooking_taste_v1_<roleId>` 分桶，历史/图鉴/成就/自定义配方为全局键。
+- **P0/P1 已修：**
+  1. `saveTasteFeedback` 先改内存再写盘，写失败后 `tasteFeedback` 已标记，再点提示「已经记过啦」而实际没保存 → 改为先写盘、成功才落内存与界面，失败可重试。
+  2. `saveCustomRecipes` 失败仍提示「已添加到图鉴」→ 返回布尔，失败回滚 `customRecipes`。
+  3. 历史「入栈 → 写盘」导致界面条数领先存档 → 新增 `pushHistory()`，失败撤销入栈。
+  4. `continueChat` 空 catch 写 pending，失败仍以 `cooking=1` 跳转会读到上一次菜品 → 记录写入结果，失败清陈旧 pending 并以 `cooking=0` 跳转。
+- **测试：** `tests/cooking-storage-trust.test.mjs` 8 项（VM 执行真实 `saveHistory/pushHistory/writeTasteMemory/saveCustomRecipes` + 源码顺序守卫），8/8 通过；`node --check games/js/cooking.js` 通过。
+- **登记未修（P2 / 待产品决策）：** 历史与图鉴为全局键不按角色过滤（口味档案已隔离）；`progress.dishes` 出锅即计数；自定义配方可重复添加同名组合。
+- **BLOCKED：** 世界事件等待 `ECO-LINK-002`；角色世界书/记忆/人设协议未接入（共享 `PhoneContext` 仍会拼入全量世界书与财务快照），本应用只用角色卡 + 本应用口味记忆，不复制世界书实现。
+- **未验证：** Vite 全站构建、Chromium 375/390/430、真机、真实配额场景。
+
+**2026-11-24 总控续接：** PR #431 代码已在原分支补齐 #432 已入主线的试吃并发/旧响应防串写守卫；`games/js/cooking.js` 完整语法检查通过。专项 Node/浏览器 QA 待独立复核，不据此声明发布。
