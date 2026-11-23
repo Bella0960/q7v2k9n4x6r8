@@ -163,20 +163,31 @@
   }
 
   function showError(message, retry) {
+    // A missing page scope must never be repaired with localStorage, URL params
+    // or a guessed account ID. The user must re-enter a Worker-gated document.
+    const needsFreshEntry = /账号上下文|服务器注入/.test(String(message || ''));
+    const friendlyMessage = needsFreshEntry
+      ? '当前页面未正确关联登录账号。请返回桌面重新进入管理中心。'
+      : (message || '操作失败，请稍后再试。');
     let node = $('adminError');
     if (!node) {
       node = el('div', 'page-error', '');
       node.id = 'adminError';
       document.querySelector('.admin-intro').after(node);
     }
-    node.replaceChildren(el('span', '', message || '操作失败，请稍后再试。'));
+    node.replaceChildren(el('span', '', friendlyMessage));
     if (typeof retry === 'function') {
       const retryButton = el('button', 'error-retry', '重新检查');
+      if (needsFreshEntry) retryButton.textContent = '返回桌面';
       retryButton.type = 'button';
       retryButton.addEventListener('click', async () => {
         if (retryButton.disabled) return;
         retryButton.disabled = true;
         try {
+          if (needsFreshEntry) {
+            window.location.assign('/index.html');
+            return;
+          }
           await retry();
         } catch (error) {
           // The recovery button itself must never fail silently or leave an
@@ -589,7 +600,7 @@
       const descriptions = {
         disable: '账号将暂时无法使用，所有登录设备和会话凭据会失效；关联的有效邀请码也会自动撤销。',
         restore: '系统会按账号停用前保存的授权状态恢复，不能借此跳过邀请码验证。',
-        revoke: '这是不可逆操作。账号将永久失去 MAO 使用资格，相关设备、会话和有效邀请码会失效。'
+        revoke: '这是不可逆操作。账号将永久失去使用资格，相关设备、会话和有效邀请码会失效。'
       };
       const titles = {
         disable: '确认临时停用账号？',
