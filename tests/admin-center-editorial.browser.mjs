@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import { createServer } from 'node:http';
 import { readFile } from 'node:fs/promises';
 import path from 'node:path';
-import { chromium } from 'playwright';
+import { chromium, webkit } from 'playwright';
 
 // Browser acceptance uses synthetic accounts only. No real admin password, session,
 // Cloudflare authority or user data can be touched by this test.
@@ -76,7 +76,8 @@ await new Promise((resolve, reject) => {
 
 let browser;
 try {
-  browser = await chromium.launch({ headless: true });
+  const engine = process.env.ADMIN_BROWSER === 'webkit' ? webkit : chromium;
+  browser = await engine.launch({ headless: true });
   for (const width of [375, 390, 430]) {
     const context = await browser.newContext({
       viewport: { width, height: width === 375 ? 780 : width === 390 ? 844 : 932 },
@@ -132,7 +133,7 @@ try {
     const recovery = await page.locator('.page-error').innerText();
     assert.match(recovery, /返回桌面/);
     assert.doesNotMatch(recovery, /MAO/);
-    console.log('EDITORIAL_ADMIN_PASS ' + width + 'px tabs, data, layout and safe context recovery');
+    console.log('EDITORIAL_ADMIN_PASS ' + (process.env.ADMIN_BROWSER || 'chromium') + ' ' + width + 'px tabs, data, layout and safe context recovery');
     await context.close();
   }
 } finally {
