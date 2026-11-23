@@ -1,0 +1,106 @@
+/* ADMIN-CLOUD-001 — admin diagnostics. Neutral black/white/gray, compact, phone-first (375–430px). */
+:root {
+  --bg: #ffffff; --soft: #f7f7f9; --ink: #171717; --text: #333333; --muted: #888888; --line: #e5e5e5; --strong-line: #d0d0d5;
+  --serif: "Songti SC", "Noto Serif SC", "Source Han Serif SC", Georgia, serif;
+  --sans: -apple-system, BlinkMacSystemFont, "PingFang SC", "Noto Sans SC", "Microsoft YaHei", sans-serif;
+  --mono: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+}
+html.dark {
+  --bg: #111111; --soft: #1a1a1a; --ink: #f2f2f2; --text: #d0d0d0; --muted: #8a8a8a; --line: #2a2a2a; --strong-line: #3a3a3a;
+}
+* { box-sizing: border-box; }
+html { -webkit-text-size-adjust: 100%; }
+body {
+  margin: 0; background: var(--bg); color: var(--text); font: 14px/1.6 var(--sans);
+  -webkit-font-smoothing: antialiased;
+}
+.ca-app {
+  max-width: 560px; margin: 0 auto; min-height: 100vh;
+  padding: calc(env(safe-area-inset-top, 0px) + 8px) 16px calc(env(safe-area-inset-bottom, 0px) + 32px);
+}
+.ca-head { display: flex; align-items: center; gap: 8px; min-height: 48px; }
+.ca-title { flex: 1; margin: 0; font: 600 21px/1.3 var(--serif); color: var(--ink); letter-spacing: .02em; }
+.ca-btn {
+  display: inline-flex; align-items: center; justify-content: center; min-width: 44px; min-height: 44px; padding: 0 6px;
+  border: 0; background: none; color: var(--ink); font: inherit; text-decoration: none; cursor: pointer;
+}
+.ca-btn:disabled { color: var(--muted); cursor: default; }
+.ca-btn:focus-visible, .ca-tab:focus-visible, .ca-more:focus-visible, .ca-field select:focus-visible, .ca-link:focus-visible {
+  outline: 2px solid var(--ink); outline-offset: 2px;
+}
+.ca-meta { margin: 0 0 4px; color: var(--muted); font-size: 12px; }
+
+.ca-tabs {
+  position: sticky; top: 0; z-index: 2; display: flex; background: var(--bg);
+  padding-top: env(safe-area-inset-top, 0px); border-bottom: 1px solid var(--line);
+}
+.ca-tab {
+  flex: 1; display: inline-flex; align-items: center; justify-content: center; gap: 8px; min-height: 44px;
+  border: 0; border-bottom: 2px solid transparent; background: none; color: var(--muted); font: inherit; cursor: pointer;
+}
+.ca-tab.is-active { color: var(--ink); border-bottom-color: var(--ink); font-weight: 600; }
+
+.ca-panel { padding-top: 16px; outline: none; }
+.ca-block { margin: 0 0 28px; }
+.ca-block-head, .ca-row-main { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; }
+.ca-block h2 { margin: 0; font: 600 17px/1.4 var(--serif); color: var(--ink); }
+.ca-task h3 { margin: 0; font: 600 15px/1.5 var(--sans); color: var(--ink); }
+.ca-sub { margin: 2px 0 12px; color: var(--muted); font-size: 12px; }
+.ca-note { margin: 6px 0 0; color: var(--muted); font-size: 12px; overflow-wrap: anywhere; }
+.ca-empty { margin: 24px 0; color: var(--muted); text-align: center; }
+.ca-error { margin: 0 0 8px; color: var(--ink); font-weight: 600; overflow-wrap: anywhere; }
+.ca-link { color: var(--ink); }
+
+.ca-list, .ca-entries, .ca-mini { list-style: none; margin: 0; padding: 0; }
+.ca-row { padding: 10px 0; border-top: 1px solid var(--line); }
+.ca-row:first-child { border-top: 0; }
+.ca-row-title { color: var(--ink); overflow-wrap: anywhere; }
+.ca-row-sub { margin-top: 2px; color: var(--muted); font-size: 12px; overflow-wrap: anywhere; }
+code { font: 11px/1.4 var(--mono); color: var(--muted); overflow-wrap: anywhere; }
+
+.ca-task { margin: 0 0 20px; padding: 12px; background: var(--soft); border-radius: 6px; }
+.ca-line { margin: 8px 0 0; color: var(--ink); font-size: 13px; overflow-wrap: anywhere; }
+.ca-line-label { color: var(--muted); }
+.ca-kv { margin: 8px 0 0; }
+.ca-kv-row { display: flex; justify-content: space-between; gap: 12px; padding: 3px 0; }
+.ca-kv dt { color: var(--muted); font-size: 13px; }
+.ca-kv dd { margin: 0; color: var(--ink); font-variant-numeric: tabular-nums; text-align: right; overflow-wrap: anywhere; }
+.ca-mini li { display: flex; justify-content: space-between; gap: 12px; padding: 3px 0; font-size: 12px; color: var(--muted); }
+.ca-mini li span:last-child { color: var(--ink); white-space: nowrap; }
+
+/* State markers: shape + text label, so meaning never depends on colour. */
+.ca-state { display: inline-flex; align-items: center; gap: 6px; font-size: 12px; color: var(--ink); white-space: nowrap; }
+.ca-dot { display: inline-block; width: 9px; height: 9px; flex: none; border-radius: 50%; background: var(--ink); }
+.ca-state--ok .ca-dot, .ca-dot--ok { background: var(--ink); }
+.ca-state--degraded .ca-dot, .ca-dot--degraded { background: transparent; border: 2px solid var(--ink); }
+.ca-state--error .ca-dot, .ca-dot--error { border-radius: 1px; background: var(--ink); }
+.ca-state--error { font-weight: 600; }
+.ca-state--not_configured .ca-dot, .ca-dot--not_configured { background: transparent; border: 1px dashed var(--muted); }
+.ca-state--not_configured, .ca-state--unavailable { color: var(--muted); }
+.ca-state--unavailable .ca-dot, .ca-dot--unavailable { background: transparent; border: 1px dotted var(--muted); }
+
+.ca-filters { display: flex; gap: 12px; margin: 10px 0 4px; }
+.ca-field { flex: 1; display: flex; flex-direction: column; gap: 2px; font-size: 12px; color: var(--muted); }
+.ca-field select {
+  min-height: 44px; padding: 0 8px; border: 1px solid var(--strong-line); border-radius: 6px; background: var(--bg);
+  color: var(--ink); font: 16px var(--sans);
+}
+.ca-entry { padding: 10px 0; border-top: 1px solid var(--line); }
+.ca-entry:first-child { border-top: 0; }
+.ca-entry-top { display: flex; align-items: baseline; gap: 10px; }
+.ca-entry-time { color: var(--ink); font-variant-numeric: tabular-nums; font-size: 13px; }
+.ca-entry-kind { flex: 1; color: var(--muted); font-size: 12px; }
+.ca-sev { font-size: 11px; padding: 0 6px; border: 1px solid var(--ink); border-radius: 3px; color: var(--ink); }
+.ca-sev--error { background: var(--ink); color: var(--bg); }
+.ca-entry-reason { margin-top: 2px; color: var(--ink); overflow-wrap: anywhere; }
+.ca-entry-meta { margin-top: 2px; color: var(--muted); font-size: 12px; overflow-wrap: anywhere; }
+.ca-more {
+  display: block; width: 100%; min-height: 44px; margin: 12px 0 0; border: 1px solid var(--strong-line); border-radius: 6px;
+  background: none; color: var(--ink); font: inherit; cursor: pointer;
+}
+.ca-more:disabled { color: var(--muted); }
+
+@media (prefers-reduced-motion: no-preference) {
+  .ca-panel { animation: ca-fade .2s ease-out; }
+  @keyframes ca-fade { from { opacity: 0; } to { opacity: 1; } }
+}

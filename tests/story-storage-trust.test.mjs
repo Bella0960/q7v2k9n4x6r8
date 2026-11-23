@@ -56,18 +56,18 @@ test('storyWrite：共享存储成功即返回 true，且不重复写 localStora
   let calls = 0;
   const { sb } = makeRuntime({
     store,
-    phoneStorage: { rawSet: () => { calls++; return true; }, rawGet: () => null },
+    phoneStorage: { rawSet: () => { calls++; return true; }, rawGet: () => 'v' },
   });
   assert.equal(sb.storyWrite('k', 'v'), true);
   assert.equal(calls, 1);
   assert.equal('k' in store.raw, false, 'no duplicate write when the shared store already succeeded');
 });
 
-test('storyWrite：共享存储返回 false 时回落 localStorage 并成功', () => {
+test('storyWrite：共享存储拒绝写入时不绕过统一存储', () => {
   const store = makeStore();
   const { sb } = makeRuntime({ store, phoneStorage: { rawSet: () => false, rawGet: () => null } });
-  assert.equal(sb.storyWrite('k', { a: 1 }), true);
-  assert.equal(store.raw.k, '{"a":1}');
+  assert.equal(sb.storyWrite('k', { a: 1 }), false);
+  assert.equal('k' in store.raw, false);
 });
 
 test('storyWrite：两条后端都失败 → false 且只提示一次', () => {
@@ -98,17 +98,17 @@ test('共享存储优先：rawGet 有值时不看 localStorage', () => {
   assert.equal(sb.storyRead('k', null), 'from-phone');
 });
 
-test('共享存储读不到时回落 localStorage', () => {
+test('共享存储读不到时返回默认值', () => {
   const store = makeStore({ k: 'from-local' });
   const { sb } = makeRuntime({ store, phoneStorage: { rawSet: () => true, rawGet: () => null } });
-  assert.equal(sb.storyRead('k', null), 'from-local');
+  assert.equal(sb.storyRead('k', null), null);
 });
 
-test('writeSave：共享存储失败但 localStorage 成功时仍然返回 true', () => {
+test('writeSave：共享存储声称成功但读回不一致时返回 false', () => {
   const store = makeStore();
-  const { sb } = makeRuntime({ store, phoneStorage: { rawSet: () => false, rawGet: () => null } });
-  assert.equal(sb.writeSave(), true);
-  assert.equal('maomao_story_save_b1' in store.raw, true);
+  const { sb } = makeRuntime({ store, phoneStorage: { rawSet: () => true, rawGet: () => null } });
+  assert.equal(sb.writeSave(), false);
+  assert.equal('maomao_story_save_b1' in store.raw, false);
 });
 
 test('名字/难度写入失败会提示，不再静默', () => {
@@ -122,10 +122,10 @@ test('名字/难度写入失败会提示，不再静默', () => {
 });
 
 test('源码守卫：「已保存」只在真的写进去时才提示', () => {
-  assert.ok(page.includes('var savedOk = writeSave();'), 'must branch on the write result');
+  assert.ok(page.includes('var savedOk = writeSave(true);'), 'must branch on the write result');
   assert.ok(page.includes("toast(savedOk ? '已保存'"), 'success toast must be conditional');
   assert.ok(page.includes('sv = storyRead('), 'cover progress must read through the same path');
-  assert.ok(page.includes('if(PhoneStorage.rawSet(key, value)) return true;'), 'rawSet boolean must be honoured');
+  assert.ok(page.includes('if(storage.rawSet(key, value) &&'), 'rawSet boolean must be honoured');
 });
 
 /* 总控 P1：无共享存储时 setName/saveNpc/saveDiff 写 localStorage，但三个读入口仍只走
@@ -157,7 +157,7 @@ test('无 PhoneStorage 且无存档：三个读入口返回安全默认值，不
   assert.equal(sb.loadDiff(), 'normal');
 });
 
-test('PhoneStorage 抛异常时三个读入口回落 localStorage', () => {
+test('PhoneStorage 抛异常时读入口使用默认值', () => {
   const store = makeStore({
     maomao_story_player: '旧名',
     maomao_story_difficulty: 'easy',
@@ -166,8 +166,8 @@ test('PhoneStorage 抛异常时三个读入口回落 localStorage', () => {
     store,
     phoneStorage: { rawSet: () => true, rawGet: () => { throw new Error('boom'); } },
   });
-  assert.equal(sb.getPlayerName(), '旧名');
-  assert.equal(sb.loadDiff(), 'easy');
+  assert.equal(sb.getPlayerName(), '');
+  assert.equal(sb.loadDiff(), 'normal');
 });
 
 test('源码守卫：三个读入口都走 storyRead', () => {

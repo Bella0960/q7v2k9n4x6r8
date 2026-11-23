@@ -259,26 +259,29 @@ function warnStoryStorage(text){
 }
 function storyRead(key, fallback){
   try{
-    if(window.PhoneStorage && typeof PhoneStorage.rawGet === 'function'){
-      var v = PhoneStorage.rawGet(key, null);
-      if(v !== null && v !== undefined && v !== '') return v;
-    }
-  }catch(e){}
-  try{
+    var storage = window.PhoneStorage;
+    if(storage) return storage.rawGet(key, fallback);
     var raw = localStorage.getItem(key);
     return raw === null ? fallback : raw;
   }catch(e){ return fallback; }
 }
 function storyWrite(key, value, quiet){
   try{
-    if(window.PhoneStorage && typeof PhoneStorage.rawSet === 'function'){
-      if(PhoneStorage.rawSet(key, value)) return true;
+    var storage = window.PhoneStorage;
+    var serialized = typeof value === 'string' ? value : JSON.stringify(value);
+    if(storage){
+      var expected = serialized;
+      try{ expected = JSON.parse(serialized); }catch(e){}
+      var unreadable = {};
+      if(storage.rawSet(key, value) &&
+          JSON.stringify(storage.rawGet(key, unreadable)) === JSON.stringify(expected)) return true;
+    }else{
+      localStorage.setItem(key, serialized);
+      if(localStorage.getItem(key) === serialized) return true;
     }
   }catch(e){}
-  try{
-    localStorage.setItem(key, typeof value === 'string' ? value : JSON.stringify(value));
-    return true;
-  }catch(e){ if(!quiet) warnStoryStorage(); return false; }
+  if(!quiet) warnStoryStorage();
+  return false;
 }
 function getPlayerName(){
   var v = storyRead(PLAYER_KEY, '');
@@ -341,9 +344,9 @@ function loadSave(){
   if(typeof raw === 'string'){ try{ return JSON.parse(raw); }catch(e){ return null; } }
   return null;
 }
-function writeSave(){
+function writeSave(quiet){
   var data = {sceneId:state.sceneId, stats:state.stats, unlocked:state.unlocked};
-  return storyWrite(saveKey(), data);
+  return storyWrite(saveKey(), data, quiet);
 }
 
 /* ====== 封面：渲染剧本卡片 ====== */
@@ -622,7 +625,7 @@ $('btnBackCover').addEventListener('click', function(){
   renderCover();
 });
 $('btnSave').addEventListener('click', function(){
-  var savedOk = writeSave();
+  var savedOk = writeSave(true);
   toast(savedOk ? '已保存' : '本机存储空间不足，这次进度没能保存');
   closeDrawer();
 });
