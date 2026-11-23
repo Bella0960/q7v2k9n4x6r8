@@ -6551,21 +6551,6 @@
               systemPrompt += '\n\n【世界书 / 角色生活背景】\n' + worldbookText;
             }
 
-            // ECO-LINK: only the exact, confirmed single-chat role can use
-            // explicitly authorized past encounters. Never modify role persona,
-            // user's RP protocol, activated worldbooks or group speaker context.
-            if (!isGroupChat && roleForTurn && roleForTurn.id != null &&
-                window.RoleEventMemory && typeof window.RoleEventMemory.buildPrompt === 'function') {
-                try {
-                    const eventHistory = window.RoleEventMemory.buildPrompt(String(roleForTurn.id));
-                    if (eventHistory && eventHistory.ok && eventHistory.value) {
-                        systemPrompt += '\n\n' + capText(eventHistory.value, 900);
-                    }
-                } catch (_ecoError) {
-                    // Fail closed for corrupt events, stale role ID, or changed account.
-                }
-            }
-
             // Role-level identity seals belong ahead of all feature mechanics.
             // A saved custom global agreement stays untouched in localStorage;
             // the seal is added to this turn's effective System only.
@@ -7049,6 +7034,21 @@
                     '角色人设、世界书或设置协议未完整载入，本轮已停止。请检查对应资料');
                 return;
             }
+            // ECO-LINK: only the exact, confirmed single-chat role can use
+            // explicitly authorized past encounters. Never modify role persona,
+            // user's RP protocol, activated worldbooks or group speaker context.
+            if (!isGroupChat && roleForTurn && roleForTurn.id != null &&
+                window.RoleEventMemory && typeof window.RoleEventMemory.buildPrompt === 'function') {
+                try {
+                    const eventHistory = window.RoleEventMemory.buildPrompt(String(roleForTurn.id));
+                    if (eventHistory && eventHistory.ok && eventHistory.value) {
+                        systemPrompt += '\n\n' + capText(eventHistory.value, 900);
+                    }
+                } catch (_ecoError) {
+                    // Fail closed for corrupt events, stale role ID, or changed account.
+                }
+            }
+
             // Existing virtual-phone notes/comments are role-local user-authored data.
             // Only the addressed single-chat role may see its own recent interaction cues.
             // Do not copy these cues into shared groups, automatic turns or a regeneration.
