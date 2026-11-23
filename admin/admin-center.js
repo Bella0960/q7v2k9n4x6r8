@@ -373,7 +373,7 @@
         el('small', '', '账号编号尾号 ' + String(account.id).slice(-6) +
           ' · ' + formatTime(account.created_at))
       );
-      button.append(body, el('span', 'overview-entry-chevron', '↗'));
+      button.append(body);
       button.addEventListener('click', () => openAccountFromInvite(account.id));
       list.appendChild(button);
     });
