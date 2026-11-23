@@ -1404,12 +1404,25 @@
   ];
   var selectedBg = 0;
 
+  /* 总控 P2：昵称/handle/背景原来分三次写，失败后再用同一个 localStorage 回滚——
+     配额已满时回滚本身也可能失败，等于「假报已保持原资料」。改成一个键原子写：
+     一次 setItem 失败即整体不生效，旧资料不会被改掉一半。 */
+  var PROFILE_KEY = 'music_profile_v2';
+  function readProfileRecord() {
+    try {
+      var raw = localStorage.getItem(PROFILE_KEY);
+      if (!raw) return null;
+      var obj = JSON.parse(raw);
+      return (obj && typeof obj === 'object') ? obj : null;
+    } catch (e) { return null; }
+  }
   function getProfile() {
+    var rec = readProfileRecord() || {};
     return {
       avatar: localStorage.getItem('music_profile_avatar') || 'M',
-      name: localStorage.getItem('music_profile_name') || 'Music Lover',
-      handle: localStorage.getItem('music_profile_handle') || '@music_lover',
-      bg: localStorage.getItem('music_profile_bg') || BG_PRESETS[0].css
+      name: rec.name || localStorage.getItem('music_profile_name') || 'Music Lover',
+      handle: rec.handle || localStorage.getItem('music_profile_handle') || '@music_lover',
+      bg: rec.bg || localStorage.getItem('music_profile_bg') || BG_PRESETS[0].css
     };
   }
   function getSharedUserAvatar() {
@@ -1494,25 +1507,20 @@
     if (!hd) hd = '@music_lover';
     var customColor = document.getElementById('editBgCustom').value;
     var bg = (customColor && customColor !== '#1a1a1a') ? customColor : BG_PRESETS[selectedBg].css;
-    /* 三条资料是一个整体：任何一条写失败都把已写入的还原，避免出现「昵称存了、
-       handle 没存」的半截状态。 */
-    var prev = {
-      name: localStorage.getItem('music_profile_name'),
-      handle: localStorage.getItem('music_profile_handle'),
-      bg: localStorage.getItem('music_profile_bg')
-    };
-    var okName = saveLocal('music_profile_name', nm, true);
-    var okHandle = okName && saveLocal('music_profile_handle', hd, true);
-    var okBg = okHandle && saveLocal('music_profile_bg', bg, true);
-    if (!okName || !okHandle || !okBg) {
-      [['music_profile_name', prev.name], ['music_profile_handle', prev.handle], ['music_profile_bg', prev.bg]]
-        .forEach(function (pair) {
-          try {
-            if (pair[1] == null) localStorage.removeItem(pair[0]);
-            else localStorage.setItem(pair[0], pair[1]);
-          } catch (e) {}
-        });
-      warnMusicStorage('资料没能保存（本机存储空间不足），已保持原来的昵称与背景；清出空间后再试一次');
+    /* 三条资料是一个整体：写进同一个键，成功即全部生效、失败即全部不生效，
+       不会再出现「昵称存了、handle 没存」的半截状态，也不需要不可靠的回滚。 */
+    var payload = '';
+    try { payload = JSON.stringify({ name: nm, handle: hd, bg: bg }); } catch (e) { payload = ''; }
+    var ok = false;
+    if (payload) {
+      try {
+        localStorage.setItem(PROFILE_KEY, payload);
+        var back = localStorage.getItem(PROFILE_KEY);
+        ok = back === payload;                       /* 读回校验，不凭 setItem 不抛异常就宣告成功 */
+      } catch (e) { ok = false; }
+    }
+    if (!ok) {
+      warnMusicStorage('资料没有保存（本机存储空间不足），昵称与背景仍是原来的；清出空间后再试一次');
       return;
     }
     renderProfile();
@@ -1584,26 +1592,52 @@
   function togetherStore() {
     try { return JSON.parse(localStorage.getItem(TOGETHER_KEY) || '{}') || {}; } catch (e) { return {}; }
   }
-  function togetherUsedToday() {
+  /* 总控 P1-02：配额落盘失败时不能靠「关掉再打开」把已消耗次数清零。
+     会话内计数只增不减（跨日才归零），且不随开关/换角色重置；
+     落盘失败时仍按会话计数推进，并如实提示「本机预算没能保存」。 */
+  var togetherSession = { day: '', used: 0, persistBroken: false };
+  function togetherSessionSync() {
+    if (togetherSession.day !== togetherDayKey()) {
+      togetherSession.day = togetherDayKey();
+      togetherSession.used = 0;
+      togetherSession.persistBroken = false;
+    }
+  }
+  function togetherStoredUsed() {
     var s = togetherStore();
     return s.day === togetherDayKey() ? (Number(s.used) || 0) : 0;
   }
+  function togetherUsedToday() {
+    togetherSessionSync();
+    return Math.max(togetherStoredUsed(), togetherSession.used);
+  }
   function togetherRemaining() { return Math.max(0, TOGETHER_DAILY_LIMIT - togetherUsedToday()); }
-  function persistTogether(used) {
+  function persistTogether() {
     try {
       localStorage.setItem(TOGETHER_KEY, JSON.stringify({
         day: togetherDayKey(),
-        used: used == null ? togetherUsedToday() : used,
+        used: togetherUsedToday(),
         enabled: together.enabled,
         roleId: together.roleId
       }));
       return true;
     } catch (e) { return false; }
   }
-  function bumpTogetherUsed() {
-    var used = togetherUsedToday() + 1;
-    persistTogether(used);            /* 先记账再请求，失败也算一次 */
-    return used;
+  /* 记账：返回 false 表示这次不允许发请求（额度真的用完了）。 */
+  function togetherChargeBudget() {
+    togetherSessionSync();
+    var used = togetherUsedToday();
+    if (used >= TOGETHER_DAILY_LIMIT) return false;
+    togetherSession.used = used + 1;          /* 会话内单调，任何开关都不回退 */
+    if (!persistTogether()) togetherSession.persistBroken = true;
+    return true;
+  }
+  function togetherCanCallApi() {
+    try {
+      var cfg = (window.PhoneStorage && typeof PhoneStorage.getApiConfig === 'function')
+        ? (PhoneStorage.getApiConfig() || {}) : {};
+      return !!(String(cfg.apiKey || '').trim() && window.PhoneAPI && typeof PhoneAPI.complete === 'function');
+    } catch (e) { return false; }
   }
 
   function togetherRoles() {
@@ -1671,6 +1705,7 @@
     if (note) {
       note.textContent = together.enabled
         ? '同设备伴听：只把曲名、歌手和播放状态发给你配置的付费 AI，不上传音频。每首最多 1 次、间隔 3 分钟、每天 10 次（仅本机限制）。今日剩余 ' + togetherRemaining() + ' 次。'
+          + (togetherSession.persistBroken ? '（本机预算没能写入，已按保守计数继续限制）' : '')
         : '和 TA 一起听是本地伴听，不会同步到其他设备。开启后会调用你配置的付费 AI 接口；不开启时只有本地短句，零费用。';
     }
     var list = document.getElementById('togetherRoles');
@@ -1711,13 +1746,20 @@
     together.enabled = next;
     together.token++;                 /* 关闭或重开都作废进行中的结果 */
     together.busy = false;
-    together.lastAt = 0;
     together.degraded = false;
-    together.perRoleTrack = {};
+    /* 注意：不清 lastAt / perRoleTrack / 会话预算。开关来回切不能刷新限额，
+       也不能重新占用「同一首再讲一次」的名额。 */
     persistTogether();
     renderTogether();
     toast(next ? '已开启和 TA 一起听（本地伴听）' : '已关闭和 TA 一起听，播放器不受影响');
-    if (next) togetherOnTrackChange(togetherTrack(), '刚开始一起听');
+    if (next) {
+      var t = togetherTrack();
+      if (t && playing && window.audio && !window.audio.paused) {
+        togetherOnTrackChange(t, '刚开始一起听');
+      } else if (t) {
+        togetherArmAfterPlay(t.id, '刚开始一起听');
+      }
+    }
   }
 
   function setTogetherRole(id) {
@@ -1725,7 +1767,6 @@
     together.roleId = String(id);
     together.token++;                 /* 换角色后旧结果不得串到新角色 */
     together.busy = false;
-    together.perRoleTrack = {};
     var list = document.getElementById('togetherList');
     if (list) list.innerHTML = '';
     var line = document.getElementById('togetherLine');
@@ -1756,21 +1797,29 @@
   function requestTogetherLine(track, trigger) {
     var role = togetherRoleById(together.roleId);
     if (!role) { renderTogether(); return; }
-    var token = together.token;
-    together.perRoleTrack[together.roleId + '|' + track.id] = true;
-    together.lastAt = Date.now();
-    bumpTogetherUsed();
-    together.busy = true;
-
-    var cfg = (window.PhoneStorage && typeof PhoneStorage.getApiConfig === 'function') ? (PhoneStorage.getApiConfig() || {}) : {};
-    var canCall = String(cfg.apiKey || '').trim() && window.PhoneAPI && typeof PhoneAPI.complete === 'function';
-    if (!canCall) {
+    /* 总控 P1-01：先确认「真的能调用」。离线/无 key 只走本地短句：不扣次数，
+       也不占用这首歌的唯一机会——配好 key 后当前曲目仍能正常伴听。 */
+    if (!togetherCanCallApi()) {
       together.busy = false;
       together.degraded = true;
       renderTogether();
-      togetherShowLine(role.name + '：' + togetherLocalLine(track));   /* 无接口：本地兜底，零费用 */
+      togetherShowLine(role.name + '：' + togetherLocalLine(track));   /* 零费用兜底 */
       return;
     }
+    if (!togetherChargeBudget()) {
+      together.busy = false;
+      together.degraded = true;
+      renderTogether();
+      togetherShowLine(role.name + '：' + togetherLocalLine(track));
+      toast('今日伴听额度已用完，先只听歌（仅本机限制）');
+      return;
+    }
+    if (togetherSession.persistBroken) toast('本机预算没能保存，本次仍按已消耗处理');
+    var token = together.token;
+    together.perRoleTrack[together.roleId + '|' + track.id] = true;
+    together.lastAt = Date.now();
+    together.busy = true;
+
     var system = '你正在和用户戴着同一副耳机听歌。你是「' + role.name + '」，用第一人称说一两句很自然、很短的听歌感受。人设：'
       + (togetherPersona(role) || '自然、克制的日常表达')
       + '。要求：不要复述歌词、不要罗列歌名、不要提到 AI 或模型、不超过 40 字、不要加引号。';
@@ -1792,16 +1841,54 @@
   }
 
   /* 播放器挂接：包一层，不修改原播放逻辑；不监听 timeupdate，避免逐秒调用 */
+  /* 总控 P1-03：playTrack 是 async（本地曲要先取 Blob）。旧实现一调用就立刻请求，
+     音频缺失/播放被浏览器拒绝时也会花钱。改为等 audio 的 playing 事件——
+     只有真正开始播放、并且仍是当前曲目与当前意图时才请求。 */
+  var togetherPlaySeq = 0;
+  var togetherArmTimer = 0;
+  var togetherArmCancel = null;
+  function togetherArmAfterPlay(trackId, trigger) {
+    var audio = window.audio;
+    if (!audio || !trackId) return;
+    if (togetherArmCancel) togetherArmCancel();     /* 只保留最新的一个待发请求，监听不叠加 */
+    var seq = ++togetherPlaySeq;
+    var settled = false;
+    function cleanup() {
+      audio.removeEventListener('playing', onPlaying);
+      audio.removeEventListener('error', onFail);
+      if (togetherArmTimer) { clearTimeout(togetherArmTimer); togetherArmTimer = 0; }
+      if (togetherArmCancel === cleanup) togetherArmCancel = null;
+    }
+    function onPlaying() {
+      if (settled) return;
+      settled = true; cleanup();
+      if (seq !== togetherPlaySeq) return;                     /* 已被更晚的意图覆盖 */
+      if (!together.enabled || !playing) return;
+      var cur = tracks[currentIdx];
+      if (!cur || String(cur.id) !== String(trackId)) return;  /* 不是这一首，不记错账 */
+      togetherOnTrackChange(getTrackById(trackId), trigger || '切到这首歌');
+    }
+    function onFail() { if (settled) return; settled = true; cleanup(); }
+    audio.addEventListener('playing', onPlaying);
+    audio.addEventListener('error', onFail);
+    togetherArmCancel = cleanup;
+    togetherArmTimer = setTimeout(cleanup, 15000);             /* 15s 内没真的播起来就不请求 */
+  }
   var __togetherPlayTrack = playTrack;
   playTrack = function (trackId) {
     var result = __togetherPlayTrack.apply(this, arguments);
-    togetherOnTrackChange(getTrackById(trackId), '切到这首歌');
+    if (togetherArmCancel) togetherArmCancel();   /* 上一首还没播起来就切走：作废 */
+    if (together.enabled) togetherArmAfterPlay(trackId, '切到这首歌');
     return result;
   };
   var __togetherTogglePlay = togglePlay;
   togglePlay = function () {
+    var wasPlaying = playing;
     var result = __togetherTogglePlay.apply(this, arguments);
-    if (together.enabled && playing) togetherOnTrackChange(togetherTrack(), '接着刚才继续听');
+    if (together.enabled && !wasPlaying && playing) {
+      var cur = tracks[currentIdx];
+      if (cur) togetherArmAfterPlay(cur.id, '接着刚才继续听');
+    }
     return result;
   };
 
