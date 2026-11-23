@@ -42,9 +42,7 @@ const beautyKeys = page => page.evaluate(() =>
 
 async function uploadImport(page, name, text, mime) {
   const buffer = Buffer.from(text, 'utf8');
-  process.stdout.write('  upload ' + name + ' (' + buffer.length + ' bytes)\n');
   await page.setInputFiles('#importFile', [{ name, mimeType: mime || 'application/json', buffer }]);
-  // IO / parsing is synchronous on the file-text read; let the promise microtask flush.
   await delay(120);
 }
 
@@ -86,32 +84,69 @@ try {
     assert.deepEqual(await snapshot(page), before, width + 'px incompatible format leaves drafts intact');
     assert.equal(await storedStudio(page), null, width + 'px incompatible format does not persist');
 
-    // 3. Partial-invalid CSS: one valid variable applies; out-of-range, wrong-unit
-    //    and unknown variables are refused; untouched defaults are preserved.
+    // 3. Empty config: no list/detail/bubble section at all -> rejected, not success.
+    await uploadImport(page, 'empty.json', JSON.stringify({ format: 'maomao-theme-studio', version: 1 }), 'application/json');
+    assert.deepEqual(await snapshot(page), before, width + 'px empty config leaves drafts intact');
+
+    // 4. JSON invalid fields: out-of-range, bad color, unknown key, string number
+    //    -> the whole file is rejected; no value is silently clamped to a default.
+    const badJson = JSON.stringify({
+      format: 'maomao-theme-studio', version: 1,
+      list: { itemRadius: 999, textColor: 'red', fakeVar: 1, itemGap: '6' }
+    });
+    await uploadImport(page, 'bad.json', badJson, 'application/json');
+    assert.deepEqual(await snapshot(page), before, width + 'px invalid JSON fields leave drafts intact');
+
+    // 5. Mixed invalid CSS: one valid line plus out-of-range, wrong-unit and unknown
+    //    items -> the whole file is rejected; drafts stay equal to the pre-import snapshot.
     const mixedCss = [
       ':root {',
-      '  --ts-list-item-radius: 18px;',      // valid, in range
-      '  --ts-list-title-size: 999px;',      // out of range (>20) -> refused
-      '  --ts-list-item-gap: 2em;',         // wrong unit -> refused
-      '  --ts-list-fake-var: 5;',            // unknown variable -> ignored
+      '  --ts-list-item-radius: 18px;',      // valid, but file is rejected as a whole
+      '  --ts-list-title-size: 999px;',      // out of range (>20)
+      '  --ts-list-item-gap: 2em;',         // wrong unit
+      '  --ts-list-fake-var: 5;',            // unknown variable
       '}'
     ].join('\n');
     await uploadImport(page, 'mixed.css', mixedCss, 'text/css');
-    const afterCss = await snapshot(page);
-    assert.equal(afterCss.list.itemRadius, 18, width + 'px valid CSS variable applies');
-    assert.equal(afterCss.list.titleSize, before.list.titleSize, width + 'px out-of-range number is refused');
-    assert.equal(afterCss.list.itemGap, before.list.itemGap, width + 'px wrong unit is refused');
-    assert.equal(await storedStudio(page), null, width + 'px CSS preview does not persist');
-    assert.deepEqual(await beautyKeys(page), [], width + 'px CSS preview writes no beauty scope');
+    assert.deepEqual(await snapshot(page), before, width + 'px mixed-invalid CSS rejects whole file');
+    assert.ok((await page.locator('#notice').textContent()).length > 0, width + 'px mixed-invalid CSS shows an error');
+    assert.equal(await storedStudio(page), null, width + 'px rejected CSS does not persist');
 
-    // 4. Over 64KB: rejected before any draft mutation.
+    // 6. Unit swap: a % field given px, and a px field given % -> rejected.
+    const unitCss = [
+      ':root {',
+      '  --ts-list-avatar-radius: 40px;',       // avatarRadius requires %
+      '  --ts-bubble-bubble-max-width: 80px;',  // bubbleMaxWidth requires %
+      '  --ts-list-item-gap: 6%;',              // itemGap requires px
+      '}'
+    ].join('\n');
+    await uploadImport(page, 'unit.css', unitCss, 'text/css');
+    assert.deepEqual(await snapshot(page), before, width + 'px swapped-unit CSS rejects whole file');
+
+    // 7. Valid CSS round-trip: legal variables apply to the preview only; nothing persisted.
+    const validCss = [
+      ':root {',
+      '  --ts-list-item-radius: 18px;',
+      '  --ts-list-avatar-radius: 40%;',
+      '  --ts-detail-input-radius: 24px;',
+      '}'
+    ].join('\n');
+    await uploadImport(page, 'valid.css', validCss, 'text/css');
+    const afterCss = await snapshot(page);
+    assert.equal(afterCss.list.itemRadius, 18, width + 'px valid CSS itemRadius applies');
+    assert.equal(afterCss.list.avatarRadius, 40, width + 'px valid CSS avatarRadius applies');
+    assert.equal(afterCss.detail.inputRadius, 24, width + 'px valid CSS detail inputRadius applies');
+    assert.deepEqual(await beautyKeys(page), [], width + 'px CSS preview writes no beauty scope');
+    assert.equal(await storedStudio(page), null, width + 'px CSS preview does not persist');
+
+    // 8. Over 64KB: rejected before any draft mutation; keeps the prior valid CSS draft.
     const huge = ':root { --ts-list-item-radius: ' + '7;'.repeat(40000) + ' }';
     await uploadImport(page, 'huge.css', huge, 'text/css');
     assert.equal((await snapshot(page)).list.itemRadius, 18, width + 'px oversized file keeps the prior valid draft');
     assert.equal(await storedStudio(page), null, width + 'px oversized file does not persist');
 
-    // 5. Role scope isolation: inject two roles, switch bubble scope to A, import a
-    //    bubble draft. No beauty scope (global or per-role) may be written until Apply.
+    // 9. Role scope + read race: defer File.text(), switch scope while reading; the
+    //    stale result must be rejected so role A's draft is not applied to role B.
     await page.evaluate(() => {
       localStorage.setItem('ai_custom_characters', JSON.stringify([
         { id: 'role-a', name: '角色 A' }, { id: 'role-b', name: '角色 B' }
@@ -120,22 +155,34 @@ try {
     await page.reload({ waitUntil: 'domcontentloaded' });
     await page.waitForSelector('.chat-slim-card', { timeout: 15000 });
     await delay(200);
+    await page.evaluate(() => {
+      window.__origText = File.prototype.text;
+      window.__importRelease = null;
+      File.prototype.text = function () {
+        return new Promise(resolve => { window.__importRelease = () => resolve(window.__origText.call(this)); });
+      };
+    });
     await page.click('[data-tab="bubble"]');
     await delay(120);
     await page.selectOption('#bubbleScope', 'role-a');
     await delay(120);
-    const bubbleJson = JSON.stringify({
+    const raceJson = JSON.stringify({
       format: 'maomao-theme-studio', version: 1,
       bubble: { myBubbleBg: '#222222', myBubbleColor: '#FFFFFF', bubbleMaxWidth: 80 }
     });
-    await uploadImport(page, 'bubble.json', bubbleJson, 'application/json');
-    const afterBubble = await snapshot(page);
-    assert.equal(afterBubble.scope, 'role-a', width + 'px import does not silently switch scope');
-    assert.equal(afterBubble.bubble.myBubbleBg, '#222222', width + 'px bubble draft imports to preview');
-    assert.deepEqual(await beautyKeys(page), [], width + 'px bubble import writes no role/global beauty store');
-    assert.equal(await storedStudio(page), null, width + 'px bubble import does not persist studio store');
+    await uploadImport(page, 'race.json', raceJson, 'application/json');
+    // Switch to role B while the read promise is still pending, then release it.
+    await page.selectOption('#bubbleScope', 'role-b');
+    await page.evaluate(() => { if (window.__importRelease) window.__importRelease(); });
+    await delay(150);
+    await page.evaluate(() => { File.prototype.text = window.__origText; });
+    const afterRace = await snapshot(page);
+    assert.equal(afterRace.scope, 'role-b', width + 'px scope stays on role B after race');
+    assert.notEqual(afterRace.bubble.myBubbleBg, '#222222', width + 'px role A bubble draft is not applied to role B');
+    assert.deepEqual(await beautyKeys(page), [], width + 'px race import writes no beauty scope');
+    assert.equal(await storedStudio(page), null, width + 'px race import does not persist');
 
-    // 6. Valid list JSON round-trip: preview updates, but storage still untouched.
+    // 10. Valid list/detail JSON round-trip: preview updates, but storage still untouched.
     await page.click('[data-tab="list"]');
     await delay(120);
     const listJson = JSON.stringify({

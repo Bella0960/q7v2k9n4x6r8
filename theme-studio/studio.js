@@ -215,31 +215,65 @@
   // until parsing and validation fully succeed, so a rejected import leaves the
   // three drafts, current tab/scope and the applied theme untouched (no half-new
   // half-old state).
-  function cssImportSpecs(group) {
-    if (group === 'bubble') return BUBBLE.map(function (p) { return [p[0], p[2], p[4], p[5], p[3]]; });
-    return Object.keys(api.SPECS[group]).map(function (k) { var s = api.SPECS[group][k]; return [k, s[0], s[2], s[3], s[1]]; });
+  // Strict field spec: type, numeric bounds and the exact unit the field exports.
+  function fieldSpec(group, key) {
+    if (group === 'bubble') {
+      var f = BUBBLE.filter(function (p) { return p[0] === key; })[0];
+      if (!f) return null;
+      return { type: f[2], min: f[4], max: f[5], unit: f[6] };
+    }
+    var spec = api.SPECS[group] && api.SPECS[group][key];
+    if (!spec) return null;
+    return { type: spec[0], min: spec[2], max: spec[3], unit: key === 'avatarRadius' ? '%' : 'px' };
   }
   function parseCssImport(text) {
     var pending = { list: {}, detail: {}, bubble: {} };
     var found = 0, match, regex = /--ts-(list|detail|bubble)-([a-z0-9-]+)\s*:\s*([^;{}]+);/gi;
     while ((match = regex.exec(text))) {
       var group = match[1].toLowerCase();
-      var key = match[2].replace(/-([a-z])/g, function (_, c) { return c.toUpperCase(); });
-      var def = cssImportSpecs(group).filter(function (d) { return d[0] === key; })[0];
-      if (!def) continue; // unknown variable: ignored, does not poison the pending draft
+      var rawKey = match[2];
+      var key = rawKey.replace(/-([a-z])/g, function (_, c) { return c.toUpperCase(); });
+      var spec = fieldSpec(group, key);
+      // Unknown --ts-* item rejects the whole file; it is not silently skipped.
+      if (!spec) throw new Error('不支持的配置项 --ts-' + group + '-' + rawKey);
       var value = match[3].trim();
-      if (def[1] === 'color') {
-        if (/^#[0-9a-f]{6}$/i.test(value)) { pending[group][key] = value; found++; }
-      } else if (def[1] === 'number') {
-        var m = /^(-?\d+(?:\.\d+)?)(px|%)?$/.exec(value);
-        if (m) {
-          var number = Number(m[1]);
-          if (number >= def[2] && number <= def[3]) { pending[group][key] = number; found++; }
+      if (spec.type === 'color') {
+        if (!/^#[0-9a-f]{6}$/i.test(value)) throw new Error('颜色格式不正确：' + key + ' 需为 6 位十六进制色值');
+        pending[group][key] = value;
+      } else if (spec.type === 'number') {
+        var unitRe = spec.unit === '%' ? /^(-?\d+(?:\.\d+)?)%$/ : /^(-?\d+(?:\.\d+)?)px$/;
+        var m = unitRe.exec(value);
+        if (!m) throw new Error('单位不正确：' + key + ' 需使用 ' + spec.unit);
+        var number = Number(m[1]);
+        if (!Number.isFinite(number) || number < spec.min || number > spec.max) {
+          throw new Error('数值越界：' + key + ' 需在 ' + spec.min + '–' + spec.max + ' ' + spec.unit);
         }
+        pending[group][key] = number;
       }
+      found++;
     }
     if (!found) throw new Error('未找到兼容的 --ts-* 变量，请使用 JSON 或工作台导出的 CSS');
     return pending;
+  }
+  // Validate one section strictly before any tolerant clean/clamp runs. Returns
+  // only allowlisted, already-valid fields; the caller fills defaults for the rest.
+  function strictValidateSection(group, raw, label) {
+    if (!raw || typeof raw !== 'object' || Array.isArray(raw)) throw new Error(label + '配置格式不正确');
+    var out = {};
+    Object.keys(raw).forEach(function (key) {
+      var spec = fieldSpec(group, key);
+      if (!spec) throw new Error(label + '包含不支持的配置项：' + key);
+      var value = raw[key];
+      if (spec.type === 'color') {
+        if (typeof value !== 'string' || !/^#[0-9a-f]{6}$/i.test(value)) throw new Error('颜色格式不正确：' + key + ' 需为 6 位十六进制色值');
+        out[key] = value;
+      } else if (spec.type === 'number') {
+        if (typeof value !== 'number' || !Number.isFinite(value)) throw new Error('数值类型不正确：' + key + ' 需为数字');
+        if (value < spec.min || value > spec.max) throw new Error('数值越界：' + key + ' 需在 ' + spec.min + '–' + spec.max + ' ' + spec.unit);
+        out[key] = value;
+      }
+    });
+    return out;
   }
   function parseJsonImport(text) {
     var parsed;
@@ -247,19 +281,12 @@
     catch (e) { throw new Error('JSON 解析失败：文件不是有效的 JSON'); }
     if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) throw new Error('主题格式不兼容：根节点必须是对象');
     if (parsed.format !== 'maomao-theme-studio' || parsed.version !== 1) throw new Error('主题格式不兼容：仅支持 maomao-theme-studio v1');
+    var hasSection = parsed.list !== undefined || parsed.detail !== undefined || parsed.bubble !== undefined;
+    if (!hasSection) throw new Error('配置为空：未包含列表、详情或气泡任一段');
     var pending = { list: null, detail: null, bubble: null };
-    if (parsed.list !== undefined) {
-      if (!parsed.list || typeof parsed.list !== 'object' || Array.isArray(parsed.list)) throw new Error('列表配置格式不正确');
-      pending.list = api.clean('list', parsed.list);
-    }
-    if (parsed.detail !== undefined) {
-      if (!parsed.detail || typeof parsed.detail !== 'object' || Array.isArray(parsed.detail)) throw new Error('详情配置格式不正确');
-      pending.detail = api.clean('detail', parsed.detail);
-    }
-    if (parsed.bubble !== undefined) {
-      if (!parsed.bubble || typeof parsed.bubble !== 'object' || Array.isArray(parsed.bubble)) throw new Error('气泡配置格式不正确');
-      pending.bubble = cleanBubble(parsed.bubble);
-    }
+    if (parsed.list !== undefined) pending.list = api.clean('list', strictValidateSection('list', parsed.list, '列表'));
+    if (parsed.detail !== undefined) pending.detail = api.clean('detail', strictValidateSection('detail', parsed.detail, '详情'));
+    if (parsed.bubble !== undefined) pending.bubble = cleanBubble(strictValidateSection('bubble', parsed.bubble, '气泡'));
     return pending;
   }
   function unpackImport(text, filename) {
@@ -309,7 +336,12 @@
   $('importFile').addEventListener('change',function(){
     var file=this.files&&this.files[0];if(!file)return;
     if(file.size>65536){toast('文件过大（最多 64KB）');this.value='';return;}
+    // Snapshot the editing context before the async read; if the user switches
+    // tab/scope while the file is being read, reject the stale result so the
+    // draft for role A is never mistaken for role B.
+    var capturedTab=tab,capturedScope=scope;
     file.text().then(function(text){
+      if(tab!==capturedTab||scope!==capturedScope){toast('导入已过期，请重新选择文件');return;}
       unpackImport(text,file.name);drawFields();drawPreview();toast('导入成功，请分别检查并应用各区域');
     }).catch(function(error){toast(error && error.message ? error.message : '导入失败');});
     this.value='';
