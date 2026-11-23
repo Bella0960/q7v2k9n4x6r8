@@ -485,13 +485,14 @@ async function main() {
   const deploy = qaOnly || process.argv.includes('--deploy');
   const flags = process.argv.slice(2);
   const diagnoseGuards = flags.length === 1 && flags[0] === '--diagnose-guards';
+  const diagnoseAfterTests = flags.length === 1 && flags[0] === '--diagnose-after-tests';
   assert.ok(flags.length <= 1 && flags.every(x =>
-    x === '--deploy' || x === '--qa-only' || x === '--diagnose-guards'),
+    x === '--deploy' || x === '--qa-only' || x === '--diagnose-guards' || x === '--diagnose-after-tests'),
     'Unsupported or conflicting release arguments');
   // Read-only segmented reproduction of the exact post-test safety contracts.
   // Never provides deploy credentials, changes Workers, DBs, secrets or identity.
   // Deliberately runs before the costly full release gate.
-  if (diagnoseGuards) {
+  if (diagnoseGuards || diagnoseAfterTests) {
     const labelError = error => {
       const message = String(error?.message || '');
       const allowlist = [
@@ -507,6 +508,8 @@ async function main() {
         ['setup-html', /QA founder setup|QA setup cannot accept/],
         ['http-status', /HTTP 200|QA status endpoint/],
         ['cloudflare-api', /Read-only Cloudflare preflight failed/],
+        ['transient-network', /fetch failed|ETIMEDOUT|ECONNRESET|ENOTFOUND|EAI_AGAIN|AbortError/],
+        ['version-drift', /QA Worker was deployed by another release|QA identity core changed while tests ran/],
         ['qa-identity-state', /QA account mode|QA identity|QA login readiness|QA one-time setup|QA bootstrap status|QA login page/],
         ['identity-core-state', /isolated identity core|identity initialization/],
         ['source', /Unexpected repository origin|Only the approved isolated QA candidate branch/]
@@ -524,12 +527,36 @@ async function main() {
       }
     };
     await check('candidate', () => preflightCheckout());
+    const before = await check('worker-versions-before', async () => Promise.all([
+      liveWorkerVersion(QA), liveWorkerVersion(CORE)
+    ]));
+    if (diagnoseAfterTests) {
+      // Reproduce the exact full candidate test sequence, then inspect the
+      // post-test safety state. No upload, no Worker write and no passwords.
+      await check('full-test-suite', async () => {
+        for (const [command, args] of TESTS) run(command, args);
+      });
+      await check('built-assets', () => assertReadyForUpload());
+    }
     const proof = await check('cloudflare-preflight', cloudflarePreflight);
     await check('login-http-smoke', () => qaHttpSmoke(proof.coreInitialized));
-    await check('dependencies', () => run('npm', ['ci', '--no-audit', '--no-fund'], true));
-    await check('vite-build', () => run('npm', ['run', 'build'], true));
-    await check('built-assets', () => assertReadyForUpload());
-    console.log('QA_GUARD_DIAG_PASS:read-only');
+    if (!diagnoseAfterTests) {
+      await check('dependencies', () => run('npm', ['ci', '--no-audit', '--no-fund'], true));
+      await check('vite-build', () => run('npm', ['run', 'build'], true));
+      await check('built-assets', () => assertReadyForUpload());
+    }
+    await check('worker-versions-after', async () => {
+      const after = await Promise.all([
+        liveWorkerVersion(QA), liveWorkerVersion(CORE)
+      ]);
+      assert.equal(after[0].versionId, before[0].versionId,
+        'QA Worker was deployed by another release while tests ran');
+      assert.equal(after[1].versionId, before[1].versionId,
+        'QA identity core changed while tests ran');
+    });
+    console.log(diagnoseAfterTests
+      ? 'QA_GUARD_DIAG_PASS:after-full-tests'
+      : 'QA_GUARD_DIAG_PASS:read-only');
     return;
   }
   preflightCheckout();
