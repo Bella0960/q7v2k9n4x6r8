@@ -173,6 +173,10 @@ self.addEventListener('fetch', event => {
   const url = new URL(req.url);
   if (url.origin !== self.location.origin) return;
 
+  // Administrator pages and diagnostics must always reach the server's session gate.
+  if (url.pathname.startsWith('/admin/') || url.pathname === '/api/admin/cloud' ||
+      url.pathname.startsWith('/api/admin/cloud/')) return;
+
   // User-imported fonts are cached once by font-loader.js and served as same-origin
   // font resources. Keep this cache separate from the versioned app-shell cache.
   const fontAssetPrefix = new URL('__maomao_fonts/', self.registration.scope).pathname;

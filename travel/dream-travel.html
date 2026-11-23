@@ -371,7 +371,21 @@ var $=function(id){return document.getElementById(id)};
 var main=$('mainView'),scroller=$('scroller');
 function freshData(){return {favorites:[],visited:[],bookings:[],notes:[],souvenirs:[]}}
 function loadData(){try{var d=JSON.parse(localStorage.getItem(STORE_KEY)||'{}');if(!d||typeof d!=='object')return freshData();return {favorites:Array.isArray(d.favorites)?d.favorites:[],visited:Array.isArray(d.visited)?d.visited:[],bookings:Array.isArray(d.bookings)?d.bookings:[],notes:Array.isArray(d.notes)?d.notes:[],souvenirs:Array.isArray(d.souvenirs)?d.souvenirs:[]}}catch(e){return freshData()}}
-function persist(){try{localStorage.setItem(STORE_KEY,JSON.stringify(data));return true}catch(e){toast('本机存储空间不足，暂时无法保存');return false}}
+function persist(){
+ try{
+  var stored=localStorage.getItem(STORE_KEY);
+  if(stored!==null){
+   var previous=JSON.parse(stored);
+   if(!previous||typeof previous!=='object'||Array.isArray(previous))throw new Error('Invalid travel archive');
+  }
+ }catch(e){toast('旧旅行存档无法读取，已保留原资料');return false}
+ try{
+  var payload=JSON.stringify(data);
+  localStorage.setItem(STORE_KEY,payload);
+  if(localStorage.getItem(STORE_KEY)===payload)return true;
+ }catch(e){}
+ toast('本机存储空间不足，暂时无法保存');return false
+}
 /* 写入失败即回滚：先留一份深拷贝快照，失败原地还原字段，保持 data 引用不变
    （render 与各闭包都直接读 data，换对象会让它们读到旧引用）。 */
 function snapshotData(){try{return JSON.parse(JSON.stringify(data))}catch(e){return null}}
