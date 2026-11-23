@@ -20,7 +20,8 @@ test('mobile admin uses the native status bar and a compact, functional heading'
 test('editorial admin assets use fresh URLs and never enter the shared PWA shell', () => {
   assert.ok(html.includes('./admin-center.css?v=20261117-ui1'));
   assert.ok(html.includes('./admin-center-editorial.css?v=20261123-v1'));
-  assert.ok(html.includes('./admin-center.js?v=20261123-editorial1'));
+  assert.ok(html.includes('./admin-center.js?v=20261123-workspace1'));
+  assert.ok(html.includes('./admin-workspace.css?v=20261123-v1'));
   assert.ok(!html.includes('./admin-center.js?v=20261117-ui3'));
   assert.ok(!sw.includes("'./admin/admin-center.css?v="));
   assert.ok(!sw.includes("'./admin/admin-center.js?v="));
@@ -48,7 +49,7 @@ test('375-430px mobile layout keeps accessible input and action targets', () => 
   for (const label of ['搜索账号', '搜索邀请码', '搜索审计记录']) {
     assert.ok(html.includes('aria-label="' + label + '"'));
   }
-  for (const id of ['accountsList', 'invitesList', 'globalAuditList', 'accountDetail', 'inviteCodeSheet', 'adminConfirmDialog']) {
+  for (const id of ['overviewView', 'overviewPendingList', 'overviewActivityList', 'accountsList', 'invitesList', 'globalAuditList', 'accountDetail', 'inviteCodeSheet', 'adminConfirmDialog']) {
     assert.ok(html.includes('id="' + id + '"'), 'existing admin functionality must remain: ' + id);
   }
 });
@@ -262,7 +263,7 @@ test('partial directory failures preserve the other successful mobile list', asy
     let renderedInvites = 0;
     const constructor = new Function(
       '$', 'api', 'directoryPath', 'renderAccounts', 'renderInvites',
-      'updateStats', 'updateAccountFilterCounts', 'updateInviteFilterCounts',
+      'updateStats', 'updateAccountFilterCounts', 'updateInviteFilterCounts', 'renderOverviewSummary',
       'renderAccountDetail', 'closeDetail', 'setButtonsDisabled', 'verifiedDirectoryPayload',
       "let accountDirectoryKey='',accountNextCursor='',accountFilter='all',accountHasMore=false," +
       "accountTotalCount=0,accountSummary=null,accountPageError=false,accounts=[]," +
@@ -275,7 +276,7 @@ test('partial directory failures preserve the other successful mobile list', asy
     const app = constructor(
       get, directoryApi, path => path,
       () => { renderedAccounts++; }, () => { renderedInvites++; },
-      () => {}, () => {}, () => {}, async () => {}, () => {}, () => {}, verifiedDirectoryPayload
+      () => {}, () => {}, () => {}, () => {}, async () => {}, () => {}, () => {}, verifiedDirectoryPayload
     );
     if (scenario.failure) {
       await assert.rejects(() => app.refreshAll(), /offline/);

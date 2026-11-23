@@ -7,16 +7,16 @@ const layout = readFileSync(new URL('../admin/admin-center-editorial.css', impor
 const core = readFileSync(new URL('../admin/admin-center.js', import.meta.url), 'utf8');
 const sw = readFileSync(new URL('../sw.js', import.meta.url), 'utf8');
 
-test('all four administration areas and transactional dialogs survive the visual redesign', () => {
+test('all five administration areas and transactional dialogs survive the visual redesign', () => {
   for (const id of [
     'statTotal', 'statPending', 'statActive', 'statDisabled',
-    'usersView', 'invitesView', 'auditView', 'settingsView',
+    'overviewView', 'usersView', 'invitesView', 'auditView', 'settingsView',
     'accountSearch', 'inviteSearch', 'globalAuditSearch',
     'accountsList', 'invitesList', 'globalAuditList',
     'accountDetail', 'inviteCodeSheet', 'adminConfirmDialog',
     'adminConfirmSubmit', 'adminConfirmCancel', 'detailActions'
   ]) assert.match(html, new RegExp('\\bid="' + id + '"'), 'Missing UI hook ' + id);
-  for (const tab of ['users', 'invites', 'audit', 'settings']) {
+  for (const tab of ['overview', 'users', 'invites', 'audit', 'settings']) {
     assert.ok(html.includes('data-tab="' + tab + '"'), 'Missing active area ' + tab);
   }
   assert.match(html, /<dialog id="adminConfirmDialog"/);
@@ -29,6 +29,7 @@ test('admin screen keeps account IDs real but never uses the project signature a
   assert.ok(html.includes('<h1>管理中心</h1>'));
   assert.ok(html.includes('CONTROL PANEL / 01'));
   assert.ok(html.includes('admin-center-editorial.css?v=20261123-v1'));
+  assert.ok(html.includes('admin-workspace.css?v=20261123-v1'));
   assert.ok(!/background\s*:\s*[^;]*gradient\(/i.test(layout));
   for (const token of ['--ink:', '--muted:', '--paper:', '--wash:', '--editorial-serif:']) {
     assert.ok(layout.includes(token), 'Missing design token: ' + token);
@@ -67,5 +68,5 @@ test('admin documents and scripts are not intercepted or precached by the common
   assert.ok(!sw.includes("'./admin/admin-center.css?"));
   assert.ok(!sw.includes("'./admin/admin-center-editorial.css?"));
   assert.match(sw, /const CACHE_NAME = 'phone-app-pwa-v306'/);
-  assert.ok(html.includes('./admin-center.js?v=20261123-editorial1'));
+  assert.ok(html.includes('./admin-center.js?v=20261123-workspace1'));
 });

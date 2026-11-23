@@ -9,22 +9,41 @@ import { chromium, webkit } from 'playwright';
 const root = path.resolve('.');
 const founder = 'MAO-AAAAAAAAAAAA';
 const sample = 'MAO-BBBBBBBBBBBB';
-const pageData = {
-  ok: true,
-  accounts: [{ id: sample, username: '示例用户', status: 'active', created_at: 1732200000000 }],
-  summary: { total: 1, pending: 0, active: 1, restricted: 0 },
-  page: { totalCount: 1, hasMore: false, nextCursor: '' }
-};
+const pending = 'MAO-CCCCCCCCCCCC';
+const sampleAccounts = [
+  { id: sample, username: '示例用户', status: 'active', created_at: 1732200000000 },
+  { id: pending, username: '待授权用户', status: 'pending_invite', created_at: 1732300000000 }
+];
+const accountSummary = { total: 2, pending: 1, active: 1, restricted: 0 };
+function pageData(query) {
+  const search = query.get('search') || '';
+  const status = query.get('status') || 'all';
+  const accounts = sampleAccounts.filter(account =>
+    (status === 'all' || account.status === status) &&
+    (!search || account.id.includes(search) || account.username.includes(search)));
+  return {
+    ok: true, accounts, summary: accountSummary,
+    page: { totalCount: accounts.length, hasMore: false, nextCursor: '' }
+  };
+}
 const emptyInvites = {
   ok: true, invites: [],
   summary: { total: 0, pending: 0, used: 0, expired: 0, revoked: 0 },
   page: { totalCount: 0, hasMore: false, nextCursor: '' }
 };
-const emptyAudit = {
-  ok: true, records: [],
-  summary: { total: 0, accountActions: 0, inviteActions: 0 },
-  page: { totalCount: 0, hasMore: false, nextCursor: '' }
+const sampleAudit = {
+  id: 'AUDIT-SYNTH-001', action: 'invite_create', targetUsername: '待授权用户',
+  targetAccountId: pending, createdAt: Date.now(), actorType: 'super_admin'
 };
+function auditData(query) {
+  const since = Number(query.get('since') || 0);
+  const records = since <= sampleAudit.createdAt ? [sampleAudit] : [];
+  return {
+    ok: true, records,
+    summary: { total: records.length, accountActions: 0, inviteActions: records.length },
+    page: { totalCount: records.length, hasMore: false, nextCursor: '' }
+  };
+}
 
 const server = createServer(async (request, response) => {
   try {
@@ -40,11 +59,11 @@ const server = createServer(async (request, response) => {
         response.end(JSON.stringify({ ok: false, error: { code: 'ACCOUNT_CONTEXT_REQUIRED', message: '缺少账号上下文' } }));
         return;
       } else if (pathname === '/api/admin/accounts') {
-        json = pageData;
+        json = pageData(url.searchParams);
       } else if (pathname === '/api/admin/invites') {
         json = emptyInvites;
       } else if (pathname === '/api/admin/audit') {
-        json = emptyAudit;
+        json = auditData(url.searchParams);
       } else {
         json = { ok: false, error: { code: 'NOT_FOUND', message: 'Not found' } };
       }
@@ -89,7 +108,9 @@ try {
     const result = await page.goto('http://127.0.0.1:' + server.address().port +
       '/admin/admin-center.html', { waitUntil: 'load' });
     assert.equal(result?.status(), 200);
-    await page.waitForFunction(() => document.getElementById('statTotal')?.textContent === '1');
+    await page.waitForFunction(() => document.getElementById('statTotal')?.textContent === '2');
+    await page.waitForFunction(() => document.querySelectorAll('#overviewPendingList .overview-entry').length === 1 &&
+      document.querySelectorAll('#overviewActivityList .overview-entry').length === 1);
     const details = await page.evaluate(() => {
       const title = document.querySelector('.admin-intro h2');
       const stat = document.querySelector('.stats-grid');
@@ -111,14 +132,35 @@ try {
     assert.ok(details.titleSize >= 29, 'editorial heading is too small');
     assert.match(details.serif, /georgia|songti|iowan/);
     assert.equal(details.columns, 2, 'mobile account metrics must be two columns');
-    assert.equal(details.accountCount, 1);
-    assert.equal(details.navCount, 4);
+    assert.equal(details.accountCount, 2);
+    assert.equal(details.navCount, 5);
+    assert.equal(await page.locator('#overviewView').isVisible(), true);
+    assert.equal(await page.locator('#overviewPendingCount').innerText(), '1');
+    assert.equal(await page.locator('#overviewInviteCount').innerText(), '0');
+    assert.equal(await page.locator('#overviewAccountsStatus').getAttribute('data-state'), 'ok');
+    assert.equal(await page.locator('#overviewInvitesStatus').getAttribute('data-state'), 'ok');
+    assert.equal(await page.locator('#overviewAuditStatus').getAttribute('data-state'), 'ok');
+    assert.match(await page.locator('#overviewSync').innerText(), /最近同步/);
+    assert.equal(await page.locator('a.overview-cloud-link').getAttribute('href'), './cloud.html');
+    await page.locator('[data-overview-period="today"]').click();
+    await page.waitForFunction(() => document.getElementById('overviewAuditStatus')?.dataset.state === 'ok');
+    assert.equal(await page.locator('#overviewActivityList .overview-entry').count(), 1);
+    await page.locator('#overviewOpenPending').click();
+    await page.waitForFunction(() => document.getElementById('accountResultCount')?.textContent.includes('本页显示 1'));
+    assert.equal(await page.locator('#usersView').isVisible(), true);
+    assert.equal(await page.locator('#accountsList .account-row').count(), 1);
+    await page.locator('[data-tab="overview"]').click();
+    await page.waitForFunction(() => document.querySelectorAll('#overviewPendingList .overview-entry').length === 1);
+    await page.locator('#overviewPendingList .overview-entry').first().click();
+    await page.waitForFunction(() => !document.getElementById('accountDetail').hidden);
+    assert.equal(await page.locator('#usersView').isVisible(), true);
+    await page.locator('#closeDetail').click();
     assert.ok(details.links.some(url => url.includes('admin-center-editorial.css')));
     await page.locator('[data-tab="invites"]').click();
     assert.equal(await page.locator('#invitesView').isVisible(), true);
     assert.equal(await page.locator('#usersView').isVisible(), false);
     await page.locator('[data-tab="audit"]').click();
-    await page.waitForFunction(() => document.getElementById('globalAuditTotal')?.textContent === '0');
+    await page.waitForFunction(() => document.getElementById('globalAuditTotal')?.textContent === '1');
     assert.equal(await page.locator('#auditView').isVisible(), true);
     await page.locator('[data-tab="settings"]').click();
     assert.equal(await page.locator('#settingsView').isVisible(), true);
