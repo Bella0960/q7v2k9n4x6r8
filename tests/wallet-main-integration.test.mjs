@@ -96,6 +96,32 @@ test('family-card consumption uses the same lock and is idempotent', async () =>
   assert.equal(cards.update(invite.id, 'pause').ok, false);
 });
 
+test('family-card receipt capacity rejects new charges without evicting replay protection', async () => {
+  const f = fixture(true);
+  const ledger = f.window.MaoMaoWalletLedger;
+  const cards = f.window.RoleFamilyCards;
+  const invite = await ledger.runExclusive(() =>
+    cards.createInvite({ roleId: 'role-capacity', monthlyLimit: 100, singleLimit: 50 }));
+  assert.ok(invite);
+  assert.equal((await ledger.runExclusive(() => cards.update(invite.id, 'accept'))).ok, true);
+  const card = cards.find(invite.id);
+  card.paymentReceipts = Array.from({ length: 500 }, (_, i) => ({
+    paymentId: 'old-' + i, amount: 1, appId: 'shop', time: 1
+  }));
+  assert.equal(await ledger.runExclusive(() => cards.writeAll([card])), true);
+  const writesBefore = f.writes;
+  const rejected = await ledger.runExclusive(() =>
+    cards.consume(invite.id, 1, '购物', 'shop', 'new-payment'));
+  assert.equal(rejected.ok, false);
+  assert.equal(rejected.reason, 'receipt-capacity');
+  assert.equal(f.writes, writesBefore, '容量满时不得改写卡片');
+  const replay = await ledger.runExclusive(() =>
+    cards.consume(invite.id, 1, '购物', 'shop', 'old-0'));
+  assert.equal(replay.ok, true);
+  assert.equal(replay.replayed, true);
+  assert.equal(cards.find(invite.id).paymentReceipts.length, 500);
+});
+
 test('after-sales request is never duplicated and blocked when unsafe', async () => {
   const f = fixture(true);
   f.localStorage.setItem('shop_orders', JSON.stringify([{ paymentId: 'pay-1', total: 12, payMethod: 'normal' }]));
