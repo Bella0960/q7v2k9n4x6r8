@@ -28,7 +28,7 @@ const QA_DB = '4a24ce58079f468c87c2f75e107c4d1c';
 const CORE_DB = 'e1b78d3813ae4a819841e8c5c3e9e8ec';
 const QA_DO = '4a10d3dab4e16639445f4afdb0b7e5e2462cf06894cb4ae85f0ac3cd3cdba101';
 const CORE_DO = 'dba114c7b0abd8e53d1d78e579924852b8e40907e50213634aeeaeb41ab51a98';
-const BRANCH = 'integration/qa-cafe-on-v150-20261124';
+const BRANCH = 'integration/qa-envelope-archive-on-cafe-20261124';
 const QA_SETUP_OPEN = 'isolated_authority';
 const QA_SETUP_CLOSED = 'disabled';
 const TESTS = [
@@ -64,8 +64,9 @@ const TESTS = [
   // A fresh Codespace may already have chrome-headless-shell but lack
   // libnspr4.so; plain "playwright install chromium" does not install OS deps.
   ['npx', ['playwright', 'install', '--with-deps', 'chromium']],
-  ['node', ['--test', 'tests/cafe-app-contract.test.mjs']],
+  ['node', ['--test', 'tests/cafe-app-contract.test.mjs', 'tests/cafe-archive-entry.test.mjs', 'tests/cafe-growth-claim.test.mjs', 'tests/envelope-write-safety.test.mjs']],
   ['node', ['tests/cafe-partner-decision.browser.mjs']],
+  ['node', ['tests/envelope-draft.browser.mjs']],
   ['node', ['tests/admin-cloud-mobile.browser.mjs']],
   ['node', ['tests/admin-center-editorial.browser.mjs']],
   ['node', ['tests/desktop-wallpaper-hd.browser.mjs']],

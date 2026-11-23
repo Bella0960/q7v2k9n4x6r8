@@ -29,6 +29,25 @@ try {
     assert.equal(partner.history[0].choice, state.partnerDecision.choiceTitle);
     await page.reload();
     assert.deepEqual((await readState()).partnerDecision, state.partnerDecision);
+    await page.evaluate(() => {
+      const key = 'maomao_cafe_state_v1';
+      const state = JSON.parse(localStorage.getItem(key));
+      state.lifeStats.days = 3;
+      localStorage.setItem(key, JSON.stringify(state));
+    });
+    await page.reload();
+    await page.locator('[data-tab="menu"]:visible').first().tap();
+    await page.locator('#view-menu').waitFor();
+    await page.locator('#openArchive').tap();
+    const reward = page.locator('#view-extra [data-growth-claim="days3"]');
+    await reward.tap();
+    await reward.waitFor({ state: 'detached' });
+    const rewarded = await readState();
+    assert.equal(rewarded.growthClaims.days3.day, state.day);
+    await page.locator('#closeArchive').tap();
+    await page.locator('#view-overview').waitFor();
+    await page.reload();
+    assert.deepEqual((await readState()).growthClaims.days3, rewarded.growthClaims.days3);
     assert.deepEqual(errors, []);
     await page.close();
   }
