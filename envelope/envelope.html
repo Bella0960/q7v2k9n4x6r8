@@ -1116,13 +1116,22 @@ button:focus-visible,input:focus-visible,textarea:focus-visible{outline:2px soli
     composeBaseline=composeSignature();
     setView('composeView');
   }
+  /* 图片指纹：低开销摘要，避免每次 input 都把几百 KB 的 base64 重新 JSON 序列化。
+     长度 + 头尾采样已能区分「换了一张图」与「同一张图」。 */
+  function imageFingerprint(src){
+    var v=String(src||'');
+    if(!v) return '0:';
+    var head=v.slice(0,64), tail=v.slice(-64);
+    return v.length+':'+head+':'+tail;
+  }
   function composeSignature(){
     return JSON.stringify({
       title:$('letterTitle').value,
       sender:$('letterSender').value,
       recipient:$('letterRecipient').value,
       content:$('letterContent').value,
-      images:draftImages.length
+      envelopeColor:selectedColor,
+      images:draftImages.map(imageFingerprint)
     });
   }
   function composeDirty(){return composeBaseline!==null && composeSignature()!==composeBaseline;}
