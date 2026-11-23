@@ -1117,15 +1117,29 @@ function detectiveBudgetState(){
 }
 function detectiveRemaining(){return Math.max(0,DETECTIVE_DAILY_LIMIT-detectiveBudgetState().used);}
 /* 先记账再发请求：即使请求超时或失败，也如实占用一次预算。 */
+/* 总控 P1：预算必须「写入并读回一致」才允许发付费请求。
+   之前写失败只弹提示仍继续请求，配额拒写的手机刷新即可恢复次数，可以反复花钱。 */
+function persistDetectiveBudgetVerified(all){
+  if(!saveJSON(DETECTIVE_BUDGET_KEY,all,true))return false;
+  var back=readDetectiveBudgetRaw();
+  var rec=back[Object.keys(all)[0]]||null;
+  if(!rec)return false;
+  var written=all[Object.keys(all)[0]];
+  return rec.day===written.day&&Number(rec.used)===Number(written.used);
+}
+/* 记账：返回 false 表示这次不允许发请求（额度用完，或本机预算写不进去）。 */
 function consumeDetectiveBudget(){
   var st=detectiveBudgetState();
-  st.used+=1;
+  if(st.used>=DETECTIVE_DAILY_LIMIT)return false;
   var all=readDetectiveBudgetRaw();
+  st.used+=1;
   all[st.owner]={day:st.day,used:st.used};
-  if(!saveJSON(DETECTIVE_BUDGET_KEY,all,true)){
-    warnGameStorage('今日次数已在本机记账，但没能写入存储；刷新后可能重置，请清理存储空间');
+  if(!persistDetectiveBudgetVerified(all)){
+    warnGameStorage('本机预算没能写入，已暂停生成新案（避免绕开限额）；请清理存储空间后再试');
+    detectiveBudgetCache=null;               /* 丢弃内存计数，按真实读回值计算 */
+    return false;                            /* fail-closed：0 请求 */
   }
-  return st.used;
+  return true;
 }
 /* 紧凑次数提示：只用按钮文案，不新增控件、不改布局。 */
 function detectiveBudgetHint(){
@@ -1174,7 +1188,11 @@ function generateDetectiveCase(){
 
   detectiveGenBusy=true;detectiveGenFailed=false;
   var attempt=++detectiveGenToken,attemptRole=activeRoleKey();
-  consumeDetectiveBudget();                   /* 确认之后、发请求之前记账 */
+  if(!consumeDetectiveBudget()){              /* 确认之后、发请求之前记账；失败即 fail-closed */
+    detectiveGenBusy=false;
+    var b=byId('generateDetectiveCase');if(b){b.disabled=false;detectiveBudgetHint();}
+    return;
+  }
   var button=byId('generateDetectiveCase');
   if(button){button.disabled=true;button.textContent='正在构思…';}
   var team=detectiveTeam(),history=CASES.slice(-5).map(function(c){return c.title;}).join('、');
@@ -1191,8 +1209,14 @@ function generateDetectiveCase(){
     var saved=JSON.parse(localStorage.getItem('maomao_detective_generated_cases_v1')||'[]');
     if(!Array.isArray(saved))saved=[];
     saved.push(c);
-    var caseSaved=saveJSON('maomao_detective_generated_cases_v1',saved,true);CASES.push(c);
-    showToast(caseSaved?'新案件已加入案件档案':('新案件已生成，但本机存储空间不足，没能存下，刷新后会消失'));
+    var caseSaved=saveJSON('maomao_detective_generated_cases_v1',saved,true);
+    if(caseSaved){
+      CASES.push(c);
+      showToast('新案件已加入案件档案');
+      startCase();                             /* 用户刚花钱生成的案件必须立刻出现在列表里 */
+    }else{
+      showToast('新案件已生成，但本机存储空间不足，没能存下，刷新后会消失');
+    }
   }).catch(function(err){
     if(stale())return;
     detectiveGenFailed=true;                 /* 不自动重试，只把按钮换成「重试生成」 */
