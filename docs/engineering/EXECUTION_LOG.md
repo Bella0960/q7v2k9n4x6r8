@@ -167,3 +167,18 @@ On the next turn/session, read this file and the current `AGENTS.md` first. Cont
 - **测试：** 新增 `tests/music-storage-trust.test.mjs`（8 项，VM 跑真实 `toast` / `saveLocal` / `saveFavIds` / `saveProfileEdit`），8/8 通过。
 - **登记未做：** 音乐应用不接角色人设/记忆（只有 `getMyProfile` 读取本机资料）；不产出世界事件（依赖 `ECO-LINK-002`）；本地音频走 IndexedDB，配额错误提示依赖浏览器实现。
 - **未验证：** Vite 全站构建、Chromium 375/390/430、真机、真实音频播放与配额场景。
+
+## 2026-11-23 · APP-MUSIC-002 · 和 TA 一起听（MUSIC-LISTEN-TOGETHER-001）
+
+- **分支 / PR：** `APP-MUSIC-002-listen-together`（基于 #444 分支）。Draft。未合并、未部署。
+- **顺带修掉 #444 登记的遗留：** `saveProfileEdit()` 原为 3 次顺序 `setItem`，前两项成功第三项失败会留下半截资料。改为整体语义：先记下旧值，任一失败就把三条全部还原并提示「已保持原来的昵称与背景」，不再出现「昵称存了、handle 没存」。
+- **一起听实现（同设备本地伴听）：**
+  - 入口在迷你播放条上一个 26px 圆形图标（`#togetherBtn`），不新增顶部按钮、不动原有排版；面板为底部弹层，带 `env(safe-area-inset-bottom)`。
+  - 角色来自 `PhoneStorage.getCharacters()` 的**正式角色 ID**，可在面板里切换；切换即作废旧结果并清空显示区，A/B 不串。
+  - 只把「角色卡字段 + 曲目名/歌手 + 播放状态」发给模型；**不上传音频、本地 Blob、API Key**；**不引入 `PhoneContext`**（仍未安全过滤全量世界书与财务快照，#428 已证）。
+  - 通过包装 `playTrack` / `togglePlay` 跟随播放状态，**不监听 `timeupdate`**，不会逐秒调用；退出模式完全不影响原播放器。
+  - 护栏：默认关闭；每首最多 1 次、间隔 ≥3 分钟、每天 ≤10 次（仅本机限制）；先记账后请求；失败不重试，直接本地短句兜底；切后台不发请求。
+  - 视觉沿用黑白灰：黑底面板、白字、无彩色强调、无开发署名。
+- **测试：** 新增 `tests/music-listen-together.test.mjs`（16 项，VM 跑真实 `setTogetherEnabled` / `setTogetherRole` / `requestTogetherLine` / `togetherOnTrackChange`，全 mock），16/16 通过；`tests/music-storage-trust.test.mjs` 8/8 无回归（含资料回滚源码守卫）。
+- **BLOCKED：** 「发送到聊天」未实现 —— 没有经验证的「按角色追加且可回读」的消息接口，不另写共享聊天存储，等总控给出安全接口后再接。
+- **未验证：** 375/390/430 真机排版（新增底部弹层与迷你条图标）、Vite 全站构建、Chromium、真实音频缺失/播放失败场景下的伴听表现。
