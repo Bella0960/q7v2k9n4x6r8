@@ -250,21 +250,37 @@
       applicationServerKey: base64UrlToUint8Array(publicKey)
     });
 
-    await requestJson('/api/push/subscriptions', {
-      method: 'POST',
-      device: device,
-      body: {
-        subscription: {
-          endpoint: subscription.endpoint,
-          expirationTime: subscription.expirationTime || null,
-          keys: {
-            p256dh: bufferToBase64Url(subscription.getKey('p256dh')),
-            auth: bufferToBase64Url(subscription.getKey('auth'))
+    async function saveSubscription(value) {
+      return requestJson('/api/push/subscriptions', {
+        method: 'POST',
+        device: device,
+        body: {
+          subscription: {
+            endpoint: value.endpoint,
+            expirationTime: value.expirationTime || null,
+            keys: {
+              p256dh: bufferToBase64Url(value.getKey('p256dh')),
+              auth: bufferToBase64Url(value.getKey('auth'))
+            }
           }
         }
-      }
-    });
+      });
+    }
 
+    try {
+      await saveSubscription(subscription);
+    } catch (error) {
+      // A browser may retain another account's subscription after sign-out.
+      // Never reuse it for the new account. Retry only the explicit collision.
+      if (error.code !== 'SUBSCRIPTION_IN_USE' || !existing) throw error;
+      var removed = await existing.unsubscribe();
+      if (removed === false) throw new Error('旧账号推送订阅无法解除，请重试');
+      subscription = await registration.pushManager.subscribe({
+        userVisibleOnly: true,
+        applicationServerKey: base64UrlToUint8Array(publicKey)
+      });
+      await saveSubscription(subscription);
+    }
     return { endpoint: subscription.endpoint };
   }
 
@@ -275,9 +291,15 @@
     var device = readDevice();
     // Revoke server-side first; never report OFF if the cloud could not confirm it.
     if (device) {
-      await requestJson('/api/push/unsubscribe', {
-        method: 'POST', device: device, body: endpoint ? { endpoint: endpoint } : {}
-      });
+      try {
+        await requestJson('/api/push/unsubscribe', {
+          method: 'POST', device: device, body: endpoint ? { endpoint: endpoint } : {}
+        });
+      } catch (error) {
+        // A previous account's endpoint can remain in the browser. If the
+        // current device has no such subscription, local unsubscription is safe.
+        if (error.code !== 'SUBSCRIPTION_NOT_FOUND') throw error;
+      }
     }
     if (subscription) {
       var unsubscribed = await subscription.unsubscribe();
@@ -1147,6 +1169,7 @@
       permission: 'Notification' in global ? Notification.permission : 'unsupported',
       deviceRegistered: Boolean(readDevice()),
       subscriptionCount: 0,
+      subscriptionEndpoints: [],
       serverReachable: false,
       vapidConfigured: false,
       message: ''
@@ -1175,9 +1198,11 @@
     if (device) {
       try {
         var payload = await requestJson('/api/push/subscriptions', { device: device });
-        status.subscriptionCount = (payload.subscriptions || []).filter(function (item) {
+        var active = (payload.subscriptions || []).filter(function (item) {
           return !item.disabledAt;
-        }).length;
+        });
+        status.subscriptionCount = active.length;
+        status.subscriptionEndpoints = active.map(function (item) { return String(item.endpoint || ''); });
       } catch (error) {
         status.message = error.code === 'DEVICE_REVOKED'
           ? '设备授权已撤销，请重新配对'
@@ -1219,8 +1244,11 @@
     var subscribed = false;
     if (registration && registration.pushManager && status.supported &&
         status.permission === 'granted' && status.subscriptionCount > 0) {
-      try { subscribed = Boolean(await registration.pushManager.getSubscription()); }
-      catch (error) { subscribed = false; }
+      try {
+        var currentSubscription = await registration.pushManager.getSubscription();
+        subscribed = Boolean(currentSubscription &&
+          status.subscriptionEndpoints.indexOf(currentSubscription.endpoint) >= 0);
+      } catch (error) { subscribed = false; }
     }
     // Server and browser must both confirm subscription before displaying ON.
     setToggle(subscribed);
