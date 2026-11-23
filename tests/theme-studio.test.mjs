@@ -73,6 +73,20 @@ test('phone viewport and safe-area layout exist without a separate desktop app',
   assert.match(css,/safe-area-inset-bottom/);
   assert.match(css,/-webkit-overflow-scrolling:touch/);
 });
+test('draft guard and undo/redo controls are wired in the workbench shell',()=>{
+  const html=readFileSync(new URL('../theme-studio/theme-studio.html',import.meta.url),'utf8');
+  const js=readFileSync(new URL('../theme-studio/studio.js',import.meta.url),'utf8');
+  const css=readFileSync(new URL('../theme-studio/studio.css',import.meta.url),'utf8');
+  assert.match(html,/id="undoButton"/);
+  assert.match(html,/id="redoButton"/);
+  assert.match(html,/id="dirtyTag"/);
+  assert.match(js,/HISTORY_LIMIT\s*=\s*30/);
+  assert.match(js,/beforeunload/);
+  assert.match(js,/anyDirty/);
+  assert.match(js,/bubbleDrafts/);
+  assert.match(css,/\.history-btn/);
+  assert.match(css,/\.dirty-tag/);
+});
 test('runtime CSS is opt-in and scoped to native chat pages',()=>{
   const css=readFileSync(new URL('../shared/css/theme-studio-runtime.css',import.meta.url),'utf8');
   assert.match(css,/data-ts-list="1"/);

@@ -60,6 +60,9 @@ function onDialog(page, action, value, record) {
   if (!page.__dialogBound) {
     page.__dialogBound = true;
     page.on('dialog', async d => {
+      // beforeunload is the workbench's unsaved-draft guard; reloading to verify
+      // persisted presets intentionally leaves the unsaved draft, so accept it.
+      if (d.type() === 'beforeunload') { await d.accept(); return; }
       const next = dialogQueue.shift() || { action: 'dismiss' };
       if (next.record) next.record(d.message());
       if (next.action === 'accept') await d.accept(next.value); else await d.dismiss();
