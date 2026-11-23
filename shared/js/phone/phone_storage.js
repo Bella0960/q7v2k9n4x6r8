@@ -902,6 +902,13 @@
             // A retry with the same stable mid must not duplicate an uncertain append.
             // Only identical persisted payloads are idempotent. A reused mid carrying
             // different data is a conflict, never permission to replace the old message.
+            // Reject non-scalar IDs instead of invoking arbitrary toString()
+            // methods (which can throw or collide with a real forwarded ID).
+            if (message.mid != null &&
+                (typeof message.mid !== 'string' && typeof message.mid !== 'number' ||
+                 (typeof message.mid === 'number' && !isFinite(message.mid)))) {
+                return failResult(ERR.VALIDATION_FAILED, 'message id must be a finite scalar', false);
+            }
             var mid = message.mid == null ? '' : String(message.mid);
             if (mid.trim()) {
                 var matched = null;
