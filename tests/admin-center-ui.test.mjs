@@ -304,6 +304,8 @@ test('后台设置为只读强制安全规则，不提供可以关闭的危险�
 test('creator center returns unauthorized visitors to account entry instead of an unrelated homepage', () => {
   assert.doesNotMatch(adminScript, /window\.location\.replace\('\.\.\/index\.html'\)/);
   assert.match(adminScript, /window\.location\.replace\('\/account\/index\.html\?admin=1'\)/);
-  assert.match(adminScript, /new URLSearchParams\(window\.location\.search\)\.get\('tab'\) === 'invites'/);
-  assert.match(adminScript, /activateTab\('invites'\)/);
+  assert.match(adminScript, /new URLSearchParams\(window\.location\.search\)\.get\('tab'\)/);
+  assert.match(adminScript, /\['users', 'invites', 'audit', 'settings'\]\.includes\(requested\)/);
+  assert.match(adminScript, /activateTab\(requested\)/);
+  assert.match(adminScript, /else await loadOverviewDetails\(\)/);
 });

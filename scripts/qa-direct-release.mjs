@@ -27,7 +27,7 @@ const QA_DB = '4a24ce58079f468c87c2f75e107c4d1c';
 const CORE_DB = 'e1b78d3813ae4a819841e8c5c3e9e8ec';
 const QA_DO = '4a10d3dab4e16639445f4afdb0b7e5e2462cf06894cb4ae85f0ac3cd3cdba101';
 const CORE_DO = 'dba114c7b0abd8e53d1d78e579924852b8e40907e50213634aeeaeb41ab51a98';
-const BRANCH = 'integration/qa-hd-wallpaper-on-v145-20261123';
+const BRANCH = 'integration/qa-admin-workspace-on-v146-20261123';
 const QA_SETUP_OPEN = 'isolated_authority';
 const QA_SETUP_CLOSED = 'disabled';
 const TESTS = [
@@ -52,6 +52,7 @@ const TESTS = [
   ['npm', ['run', 'build']],
   // Editorial admin screen: existing actions, context recovery and design contract.
   ['node', ['--test', 'tests/admin-center-editorial.test.mjs']],
+  ['node', ['--test', 'tests/admin-workspace.test.mjs']],
   // Verify real Workerd+SQLite and the protected admin page; synthetic identities only.
   ['node', ['tests/admin-cloud-workerd.runtime.mjs']],
   ['npm', ['run', 'test:encounter']],
@@ -64,6 +65,8 @@ const TESTS = [
   ['npx', ['playwright', 'install', '--with-deps', 'chromium']],
   ['node', ['tests/admin-cloud-mobile.browser.mjs']],
   ['node', ['tests/admin-center-editorial.browser.mjs']],
+  ['node', ['tests/desktop-wallpaper-hd.browser.mjs']],
+  ['node', ['tests/desktop-personalization.browser.mjs']],
   ['npx', ['playwright', 'install', '--with-deps', 'webkit']],
   // WebKit iPhone emulation on Linux; distinct from physical iOS device acceptance.
   ['node', ['tests/admin-cloud-ios-webkit.mjs']],
