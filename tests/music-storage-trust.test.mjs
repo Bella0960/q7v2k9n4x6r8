@@ -21,7 +21,7 @@ function slice(from, to) {
 
 const toastBlock = slice('  var musicToastTimer = null;', '  function removeTrackFromRecent(');
 const listBlock = slice('  function saveRecentIds(ids) {', '  function removeTrackFromRecent(');
-const profileBlock = slice('  function saveProfileEdit() {', "  document.getElementById('musicImport')");
+const profileBlock = slice('  function persistProfileFields(fields) {', "  document.getElementById('musicImport')");
 
 function makeStore(seed = {}) {
   const raw = { ...seed };
@@ -170,6 +170,45 @@ test('saveProfileEdit：三条写入失败时不关闭弹窗、不谎报保存',
   assert.equal(store.raw.music_profile_name, '新昵称');
   assert.equal(store.raw.music_profile_handle, '@mao');
   assert.equal(calls.close, 1);
+});
+
+test('个人资料三字段：第三项写失败时原三项全部回滚', () => {
+  const store = makeStore({
+    music_profile_name: '旧昵称', music_profile_handle: '@old', music_profile_bg: '#222'
+  });
+  const originalSet = store.setItem;
+  let failed = false;
+  store.setItem = (key, value) => {
+    if (key === 'music_profile_bg' && !failed) {
+      failed = true;
+      throw new Error('QuotaExceededError');
+    }
+    return originalSet(key, value);
+  };
+  const fields = {
+    editName: { value: '新昵称' },
+    editHandle: { value: 'new' },
+    editBgCustom: { value: '#eeeeee' }
+  };
+  const { sb } = makeSandbox({ store, fields });
+  const calls = { render: 0, close: 0, warnings: [] };
+  sb.BG_PRESETS = [{ css: '#111' }];
+  sb.selectedBg = 0;
+  sb.renderProfile = () => { calls.render++; };
+  sb.closeProfileEdit = () => { calls.close++; };
+  sb.toast = (msg) => calls.warnings.push(msg);
+  vm.runInContext(profileBlock, sb);
+
+  sb.saveProfileEdit();
+  assert.equal(failed, true, 'third key must throw once to exercise partial rollback');
+  assert.deepEqual({
+    name: store.raw.music_profile_name,
+    handle: store.raw.music_profile_handle,
+    bg: store.raw.music_profile_bg,
+  }, { name: '旧昵称', handle: '@old', bg: '#222' });
+  assert.equal(calls.render, 0);
+  assert.equal(calls.close, 0);
+  assert.ok(calls.warnings.some((msg) => msg.includes('旧资料已恢复')));
 });
 
 test('源码守卫：toast 已定义，且播放计数/收藏计数不再裸写', () => {
