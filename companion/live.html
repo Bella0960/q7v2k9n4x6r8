@@ -787,22 +787,47 @@ function aiAudienceStore(){
   try{return JSON.parse(localStorage.getItem(AI_AUDIENCE_KEY)||'{}')||{};}catch(e){return{};}
 }
 function aiAudienceDay(){return new Date().toISOString().slice(0,10);}
-function aiAudienceUsedToday(){
+/* 总控 P1：原来 aiAudienceUsedToday() 只读 localStorage，一旦 setItem 抛异常（配额满/隐私模式），
+   日次数永远不增加；而 setAiAudience 又把 sessionUsed 清零 → 关掉再打开就能绕开全部限额。
+   现在加一层会话内单调镜像：跨日才归零，落盘失败也照样推进，开关不重置。 */
+var aiAudienceDaily={day:'',used:0,persistBroken:false};
+function aiAudienceDailySync(){
+  if(aiAudienceDaily.day!==aiAudienceDay()){
+    aiAudienceDaily.day=aiAudienceDay();
+    aiAudienceDaily.used=0;
+    aiAudienceDaily.persistBroken=false;
+  }
+}
+function aiAudienceStoredUsed(){
   var s=aiAudienceStore();
   return s.day===aiAudienceDay()?Number(s.used)||0:0;
+}
+function aiAudienceUsedToday(){
+  aiAudienceDailySync();
+  return Math.max(aiAudienceStoredUsed(),aiAudienceDaily.used);
 }
 function aiAudienceRemaining(){
   return Math.max(0,AI_AUDIENCE_DAILY_LIMIT-aiAudienceUsedToday());
 }
 function aiAudienceBudgetNote(){
-  return '本场剩余 '+Math.max(0,AI_AUDIENCE_SESSION_LIMIT-aiAudience.sessionUsed)+' 批 · 今日剩余 '+aiAudienceRemaining()+' 批（仅本机限制）';
+  return '本场剩余 '+Math.max(0,AI_AUDIENCE_SESSION_LIMIT-aiAudience.sessionUsed)+' 批 · 今日剩余 '+aiAudienceRemaining()+' 批（仅本机限制）'
+    +(aiAudienceDaily.persistBroken?' · 本机预算写入失败，已按保守计数继续限制':'');
 }
-/* 先记账再请求：失败也占用一次，避免反复失败不断烧额度 */
+function persistAiAudience(){
+  try{
+    localStorage.setItem(AI_AUDIENCE_KEY,JSON.stringify({day:aiAudienceDay(),used:aiAudienceUsedToday(),enabled:aiAudience.enabled}));
+    return true;
+  }catch(e){return false;}
+}
+/* 先记账再请求：失败也占用一次，避免反复失败不断烧额度。
+   落盘失败只标记 persistBroken，内存计数照常推进（绝不因写不进去而放开限制）。 */
 function consumeAiAudienceBudget(){
-  var used=aiAudienceUsedToday()+1;
+  aiAudienceDailySync();
+  aiAudienceDaily.used=aiAudienceUsedToday()+1;
   aiAudience.sessionUsed+=1;
   aiAudience.lastAt=Date.now();
-  try{localStorage.setItem(AI_AUDIENCE_KEY,JSON.stringify({day:aiAudienceDay(),used:used,enabled:aiAudience.enabled}));}catch(e){}
+  if(!persistAiAudience())aiAudienceDaily.persistBroken=true;
+  return aiAudienceDaily.used;
 }
 
 function bumpAiAudienceToken(){
@@ -815,10 +840,13 @@ function setAiAudience(on){
   if(next===aiAudience.enabled){renderAiAudiencePanel();return;}
   aiAudience.enabled=next;
   bumpAiAudienceToken();                 /* 关掉时旧结果全部作废 */
-  aiAudience.sessionUsed=0;
-  aiAudience.lastAt=0;
   aiAudience.degraded=false;
-  try{localStorage.setItem(AI_AUDIENCE_KEY,JSON.stringify({day:aiAudienceDay(),used:aiAudienceUsedToday(),enabled:next}));}catch(e){}
+  /* 注意：不清 sessionUsed / lastAt。开关来回切不能刷新本场额度，也不能顺手抹掉 3 分钟间隔。 */
+  aiAudienceDailySync();
+  if(!persistAiAudience()){
+    aiAudienceDaily.persistBroken=true;
+    toast('本机预算没能写入，AI 观众会按保守计数继续限制');
+  }
   $('viewerBox').classList.toggle('ai-on',next);
   renderAiAudiencePanel();
   pushBubble({text:next?'AI 观众已开启 · 这些观众是虚拟角色，不是真人':'AI 观众已关闭，回到本地模拟观众',type:'system'});
@@ -844,7 +872,7 @@ function renderAiAudiencePanel(){
       : 'AI 观众是虚拟角色，不是实时真人。开启后会调用你配置的付费 AI 接口，'+'默认每场 6 批、间隔至少 3 分钟、每天 12 批（仅本机限制）。不开启时用本地模拟观众，零费用。';
   }
   var state=$('audienceState');
-  if(state)state.textContent=aiAudience.enabled?(aiAudience.degraded?'已降级为本地模拟':'运行中'):'未开启';
+  if(state)state.textContent=aiAudience.enabled?(aiAudienceDaily.persistBroken?'已暂停（预算写入失败）':(aiAudience.degraded?'已降级为本地模拟':'运行中')):'未开启';
 }
 
 function scheduleAiAudience(delay){
@@ -908,6 +936,15 @@ function requestAiAudienceBatch(){
   }
   if(aiAudience.sessionUsed>=AI_AUDIENCE_SESSION_LIMIT||aiAudienceRemaining()<=0){
     aiAudience.degraded=true;renderAiAudiencePanel();return;
+  }
+  /* fail-closed：预算写不进本机，就无法保证跨刷新/跨天真的只花 12 次——
+     直接停止新的付费调用，用户重新清出空间后再开启。 */
+  if(aiAudienceDaily.persistBroken){
+    aiAudience.busy=false;
+    aiAudience.degraded=true;
+    renderAiAudiencePanel();
+    toast('本机预算没能写入，AI 观众已暂停付费调用（避免绕开限额）');
+    return;
   }
   var token=aiAudience.token;
   aiAudience.busy=true;
