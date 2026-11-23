@@ -194,6 +194,63 @@ test('art 白名单：非法 art 不进入 className / innerHTML', () => {
   assert.ok(page.includes('@media(max-width:560px)'), '移动端断点保留');
 });
 
+test('P1 保存失败回滚：图片与标题不得在后续成功写入中偷偷落盘', () => {
+  const store = makeStore({ maomao_visual_archive_v1: SEED });
+  const r = makeRuntime({ store });
+  r.sb.openWork(1);
+  r.get('editTitle').value = '未保存标题';
+  r.get('editDesc').value = '未保存说明';
+  r.get('editImage').files = [{ size: 1000 }];
+  r.get('save').onclick();
+  store.failWrites(true);
+  r.readers[0].result = 'data:image/png;base64,UNSAVED';
+  r.readers[0].onload();
+  assert.ok(r.alerts.some(x => x.includes('存储')), '写入失败需提示');
+  store.failWrites(false);
+  r.get('favorite').onclick();  // 另一项成功操作不得把前一次失败的编辑顺带保存
+  const saved = JSON.parse(store.raw.maomao_visual_archive_v1)[0];
+  assert.equal(saved.title, 'Still, Here');
+  assert.equal(saved.desc, '笔记');
+  assert.equal(saved.image, undefined);
+  assert.equal(saved.favorite, true);
+});
+
+test('P1 收藏失败回滚：再次保存不能顺带记录失败的收藏', () => {
+  const store = makeStore({ maomao_visual_archive_v1: SEED });
+  const r = makeRuntime({ store });
+  r.sb.openWork(1);
+  store.failWrites(true);
+  r.get('favorite').onclick();
+  store.failWrites(false);
+  r.get('save').onclick();
+  assert.equal(JSON.parse(store.raw.maomao_visual_archive_v1)[0].favorite, undefined);
+});
+
+test('P1 同一作品的旧读图回调不得覆盖更新的保存；读图报错要提示', () => {
+  const store = makeStore({ maomao_visual_archive_v1: SEED });
+  const r = makeRuntime({ store });
+  r.sb.openWork(1);
+  r.get('editTitle').value = '旧编辑';
+  r.get('editImage').files = [{ size: 1000 }];
+  r.get('save').onclick();
+  r.get('editTitle').value = '新编辑';
+  r.get('save').onclick();
+  assert.equal(r.readers.length, 2);
+  r.readers[1].result = 'data:image/png;base64,NEW';
+  r.readers[1].onload();
+  r.readers[0].result = 'data:image/png;base64,OLD';
+  r.readers[0].onload();
+  const saved = JSON.parse(store.raw.maomao_visual_archive_v1)[0];
+  assert.equal(saved.title, '新编辑');
+  assert.equal(saved.image, 'data:image/png;base64,NEW');
+
+  r.sb.openWork(2);
+  r.get('editImage').files = [{ size: 1000 }];
+  r.get('save').onclick();
+  r.readers[2].onerror();
+  assert.ok(r.alerts.some(x => x.includes('图片读取失败')));
+});
+
 test('源码守卫：save 锁定目标、校验前置、无网络调用', () => {
   assert.ok(script.includes('const target=current;'), '保存必须锁定目标作品');
   assert.ok(script.includes('if(file&&file.size>1.5*1024*1024)'), '图片大小校验必须在改动前');
