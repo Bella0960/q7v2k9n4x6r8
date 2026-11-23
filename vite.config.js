@@ -81,6 +81,8 @@ export default defineConfig({
       // Publish a compact list of every multi-page HTML entry for the PWA installer.
       // This keeps all app routes reachable from cache on unreliable mobile networks.
       const pageList = Object.keys(htmlFiles)
+        // Role-restricted admin HTML must never be precached on ordinary phones.
+        .filter(page => !page.startsWith('admin/'))
         .map(page => page + '.html')
         .sort();
       this.emitFile({
