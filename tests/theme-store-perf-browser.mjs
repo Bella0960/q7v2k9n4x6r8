@@ -73,18 +73,19 @@ for(const width of [375,390,430]){
   await page.locator('#categoryNav button[data-category="discover"]').click();
   const rail=page.locator('.sf-featured');
   const railBox=await rail.boundingBox();
+  const railY=railBox.y+railBox.height*.5;
   const touch=await ctx.newCDPSession(page);
-  const startX=railBox.x+railBox.width*.8,y=railBox.y+railBox.height*.5;
-  await touch.send('Input.dispatchTouchEvent',{type:'touchStart',touchPoints:[{x:startX,y}]});
-  for(let i=1;i<=6;i++)await touch.send('Input.dispatchTouchEvent',{type:'touchMove',touchPoints:[{x:startX-i*railBox.width*.09,y}]});
+  const startX=railBox.x+railBox.width*.8;
+  await touch.send('Input.dispatchTouchEvent',{type:'touchStart',touchPoints:[{x:startX,y:railY}]});
+  for(let i=1;i<=12;i++)await touch.send('Input.dispatchTouchEvent',{type:'touchMove',touchPoints:[{x:startX-i*railBox.width*.08,y:railY}]});
   await touch.send('Input.dispatchTouchEvent',{type:'touchEnd',touchPoints:[]});
-  await page.waitForTimeout(300);
+  await touch.detach();
   assert.ok(await rail.evaluate(el=>el.scrollLeft>0),'horizontal rail scrolls');
   assert.equal(await page.locator('.sf-dialog').count(),0,'swiping rail must not open detail');
-  await touch.detach();
 
-  // 7. 视口内的精选封面不被离屏暂停逻辑误标；横向滑出的卡片允许暂停。
-  const misPaused=await page.evaluate(()=>{
+  // 7. 滑出轨道的封面被暂停；视口内封面不被误标。IO 为异步回调，按状态等待而非固定延时。
+  await page.waitForFunction(()=>{const s=document.querySelectorAll('.sf-feature-scene');return s[0]&&s[0].classList.contains('is-offscreen');});
+  const offscreenOnScreen=()=>page.evaluate(()=>{
     const content=document.getElementById('storeContent').getBoundingClientRect();
     return [...document.querySelectorAll('.sf-feature-scene')].filter(el=>{
       const r=el.getBoundingClientRect();
@@ -92,7 +93,24 @@ for(const width of [375,390,430]){
       return intersects&&el.classList.contains('is-offscreen');
     }).length;
   });
-  assert.equal(misPaused,0,'on-screen featured art is not paused');
+  assert.equal(await offscreenOnScreen(),0,'on-screen featured art is not paused');
+
+  // 7b. 滑回可视区后，重新进入视口的封面解除暂停；视口内不残留被误暂停的封面。
+  const touchBack=await ctx.newCDPSession(page);
+  const backBox=await rail.boundingBox();
+  const backX=backBox.x+backBox.width*.2;
+  await touchBack.send('Input.dispatchTouchEvent',{type:'touchStart',touchPoints:[{x:backX,y:railY}]});
+  for(let i=1;i<=12;i++)await touchBack.send('Input.dispatchTouchEvent',{type:'touchMove',touchPoints:[{x:backX+i*backBox.width*.08,y:railY}]});
+  await touchBack.send('Input.dispatchTouchEvent',{type:'touchEnd',touchPoints:[]});
+  touchBack.detach();
+  await page.waitForFunction(()=>{
+    const content=document.getElementById('storeContent').getBoundingClientRect();
+    return [...document.querySelectorAll('.sf-feature-scene')].filter(el=>{
+      const r=el.getBoundingClientRect();
+      const intersects=r.right>content.left&&r.left<content.right&&r.bottom>content.top&&r.top<content.bottom;
+      return intersects&&el.classList.contains('is-offscreen');
+    }).length===0;
+  });
 
   // 8. 主题列表纵滑后位置稳定，pageshow 不跳回顶部。
   await page.locator('#categoryNav button[data-category="themes"]').click();
@@ -101,6 +119,21 @@ for(const width of [375,390,430]){
   await page.evaluate(()=>window.dispatchEvent(new PageTransitionEvent('pageshow')));
   const restored=await page.locator('#storeContent').evaluate(el=>el.scrollTop);
   assert.ok(Math.abs(restored-remembered)<5,'scroll position survives pageshow');
+
+  // 9. 连续 50 轮「首页↔主题↔我的」往返：观察目标数与当前 DOM 一致，且不跨轮增长（旧节点已释放）。
+  const switchCat=async cat=>page.locator('#categoryNav button[data-category="'+cat+'"]').click();
+  const watchedCount=()=>page.evaluate(()=>window.MAOMAOStorefront._animWatchedCount());
+  let baselineWatched=0;
+  for(let round=0;round<2;round++){
+    for(let i=0;i<50;i++){await switchCat('discover');await switchCat('themes');await switchCat('mine');}
+    await switchCat('discover');
+    await page.waitForSelector('.sf-feature-scene');
+    const watched=await watchedCount();
+    const live=await page.locator('.sf-feature-scene').count();
+    assert.equal(watched,live,'observer targets match live DOM after 50 round-trips');
+    if(round===0)baselineWatched=watched;
+    else assert.equal(watched,baselineWatched,'observer target count does not grow across rounds');
+  }
 
   assert.deepEqual(errors,[],'no page errors');
   count++;

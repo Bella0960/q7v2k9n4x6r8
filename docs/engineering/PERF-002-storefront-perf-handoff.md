@@ -12,12 +12,14 @@
 1. **单次渲染复用收藏数据快照**：新增 `favCache` 与 `readCache()`。一次整段渲染内，卡片、收藏按钮、「我的」列表、详情弹窗复用同一份 `model.read()` 解析结果；每次 `render(category)` 入口清空缓存，保证下次渲染读到最新收藏。
    - 收藏写入后的取值（`favorite` 处理）与记录查找（`getRecord`）仍直读 `model.read()`，不使用可能陈旧的缓存。
 2. **精选封面离屏暂停浮动动画**：`init` 时建立 `IntersectionObserver`（root 为主内容容器）+ `MutationObserver` 跟踪重绘后新插入的 `.sf-feature-scene`；横向滑出可视轨道的封面加 `is-offscreen` 类暂停动画，可见封面保持原有浮动。
+   - 复审返修（P1）：观察目标用本地 `animWatched` `Set` 跟踪；每次重绘监测回调先释放已脱离 `#storeContent`（`!isConnected` 或不在容器内）的旧节点（`unobserve` 并移出集合），再注册当前 DOM 内的封面，避免整段 `innerHTML` 替换后观察器长期持有旧节点导致目标累积。无 `IntersectionObserver` 环境直接降级，不重复建立 `MutationObserver`；对外暴露只读计数 `MAOMAOStorefront._animWatchedCount()` 供回归核对。
 
 ### `theme-store/storefront.css`
 - 新增 `.sf-feature-scene.is-offscreen{animation-play-state:paused}`；可见态动画、`prefers-reduced-motion` 兜底均保持不变。
 
 ### 测试
 - 新增 `tests/theme-store-perf-browser.mjs`（裸 http server，跨平台路径校验；视口 375/390/430），覆盖：栏目高亮跟随、列表/弹窗内收藏与取消状态即时同步、弹窗不被收藏关闭、关闭后焦点回到对应主题、我的·收藏与操作一致、横滑精选不误触详情弹窗、视口内封面不被误暂停、纵滑后 `pageshow` 位置不跳顶、无页面报错。
+  - 复审返修（P2）：补「滑出轨道→加 `is-offscreen`、滑回可视区→解除暂停」往返断言；IO 为异步回调，用 `waitForFunction` 按相交/暂停状态轮询等待，不靠固定延时假绿。另加连续 50 轮「首页↔主题↔我的」往返后核对：观察目标数与当前 DOM `.sf-feature-scene` 数量一致，且跨轮不增长。
 - `package.json` 新增独立脚本 `test:theme:perf:browser`（未挂入 build 链）。
 
 ## 2. 热点审查结论（含未改动项及理由）
@@ -51,11 +53,12 @@
 
 ## 4. 自测证据
 
-- `node --check theme-store/storefront.js`：通过。
-- `npm run test:theme:perf:browser`：3/3 通过（375 / 390 / 430）。
-- `npx vite build`：通过（约 8.35s）。
+- `node --check theme-store/storefront.js`（含 `collection-store.js`、`market-expansion.js`）：通过。
+- `npm run test:theme:perf:browser`：3/3 通过（375 / 390 / 430），含离屏→返回恢复往返断言与 50 轮切栏观察目标不增长核对。
+- `npx vite build`：通过（返修轮约 10.74s）。
 - `npm run test:theme:market`：45 通过 / 4 失败。**4 个失败为基线既有断言漂移**（资源版本号、既有文案与源码不一致），在干净基线 `1df1388c` 上同样失败，非本次引入；本次未改动这些断言或对应 html 版本号。
 - `npm run test:pwa:navigation`：4 通过 / 1 失败。**失败为基线既有**：测试断言缓存名 `phone-app-pwa-v229`，`sw.js` 实际为 `v235`；本次未触碰 `sw.js`。
+- 耗时仅作 0–5ms 量级波动参考，不宣称显著提速；结论限定为「减少重复解析、暂停离屏动画，暂未发现明显性能退化」。
 
 ## 5. 基线既有、未在本任务处理的问题
 

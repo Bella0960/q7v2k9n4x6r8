@@ -211,14 +211,24 @@ let pending=false;
 document.addEventListener('click',async ev=>{const b=ev.target.closest('[data-sf]');if(!b)return;ev.preventDefault();if(pending)return;pending=true;b.disabled=true;try{await handle(b.dataset.sf,b.dataset.id);}catch(error){if(overlay)overlay.querySelector('.sf-error').textContent=error.message;else api.toast(error.message);}finally{pending=false;b.disabled=false;}});
 // Pause the floating art on cards scrolled out of the visible rail; keep the motion where it is seen.
 let animIO=null,animMO=null;
+const animWatched=new Set();
 function trackFeaturedAnimation(){
  if(!('IntersectionObserver' in global)||animIO)return;
  const content=document.getElementById('storeContent');if(!content)return;
  animIO=new IntersectionObserver(entries=>{for(const en of entries)en.target.classList.toggle('is-offscreen',!en.isIntersecting);},{root:content,threshold:0});
- const watch=()=>{content.querySelectorAll('.sf-feature-scene').forEach(el=>{if(!el.dataset.animWatched){el.dataset.animWatched='1';animIO.observe(el);}});};
- watch();
- animMO=new MutationObserver(watch);
+ const resync=()=>{
+   // Targets detached by a full innerHTML replacement must be released, not retained by the observer.
+   for(const el of [...animWatched]){
+     if(!el.isConnected||!content.contains(el)){animIO.unobserve(el);animWatched.delete(el);}
+   }
+   content.querySelectorAll('.sf-feature-scene').forEach(el=>{
+     if(!animWatched.has(el)){animWatched.add(el);animIO.observe(el);}
+   });
+ };
+ resync();
+ animMO=new MutationObserver(resync);
  animMO.observe(content,{childList:true});
 }
-global.MAOMAOStorefront={init(adapter){api=adapter;trackFeaturedAnimation();},render(category){favCache=null;section=category;const nav=document.getElementById('categoryNav');nav.querySelectorAll('button').forEach(b=>{const active=b.dataset.category===(['bubbles','fonts','wallpapers','widgets'].includes(category)?'categories':category);b.classList.toggle('active',active);b.setAttribute('aria-current',active?'page':'false');});try{if(category==='discover')return discover();if(category==='themes')return themes();if(category==='categories')return categoryView();if(category==='mine')return mine();}catch(error){return '<p class="sf-error">'+e(error.message)+'</p>';}return null;},svg};
+function animWatchedCount(){return animWatched.size;}
+global.MAOMAOStorefront={init(adapter){api=adapter;trackFeaturedAnimation();},render(category){favCache=null;section=category;const nav=document.getElementById('categoryNav');nav.querySelectorAll('button').forEach(b=>{const active=b.dataset.category===(['bubbles','fonts','wallpapers','widgets'].includes(category)?'categories':category);b.classList.toggle('active',active);b.setAttribute('aria-current',active?'page':'false');});try{if(category==='discover')return discover();if(category==='themes')return themes();if(category==='categories')return categoryView();if(category==='mine')return mine();}catch(error){return '<p class="sf-error">'+e(error.message)+'</p>';}return null;},svg,_animWatchedCount:animWatchedCount};
 })(window);
