@@ -30,7 +30,7 @@
     "perf:fixab:mobile": "THROTTLE=4 node perf/fixab-regression.mjs",
     "perf:gate": "node perf/gate.mjs",
     "test:desktop:layout": "node --test tests/default-desktop-layout.test.mjs",
-    "test:cloud:push:restore": "node --test tests/cloud-push-sw-restore.test.mjs tests/cloud-push-client-compat.test.mjs",
+    "test:cloud:push:restore": "node --test tests/cloud-push-sw-restore.test.mjs tests/cloud-push-client-compat.test.mjs tests/cloud-push-device-runtime.test.mjs",
     "test:pwa:navigation": "node --test tests/pwa-navigation-cache.test.mjs tests/icon-presets-contract.test.mjs",
     "test:font:runtime": "node --test tests/font-runtime-performance.test.mjs",
     "test:chat:call": "node --test tests/chat-call-experience.test.mjs",
