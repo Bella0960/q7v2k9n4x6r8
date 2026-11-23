@@ -548,7 +548,9 @@
         <div id="lyricView" style="position:absolute;top:8px;left:30px;right:30px;height:264px;background:#fff;border-radius:16px;overflow-y:auto;padding:20px;display:none;scroll-behavior:smooth;scrollbar-width:none;-ms-overflow-style:none;">
           <style>
             #lyricView::-webkit-scrollbar { width: 0; height: 0; display: none; }
-          </style>
+          .music-toast{position:fixed;left:50%;bottom:calc(96px + env(safe-area-inset-bottom));transform:translateX(-50%) translateY(8px);max-width:78vw;padding:10px 16px;border-radius:14px;background:rgba(22,22,22,.92);color:#f4f4f4;font-size:12.5px;line-height:1.55;letter-spacing:.01em;opacity:0;transition:opacity .22s ease,transform .22s ease;z-index:120;pointer-events:none;text-align:center;-webkit-backdrop-filter:blur(8px);backdrop-filter:blur(8px)}
+.music-toast.show{opacity:1;transform:translateX(-50%) translateY(0)}
+</style>
           <div id="lyrics" style="text-align:center;font-size:14px;color:#999;line-height:1.8;"></div>
         </div>
       </div>
@@ -878,8 +880,35 @@
       return raw ? JSON.parse(raw) : [];
     } catch (e) { return []; }
   }
+  /* 页面里原本有 4 处调用 toast(...)，但整个文件既没有定义 toast 也没有 #toast 节点，
+     这些调用会抛 ReferenceError：提示看不见，还会打断播放/导入流程。这里补上统一实现。 */
+  var musicToastTimer = null;
+  function toast(text) {
+    var el = document.getElementById('musicToast');
+    if (!el) {
+      el = document.createElement('div');
+      el.id = 'musicToast';
+      el.className = 'music-toast';
+      document.body.appendChild(el);
+    }
+    el.textContent = String(text == null ? '' : text);
+    el.classList.add('show');
+    clearTimeout(musicToastTimer);
+    musicToastTimer = setTimeout(function () { el.classList.remove('show'); }, 1800);
+  }
+  /* 本地写入统一入口：容量满时不再静默丢数据，也不抛未捕获异常打断播放。 */
+  var musicStorageWarned = false;
+  function warnMusicStorage(text) {
+    if (musicStorageWarned) return;
+    musicStorageWarned = true;
+    toast(text || '本机存储空间不足，这次的改动没能保存，刷新后会丢失');
+  }
+  function saveLocal(key, value, quiet) {
+    try { localStorage.setItem(key, value); return true; }
+    catch (e) { if (!quiet) warnMusicStorage(); return false; }
+  }
   function saveLocalTracksMeta(list) {
-    try { localStorage.setItem(LOCAL_TRACKS_KEY, JSON.stringify(list || [])); } catch (e) {}
+    return saveLocal(LOCAL_TRACKS_KEY, JSON.stringify(list || []));
   }
   // 合并本地曲目到 tracks 数组（不覆盖示例曲）
   function mergeLocalTracks() {
@@ -925,10 +954,10 @@
     } catch (e) { return []; }
   }
   function saveRecentIds(ids) {
-    try { localStorage.setItem('music_recent', JSON.stringify(ids || [])); } catch (e) {}
+    return saveLocal('music_recent', JSON.stringify(ids || []));
   }
   function saveFavIds(ids) {
-    try { localStorage.setItem('music_fav_list', JSON.stringify(ids || [])); } catch (e) {}
+    return saveLocal('music_fav_list', JSON.stringify(ids || []));
   }
   function removeTrackFromRecent(id) {
     saveRecentIds(readRecentIds().filter(function (x) { return x !== id; }));
@@ -1088,7 +1117,7 @@
     saveRecentIds(recent);
     // 更新播放计数
     var played = parseInt(localStorage.getItem('music_played_count') || '0', 10) + 1;
-    localStorage.setItem('music_played_count', String(played));
+    saveLocal('music_played_count', String(played), true);
     // 保存断点
     saveState();
     showNP();
@@ -1228,7 +1257,7 @@
       favs = favs.filter(function (x) { return x !== currentT.id; });
     }
     saveFavIds(favs);
-    localStorage.setItem('music_fav_count', String(favs.length));
+    saveLocal('music_fav_count', String(favs.length), true);
     var btn = document.getElementById('btnHeart');
     btn.style.transform = 'scale(1.2)';
     setTimeout(function () { btn.style.transform = ''; }, 200);
@@ -1413,9 +1442,13 @@
     if (!hd) hd = '@music_lover';
     var customColor = document.getElementById('editBgCustom').value;
     var bg = (customColor && customColor !== '#1a1a1a') ? customColor : BG_PRESETS[selectedBg].css;
-    localStorage.setItem('music_profile_name', nm);
-    localStorage.setItem('music_profile_handle', hd);
-    localStorage.setItem('music_profile_bg', bg);
+    var okName = saveLocal('music_profile_name', nm, true);
+    var okHandle = saveLocal('music_profile_handle', hd, true);
+    var okBg = saveLocal('music_profile_bg', bg, true);
+    if (!okName || !okHandle || !okBg) {
+      warnMusicStorage('昵称或个人主页背景没能保存，本机存储空间不足；清出空间后再点一次保存');
+      return;
+    }
     renderProfile();
     closeProfileEdit();
   }
@@ -1461,12 +1494,12 @@
   function saveState() {
     try {
       var currentT = tracks[currentIdx];
-      localStorage.setItem('music_state', JSON.stringify({
+      saveLocal('music_state', JSON.stringify({
         id: currentT ? currentT.id : null,
         idx: currentIdx,
         time: window.audio.currentTime || 0,
         playing: playing
-      }));
+      }), true);
     } catch(e) {}
   }
   function loadState() {
