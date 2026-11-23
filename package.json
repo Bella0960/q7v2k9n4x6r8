@@ -75,7 +75,10 @@
     "test:storage:reliability": "node --test tests/storage-quota-reliability.test.mjs",
     "test:eco:node": "node --test tests/world-events-contract.test.mjs tests/encounter-world-events-bridge.test.mjs tests/ecosystem-role-profile-navigation.test.mjs tests/world-events-memory-consent.test.mjs tests/encounter-reunion-confirmed.test.mjs tests/ecosystem-unified-contract.test.mjs",
     "test:eco:browser": "node tests/ecosystem-unified-browser.mjs",
-    "gate:eco": "npm run build && node --test --test-concurrency=1 && npm run test:encounter:browser && npm run test:eco:browser"
+    "gate:eco": "npm run build && node --test --test-concurrency=1 && npm run test:encounter:browser && npm run test:eco:browser",
+    "test:admin:cloud": "node --test tests/admin-cloud-api.test.mjs tests/admin-cloud-sanitize.test.mjs tests/admin-cloud-contract.test.mjs tests/admin-cloud-ui-core.test.mjs",
+    "test:admin:cloud:delegated": "node --test tests/admin-cloud-delegated-authority.test.mjs",
+    "test:admin:cloud:browser": "node tests/admin-cloud-mobile.browser.mjs"
   },
   "devDependencies": {
     "playwright": "^1.64.1",
