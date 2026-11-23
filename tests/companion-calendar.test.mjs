@@ -183,18 +183,16 @@ test('URL ?id= 优先于当前角色，便于从聊天页深链进入', () => {
   assert.ok(store.raw['maoer_daily_questions_roleA'], '必须按 URL 指定的角色落库');
 });
 
-test('没有共享角色时退回 legacy currentRoleId，再退回 default', () => {
+test('没有共享角色时不再退回 default 共享桶：只读并说明原因', () => {
   const store = makeStore({ currentRoleId: 'legacyRole' });
-  const { fields, get } = makeRuntime({ store });
-  fields()[0].value = '旧环境';
-  get('saveAnswers')._h.click();
-  assert.ok(store.raw['maoer_daily_questions_legacyRole']);
+  const r = makeRuntime({ store });
+  r.fields()[0].value = '旧环境';
+  r.get('questionList')._h.input({});
+  r.get('saveAnswers')._h.click();
 
-  const store2 = makeStore();
-  const r2 = makeRuntime({ store: store2 });
-  r2.fields()[0].value = '无角色';
-  r2.get('saveAnswers')._h.click();
-  assert.ok(store2.raw['maoer_daily_questions_default']);
+  assert.equal(store.raw['maoer_daily_questions_default'], undefined, '禁止再制造共享 default 桶');
+  assert.equal(store.raw['maoer_daily_questions_legacyRole'], undefined, '未验证的旧 ID 也不写');
+  assert.ok(r.get('roleLabel').textContent.includes('未绑定'));
 });
 
 test('写入失败：不提示「已保存」，内存里的旧值不被改坏', () => {
@@ -323,4 +321,41 @@ test('源码守卫：不再直写 localStorage、绑定共享角色、不引入�
   assert.ok(script.includes("getCurrentContactId"), '要按正式角色绑定');
   assert.equal(/fetch\(|PhoneAPI|chat\/completions/.test(script), false, '这个页面不应有任何付费/网络调用');
   assert.equal(/Made by|作者：/.test(page), false, 'no developer signature');
+});
+
+/* ---------- 总控首轮审查：真实页面必须自己加载共享脚本 ---------- */
+
+test('真实 HTML 真的加载了 phone_storage.js，而且在内联脚本之前', () => {
+  assert.ok(page.includes('shared/js/phone/phone_storage.js'), '独立页面必须引入共享存储');
+  const libAt = page.indexOf('shared/js/phone/phone_storage.js');
+  const inlineAt = page.indexOf('<script>\n(function(){');
+  assert.ok(libAt > 0 && inlineAt > libAt, '共享脚本必须在内联脚本之前加载');
+  assert.ok(page.indexOf('</head>') > libAt, '应在 head 里加载');
+});
+
+test('?id= 指向不存在的角色：只读，不写任何桶', () => {
+  const store = makeStore();
+  const r = makeRuntime({ store, search: '?id=not-a-role', phoneStorage: phoneWith('roleA') });
+  assert.ok(r.get('roleLabel').textContent.includes('未绑定'));
+
+  r.fields()[0].value = '不该被保存';
+  r.get('questionList')._h.input({});
+  r.get('saveAnswers')._h.click();
+
+  assert.equal(store.raw['maoer_daily_questions_default'], undefined, '不得落到 default 共享桶');
+  assert.equal(store.raw['maoer_daily_questions_not-a-role'], undefined, '不得为不存在角色建桶');
+  assert.equal(store.raw['maoer_daily_questions_roleA'], undefined, '也不得写到当前角色桶');
+  assert.ok(r.get('saveStatus').textContent.includes('只读') || r.toastText().includes('正式角色'));
+});
+
+test('完全没有共享角色：明确只读提示，纪念日也写不进去', () => {
+  const store = makeStore();
+  const r = makeRuntime({ store, phoneStorage: { getCharacters: () => [], getCurrentContactId: () => '' } });
+  r.get('eventName').value = '纪念日';
+  r.get('eventDate').value = '2024-05-20';
+  r.get('eventForm')._h.submit({ preventDefault() {}, target: r.get('eventForm') });
+
+  const keys = Object.keys(store.raw).filter((k) => k.startsWith('maoer_anniversaries_'));
+  assert.deepEqual(keys, [], '无合法角色时不得写入任何纪念日桶');
+  assert.ok(r.toastText().includes('正式角色') || r.get('roleLabel').textContent.includes('未绑定'));
 });
