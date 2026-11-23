@@ -337,7 +337,17 @@
 
   async function refreshCloudOverview() {
     if (cloudReading) return;
-    const originalAccount = pageAccountContext();
+    let originalAccount = '';
+    try { originalAccount = pageAccountContext(); } catch {
+      // A changed account context invalidates all in-flight diagnostics.
+      $('overviewCloudStatus').textContent = '账号身份已变化';
+      $('overviewCloudDetail').textContent = '请返回桌面重新进入管理中心。';
+      return;
+    }
+    const accountStillMatches = () => {
+      try { return pageAccountContext() === originalAccount; }
+      catch { return false; }
+    };
     if (!originalAccount) {
       $('overviewCloudStatus').textContent = '账号身份未确认';
       $('overviewCloudDetail').textContent = '请返回桌面重新进入，不能使用其他账号缓存数据。';
@@ -350,7 +360,7 @@
     $('overviewCloudRetry').disabled = true;
     try {
       const payload = await api('/api/admin/cloud/overview');
-      if (sequence !== cloudReadSequence || pageAccountContext() !== originalAccount) return;
+      if (sequence !== cloudReadSequence || !accountStillMatches()) return;
       if (!Array.isArray(payload.sections) || !payload.sections.length ||
           !payload.sections.every(x => x && typeof x.id === 'string' && typeof x.state === 'string')) {
         throw new Error('诊断信息不完整');
@@ -361,7 +371,7 @@
         ? payload.sections.length + ' 个分区中，' + count + ' 个未标记正常。请到诊断详情核对。'
         : '已检查 ' + payload.sections.length + ' 个诊断分区，可查看详细指标。';
     } catch {
-      if (sequence !== cloudReadSequence || pageAccountContext() !== originalAccount) return;
+      if (sequence !== cloudReadSequence || !accountStillMatches()) return;
       $('overviewCloudStatus').textContent = '暂时无法核对';
       $('overviewCloudDetail').textContent = '诊断接口没有返回可验证的状态，不代表系统正常。';
     } finally {
