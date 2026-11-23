@@ -76,6 +76,8 @@ function makeRuntime(dish) {
     roleName: (role) => (role && role.name) || 'TA',
     localReaction: () => ({ quote: '本地反应', title: 'TA 尝了一口', copy: '味道如何' }),
     saveHistory: () => true,
+    // #431 uses the persisted-history helper; keep this interaction harness aligned.
+    pushHistory: (item) => { sandbox.history.unshift(Object.assign({}, item)); return true; },
     renderHistoryCount: () => {},
     showToast: () => {},
     setTimeout: (fn, ms) => { timers.push({ fn, ms }); return timers.length; },
