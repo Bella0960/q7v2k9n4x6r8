@@ -58,6 +58,17 @@ async function start(port, vars = {}) {
   ];
   const category = signatures.find(([, re]) => re.test(raw))?.[0] || 'UNCLASSIFIED';
   console.error('WORKERD_START_CATEGORY=' + category + ' code=' + (worker.exitCode ?? 'unknown'));
+  const safeLines = raw.split(/\r?\n/)
+    .map(line => line.replace(/\x1B\[[0-9;]*m/g, ''))
+    .filter(line => /(?:\[ERROR\]|npm error|error:|failed|invalid|unsupported|could not|cannot|not found|unknown argument)/i.test(line))
+    .slice(-6)
+    .map(line => line
+      .replace(/[A-Fa-f0-9]{24,}/g, '[HEX_REDACTED]')
+      .replace(/MAO_SESSION=[^\s;]+/gi, 'MAO_SESSION=[REDACTED]')
+      .replace(/(?:MAO_SUPER_ADMIN_BOOTSTRAP_SECRET|DEVICE_SECRET_PEPPER)\s*[:=]\s*\S+/gi, '[SYNTH_SECRET_REDACTED]')
+      .replace(/(?:https?:\/\/)[^\s]+/gi, '[URL_REDACTED]')
+      .slice(0, 170));
+  safeLines.forEach((line, i) => console.error('WORKERD_SANITIZED_LINE_' + i + ' ' + line));
   throw new Error('WORKERD_LOCAL_START_FAILED');
 }
 
