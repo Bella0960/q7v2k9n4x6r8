@@ -313,6 +313,39 @@ test('P1-02 续：预算写入读回被改也视为失败（不只看有没有�
   assert.equal(calls.length, 0, '读回校验失败也必须 fail-closed');
 });
 
+test('P1 预算写入不能覆盖已开启和所选角色，刷新仍保持', () => {
+  const key = 'maomao_music_together_v1';
+  const store = makeStore({ [key]: JSON.stringify({ day: '2020-01-01', used: 0, enabled: true, roleId: 'roleB' }) });
+  const first = makeRuntime({ store });
+  assert.equal(first.sb.together.enabled, true);
+  assert.equal(first.sb.together.roleId, 'roleB');
+  assert.equal(first.sb.togetherChargeBudget(), true);
+  const saved = JSON.parse(store.raw[key]);
+  assert.equal(saved.used, 1);
+  assert.equal(saved.enabled, true, '预算落盘不得擦掉开关');
+  assert.equal(saved.roleId, 'roleB', '预算落盘不得擦掉所选角色');
+  const refreshed = makeRuntime({ store });
+  assert.equal(refreshed.sb.together.enabled, true);
+  assert.equal(refreshed.sb.together.roleId, 'roleB');
+});
+
+test('P1 预算读回开关或角色被改，必须 fail-closed 拒绝调用', () => {
+  const key = 'maomao_music_together_v1';
+  const raw = { [key]: JSON.stringify({ day: '2020-01-01', used: 0, enabled: true, roleId: 'roleB' }) };
+  const store = {
+    getItem: k => (k in raw ? raw[k] : null),
+    setItem: (k, v) => {
+      const p = JSON.parse(v);
+      if (k === key) p.roleId = 'roleA';   // 仅篡改角色，used 保持正确
+      raw[k] = JSON.stringify(p);
+    },
+    removeItem: k => { delete raw[k]; },
+    raw,
+  };
+  const r = makeRuntime({ store });
+  assert.equal(r.sb.togetherChargeBudget(), false, '关联设置读回被改不得放行付费请求');
+});
+
 test('P1-02 续：开关不刷新「同一首」名额与 3 分钟间隔', async () => {
   const store = makeStore();
   const { sb, calls } = makeRuntime({ store });
