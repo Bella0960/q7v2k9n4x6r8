@@ -226,7 +226,7 @@ test('P1 静默写入失败：读回不一致必须回滚并提示，不能假�
   store.dropWrites(true);
   r.get('save').onclick();
   assert.ok(r.alerts.some(x => x.includes('读回校验失败')), '静默失败必须显示读回警告');
-  assert.equal(r.sb.works?.[0]?.title, undefined, '页面不应通过全局变量泄露作品引用');
+  assert.equal(vm.runInContext('works[0].title', r.sb), 'Still, Here', '写入失败应回滚当前页内存');
   store.dropWrites(false);
   r.get('favorite').onclick();
   const saved = JSON.parse(store.raw.maomao_visual_archive_v1)[0];
