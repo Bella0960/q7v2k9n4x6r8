@@ -156,3 +156,11 @@ On the next turn/session, read this file and the current `AGENTS.md` first. Cont
 - **测试：** 新增 `tests/cafe-archive-entry.test.mjs`（4/4 通过）；内联脚本 `node --check` 通过。本轮未重新执行 Vite 构建（`vite build` 会清空 `dist/`，被沙箱策略拒绝），也未做浏览器/真机验收 → **NOT VERIFIED**。
 - **回滚：** 纯代码回退。无存储键、无存档结构变化。
 - **待确认（产品）：** 页头文案由「功能 +」改为「档案」。原控件无任何行为，若希望恢复成功能菜单形态，需要单独设计，不在本 PR 范围。
+
+## 2026-11-23 · APP-CAFE-002 · 总控审查返工（PR #427）
+
+- **审查意见：** P1 成长奖励按钮无监听器；P2 档案入口 `aria-expanded` 不同步。产品决定：保留「档案」入口，不扩展为功能菜单。
+- **复核确认：** `renderCafeDetails()` 在 `root.innerHTML=html` **之前**执行 `document.querySelectorAll('[data-growth-claim]')` 绑定，监听器挂在即将被替换的旧节点上，因此每次渲染后「领取奖励」都点不动。
+- **修改：** 改为容器级一次性事件委托 `bindGrowthClaim(#view-extra)`（含 `growthClaimDelegated` 去重），点击经 `closest('[data-growth-claim]')` 命中后调用既有 `claimGrowthReward`，其内部 `st.growthClaims[id]` 判重继续防重复领取；新增 `syncArchiveState()`，由 `setTab`/`renderAll` 统一维护 `aria-expanded`。
+- **测试：** 新增 `tests/cafe-growth-claim.test.mjs`——从源码截取 `claimGrowthReward` 与 `bindGrowthClaim` 真实实现，在 `node:vm` 隔离上下文里模拟点击：发放一次、重复点击不再发放、未达成/未知奖励不发放、非领奖区域不触发、重复绑定只注册一次，另加「不得在 innerHTML 前绑定」的源码守卫。连续运行 10/10 通过（含 `cafe-archive-entry` 4 项）；内联脚本 `node --check` 通过。
+- **仍未验证：** 浏览器/真机实际点击、Vite 全站构建（`vite build` 清空 `dist/` 被沙箱策略拒绝）、屏幕阅读器下的 `aria-expanded` 播报。
