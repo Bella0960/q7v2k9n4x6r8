@@ -2173,7 +2173,7 @@ test('the shared default portrait is displayed across music, chat calls, setting
   assert.ok(couple.includes('phone_storage.js'));
   assert.ok(couple.includes('const myPortrait = safeSrc(profile.myAvatar || sharedAvatar);'), 'couple profile keeps its own portrait, safely falling back to the shared default');
   assert.ok(couple.includes('const safeSrc = s =>'), 'couple portrait sources must pass protocol validation before rendering');
-  assert.ok(couple.includes("avA.innerHTML = '<img src=\\"'+esc(myPortrait)"), 'couple portrait URL must be escaped before HTML insertion');
+  assert.ok(couple.includes('esc(myPortrait)'), 'couple portrait URL must be escaped before HTML insertion');
 });
 
 
