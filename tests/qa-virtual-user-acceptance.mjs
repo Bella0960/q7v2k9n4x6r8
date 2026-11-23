@@ -118,7 +118,7 @@ try{
       // 2. Real image-generation UI, real orchestration and local IndexedDB;
       // only the two paid API replies are mocked before network dispatch.
       await page.goto(origin+'/settings/image-generation.html',{waitUntil:'load'});
-      await page.locator('#characterSelect option').first().waitFor();
+      await page.locator('#characterSelect option').first().waitFor({state:'attached'});
       await page.locator('#appearance').fill(role.appearanceDescription);
       await page.locator('#styleKeywords').fill(role.styleKeywords.join(', '));
       await page.locator('#scene').fill('下午在咖啡店靠窗的位置');
@@ -126,7 +126,7 @@ try{
       await page.locator('#roleSaveStatus').filter({hasText:'已保存'}).waitFor();
       await page.locator('#generateImage').click();
       await page.waitForFunction(()=>document.getElementById('generationStatus')?.textContent?.includes('生成完成'),
-        {timeout:20000});
+        null,{timeout:20000});
       await page.locator('#gallery .image-item').first().waitFor({state:'visible'});
       const payload=await page.evaluate(()=>({
         calls:window.__qaMockCalls||[],
