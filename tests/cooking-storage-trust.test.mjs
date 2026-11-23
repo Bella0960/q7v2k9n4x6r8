@@ -145,3 +145,38 @@ test('带去聊天：pending 写失败时不携带陈旧数据', () => {
   assert.ok(body.includes("&cooking='+(carried?'1':'0')"), 'chat entry must not claim cooking payload when the write failed');
   assert.equal(/catch\(e\)\{\}\s*$/m.test(body), false, 'pending write must not be silently swallowed');
 });
+
+/* P1（总控复审 #431）：历史满 60 条时写失败，原第 60 条必须保住。 */
+test('历史满 60 条 + 写入失败：整份原数组还原，不丢原记录', () => {
+  const store = makeStore();
+  const sb = makeSandbox(store);
+  for (let i = 0; i < 60; i++) sb.history.push({ name: '旧菜' + i });
+  sb.saveHistory();
+
+  store.failWrites(true);
+  assert.equal(sb.pushHistory({ name: '新菜' }), false);
+
+  assert.equal(sb.history.length, 60, 'must still hold all 60 original entries');
+  assert.equal(sb.history[0].name, '旧菜0', 'order and content must be restored');
+  assert.equal(sb.history[59].name, '旧菜59', 'the 60th entry must not be silently evicted');
+  assert.equal(JSON.parse(store.raw.maomao_cooking_history_v1).length, 60, 'persisted store must stay untouched');
+  assert.equal(sb.history.some((d) => d.name === '新菜'), false);
+});
+
+test('满额失败之后的下一次成功写入不携带失败菜品，且只挤掉最旧一条', () => {
+  const store = makeStore();
+  const sb = makeSandbox(store);
+  for (let i = 0; i < 60; i++) sb.history.push({ name: '旧菜' + i });
+  sb.saveHistory();
+
+  store.failWrites(true);
+  sb.pushHistory({ name: '失败菜' });
+  store.failWrites(false);
+
+  assert.equal(sb.pushHistory({ name: '成功菜' }), true);
+  assert.equal(sb.history.length, 60);
+  assert.equal(sb.history[0].name, '成功菜');
+  assert.equal(sb.history.some((d) => d.name === '失败菜'), false, 'failed dish must not leak into the next save');
+  assert.equal(sb.history[59].name, '旧菜58', 'only the oldest entry may be evicted on a successful save');
+  assert.equal(JSON.parse(store.raw.maomao_cooking_history_v1).length, 60);
+});

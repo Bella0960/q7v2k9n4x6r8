@@ -305,8 +305,11 @@ function requestReaction(){
 function saveHistory(){try{localStorage.setItem(HISTORY_KEY,JSON.stringify(history));return true}catch(e){showToast('记录空间不足，这次菜品没有记进历史');return false}}
 /* 先入栈再写盘：写失败就撤销本次入栈，界面条数不会领先于存档。 */
 function pushHistory(dish){
- history.unshift(Object.assign({},dish));history=history.slice(0,60);
- if(!saveHistory()){history.shift();return false}
+ /* 满额时 slice(0,60) 会先挤掉原第 60 条；失败若只 shift() 就永久丢一条旧记录。
+    因此先留住整份旧数组，写失败就整份还原，而不是回退单步。 */
+ var previous=history;
+ history=[Object.assign({},dish)].concat(history).slice(0,60);
+ if(!saveHistory()){history=previous;renderHistoryCount();return false}
  renderHistoryCount();return true
 }
 /* 口味档案：先算出新值再写盘，成功后才落到内存与界面。 */
