@@ -54,8 +54,9 @@ test('missing context shows a useful explanation without guessing or persisting 
   assert.ok(start >= 0 && end > start);
   const handler = core.slice(start, end);
   assert.ok(handler.includes('/账号上下文|服务器注入/'));
-  assert.ok(handler.includes('返回桌面'));
-  assert.ok(handler.includes("window.location.assign('/index.html')"));
+  assert.ok(handler.includes('登录已有账号'));
+  assert.ok(handler.includes("window.location.assign('/account/index.html?admin=1')"));
+  assert.doesNotMatch(handler, /window\.location\.assign\('\/index\.html'\)/);
   assert.ok(handler.includes('await retry()'));
   assert.doesNotMatch(handler.replace(/\/\/[^\n]*/g, ''), /localStorage|sessionStorage|document\.cookie/);
   assert.match(core, /headers\.set\('x-mao-account-context', accountId\)/);
