@@ -247,12 +247,45 @@ var typing = false, typeTimer = null, fullText = '', text = '';
 var PLAYER_KEY = 'maomao_story_player_name';
 var NPC_KEY = 'maomao_story_npc_names';
 var DIFF_KEY = 'maomao_story_difficulty';
+/* 存档读写统一入口。
+   原来 writeSave() 在 PhoneStorage 缺失时会写 localStorage，而 loadSave()/renderCover()
+   只从 PhoneStorage 读，导致「存了但封面读不到进度」；同时 rawSet 的布尔返回被忽略、
+   catch 全空，写入失败也提示「已保存」。这里统一两条后端并返回真实结果。 */
+var storySaveWarned = false;
+function warnStoryStorage(text){
+  if(storySaveWarned) return;
+  storySaveWarned = true;
+  toast(text || '本机存储空间不足，这次进度没能保存，刷新后可能丢失');
+}
+function storyRead(key, fallback){
+  try{
+    if(window.PhoneStorage && typeof PhoneStorage.rawGet === 'function'){
+      var v = PhoneStorage.rawGet(key, null);
+      if(v !== null && v !== undefined && v !== '') return v;
+    }
+  }catch(e){}
+  try{
+    var raw = localStorage.getItem(key);
+    return raw === null ? fallback : raw;
+  }catch(e){ return fallback; }
+}
+function storyWrite(key, value, quiet){
+  try{
+    if(window.PhoneStorage && typeof PhoneStorage.rawSet === 'function'){
+      if(PhoneStorage.rawSet(key, value)) return true;
+    }
+  }catch(e){}
+  try{
+    localStorage.setItem(key, typeof value === 'string' ? value : JSON.stringify(value));
+    return true;
+  }catch(e){ if(!quiet) warnStoryStorage(); return false; }
+}
 function getPlayerName(){
   try{ return (PhoneStorage && PhoneStorage.rawGet) ? (PhoneStorage.rawGet(PLAYER_KEY,'') || '') : (localStorage.getItem(PLAYER_KEY) || ''); }catch(e){ return ''; }
 }
 function setPlayerName(n){
   state.playerName = n;
-  try{ if(PhoneStorage && PhoneStorage.rawSet) PhoneStorage.rawSet(PLAYER_KEY,n); else localStorage.setItem(PLAYER_KEY,n); }catch(e){}
+  if(!storyWrite(PLAYER_KEY, n, true)) warnStoryStorage('名字没能保存，刷新后会恢复上一次的名字');
 }
 function npcKey(){ return 'maomao_story_npc_' + (state.bookId || 'default'); }
 function loadNpc(){
@@ -272,14 +305,14 @@ function loadNpc(){
 }
 function saveNpc(n){
   state.npc = n;
-  try{ if(PhoneStorage && PhoneStorage.rawSet) PhoneStorage.rawSet(npcKey(),n); else localStorage.setItem(npcKey(),JSON.stringify(n)); }catch(e){}
+  if(!storyWrite(npcKey(), n, true)) warnStoryStorage('角色名没能保存，刷新后会恢复默认称呼');
 }
 function loadDiff(){
   try{ return (PhoneStorage && PhoneStorage.rawGet) ? (PhoneStorage.rawGet(DIFF_KEY,'normal')||'normal') : (localStorage.getItem(DIFF_KEY)||'normal'); }catch(e){ return 'normal'; }
 }
 function saveDiff(d){
   state.difficulty = d;
-  try{ if(PhoneStorage && PhoneStorage.rawSet) PhoneStorage.rawSet(DIFF_KEY,d); else localStorage.setItem(DIFF_KEY,d); }catch(e){}
+  if(!storyWrite(DIFF_KEY, d, true)) warnStoryStorage('难度设置没能保存，刷新后会回到上一次的选择');
 }
 function applyVars(s){
   var map = { player: state.playerName || '我' };
@@ -303,19 +336,14 @@ function statMult(){ return state.difficulty==='easy' ? 1.5 : (state.difficulty=
 /* ====== 存档（按剧本隔离） ====== */
 function saveKey(){ return 'maomao_story_save_' + (state.bookId || 'default'); }
 function loadSave(){
-  try{
-    var raw = (PhoneStorage && PhoneStorage.rawGet) ? PhoneStorage.rawGet(saveKey(), null) : null;
-    if(raw && typeof raw === 'object') return raw;
-    if(typeof raw === 'string'){ try{ return JSON.parse(raw); }catch(e){ return null; } }
-  }catch(e){}
+  var raw = storyRead(saveKey(), null);
+  if(raw && typeof raw === 'object') return raw;
+  if(typeof raw === 'string'){ try{ return JSON.parse(raw); }catch(e){ return null; } }
   return null;
 }
 function writeSave(){
   var data = {sceneId:state.sceneId, stats:state.stats, unlocked:state.unlocked};
-  try{
-    if(PhoneStorage && PhoneStorage.rawSet){ PhoneStorage.rawSet(saveKey(), data); }
-    else { localStorage.setItem(saveKey(), JSON.stringify(data)); }
-  }catch(e){}
+  return storyWrite(saveKey(), data);
 }
 
 /* ====== 封面：渲染剧本卡片 ====== */
@@ -325,7 +353,7 @@ function renderCover(){
   Object.keys(books).forEach(function(bid){
     var b = books[bid];
     var sv = null;
-    try{ sv = (PhoneStorage && PhoneStorage.rawGet) ? PhoneStorage.rawGet('maomao_story_save_' + bid, null) : null; }catch(e){}
+    sv = storyRead('maomao_story_save_' + bid, null);
     if(sv && typeof sv === 'string'){ try{ sv = JSON.parse(sv); }catch(e){ sv = null; } }
 
     var card = document.createElement('div');
@@ -593,7 +621,11 @@ $('btnBackCover').addEventListener('click', function(){
   $('cover').style.display = '';
   renderCover();
 });
-$('btnSave').addEventListener('click', function(){ writeSave(); toast('已保存'); closeDrawer(); });
+$('btnSave').addEventListener('click', function(){
+  var savedOk = writeSave();
+  toast(savedOk ? '已保存' : '本机存储空间不足，这次进度没能保存');
+  closeDrawer();
+});
 
 /* 改名字 */
 $('btnChangeName').addEventListener('click', function(){
