@@ -60,9 +60,11 @@ try{
   });
   const page=await context.newPage(),errors=[];
   page.on('pageerror',e=>errors.push(e.message));
-  const response=await page.goto(origin+'/settings/appearance.html',{waitUntil:'load'});
+  stage='appearance_navigation';
+  const response=await page.goto(origin+'/settings/appearance.html',{waitUntil:'domcontentloaded',timeout:20000});
   assert.equal(response?.status(),200,'wallpaper upload page');
-  await page.locator('#wallpaperInput').waitFor();
+  stage='wallpaper_input_ready';
+  await page.locator('#wallpaperInput').waitFor({timeout:10000});
 
   stage='original-png-preserved';
   const original=await makePng(page,1200,2400,'#808080');
@@ -74,7 +76,7 @@ try{
   ok('preserve_original_pixels_1200x2400','encoding=lossless');
 
   stage='original-reload';
-  await page.reload({waitUntil:'load'});
+  await page.reload({waitUntil:'domcontentloaded',timeout:20000});
   await page.waitForFunction(()=>document.getElementById('wallpaperPreviewBox')?.style.backgroundImage.includes('data:image/png'));
   assert.equal(await getSaved(page),original,'original bytes lost on reload');
   ok('preserve_original_bytes_after_reload');
@@ -93,7 +95,7 @@ try{
   ok('large_wallpaper_keeps_1800x3150_detail','width='+detailed.width+' height='+detailed.height);
 
   stage='persist-on-home';
-  await page.goto(origin+'/index.html',{waitUntil:'load'});
+  await page.goto(origin+'/index.html',{waitUntil:'domcontentloaded',timeout:20000});
   await page.waitForFunction(()=>document.documentElement.getAttribute('data-home-wallpaper')==='custom',{timeout:18000});
   const current=await dimensions(page);
   assert.deepEqual([current.width,current.height],[1800,3150]);
@@ -101,7 +103,7 @@ try{
   ok('desktop_render_uses_full_saved_resolution');
 
   stage='failure-recovery';
-  await page.goto(origin+'/settings/appearance.html',{waitUntil:'load'});
+  await page.goto(origin+'/settings/appearance.html',{waitUntil:'domcontentloaded',timeout:20000});
   const before=await getSaved(page);
   await page.evaluate(()=>{
     window.MAOMAOWallpaperStore.save=()=>Promise.reject(new Error('SyntheticQuota'));
@@ -114,7 +116,7 @@ try{
   ok('write_failure_preserves_previous_wallpaper');
 
   stage='existing-wallpaper-after-reload';
-  await page.reload({waitUntil:'load'});
+  await page.reload({waitUntil:'domcontentloaded',timeout:20000});
   await page.waitForFunction(()=>document.getElementById('wallpaperPreviewBox')?.style.backgroundImage.includes('data:image'));
   assert.equal(await getSaved(page),before);
   ok('failure_followed_by_reload_restores_previous_wallpaper');
