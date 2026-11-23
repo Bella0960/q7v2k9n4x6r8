@@ -30,6 +30,7 @@ function buildSandbox() {
     decorUnlocked: [],
     growthClaims: {},
   };
+  let persisted = null;
   const sandbox = {
     st: state,
     ITEMS: [],
@@ -40,7 +41,8 @@ function buildSandbox() {
     ],
     money: (n) => '¥' + Math.round(Number(n) || 0),
     clamp: (n, min, max) => Math.max(min, Math.min(max, Number(n) || 0)),
-    save: () => true,
+    clone: value => JSON.parse(JSON.stringify(value)),
+    localStorage: { setItem: (_, value) => { persisted = value; }, getItem: () => persisted },
     renderAll: () => {},
     toast: () => {},
     Number,
@@ -51,7 +53,7 @@ function buildSandbox() {
   vm.createContext(sandbox);
   vm.runInContext(
     slice('function claimGrowthReward(', '\nfunction renderGrowthDashboard(') +
-    slice('var growthClaimDelegated=false;', 'function syncArchiveState('),
+    'function bindGrowthClaim(root){const nodes={records:root};\n'+slice(" nodes.records.addEventListener('click'", " panel.addEventListener('click'")+'}',
     sandbox
   );
   return sandbox;
@@ -60,7 +62,6 @@ function buildSandbox() {
 function mountRoot(sandbox) {
   const listeners = [];
   const el = { addEventListener: (type, fn) => listeners.push({ type, fn }) };
-  sandbox.bindGrowthClaim(el);
   sandbox.bindGrowthClaim(el);
   return { el, listeners };
 }
@@ -115,7 +116,7 @@ test('点击非领奖区域不会触发领取', () => {
   assert.deepEqual(Object.keys(sandbox.st.growthClaims), []);
 });
 
-test('重复绑定只注册一次点击委托', () => {
+test('挂载档案只注册一次点击委托', () => {
   const sandbox = buildSandbox();
   const { listeners } = mountRoot(sandbox);
   assert.equal(listeners.length, 1, 'delegation registered more than once');
@@ -126,4 +127,18 @@ test('renderCafeDetails 不再在 innerHTML 之前绑定领奖按钮', () => {
   const bindAt = details.indexOf("querySelectorAll('[data-growth-claim]')");
   const replaceAt = details.indexOf('root.innerHTML=html');
   assert.equal(bindAt === -1 || bindAt > replaceAt, true, 'growth claim listeners are still attached before the DOM is replaced');
+});
+
+test('保存失败时资金和领取状态回滚，可以重试', () => {
+  const sandbox = buildSandbox();
+  const { listeners } = mountRoot(sandbox);
+  const target = { closest: () => ({ getAttribute: () => 'days7' }) };
+  const normalStorage = sandbox.localStorage;
+  sandbox.localStorage = { setItem() {}, getItem: () => null };
+  clickWith(listeners, target);
+  assert.equal(sandbox.st.cash, 100);
+  assert.deepEqual(Object.keys(sandbox.st.growthClaims), []);
+  sandbox.localStorage = normalStorage;
+  clickWith(listeners, target);
+  assert.equal(sandbox.st.cash, 220);
 });
