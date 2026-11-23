@@ -1617,10 +1617,17 @@
      长期限额形同虚设。写不进去就 fail-closed：0 次 PhoneAPI.complete，只走本地短句。 */
   function persistTogetherVerified() {
     try {
-      var payload = { day: togetherDayKey(), used: togetherUsedToday() };
+      /* 预算与开关/角色共用同一个键：写预算不能把用户已选的伴听设置擦掉。 */
+      var payload = {
+        day: togetherDayKey(),
+        used: togetherUsedToday(),
+        enabled: together.enabled,
+        roleId: together.roleId
+      };
       localStorage.setItem(TOGETHER_KEY, JSON.stringify(payload));
       var back = JSON.parse(localStorage.getItem(TOGETHER_KEY) || '{}') || {};
-      return back.day === payload.day && Number(back.used) === Number(payload.used);
+      return back.day === payload.day && Number(back.used) === Number(payload.used)
+        && back.enabled === payload.enabled && String(back.roleId || '') === String(payload.roleId || '');
     } catch (e) { return false; }
   }
   function persistTogether() {
