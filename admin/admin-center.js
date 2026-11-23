@@ -44,6 +44,9 @@
   let generatedCode = '';
   let busy = false;
   let initializing = false;
+  let overviewRequestSequence = 0;
+  let overviewPeriod = '7d';
+  let overviewAuditState = 'idle';
   const busyButtonState = new WeakMap();
 
   function pageAccountContext() {
@@ -301,6 +304,156 @@
     }
   }
 
+  // WORKSPACE-002: derived read-only overview.
+  // Never infer successful reads from an empty list, stale cache or another
+  // account. All requests use api(), which binds the server-gated page scope.
+  function validOverviewSummary(summary, keys) {
+    return summary && keys.every(key =>
+      Number.isSafeInteger(summary[key]) && summary[key] >= 0);
+  }
+
+  function setOverviewConnection(id, state) {
+    const element = $(id);
+    element.dataset.state = state;
+    element.textContent = ({
+      idle: '待校验',
+      loading: '核对中',
+      ok: '读取正常',
+      error: '暂不可读'
+    })[state] || '待校验';
+  }
+
+  function renderOverviewSummary() {
+    const accountsVerified = !accountPageError &&
+      validOverviewSummary(accountSummary, ['total', 'pending', 'active', 'restricted']);
+    const invitesVerified = !invitePageError &&
+      validOverviewSummary(inviteSummary, ['total', 'pending', 'used', 'expired', 'revoked']);
+
+    $('overviewPendingCount').textContent = accountsVerified ? String(accountSummary.pending) : '—';
+    $('overviewActiveCount').textContent = accountsVerified ? String(accountSummary.active) : '—';
+    $('overviewRestrictedCount').textContent = accountsVerified ? String(accountSummary.restricted) : '—';
+    $('overviewInviteCount').textContent = invitesVerified ? String(inviteSummary.pending) : '—';
+    $('overviewPendingDescription').textContent = !accountsVerified
+      ? '账号目录尚未完成核验'
+      : accountSummary.pending > 0
+        ? '有 ' + accountSummary.pending + ' 个账号正在等待授权'
+        : '当前没有待授权账号';
+    setOverviewConnection('overviewAccountsStatus',
+      accountPageError ? 'error' : accountsVerified ? 'ok' : 'idle');
+    setOverviewConnection('overviewInvitesStatus',
+      invitePageError ? 'error' : invitesVerified ? 'ok' : 'idle');
+  }
+
+  function overviewEmpty(text) {
+    return el('p', 'overview-muted', text);
+  }
+
+  function renderOverviewPending(payload) {
+    const list = $('overviewPendingList');
+    list.replaceChildren();
+    const rows = payload.accounts.filter(row => row.status === 'pending_invite');
+    const reportedCount = validOverviewSummary(accountSummary, ['pending'])
+      ? accountSummary.pending : null;
+    if (!rows.length) {
+      list.appendChild(overviewEmpty(
+        payload.accounts.length
+          ? '授权队列与服务器状态不一致，请重新核对。'
+          : reportedCount === 0 ? '目前没有待授权账号。'
+            : '当前未返回待授权记录，请在账号列表中核对。'
+      ));
+      return;
+    }
+    rows.slice(0, 4).forEach(account => {
+      const button = el('button', 'overview-entry', '');
+      button.type = 'button';
+      button.setAttribute('aria-label', '查看待授权账号 ' + (account.username || account.id));
+      const body = el('span', 'overview-entry-body', '');
+      body.append(
+        el('strong', '', String(account.username || '未命名账号')),
+        el('small', '', '账号编号尾号 ' + String(account.id).slice(-6) +
+          ' · ' + formatTime(account.created_at))
+      );
+      button.append(body, el('span', 'overview-entry-chevron', '↗'));
+      button.addEventListener('click', () => openAccountFromInvite(account.id));
+      list.appendChild(button);
+    });
+  }
+
+  function renderOverviewActivity(payload) {
+    const list = $('overviewActivityList');
+    list.replaceChildren();
+    const rows = payload.records.slice().sort((a, b) =>
+      Number(b.createdAt || 0) - Number(a.createdAt || 0)).slice(0, 4);
+    if (!rows.length) {
+      list.appendChild(overviewEmpty(
+        overviewPeriod === 'today' ? '今天还没有操作审计记录。' : '近 7 天没有操作审计记录。'
+      ));
+      return;
+    }
+    rows.forEach(record => {
+      const entry = el('div', 'overview-entry', '');
+      const body = el('div', 'overview-entry-body', '');
+      body.append(
+        el('strong', '', globalAuditActionLabel(record.action)),
+        el('small', '', String(record.targetUsername || '账号授权与管理操作'))
+      );
+      entry.append(body, el('span', 'overview-entry-meta', formatTime(record.createdAt)));
+      list.appendChild(entry);
+    });
+  }
+
+  async function loadOverviewDetails() {
+    const requestSequence = ++overviewRequestSequence;
+    setOverviewConnection('overviewAuditStatus', 'loading');
+    $('overviewPendingList').replaceChildren(overviewEmpty('正在核对授权队列…'));
+    $('overviewActivityList').replaceChildren(overviewEmpty('正在读取操作记录…'));
+    $('overviewSync').textContent = '正在同步管理记录…';
+    const since = overviewPeriod === 'today'
+      ? new Date(new Date().setHours(0, 0, 0, 0)).getTime()
+      : Date.now() - 7 * 24 * 60 * 60 * 1000;
+    const pendingParams = new URLSearchParams({ limit: '4', status: 'pending_invite' });
+    const auditParams = new URLSearchParams({ limit: '4', type: 'all', since: String(since) });
+    const results = await Promise.allSettled([
+      api('/api/admin/accounts?' + pendingParams.toString())
+        .then(payload => verifiedDirectoryPayload(payload, 'accounts')),
+      api('/api/admin/audit?' + auditParams.toString())
+        .then(payload => verifiedDirectoryPayload(payload, 'records'))
+    ]);
+    if (requestSequence !== overviewRequestSequence) return;
+
+    // These auth failures are not ordinary empty-state conditions.
+    const denied = results.find(result => result.status === 'rejected' &&
+      (isConfirmedSessionExpired(result.reason) ||
+       result.reason?.code === 'ACCOUNT_DISABLED' ||
+       result.reason?.code === 'ACCOUNT_CONTEXT_REQUIRED' ||
+       result.reason?.code === 'ACCOUNT_CONTEXT_CHANGED'));
+    if (denied) {
+      $('overviewPendingList').replaceChildren(overviewEmpty('账号授权校验未完成。'));
+      $('overviewActivityList').replaceChildren(overviewEmpty('账号授权校验未完成。'));
+      setOverviewConnection('overviewAuditStatus', 'error');
+      throw denied.reason;
+    }
+
+    if (results[0].status === 'fulfilled') renderOverviewPending(results[0].value);
+    else $('overviewPendingList').replaceChildren(
+      overviewEmpty('待授权队列暂时无法读取，请重新同步。'));
+    if (results[1].status === 'fulfilled') {
+      renderOverviewActivity(results[1].value);
+      overviewAuditState = 'ok';
+    } else {
+      $('overviewActivityList').replaceChildren(
+        overviewEmpty('操作记录暂时无法读取，请重新同步。'));
+      overviewAuditState = 'error';
+    }
+    setOverviewConnection('overviewAuditStatus', overviewAuditState);
+    const successCount = results.filter(result => result.status === 'fulfilled').length;
+    $('overviewSync').textContent = successCount === 0 ? '同步未完成 · 请检查连接'
+      : '最近同步 ' + new Date().toLocaleTimeString('zh-CN', {
+          hour: '2-digit', minute: '2-digit'
+        }) + (successCount === 2 ? ' · 记录已核验' : ' · 部分记录不可读');
+    if (busy) setButtonsDisabled(true);
+  }
+
   function updateStats() {
     const totals = accountSummary || {
       total: accounts.length,
@@ -312,6 +465,7 @@
     $('statPending').textContent = String(totals.pending);
     $('statActive').textContent = String(totals.active);
     $('statDisabled').textContent = String(totals.restricted);
+    renderOverviewSummary();
   }
 
   function updateAccountFilterCounts() {
@@ -396,6 +550,7 @@
     $('inviteCountUsed').textContent = String(counts.used);
     $('inviteCountExpired').textContent = String(counts.expired);
     $('inviteCountRevoked').textContent = String(counts.revoked);
+    renderOverviewSummary();
   }
 
   function renderInvites() {
@@ -504,6 +659,7 @@
         accountTotalCount = 0;
         accountSummary = null;
         renderAccounts();
+        renderOverviewSummary();
         for (const id of ['statTotal', 'statPending', 'statActive', 'statDisabled',
           'filterCountAll', 'filterCountPending', 'filterCountActive', 'filterCountRestricted']) {
           $(id).textContent = '—';
@@ -544,6 +700,7 @@
         inviteTotalCount = 0;
         inviteSummary = null;
         renderInvites();
+        renderOverviewSummary();
         for (const id of ['inviteCountAll', 'inviteCountPending', 'inviteCountUsed',
           'inviteCountExpired', 'inviteCountRevoked']) {
           $(id).textContent = '—';
@@ -1152,10 +1309,13 @@
   });
 
   function activateTab(name) {
-    const selected = ['invites', 'audit', 'settings'].includes(name) ? name : 'users';
+    const selected = ['overview', 'users', 'invites', 'audit', 'settings'].includes(name) ? name : 'overview';
     document.querySelectorAll('[data-tab]').forEach(item => {
       item.classList.toggle('active', item.dataset.tab === selected);
+      if (item.dataset.tab === selected) item.setAttribute('aria-current', 'page');
+      else item.removeAttribute('aria-current');
     });
+    $('overviewView').hidden = selected !== 'overview';
     $('usersView').hidden = selected !== 'users';
     $('invitesView').hidden = selected !== 'invites';
     $('auditView').hidden = selected !== 'audit';
@@ -1193,6 +1353,33 @@
         if (busy) globalAuditSearchRefreshPending = true;
         else run(() => loadGlobalAudit(true));
       }
+      if (tab === 'overview' && !busy) run(loadOverviewDetails);
+    });
+  });
+
+  $('overviewRefresh').addEventListener('click', () => run(async () => {
+    await refreshAll();
+    await loadOverviewDetails();
+  }));
+  $('overviewOpenPending').addEventListener('click', () => {
+    document.querySelector('[data-tab="users"]').click();
+    document.querySelector('[data-account-filter="pending_invite"]').click();
+  });
+  document.querySelectorAll('[data-overview-target]').forEach(button => {
+    button.addEventListener('click', () => {
+      const tab = document.querySelector('[data-tab="' + button.dataset.overviewTarget + '"]');
+      if (tab) tab.click();
+    });
+  });
+  document.querySelectorAll('[data-overview-period]').forEach(button => {
+    button.addEventListener('click', () => {
+      overviewPeriod = button.dataset.overviewPeriod === 'today' ? 'today' : '7d';
+      document.querySelectorAll('[data-overview-period]').forEach(item => {
+        const active = item === button;
+        item.classList.toggle('active', active);
+        item.setAttribute('aria-pressed', active ? 'true' : 'false');
+      });
+      if (!busy) run(loadOverviewDetails);
     });
   });
 
@@ -1223,7 +1410,9 @@
       }
       sessionVerified = true;
       await refreshAll();
-      if (new URLSearchParams(window.location.search).get('tab') === 'invites') activateTab('invites');
+      const requested = new URLSearchParams(window.location.search).get('tab');
+      if (['users', 'invites', 'audit', 'settings'].includes(requested)) activateTab(requested);
+      else await loadOverviewDetails();
       hideError();
     } catch (error) {
       if (error.code === 'ACCOUNT_DISABLED') {
