@@ -35,6 +35,7 @@ const instrumented = script.replace(
     saveDraft:saveDraft, sendLetter:sendLetter, deleteActiveLetter:deleteActiveLetter,
     data:function(){return currentData;}, setData:function(d){currentData=d;},
     setActive:function(id){activeLetterId=id;},
+    replaceImage:function(image){draftImages.splice(0,1,image);},
     editing:function(){return {letterId:editingLetterId,draftId:editingDraftId,saved:editingIsSavedLetter};}
   };
 })();`
@@ -295,55 +296,37 @@ test('源码守卫：动画令牌、finally 解锁、离开保护与图片并发
   assert.equal(/Made by|作者：/.test(page), false, 'no developer signature');
 });
 
-/* ---------- 总控复审 P1：签名必须覆盖图片内容与信封颜色 ---------- */
-
-test('P1 续：同数量替换图片也判为「有修改」，返回时不丢内容', () => {
+test('replacing an image with identical length and edges saves the current draft', () => {
   const storage = makeStorage();
   const r = makeRuntime({ storage });
-  r.probe.openComposer(null, null);
-  r.get('letterTitle').value = '带图信';
-  r.get('letterContent').value = '正文';
-  /* 通过暴露的 setData 不可行：直接操作内部 draftImages 不可见，
-     用两次 openComposer 间修改 —— 这里用页面真实路径：签名函数对同一数组变化敏感 */
-  // 直接构造：先进入编辑已有草稿
-  r.probe.setData({ version: 1, letters: [], drafts: [{ id: 'd1', title: '带图信', content: '正文', images: ['data:image/jpeg;base64,AAAA'], direction: 'sent', createdAt: 1, updatedAt: 1 }] });
+  const prefix = 'data:image/jpeg;base64,' + 'A'.repeat(64);
+  const suffix = 'A'.repeat(64);
+  const original = prefix + 'A' + suffix;
+  const replacement = prefix + 'B' + suffix;
+  r.probe.setData({ version: 1, letters: [], drafts: [
+    { id: 'd1', title: 'Image draft', content: 'Draft text', images: [original], direction: 'sent' }
+  ] });
   r.probe.openComposer(null, 'd1');
-
-  const dirtyBaseline = r.probe.data().drafts[0].images;
-  assert.equal(dirtyBaseline.length, 1);
-  // 模拟「删旧图 + 加新图，数量不变」：重开编辑后仅改变图片内容无法从外部触达，
-  // 因此验证签名函数对内容敏感（源码级 + 行为级双重确认）
-});
-
-test('P1 续：只改信封颜色也判为「有修改」', () => {
-  const storage = makeStorage();
-  storage.data['roleA/letters'] = { letters: [{ id: 'l1', title: '原信', content: '原文', createdAt: 1, updatedAt: 1, envelopeColor: '#F0EADF' }], drafts: [] };
-  const r = makeRuntime({ storage });
-  r.probe.openComposer(r.probe.data().letters[0], null);
-  // 修改颜色但不改文字
-  const page = readFileSync(resolve(root, 'envelope/envelope.html'), 'utf8');
-  assert.ok(page.includes('envelopeColor:selectedColor'), '签名必须包含所选信封颜色');
-  assert.ok(page.includes('images:draftImages.map(imageFingerprint)'), '签名必须包含图片指纹而非数量');
-});
-
-test('P1 续：颜色与图片变化会触发自动存草稿（行为级）', () => {
-  const storage = makeStorage();
-  const r = makeRuntime({ storage });
-  r.probe.openComposer(null, null);
-  r.get('letterContent').value = '正文 A';
-  // 改文字 → dirty；颜色改变走 colorPalette 点击路径
-  const palette = r.get('colorPalette');
-  // 无真实 DOM 事件，直接验证 leaveCompose 在仅文字改动时保存（已覆盖），
-  // 这里确认签名把颜色纳入：修改 selectedColor 不可能从外部直接设置，
-  // 以源码守卫为主（见上一条），行为级以文字变化验证保存链路仍然正常。
+  r.probe.replaceImage(replacement);
   r.probe.leaveCompose();
-  assert.equal(r.probe.data().drafts.length, 1);
-  assert.equal(JSON.parse(JSON.stringify(storage.data['roleA/letters'])).drafts.length, 1);
+
+  const { drafts } = storage.data['roleA/letters'];
+  assert.equal(drafts.length, 1);
+  assert.equal(drafts[0].id, 'd1');
+  assert.equal(drafts[0].images[0], replacement);
 });
 
-test('P1 源码守卫：签名包含颜色与图片指纹', () => {
-  assert.ok(page.includes('envelopeColor:selectedColor'), 'composeSignature 必须包含信封颜色');
-  assert.ok(page.includes('images:draftImages.map(imageFingerprint)'), '签名必须包含每张图的指纹');
-  assert.ok(page.includes('function imageFingerprint'), '必须有低开销指纹函数');
-  assert.equal(page.includes('images:draftImages.length'), false, '不得再用图片张数当指纹');
+test('changing only the envelope color saves the current draft', () => {
+  const storage = makeStorage();
+  const r = makeRuntime({ storage });
+  r.probe.setData({ version: 1, letters: [], drafts: [
+    { id: 'd1', title: 'Color draft', content: 'Draft text', images: [], envelopeColor: '#F0EADF' }
+  ] });
+  r.probe.openComposer(null, 'd1');
+  r.get('colorPalette')._h.click({ target: { closest: () => ({ getAttribute: () => '#FFFFFF' }) } });
+  r.probe.leaveCompose();
+
+  const { drafts } = storage.data['roleA/letters'];
+  assert.equal(drafts.length, 1);
+  assert.equal(drafts[0].envelopeColor, '#FFFFFF');
 });

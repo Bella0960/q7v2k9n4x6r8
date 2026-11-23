@@ -553,7 +553,7 @@ function askPartnerOpinion(){
  }).catch(function(){if(token!==partnerOpinionToken)return;partnerOpinionBusy=false;local.mode='local';saveOpinion(local);renderOverview();toast('AI 暂时没有回复，先保留本地人设建议。');});
 }
 function chooseEvent(i,forceAdvice){
- var ev=eventNow(),o=ev.options[i];if(!o)return;if(st.cash<o.cost){toast('资金不足，换一个应对方案吧。');return;}
+ var ev=eventNow(),o=ev.options[i];if(!o)return;if(st.businessStatus==='operating'){toast('营业中不能更改今日事件。');return;}if(st.cash<o.cost){toast('资金不足，换一个应对方案吧。');return;}
  var advice=adviceForToday(),agreed=Number(i)===Number(advice.choice),p=getPartnerProfile(role),e=o.e||{};
  st.cash-=Number(e.cash||0);if(e.stock)Object.keys(e.stock).forEach(function(k){st.stock[k]=(st.stock[k]||0)+Number(e.stock[k]||0);});if(e.rep)stat('rep',e.rep);if(e.sat)stat('sat',e.sat);
  st.eventFx={customers:e.customers||0,priceFactor:e.priceFactor||1};st.eventChoice=i;p.decisions++;if(agreed)p.followed++;else p.independent++;p.rapport=clamp(p.rapport+(agreed?3:1),0,100);p.lastDecision=o.title;p.lastLine=styleLine(p.style,agreed);
@@ -839,7 +839,8 @@ function renderPartnerTab(){
  document.querySelectorAll('[data-gallery-story]').forEach(function(b){b.addEventListener('click',function(){chooseGalleryStory(b.getAttribute('data-gallery-story'));});});
  document.querySelectorAll('[data-partner-episode]').forEach(function(b){b.addEventListener('click',function(){choosePartnerEpisode(Number(b.getAttribute('data-partner-episode')));});});
 }
-function chooseEvent(i){var ev=eventNow(),o=ev.options[i];if(!o)return;if(st.cash<o.cost){toast('资金不足，换一个应对方案吧。');return;}var e=o.e||{};st.cash-=Number(e.cash||0);if(e.stock)Object.keys(e.stock).forEach(function(k){st.stock[k]=(st.stock[k]||0)+e.stock[k];});if(e.rep)stat('rep',e.rep);if(e.sat)stat('sat',e.sat);st.eventFx={customers:e.customers||0,priceFactor:e.priceFactor||1};st.eventChoice=i;save();renderOverview();toast('已选择：'+o.title);}
+/* 今日事件只能有一个 chooseEvent 实现：保留上面的版本（含搭档决策、默契与每日目标记录）。
+   同名的第二份定义会因函数声明提升覆盖前者，导致搭档档案、默契成长、listen-partner 目标全部失效，禁止再加。 */
 function askPlan(){
  if(advisorBusy)return;advisorBusy=true;renderOverview();
  var cfg=window.PhoneStorage&&window.PhoneStorage.getApiConfig?window.PhoneStorage.getApiConfig():{};

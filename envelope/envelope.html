@@ -1116,25 +1116,25 @@ button:focus-visible,input:focus-visible,textarea:focus-visible{outline:2px soli
     composeBaseline=composeSignature();
     setView('composeView');
   }
-  /* 图片指纹：低开销摘要，避免每次 input 都把几百 KB 的 base64 重新 JSON 序列化。
-     长度 + 头尾采样已能区分「换了一张图」与「同一张图」。 */
-  function imageFingerprint(src){
-    var v=String(src||'');
-    if(!v) return '0:';
-    var head=v.slice(0,64), tail=v.slice(-64);
-    return v.length+':'+head+':'+tail;
-  }
   function composeSignature(){
-    return JSON.stringify({
-      title:$('letterTitle').value,
-      sender:$('letterSender').value,
-      recipient:$('letterRecipient').value,
-      content:$('letterContent').value,
-      envelopeColor:selectedColor,
-      images:draftImages.map(imageFingerprint)
-    });
+    return {
+      text:JSON.stringify([
+        $('letterTitle').value,
+        $('letterSender').value,
+        $('letterRecipient').value,
+        $('letterContent').value,
+        selectedColor
+      ]),
+      images:draftImages.slice()
+    };
   }
-  function composeDirty(){return composeBaseline!==null && composeSignature()!==composeBaseline;}
+  function composeDirty(){
+    if(!composeBaseline) return false;
+    var current=composeSignature();
+    return current.text!==composeBaseline.text ||
+      current.images.length!==composeBaseline.images.length ||
+      current.images.some(function(image,index){return image!==composeBaseline.images[index];});
+  }
   /* 离开写信页不能默默把写了一半的信丢掉：
      - 编辑已保存的信件：确认是否放弃修改（避免误覆盖正式信）
      - 新建信件/草稿：自动存为草稿，回来还能继续写 */
