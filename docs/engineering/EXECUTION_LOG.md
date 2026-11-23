@@ -147,3 +147,23 @@ On the next turn/session, read this file and the current `AGENTS.md` first. Cont
 
 - **2026-11-22 storage hardening:** Prevent damaged/non-array primary `chat_memories_<id>` content from being overwritten; reject invalid memory targets; stop memory-library delete, dedupe, and AI merge success displays when write fails; capture AI-merge role ID before network await. Added the corresponding regression tests. **16/16 V8-isolated production-module/DOM-contract checks passed** (not full Node). Parsed all changed JS/inline scripts successfully.
 - **Verification handoff:** PR source remains unmerged; next QA must use the exact pinned branch SHA and the existing public-only verification channel. Do not run exhausted legacy private Actions or bypass existing safety guards.
+
+## 2026-11-23 · APP-GAMES-001 · 游戏大厅首轮核查与存档写入可信性
+
+- **分支 / PR：** `APP-GAMES-001-storage-trust` · Draft PR。基线 main `40b671bb`。未合并、未部署。
+- **应用构成：** `games/games.html`（3441 行，7 段内联脚本，305 KB）。依赖 `native-feel.js`、`nav.js`、`phone_storage.js`、`phone_api.js`、`js/immersive-v21.js`、`js/interrogation-v20.js`。存储键：`maomao_game_role`、`maomao_game_stats_v1`、`maomao_game_pending_<roleId>`、`maomao_detective_progress_v1`、`maomao_detective_team_v1`、`maomao_detective_theme_v1`、`maomao_detective_generated_cases_v1`、`immCasesDone`、`maomao_code_len`。
+- **核查结论（源码级）：**
+  - 角色接入：`loadRoles()` 走 `PhoneStorage.getCharacters()`，`activeRole` 由 `maomao_game_role` 记住，侦探进度按 `activeRoleKey()` 分桶，AI 请求按当前角色构造人设——**角色隔离正确**。
+  - 侦探玩法链路完整：案件档案、调查队、审讯、线索、结案、生成新案、主题切换都有真实处理器。
+  - **写入层是短板：10 处 `localStorage.setItem` 全部裸调，没有任何 try/catch 或结果判断。**
+- **P1 已修：**
+  1. `saveCaseProgress()`（侦探核心存档，被审讯/线索/结案等多处调用）裸调 → 容量满时抛未捕获异常，调用方后续渲染直接中断。改为返回布尔。
+  2. `saveStat()` 裸调 → 抛异常导致 `renderRoles()` 不执行，战绩界面停在旧值但没有任何提示。
+  3. `selectRole()` 裸调后无条件提示「已切换搭档」→ 实际没存上，刷新回到上一位。改为按结果分支提示。
+  4. `generateDetectiveCase()` → AI 已成功、只是存不下时，`setItem` 抛错被 `.catch()` 捕获，提示变成「生成失败，请检查 API 配置」——**错误归因**，用户会去乱改 API。改为区分「AI 失败」与「存不下」，并说明刷新后会消失。
+  5. `addChatAfterGame()` 的 `catch(e){}` → 战场小结没写进去仍跳转，聊天页会读到**上一次的旧草稿**冒充这一局。改为失败时清除陈旧 key、明确提示、延迟跳转。
+  6. `toggleDetectiveRole()` 裸调 → 抛异常导致 `startCase()` 不执行，点队伍按钮像卡死。
+- **做法：** 新增 `saveRaw(key,value,quiet)` / `saveJSON(key,value,quiet)` 与 `warnGameStorage()`（同会话只提示一次，避免连点刷屏），10 处写入全部路由到统一入口；`quiet` 用于迁移/默认值这类无感写入。
+- **测试：** 新增 `tests/games-storage-trust.test.mjs`（9 项，VM 跑真实 `saveRaw/saveJSON/saveCaseProgress/selectRole/saveStat`），9/9 通过；7 段内联脚本全部 `vm.Script` 解析通过。
+- **登记未做（需产品决策）：** 游戏大厅只读角色卡 + 记忆无关；不产出世界事件（依赖 `ECO-LINK-002`）；侦探案件生成为付费调用，无次数限制或失败重试预算控制。
+- **未验证：** Vite 全站构建、Chromium 375/390/430、真机、真实配额场景。

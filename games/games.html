@@ -640,7 +640,7 @@ function loadRoles(){
   if(!roleList.length) roleList=[defaultRole];
   var wanted=localStorage.getItem('maomao_game_role');
   activeRole=roleList.find(function(r){return String(r.id)===String(wanted);})||roleList[0];
-  localStorage.setItem('maomao_game_role',String(activeRole.id));
+  saveRaw('maomao_game_role',String(activeRole.id),true);
 }
 function roleName(r){return r&&(r.name||r.nickname||r.charName)||'游戏搭档';}
 function roleAvatarSource(r){return r&&(r.avatar||r.avatarUrl||r.avatarData||r.image||r.icon)||'';}
@@ -681,8 +681,10 @@ function selectRole(id){
   reactionSequence++;
   var next=roleList.find(function(r){return String(r.id)===String(id);});
   if(!next)return;
-  activeRole=next;rolePickerOpen=false;localStorage.setItem('maomao_game_role',String(next.id));
-  renderRoles();showToast('已切换搭档：'+roleName(activeRole));
+  activeRole=next;rolePickerOpen=false;
+  var roleSaved=saveRaw('maomao_game_role',String(next.id),true);
+  renderRoles();
+  showToast(roleSaved?'已切换搭档：'+roleName(activeRole):('已切到 '+roleName(activeRole)+'，但这个选择没能存到本机，刷新后会回到上一位搭档'));
   if(activeGame) renderPartner();
 }
 function renderPartner(){
@@ -712,11 +714,28 @@ function saveStat(type,result){
   if(type==='memory'&&result==='win')s.memoryWins=(s.memoryWins||0)+1;
   if(type==='code'&&result==='win')s.codeWins=(s.codeWins||0)+1;
   if(type==='quiz'&&result==='win')s.quizWins=(s.quizWins||0)+1;
-  all[key]=s;localStorage.setItem('maomao_game_stats_v1',JSON.stringify(all));renderRoles();
+  all[key]=s;saveJSON('maomao_game_stats_v1',all);renderRoles();
 }
 function showToast(text){
   var el=byId('toast');el.textContent=text;el.classList.add('show');
   clearTimeout(showToast.timer);showToast.timer=setTimeout(function(){el.classList.remove('show');},1900);
+}
+/* 存档写入统一入口：所有 localStorage 写都走这里，避免容量满时抛未捕获异常。
+   默认失败会提示一次（同一会话不重复刷屏）；quiet=true 用于迁移/默认值这类无感写入。 */
+var gameStorageWarned=false;
+function warnGameStorage(text){
+  if(gameStorageWarned)return;
+  gameStorageWarned=true;
+  showToast(text||'本机存储空间不足，这次的进度没能保存，刷新后会丢失');
+}
+function saveRaw(key,value,quiet){
+  try{localStorage.setItem(key,value);return true}
+  catch(e){if(!quiet)warnGameStorage();return false}
+}
+function saveJSON(key,value,quiet){
+  var payload;
+  try{payload=JSON.stringify(value)}catch(e){if(!quiet)warnGameStorage();return false}
+  return saveRaw(key,payload,quiet);
 }
 function characterTraits(){
   var r=activeRole||defaultRole;
@@ -759,6 +778,7 @@ function addChatAfterGame(result,gameType){
     var pool=drafts[result]||drafts.draw;
     var draft=pool[Math.floor(Math.random()*pool.length)];
     // 存 pending 消息
+    var pendingSaved=false;
     try{
       var key='maomao_game_pending_'+String(activeRole.id);
       localStorage.setItem(key,JSON.stringify({
@@ -767,8 +787,17 @@ function addChatAfterGame(result,gameType){
         draft:draft,
         createdAt:new Date().toISOString()
       }));
-    }catch(e){}
-    location.href='../chat/chat/chat-detail.html?id='+encodeURIComponent(activeRole.id)+'&game='+gameType;
+      pendingSaved=true;
+    }catch(e){pendingSaved=false}
+    var chatUrl='../chat/chat/chat-detail.html?id='+encodeURIComponent(activeRole.id)+'&game='+gameType;
+    if(!pendingSaved){
+      /* 写不进去就必须清掉上一次的旧草稿，否则聊天页会拿旧话题冒充这一局。 */
+      try{localStorage.removeItem('maomao_game_pending_'+String(activeRole.id))}catch(err){}
+      showToast('战场小结没能存到本机，这次就不带话题进聊天了');
+      setTimeout(function(){location.href=chatUrl},1100);
+      return;
+    }
+    location.href=chatUrl;
   };
   btnRow.appendChild(btn);
 }
@@ -993,7 +1022,10 @@ function readSolvedIndexesFromStorage(){
 function caseProgress(){var all=caseProgressRoot(),key=activeRoleKey();if(!all[key])all[key]={completed:[],attempts:{},notes:{},campaign:{trust:{},flags:[],threads:[],choices:[]}};if(!all[key].campaign)all[key].campaign={trust:{},flags:[],threads:[],choices:[]};if(!all[key].campaign.trust)all[key].campaign.trust={};if(!Array.isArray(all[key].campaign.flags))all[key].campaign.flags=[];if(!Array.isArray(all[key].campaign.threads))all[key].campaign.threads=[];if(!Array.isArray(all[key].campaign.choices))all[key].campaign.choices=[];return all[key];}
 function saveCampaignChoice(caseTitle,choice,result){var p=caseProgress(),c=p.campaign;c.choices.push({caseTitle:caseTitle,choice:choice,result:result,at:new Date().toISOString()});var flag='choice:'+caseTitle+':'+choice;if(c.flags.indexOf(flag)<0)c.flags.push(flag);c.threads.push({caseTitle:caseTitle,summary:result,choice:choice});saveCaseProgress(p);}
 function campaignBrief(){var c=caseProgress().campaign,trust=Object.keys(c.trust||{}).map(function(k){return k+'：'+c.trust[k];}).join('；');return '过往选择：'+(c.choices.slice(-8).map(function(x){return x.caseTitle+'：选择 '+x.choice+'；结果 '+x.result;}).join('；')||'暂无')+'。持续伏笔：'+(c.threads.slice(-8).map(function(x){return x.caseTitle+'留下：'+x.summary;}).join('；')||'暂无')+'。调查队信任记录：'+(trust||'尚未形成')+'。';}
-function saveCaseProgress(progress){var all=caseProgressRoot();all[activeRoleKey()]=progress||caseProgress();localStorage.setItem('maomao_detective_progress_v1',JSON.stringify(all));}
+function saveCaseProgress(progress){
+ var all=caseProgressRoot();all[activeRoleKey()]=progress||caseProgress();
+ return saveJSON('maomao_detective_progress_v1',all);
+}
 var detectiveGeneratedCasesLoaded=false;
 function loadGeneratedDetectiveCases(){if(detectiveGeneratedCasesLoaded)return;detectiveGeneratedCasesLoaded=true;try{var saved=JSON.parse(localStorage.getItem('maomao_detective_generated_cases_v1')||'[]');if(Array.isArray(saved))saved.forEach(function(c){if(c&&c.title&&Array.isArray(c.evidence)&&Array.isArray(c.suspects)&&!CASES.some(function(x){return x.title===c.title;}))CASES.push(c);});}catch(e){}}
 function detectiveTeamRoot(){try{return JSON.parse(localStorage.getItem('maomao_detective_team_v1')||'[]');}catch(e){return [];}}
@@ -1012,7 +1044,8 @@ function detectivePersona(r){
  if(r&&String(r.id).indexOf('npc_')===0)return r.name+'，身份：'+r.job+'；性格：'+r.personality+'；擅长：'+r.bio;
  return roleName(r)+'；性格：'+String(r.personality||r.description||r.bio||'待从角色资料中理解').slice(0,160)+'；说话方式：'+String(r.speechStyle||r.speech||'遵循原角色说话习惯').slice(0,100);
 }
-function toggleDetectiveRole(id){var ids=detectiveTeamRoot().map(String),key=String(id);if(ids.indexOf(key)>=0)ids=ids.filter(function(x){return x!==key;});else ids.push(key);if(!ids.length)ids=[String(activeRole&&activeRole.id||roleList[0].id)];localStorage.setItem('maomao_detective_team_v1',JSON.stringify(ids));startCase();}
+function toggleDetectiveRole(id){var ids=detectiveTeamRoot().map(String),key=String(id);if(ids.indexOf(key)>=0)ids=ids.filter(function(x){return x!==key;});else ids.push(key);if(!ids.length)ids=[String(activeRole&&activeRole.id||roleList[0].id)];var teamSaved=saveJSON('maomao_detective_team_v1',ids,true);startCase();
+ if(!teamSaved)showToast('调查队没能存到本机，刷新后会回到原来的队伍');}
 function setDetectiveVersionBadge(visible){}
 function startCase(){
  document.body.classList.remove('detective-case-mode','case-modal-open');document.body.removeAttribute('data-case-theme');setDetectiveVersionBadge(true);
@@ -1036,7 +1069,9 @@ function generateDetectiveCase(){
   var txt=String(raw||'').trim().replace(/^```(?:json)?s*/i,'').replace(/s*```$/,'');var a=txt.indexOf('{'),z=txt.lastIndexOf('}');if(a>=0&&z>a)txt=txt.slice(a,z+1);
   var c=JSON.parse(txt);if(!c.title||!c.intro||!Array.isArray(c.evidence)||c.evidence.length<4||!Array.isArray(c.suspects)||c.suspects.length!==3||![0,1,2].includes(Number(c.answer))||!c.explain)throw new Error('invalid case');
   c.answer=Number(c.answer);c.generated=true;c.chapter=String(c.chapter||'');c.evidence=c.evidence.slice(0,7);
-  var saved=JSON.parse(localStorage.getItem('maomao_detective_generated_cases_v1')||'[]');saved.push(c);localStorage.setItem('maomao_detective_generated_cases_v1',JSON.stringify(saved));CASES.push(c);showToast('新案件已加入档案室');startCase();
+  var saved=JSON.parse(localStorage.getItem('maomao_detective_generated_cases_v1')||'[]');saved.push(c);
+  var caseSaved=saveJSON('maomao_detective_generated_cases_v1',saved,true);CASES.push(c);
+  showToast(caseSaved?'新案件已加入案件档案':('新案件已生成，但本机存储空间不足，没能存下，刷新后会消失'));startCase();
  }).catch(function(){showToast('生成失败，请检查 API 配置或稍后重试。');}).finally(function(){var b=byId('generateDetectiveCase');if(b){b.disabled=false;b.textContent='生成新案';}});
 }
 function installFloatingInvestigationTools(){
@@ -1475,7 +1510,7 @@ function startCode(){
   byId('newCode').addEventListener('click',function(){roundNumber++;startCode();roleLine('玩家要求重新生成密码，鼓励对方重新挑战。','密码重置！这次可得盯紧每一条线索。');});
   byId('gameContent').querySelectorAll('[data-code-len]').forEach(function(btn){
     btn.addEventListener('click',function(){
-      localStorage.setItem('maomao_code_len',btn.getAttribute('data-code-len'));
+      saveRaw('maomao_code_len',btn.getAttribute('data-code-len'),true);
       roundNumber++;startCode();
     });
   });
