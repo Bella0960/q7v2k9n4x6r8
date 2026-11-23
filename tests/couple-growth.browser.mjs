@@ -20,6 +20,7 @@ try {
   browser=await chromium.launch({headless:true,args:['--no-sandbox']});
   for(const width of [375,390,430]){
     const ctx=await browser.newContext({viewport:{width,height:844},isMobile:true,hasTouch:true,serviceWorkers:'block'});
+    let stage='route';
     try{
       await ctx.route('**/*',route=>route.request().url().startsWith(origin+'/')?route.continue():route.abort());
       await ctx.addInitScript(()=>{
@@ -27,28 +28,39 @@ try {
         localStorage.setItem('phone_current_contact','qa-A');
       });
       const page=await ctx.newPage();
+      stage='couple-load';
       const errors=[];page.on('pageerror',error=>errors.push(error.message));
       await page.goto(origin+'/couple/couple.html?id=qa-A',{waitUntil:'domcontentloaded'});
       await page.locator('#checkinBtn').click();
       const checkin=await page.evaluate(()=>JSON.parse(localStorage.getItem('maoer_couple_checkin_qa-A')||'[]'));
       assert.equal(checkin.length,1,'clicked check-in must persist exactly once');
+      stage='open-bucket';
       await page.evaluate(()=>window.openSheet('bucket'));
       await page.locator('#bucketInput').fill('跨应用计划');
+      stage='add-bucket';
       await page.locator('button[onclick="addBucket()"]').click();
       let list=await page.evaluate(()=>JSON.parse(localStorage.getItem('maoer_couple_bucket_qa-A')||'[]'));
       assert.equal(list.length,1);
+      stage='toggle-bucket';
       await page.evaluate(id=>window.toggleBucket(id),list[0].id);
+      stage='growth-a';
       await page.goto(origin+'/growth/growth.html?id=qa-A',{waitUntil:'domcontentloaded'});
+      await page.waitForFunction(()=>document.getElementById('planStat')?.textContent?.trim()==='1',{timeout:8000});
       assert.equal(await page.locator('#planStat').textContent(),'1','growth must read the same A bucket');
+      stage='growth-a-points';
+      await page.waitForFunction(()=>document.getElementById('points')?.textContent?.trim()==='15',{timeout:8000});
       assert.equal(await page.locator('#points').textContent(),'15','completed bucket must add points');
+      stage='growth-b';
       await page.goto(origin+'/growth/growth.html?id=qa-B',{waitUntil:'domcontentloaded'});
       assert.equal(await page.locator('#planStat').textContent(),'0','B must not inherit A plans');
       assert.equal(await page.locator('#points').textContent(),'0');
+      stage='ghost-role';
       await page.goto(origin+'/couple/couple.html?id=ghost',{waitUntil:'domcontentloaded'});
       await page.locator('#checkinBtn').click();
       assert.equal(await page.evaluate(()=>localStorage.getItem('maoer_couple_checkin_ghost')),null);
       assert.equal(await page.evaluate(()=>localStorage.getItem('maoer_couple_checkin_default')),null);
       await page.goto(origin+'/couple/couple.html?id=qa-A',{waitUntil:'domcontentloaded'});
+      stage='corrupt-history';
       await page.evaluate(()=>localStorage.setItem('chat_history_qa-B','{corrupt-chat'));
       await page.evaluate(()=>{
         window.openSet();
@@ -63,6 +75,6 @@ try {
       assert.ok(!errors.some(e=>/PhoneStorage|saveSet|addBucket|toggleBucket.*not defined/.test(e)),
         'real pages must not be missing shared dependencies');
       console.log('COUPLE_GROWTH_BROWSER_PASS '+width);
-    } finally{await ctx.close();}
+    } catch(e){console.log('QA_STAGE_'+stage);throw e;} finally{await ctx.close();}
   }
 }finally{if(browser)await browser.close();proc.kill('SIGTERM');}
