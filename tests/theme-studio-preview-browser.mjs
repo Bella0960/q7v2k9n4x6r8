@@ -7,12 +7,14 @@ import { spawn } from 'node:child_process';
 import { setTimeout as delay } from 'node:timers/promises';
 import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { mkdirSync } from 'node:fs';
 import { chromium } from 'playwright';
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const port = 4192;
 const origin = 'http://127.0.0.1:' + port;
 const outDir = resolve(root, 'test-results');
+mkdirSync(outDir, { recursive: true });
 const STORAGE_KEY = 'maomao_theme_studio_v1';
 
 const vite = spawn(process.execPath, [
