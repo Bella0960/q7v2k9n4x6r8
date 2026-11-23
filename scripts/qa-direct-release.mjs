@@ -27,7 +27,7 @@ const QA_DB = '4a24ce58079f468c87c2f75e107c4d1c';
 const CORE_DB = 'e1b78d3813ae4a819841e8c5c3e9e8ec';
 const QA_DO = '4a10d3dab4e16639445f4afdb0b7e5e2462cf06894cb4ae85f0ac3cd3cdba101';
 const CORE_DO = 'dba114c7b0abd8e53d1d78e579924852b8e40907e50213634aeeaeb41ab51a98';
-const BRANCH = 'integration/qa-desktop-439-20261123';
+const BRANCH = 'integration/qa-admin-cloud-on-desktop-v125-20261123';
 const QA_SETUP_OPEN = 'isolated_authority';
 const QA_SETUP_CLOSED = 'disabled';
 const TESTS = [
@@ -50,6 +50,8 @@ const TESTS = [
   // The PWA navigation suite reads dist/index.html and dist/pwa-pages.json.
   // Build first so this works on a clean checkout, not only after an older build.
   ['npm', ['run', 'build']],
+  // Verify real Workerd+SQLite and the protected admin page; synthetic identities only.
+  ['node', ['tests/admin-cloud-workerd.runtime.mjs']],
   ['npm', ['run', 'test:encounter']],
   ['npm', ['run', 'test:eco:node']],
   ['npm', ['run', 'test:pwa:navigation']],
@@ -58,6 +60,10 @@ const TESTS = [
   // A fresh Codespace may already have chrome-headless-shell but lack
   // libnspr4.so; plain "playwright install chromium" does not install OS deps.
   ['npx', ['playwright', 'install', '--with-deps', 'chromium']],
+  ['node', ['tests/admin-cloud-mobile.browser.mjs']],
+  ['npx', ['playwright', 'install', '--with-deps', 'webkit']],
+  // WebKit iPhone emulation on Linux; distinct from physical iOS device acceptance.
+  ['node', ['tests/admin-cloud-ios-webkit.mjs']],
   ['node', ['tests/api-config-mobile.browser.mjs']],
   ['node', ['tests/api-settings-editorial-browser.mjs']],
   // Run the browser gesture gate before the expensive full 1000+ test Node suite:

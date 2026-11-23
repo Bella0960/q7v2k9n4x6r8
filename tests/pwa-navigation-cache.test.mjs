@@ -33,9 +33,16 @@ test('every desktop app shortcut is emitted as a real HTML page in the productio
   assert.ok(routes.length >= 20, 'the built desktop must retain all app shortcuts');
   assert.equal(new Set(routes).size, routes.length, 'desktop app routes must be unique');
   for (const route of routes) {
-    assert.ok(pageManifest.includes(route), 'app route missing from the PWA page manifest: ' + route);
+    // Admin HTML is a real, role-gated page, but must never enter public PWA precache.
+    if (route.startsWith('admin/')) {
+      assert.ok(!pageManifest.includes(route), 'role-restricted admin route leaked into PWA precache: ' + route);
+    } else {
+      assert.ok(pageManifest.includes(route), 'app route missing from the PWA page manifest: ' + route);
+    }
     assert.ok(fs.existsSync(path.join(root, 'dist', route)), 'app route missing from production build output: ' + route);
   }
+  assert.ok(pageManifest.every(route => !route.startsWith('admin/')),
+    'private admin HTML must not appear in the public PWA precache manifest');
 });
 
 test('service worker precaches all HTML routes listed by the build manifest', () => {
