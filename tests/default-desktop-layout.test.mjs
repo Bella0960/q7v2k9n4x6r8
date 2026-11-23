@@ -112,3 +112,20 @@ test('layout saves report failure and the stored version remains v14', () => {
   assert.match(index, /return localStorage\.getItem\(LS_KEY\) === serialized/);
   assert.match(index, /if \(!saveLayout\(currentLayout\)\)/);
 });
+
+
+test('widget manager checks physical grid capacity and respects the desktop page limit', () => {
+  assert.match(widgetManager, /var MAX_PAGES = 4/);
+  assert.match(widgetManager, /function fitsPage\(ids\)/);
+  assert.match(widgetManager, /if \(layout\.pages\.length >= MAX_PAGES/);
+  assert.doesNotMatch(widgetManager, /MAX_PER_PAGE = 8/);
+  assert.match(widgetManager, /return localStorage\.getItem\(LS_KEY\) === serialized/);
+  assert.match(widgetManager, /for \(var version = 13; version >= 1; version--\)/);
+});
+
+test('an interrupted touch drag is cancelled without a layout write', () => {
+  assert.match(index, /function cancelDrag\(\)/);
+  assert.match(index, /document\.addEventListener\('touchcancel', function \(\) \{[\s\S]*?cancelDrag\(\)/);
+  assert.match(index, /dragClone\.removeAttribute\('data-drag'\)/);
+  assert.match(index, /dragClone\.querySelectorAll\('\[id\], \[data-drag\]'\)/);
+});
