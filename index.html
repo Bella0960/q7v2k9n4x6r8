@@ -1149,6 +1149,13 @@
         dragClone = dragEl.cloneNode(true);
         dragClone.classList.add('drag-avatar');
         dragClone.classList.remove('is-dragging-source');
+        // Ghosts must not duplicate live widget IDs or appear as placeable items.
+        dragClone.removeAttribute('data-drag');
+        dragClone.removeAttribute('id');
+        dragClone.querySelectorAll('[id], [data-drag]').forEach(function (node) {
+          node.removeAttribute('id');
+          node.removeAttribute('data-drag');
+        });
         var delIcon = dragClone.querySelector('.ds-del');
         if (delIcon) delIcon.remove();
 
@@ -1331,6 +1338,34 @@
         }
       }
 
+      // A system-interrupted touch is not a completed drop.
+      // The original DOM element stays in its original parent until endDrag().
+      function cancelDrag() {
+        if (!isDragging) return;
+        isDragging = false;
+        if (edgeTimer) {
+          clearTimeout(edgeTimer);
+          edgeTimer = null;
+        }
+        lastEdgeSide = null;
+        edgeCooldown = false;
+        if (placeholder) {
+          placeholder.remove();
+          placeholder = null;
+        }
+        if (dragClone) {
+          dragClone.remove();
+          dragClone = null;
+        }
+        if (dragEl) {
+          dragEl.classList.remove('is-dragging-source');
+          dragEl.style.display = '';
+          dragEl = null;
+        }
+        cleanupEmptyTrailingPages();
+        updateDefaultGridComposition();
+      }
+
       function endDrag() {
         if (!isDragging) return;
         isDragging = false;
@@ -1404,7 +1439,7 @@
           pressTimer = setTimeout(function () {
             pressTimer = null;
             startDrag(t, startX, startY);
-          }, 40);
+          }, 120);
         } else {
           // 常态下长按 280ms 触发编辑模式与拖拽
           pressTimer = setTimeout(function () {
@@ -1449,7 +1484,7 @@
           pressTimer = null;
         }
         if (isDragging) {
-          endDrag();
+          cancelDrag();
         }
       });
 
@@ -1468,7 +1503,7 @@
           pressTimer = setTimeout(function () {
             pressTimer = null;
             startDrag(t, startX, startY);
-          }, 30);
+          }, 100);
         } else {
           pressTimer = setTimeout(function () {
             pressTimer = null;
