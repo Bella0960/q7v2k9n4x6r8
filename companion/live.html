@@ -813,21 +813,35 @@ function aiAudienceBudgetNote(){
   return '本场剩余 '+Math.max(0,AI_AUDIENCE_SESSION_LIMIT-aiAudience.sessionUsed)+' 批 · 今日剩余 '+aiAudienceRemaining()+' 批（仅本机限制）'
     +(aiAudienceDaily.persistBroken?' · 本机预算写入失败，已按保守计数继续限制':'');
 }
+/* 总控 P1：写预算必须写进去并读回一致，才允许发付费请求。
+   之前第一批请求在写失败后仍然发出，刷新后内存 persistBroken 消失，
+   长期限额可被反复绕过。写不进去就 fail-closed：0 请求，直接本地模拟。 */
+function persistAiAudienceVerified(){
+  try{
+    var payload={day:aiAudienceDay(),used:aiAudienceUsedToday()};
+    localStorage.setItem(AI_AUDIENCE_KEY,JSON.stringify(payload));
+    var back=JSON.parse(localStorage.getItem(AI_AUDIENCE_KEY)||'{}')||{};
+    return back.day===payload.day&&Number(back.used)===Number(payload.used);
+  }catch(e){return false;}
+}
 function persistAiAudience(){
   try{
     localStorage.setItem(AI_AUDIENCE_KEY,JSON.stringify({day:aiAudienceDay(),used:aiAudienceUsedToday(),enabled:aiAudience.enabled}));
     return true;
   }catch(e){return false;}
 }
-/* 先记账再请求：失败也占用一次，避免反复失败不断烧额度。
-   落盘失败只标记 persistBroken，内存计数照常推进（绝不因写不进去而放开限制）。 */
+/* 记账：返回 false 表示这次不允许发请求。 */
 function consumeAiAudienceBudget(){
   aiAudienceDailySync();
+  if(aiAudienceUsedToday()>=AI_AUDIENCE_DAILY_LIMIT)return false;
   aiAudienceDaily.used=aiAudienceUsedToday()+1;
   aiAudience.sessionUsed+=1;
   aiAudience.lastAt=Date.now();
-  if(!persistAiAudience())aiAudienceDaily.persistBroken=true;
-  return aiAudienceDaily.used;
+  if(!persistAiAudienceVerified()){
+    aiAudienceDaily.persistBroken=true;
+    return false;                     /* fail-closed：0 请求 */
+  }
+  return true;
 }
 
 function bumpAiAudienceToken(){
@@ -946,9 +960,15 @@ function requestAiAudienceBatch(){
     toast('本机预算没能写入，AI 观众已暂停付费调用（避免绕开限额）');
     return;
   }
+  if(!consumeAiAudienceBudget()){       /* 先记账：写不进本机就一次也不请求 */
+    aiAudience.busy=false;
+    aiAudience.degraded=true;
+    renderAiAudiencePanel();
+    toast('本机预算没能写入，AI 观众已暂停付费调用（避免绕开限额）');
+    return;
+  }
   var token=aiAudience.token;
   aiAudience.busy=true;
-  consumeAiAudienceBudget();            /* 先记账，失败也算一次 */
   var roster=AI_AUDIENCE_ROSTER.map(function(r){return r.name+'（喜欢'+r.interest+'）';}).join('；');
   var recentDanmaku=[...stream.querySelectorAll('.bubble')].slice(-6).map(b=>b.textContent).join('\n');
   var system='你正在为一个虚构的直播间接写弹幕。直播间主播叫「'+me.name+'」。观众固定为这几位虚拟观众：'+roster+'。请只用这些名字发言，写出自然、互相接得上、围绕同一话题的弹幕，可以有一个人追问、一个人附和、一个人跑题一句。不要出现真人身份、不要提 AI、不要提礼物价格或收入。只返回 JSON 数组，元素形如 {"name":"观众名","text":"弹幕"}，共 4-6 条，每条不超过 40 字。';
