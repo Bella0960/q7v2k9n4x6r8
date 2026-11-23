@@ -37,10 +37,14 @@ try {
     phase = "check-failure";
     assert.match(await page.locator('#toast').innerText(), /阅读设置没能存到本机/);
     assert.equal(await readSettings(), before);
+    const activeSize = Number(await page.locator('#rsFsValue').innerText());
+    assert.equal(activeSize, size + 1);
     await page.evaluate(() => { window.ignoreReaderWrites = false; });
-    await page.locator('#rsFsUp').tap();
     phase = "check-retry";
-    assert.equal(JSON.parse(await readSettings()).fs, size + 2);
+    await page.locator('#rsFontChips [data-font="mono"]').tap();
+    const saved = JSON.parse(await readSettings());
+    assert.equal(saved.font, 'mono');
+    assert.equal(saved.fs, activeSize);
     phase = "open";
     await page.goto(url);
     await page.locator('.book-card:visible').first().tap();
@@ -48,7 +52,8 @@ try {
     phase = "open-settings";
     await page.locator('#ctrlSet').tap();
     phase = "check-restore";
-    assert.equal(Number(await page.locator('#rsFsValue').innerText()), size + 2);
+    assert.equal(await page.locator('#rsFontChips [data-font="mono"]').getAttribute('class').then(classes => classes.includes('is-current')), true);
+    assert.equal(Number(await page.locator('#rsFsValue').innerText()), activeSize);
     await page.close();
   }
 } catch (error) {
