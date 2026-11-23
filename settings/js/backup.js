@@ -134,7 +134,7 @@
     // Never export login sessions, account passwords or identity tokens,
     // even if the optional API-key export checkbox is enabled.
     function neverBackupKey(key) {
-        if (/^cloud_device_v[0-9]+$/.test(key)) return true;
+        if (/^cloud_device_v[0-9]+(?::|$)/.test(key)) return true;
         return /^(access_token|refresh_token|session_token|auth_token|password|api_key|private_key)$/i.test(key) ||
             /(?:^|[_-])(?:session|auth|access|refresh)[_-]?token(?:$|[_-])/i.test(key) ||
             /(?:^|[_-])(?:password|private[_-]?key|secret)(?:$|[_-])/i.test(key) ||
@@ -175,7 +175,7 @@
         try { keys = Object.keys(localStorage); } catch (e) {}
         keys.forEach(function (k) {
             // Device authentication secrets are never exportable, even in API-key backups.
-            if (/^cloud_device_v[0-9]+$/.test(k)) return;
+            if (/^cloud_device_v[0-9]+(?::|$)/.test(k)) return;
             if (dropCaches && EXCLUDE_KEYS.indexOf(k) !== -1) return;
             if (!includePrivateLocalKeys && typeof neverBackupKey === 'function' && neverBackupKey(k)) return;
             if (dropSecrets && SECRET_KEYS.indexOf(k) !== -1) return;
@@ -528,7 +528,7 @@
     // 用法：rollback = restore(snapshot) 之后调用 verifyRestore(snapshot)
     // 判定依据：snapshot 的每个 key 都存在，且值严格相等。
     function verifyRestore(snap) {
-        var snapKeys = Object.keys(snap).filter(function(k) { return !/^cloud_device_v[0-9]+$/.test(k); });
+        var snapKeys = Object.keys(snap).filter(function(k) { return !/^cloud_device_v[0-9]+(?::|$)/.test(k); });
         var curKeys = [];
         try { curKeys = Object.keys(localStorage); } catch (e) {}
         var missingKeys = [];   // 快照里有但实际没有的
