@@ -111,3 +111,22 @@
 - P1-3：两次上传不同色合成图，上传期间改 `itemRadius=30`；一次撤销只回退到第一张图，非图片草稿（圆角 30）保留；过期序号结果不覆盖当前草稿。
 - P2-1：干净基线态点还原草稿不增 undo；载入与草稿一致的预设不增 undo、redo 保持空。
 - P2-2：confirm accept 后单次放行导航到 `index.html`，原生 beforeunload 不再二次拦截。
+
+## 8. 二轮复审返修（#478 评论 7108691190：1 项 P1）
+
+- **P1｜气泡草稿切到 list/detail 后退出保护漏判**：进入气泡栏修改 `myBubbleBg` 后，`drafts.bubble` 已变但 `bubbleDrafts[scope]` 未同步；`setTab` 切到 list/detail 时只切栏重绘、未缓存离开前的气泡草稿，导致 `anyDirty()` 遍历 `bubbleDrafts` 为空、回退基线值，list/detail 干净时不拦截返回/刷新。
+- **最小修复**：`setTab(next)` 在旧 `tab==='bubble'` 时，先把 `cleanBubble(drafts.bubble)` 暂存进 `bubbleDrafts[scope]`（仅内存，不写 beauty 存储），再切换栏目。其它角色暂存草稿不被覆盖，list/detail 单独 dirty 语义不变；切回气泡时草稿与按 scope 分栈的 undo 历史均保留。
+
+### 二轮新增回归断言
+- global 气泡编辑后切 list（列表不改）：`contextDirty===false` 但整体 `dirty===true`；返回 confirm 取消仍停留；切 detail 同样拦截。
+- 切回气泡：草稿颜色与 undo 历史保留；随后还原到基线，避免覆盖下方角色矩阵。
+- 角色 A 未应用草稿切到 list 后整体 `dirty===true`，返回保护仍生效。
+
+### 二轮自测证据（开发方 headless Chromium，非总控独立 QA、非真机）
+- `node --check`：`studio.js` 与草稿专项测试通过。
+- Node 接线合同：**22/22 PASS**。
+- Chromium 草稿专项（4195）：**3/3 PASS**（375 / 390 / 430）。
+- Chromium 预设专项（4194）：**3/3 PASS**，无回归。
+- Chromium 导入专项（4193）：**3/3 PASS**，无回归。
+- Chromium 预览/双预览冒烟（随机端口）：**3/3 PASS**。
+- `npm run build`：**PASS**（内嵌 Node 门 3/3）。

@@ -297,6 +297,49 @@ try {
     await delay(120);
     assert.ok(page.url().includes('theme-studio.html'), width + 'px cancelled back keeps the workbench');
 
+    // 11b. An unsaved bubble draft still guards exit after switching to list/detail. The
+    //      leaving bubble draft is staged in memory only; list/detail stay clean, but
+    //      anyDirty() must still see the unsaved bubble change and block leaving.
+    await page.click('#restoreDraft');
+    await delay(80);
+    await page.click('[data-tab="bubble"]');
+    await delay(120);
+    await editColor(page, '#edit-myBubbleBg', '#dddddd');
+    const tabSwitchUndo = (await snapshot(page)).undo;
+
+    // Switch to list without touching list fields: bubble draft keeps anyDirty true.
+    await page.click('[data-tab="list"]');
+    await delay(120);
+    snap = await snapshot(page);
+    assert.equal(snap.tab, 'list', width + 'px switched to list');
+    assert.equal(snap.contextDirty, false, width + 'px list context stays clean');
+    assert.equal(snap.dirty, true, width + 'px unsaved global bubble draft still flags dirty on list tab');
+    onDialog(page, 'dismiss');
+    await page.evaluate(() => document.querySelector('.back').click());
+    await delay(120);
+    assert.ok(page.url().includes('theme-studio.html'), width + 'px cancelled back keeps the workbench on list');
+
+    // Switch to detail: the same exit guard applies.
+    await page.click('[data-tab="detail"]');
+    await delay(120);
+    snap = await snapshot(page);
+    assert.equal(snap.tab, 'detail', width + 'px switched to detail');
+    assert.equal(snap.dirty, true, width + 'px unsaved global bubble draft still flags dirty on detail tab');
+    onDialog(page, 'dismiss');
+    await page.evaluate(() => document.querySelector('.back').click());
+    await delay(120);
+    assert.ok(page.url().includes('theme-studio.html'), width + 'px cancelled back keeps the workbench on detail');
+
+    // Back to bubble: the draft and its undo history survive the tab switches.
+    await page.click('[data-tab="bubble"]');
+    await delay(120);
+    snap = await snapshot(page);
+    assert.equal(snap.bubble.myBubbleBg, '#dddddd', width + 'px bubble draft survives the tab switches');
+    assert.equal(snap.undo, tabSwitchUndo, width + 'px bubble history survives the tab switches');
+    // Revert to baseline so no global bubble override leaks into the role matrix below.
+    await page.click('#restoreDraft');
+    await delay(80);
+
     // 12. Per-role bubble drafts and history stay isolated.
     await page.click('#restoreDraft');
     await delay(80);
@@ -337,6 +380,14 @@ try {
     roleSnap = await snapshot(page);
     assert.equal(roleSnap.bubble.myBubbleBg, '#bbbbbb', width + 'px role A draft still staged on return');
     assert.deepEqual(await beautyKeys(page), [], width + 'px unsaved bubble draft writes no beauty scope');
+
+    // Role A's unsaved draft also keeps the exit guard armed after switching to list.
+    await page.click('[data-tab="list"]');
+    await delay(120);
+    roleSnap = await snapshot(page);
+    assert.equal(roleSnap.dirty, true, width + 'px unsaved role A bubble draft still flags dirty on list tab');
+    await page.click('[data-tab="bubble"]');
+    await delay(120);
 
     // 12b. Clearing role A's override rebuilds from the real resolved value; it must not
     //     reuse the stale staged draft as the applied baseline, and must not touch global

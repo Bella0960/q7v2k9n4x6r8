@@ -448,6 +448,10 @@
   }
   function setTab(next) {
     pendingBefore=null;
+    // Stage the leaving bubble draft in memory only, so the exit guard still sees an
+    // unsaved bubble change after switching to list/detail. It never writes the beauty
+    // store; other roles' staged drafts are untouched.
+    if (tab==='bubble') bubbleDrafts[scope]=cleanBubble(drafts.bubble);
     tab=next;
     document.querySelectorAll('[data-tab]').forEach(function(btn){
       var selected=btn.dataset.tab===next;
