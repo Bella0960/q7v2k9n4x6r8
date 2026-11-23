@@ -147,3 +147,27 @@ On the next turn/session, read this file and the current `AGENTS.md` first. Cont
 
 - **2026-11-22 storage hardening:** Prevent damaged/non-array primary `chat_memories_<id>` content from being overwritten; reject invalid memory targets; stop memory-library delete, dedupe, and AI merge success displays when write fails; capture AI-merge role ID before network await. Added the corresponding regression tests. **16/16 V8-isolated production-module/DOM-contract checks passed** (not full Node). Parsed all changed JS/inline scripts successfully.
 - **Verification handoff:** PR source remains unmerged; next QA must use the exact pinned branch SHA and the existing public-only verification channel. Do not run exhausted legacy private Actions or bypass existing safety guards.
+
+## 2026-11-23 · APP-TRAVEL-001 · 触梦旅行首轮核查与存档写入可信性
+
+- **分支 / PR：** `APP-TRAVEL-001-storage-trust` · Draft PR。基线 main `40b671bb`。未合并、未部署。
+- **应用构成（真实源码）：** `travel/dream-travel.html`（777 行单文件，110 KB），仅引入 `shared/js/native-feel.js`。数据键 `maomao_dream_travel_v1`（favorites / visited / bookings / notes / souvenirs），票根图 `dream_ticket_img_<ticketId>`。目的地是 6 条内置静态数据。
+- **核查结论：**
+  - 页面与交互：探索 / 票根 / 手札 / 护照四个视图齐全；搜索、分类、详情、购票、抵达、手撕票、复制、导出导入均有实际处理器；JS 引用的 DOM id 均存在。
+  - 账号与角色隔离：**没有任何角色概念**——不读 `PhoneStorage.getCharacters()`，不区分账号，全部数据单键全局。属产品缺口（见下）。
+  - 刷新与恢复：`loadData()` 对每个字段做 Array 校验，刷新回读正常；导入对 id 去重。
+  - 写入可信性：`persist()` 原本已返回布尔，但 4 个写入点在失败后不回滚。
+- **P1 已修（本 PR）：**
+  1. `markVisited` 先改 `visited`/`souvenirs` 再 `if(!persist())return`，失败后内存领先存档，下一次成功写入会把「没保存上的抵达」补写进去。
+  2. `arriveTicket` 同样先改票根状态与护照；失败时票根看起来已抵达但实际未存。
+  3. `saveNote` 直接原地修改旧手札对象（`n.date/n.title/n.content`），失败后编辑内容留在界面上，再保存一次才落盘。
+  4. `importBackup` 先合并 5 个数组再 `persist()`，失败后留下半截合并数据。
+  - 统一做法：新增 `snapshotData()`（JSON 深拷贝）与 `restoreData(snap)`（原地删/写字段，保持 `data` 引用不变，避免 render 与闭包读到旧引用）；四处改为先快照、失败整份回滚并重新渲染。
+  - `toggleFavorite` / `cancelTicket` / `deleteNote` 三级回滚（失败还原单项）已在本地一并修正；票根图 `setItem` 失败改为明确提示，不再空 catch。
+- **测试：** 新增 `tests/travel-storage-trust.test.mjs`（9 项，VM 跑真实 `persist/snapshotData/restoreData/markVisited/arriveTicket/saveNote`），9/9 通过；内联脚本 `node --check` 通过。
+- **产品缺口（需确认方向，不在本 PR 擅自加）：**
+  - 旅行没有任何角色参与：不能「和 TA 一起旅行」，不读角色人设/世界书/记忆，也没有 AI 生成。
+  - 不产出也不读取世界事件，与其他应用零联动。
+  - 这两项属于产品设计而非 Bug，需要明确要做成「双人梦境旅行」还是保持纯个人收藏。
+- **BLOCKED：** 世界事件依赖 `ECO-LINK-002`；角色上下文依赖共享 `PhoneContext` 的安全接口（#428 已证其会拼入全量世界书与财务快照）。
+- **未验证：** Vite 全站构建、Chromium 375/390/430、真机、真实配额场景。

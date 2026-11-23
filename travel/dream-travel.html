@@ -372,6 +372,10 @@ var main=$('mainView'),scroller=$('scroller');
 function freshData(){return {favorites:[],visited:[],bookings:[],notes:[],souvenirs:[]}}
 function loadData(){try{var d=JSON.parse(localStorage.getItem(STORE_KEY)||'{}');if(!d||typeof d!=='object')return freshData();return {favorites:Array.isArray(d.favorites)?d.favorites:[],visited:Array.isArray(d.visited)?d.visited:[],bookings:Array.isArray(d.bookings)?d.bookings:[],notes:Array.isArray(d.notes)?d.notes:[],souvenirs:Array.isArray(d.souvenirs)?d.souvenirs:[]}}catch(e){return freshData()}}
 function persist(){try{localStorage.setItem(STORE_KEY,JSON.stringify(data));return true}catch(e){toast('本机存储空间不足，暂时无法保存');return false}}
+/* 写入失败即回滚：先留一份深拷贝快照，失败原地还原字段，保持 data 引用不变
+   （render 与各闭包都直接读 data，换对象会让它们读到旧引用）。 */
+function snapshotData(){try{return JSON.parse(JSON.stringify(data))}catch(e){return null}}
+function restoreData(snap){if(!snap||typeof snap!=='object')return;Object.keys(data).forEach(function(k){delete data[k]});Object.keys(snap).forEach(function(k){data[k]=snap[k]})}
 function esc(s){return String(s==null?'':s).replace(/[&<>"']/g,function(c){return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]})}
 function dateKey(d){d=d||new Date();return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0')}
 function plusDays(num){var d=new Date();d.setDate(d.getDate()+num);return dateKey(d)}
@@ -497,8 +501,10 @@ $('detailCopy').addEventListener('click',function(){copyPlaceText(p)});
 }
 function closeDetail(){$('detailOverlay').classList.remove('show');document.body.style.overflow=''}
 function toggleFavorite(id){
-var i=data.favorites.indexOf(id);if(i<0){data.favorites.push(id);toast('已收进梦境收藏')}else{data.favorites.splice(i,1);toast('已从收藏中移除')}
-persist();render();
+var i=data.favorites.indexOf(id);
+if(i<0){data.favorites.push(id);if(!persist()){data.favorites.pop();render();return}toast('已收进梦境收藏')}
+else{var removed=data.favorites.splice(i,1)[0];if(!persist()){data.favorites.splice(i,0,removed);render();return}toast('已从收藏中移除')}
+render();
 if(activePlaceId){$('detailFavorite').textContent=has(data.favorites,activePlaceId)?'★':'☆'}
 }
 function openBooking(id){
@@ -517,15 +523,19 @@ closeBooking();closeDetail();view='trips';render();toast('旅行票根已生成 
 function arriveTicket(id){
 var t=data.bookings.find(function(x){return x.id===id});if(!t)return;
 if(t.status==='arrived'){toast('这段旅程已经收录');return}
+var before=snapshotData();
 t.status='arrived';t.arrivedAt=new Date().toISOString();
 if(!has(data.visited,t.placeId))data.visited.push(t.placeId);
 var p=findPlace(t.placeId);
 if(!data.souvenirs.some(function(s){return s.placeId===p.id}))data.souvenirs.push({id:'s_'+Date.now().toString(36),placeId:p.id,name:p.gift,date:t.date});
-if(persist()){render();toast('抵达成功 · '+p.gift+' 已加入收藏')}
+if(!persist()){restoreData(before);render();return}
+render();toast('抵达成功 · '+p.gift+' 已加入收藏')
 }
 function cancelTicket(id){
 if(!confirm('确定取消这张虚构旅行票根吗？'))return;
-data.bookings=data.bookings.filter(function(t){return t.id!==id});persist();render();toast('票根已取消');
+var backup=data.bookings;data.bookings=data.bookings.filter(function(t){return t.id!==id});
+if(!persist()){data.bookings=backup;render();return}
+render();toast('票根已取消');
 }
 var currentTicketId=null,vtDrag=null;
 var PHOTO_API='https://trae-api-cn.mchost.guru/api/ide/v1/text_to_image?image_size=square_hd&prompt=';
@@ -593,7 +603,7 @@ if(Math.max(w,h)>max){var s=max/Math.max(w,h);w=Math.round(w*s);h=Math.round(h*s
 var cv=document.createElement('canvas');cv.width=w;cv.height=h;
 cv.getContext('2d').drawImage(im,0,0,w,h);
 var out;try{out=cv.toDataURL('image/jpeg',.72)}catch(e){return}
-try{localStorage.setItem('dream_ticket_img_'+tid,out)}catch(e){}
+try{localStorage.setItem('dream_ticket_img_'+tid,out)}catch(e){toast('这张票根图没能存在本机，本次仍可查看')}
 var el=$('vtImg');if(el){el.src=out;el.style.filter='none'}
 };im.src=r.result};
 r.readAsDataURL(f);
@@ -611,9 +621,10 @@ function tripCountdown(key){if(!key)return '';var p=String(key).split('-'),d=new
 function markVisited(id){
 var p=findPlace(id);
 if(has(data.visited,id)){toast('这里已经收进你的梦境护照了');return}
+var before=snapshotData();
 data.visited.push(id);
 if(!data.souvenirs.some(function(s){return s.placeId===p.id}))data.souvenirs.push({id:'s_'+Date.now().toString(36),placeId:p.id,name:p.gift,date:dateKey()});
-if(!persist())return;
+if(!persist()){restoreData(before);render();return}
 var y=scroller.scrollTop;render();scroller.scrollTop=y;
 var btn=$('detailVisited');if(btn)btn.innerHTML=iconSvg('check')+'<span>已经来过了</span>';
 toast('抵达成功 · '+p.gift+' 已加入收藏');
@@ -645,14 +656,18 @@ function saveNote(){
 var title=$('noteTitle').value.trim(),content=$('noteContent').value.trim();
 if(!title&&!content){toast('先写下一点内容吧');$('noteContent').focus();return}
 var old=editingNoteId?data.notes.find(function(x){return x.id===editingNoteId}):null;
+var before=snapshotData();
 var n=old||{id:'n_'+Date.now().toString(36),createdAt:new Date().toISOString()};
 n.date=$('noteDate').value||dateKey();n.placeId=$('notePlace').value;n.title=title;n.content=content;n.updatedAt=new Date().toISOString();
 if(!old)data.notes.push(n);
-if(persist()){closeNote();view='notes';render();toast(old?'手札已更新':'旅行手札已保存')}
+if(!persist()){restoreData(before);return}
+closeNote();view='notes';render();toast(old?'手札已更新':'旅行手札已保存')
 }
 function deleteNote(id){
 if(!confirm('确定删除这张旅行手札吗？'))return;
-data.notes=data.notes.filter(function(n){return n.id!==id});persist();render();toast('手札已删除');
+var noteBackup=data.notes;data.notes=data.notes.filter(function(n){return n.id!==id});
+if(!persist()){data.notes=noteBackup;render();return}
+render();toast('手札已删除');
 }
 function exportBackup(){
 var payload={app:'MAOMAO Touch Dream Travel',version:1,exportedAt:new Date().toISOString(),data:data};
@@ -664,12 +679,14 @@ if(!file)return;
 var r=new FileReader();
 r.onload=function(){try{var v=JSON.parse(r.result),incoming=v.data||v;if(!incoming||!Array.isArray(incoming.favorites)||!Array.isArray(incoming.bookings)||!Array.isArray(incoming.notes))throw new Error('bad');
 if(!confirm('导入资料会与当前资料合并，重复票根和手札将自动跳过。继续吗？'))return;
+var before=snapshotData();
 incoming.favorites.forEach(function(id){if(destinations.some(function(p){return p.id===id})&&!has(data.favorites,id))data.favorites.push(id)});
 incoming.visited=(incoming.visited||[]).filter(function(id){return destinations.some(function(p){return p.id===id})}).forEach(function(id){if(!has(data.visited,id))data.visited.push(id)});
 incoming.bookings.forEach(function(t){if(t&&t.id&&!data.bookings.some(function(x){return x.id===t.id}))data.bookings.push(t)});
 incoming.notes.forEach(function(n){if(n&&n.id&&!data.notes.some(function(x){return x.id===n.id}))data.notes.push(n)});
 (incoming.souvenirs||[]).forEach(function(s){if(s&&s.id&&!data.souvenirs.some(function(x){return x.id===s.id}))data.souvenirs.push(s)});
-if(persist()){setView('explore');$('menuOverlay').classList.remove('show');toast('旅行资料已合并导入')}
+if(!persist()){restoreData(before);return}
+setView('explore');$('menuOverlay').classList.remove('show');toast('旅行资料已合并导入')
 }catch(e){toast('文件格式不正确，请选择触梦旅行备份文件')}}
 ;r.onerror=function(){toast('读取备份失败')};r.readAsText(file);
 }
