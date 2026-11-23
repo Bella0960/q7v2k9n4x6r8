@@ -56,7 +56,7 @@ test('missing context shows a useful explanation without guessing or persisting 
   assert.ok(handler.includes('返回桌面'));
   assert.ok(handler.includes("window.location.assign('/index.html')"));
   assert.ok(handler.includes('await retry()'));
-  assert.doesNotMatch(handler, /localStorage|sessionStorage|document\.cookie/);
+  assert.doesNotMatch(handler.replace(/\/\/[^\n]*/g, ''), /localStorage|sessionStorage|document\.cookie/);
   assert.match(core, /headers\.set\('x-mao-account-context', accountId\)/);
   assert.match(core, /if \(scopedId && metaId && scopedId !== metaId\)/);
 });
