@@ -127,3 +127,54 @@ test('源码守卫：「已保存」只在真的写进去时才提示', () => {
   assert.ok(page.includes('sv = storyRead('), 'cover progress must read through the same path');
   assert.ok(page.includes('if(PhoneStorage.rawSet(key, value)) return true;'), 'rawSet boolean must be honoured');
 });
+
+/* 总控 P1：无共享存储时 setName/saveNpc/saveDiff 写 localStorage，但三个读入口仍只走
+ * PhoneStorage → 写成功、刷新读不到。读写必须走同一条兜底路径。 */
+test('无 PhoneStorage：姓名/NPC/难度写入后重新读回完整一致', () => {
+  const store = makeStore();
+  const { sb } = makeRuntime({ store });
+  sb.setPlayerName('小雨');
+  sb.saveNpc({ jiang: '阿江', chen: '阿野', su: '阿念' });
+  sb.saveDiff('hard');
+
+  // 模拟刷新：同一份 localStorage，全新运行时
+  const again = makeRuntime({ store }).sb;
+  again.state.book = null;
+  assert.equal(again.getPlayerName(), '小雨');
+  assert.deepEqual(
+    { ...again.loadNpc() },
+    { jiang: '阿江', chen: '阿野', su: '阿念' });
+  assert.equal(again.loadDiff(), 'hard');
+});
+
+test('无 PhoneStorage 且无存档：三个读入口返回安全默认值，不抛异常', () => {
+  const { sb } = makeRuntime({ store: makeStore() });
+  sb.state.book = null;
+  assert.equal(sb.getPlayerName(), '');
+  assert.deepEqual(
+    { ...sb.loadNpc() },
+    { jiang: '江屿', chen: '陈野', su: '苏念' });
+  assert.equal(sb.loadDiff(), 'normal');
+});
+
+test('PhoneStorage 抛异常时三个读入口回落 localStorage', () => {
+  const store = makeStore({
+    maomao_story_player: '旧名',
+    maomao_story_difficulty: 'easy',
+  });
+  const { sb } = makeRuntime({
+    store,
+    phoneStorage: { rawSet: () => true, rawGet: () => { throw new Error('boom'); } },
+  });
+  assert.equal(sb.getPlayerName(), '旧名');
+  assert.equal(sb.loadDiff(), 'easy');
+});
+
+test('源码守卫：三个读入口都走 storyRead', () => {
+  for (const fn of ['getPlayerName', 'loadNpc', 'loadDiff']) {
+    const at = block.indexOf('function ' + fn + '(');
+    assert.ok(at > 0, fn + ' not found');
+    const body = block.slice(at, at + 700).split('\nfunction ')[0];
+    assert.ok(body.includes('storyRead('), fn + ' must read through storyRead()');
+  }
+});
