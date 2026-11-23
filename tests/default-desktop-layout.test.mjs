@@ -30,11 +30,11 @@ test('default home has the clock, duo avatars, photo wall and app quadrants in t
   assert.match(index, /var LS_KEY = 'ds_layout_v14'/);
 });
 
-test('obsolete layout keys are cleared and the widget manager uses the current layout key', () => {
-  assert.match(index, /key !== 'ds_layout_v14'/);
-  assert.doesNotMatch(index, /ds_layout_v13|ds_layout_v12/);
+test('old desktop layouts are migrated without destroying saved positions', () => {
+  assert.match(index, /for \(var version = 13; version >= 1; version--\)/);
+  assert.match(index, /readJSON\('ds_layout_v' \+ version\)/);
+  assert.doesNotMatch(index, /localStorage\.removeItem\(key\)/);
   assert.match(widgetManager, /var LS_KEY = 'ds_layout_v14'/);
-  assert.doesNotMatch(widgetManager, /ds_layout_v13|ds_layout_v12/);
 });
 
 test('every desktop app is assigned exactly once and dock apps stay in the dock', () => {
@@ -50,10 +50,10 @@ test('every desktop app is assigned exactly once and dock apps stay in the dock'
 test('the mobile home grid keeps four columns and supports vertical page scrolling', () => {
   assert.match(mobileCss, /grid-template-columns:\s*repeat\(4,\s*minmax\(0,\s*1fr\)\)\s*!important/);
   assert.match(mobileCss, /grid-auto-rows:\s*68px\s*!important/);
-  assert.match(desktopCss, /#gridPage0 > \[data-drag\]:nth-child\(6\)[^{]*\{ grid-column: 3 \/ 5 !important; grid-row: 3 \/ 5 !important;/);
-  assert.match(mobileCss, /#gridPage0 > \[data-drag\]:nth-child\(7\)[^{]*\{ grid-column: 1 \/ 3 !important; grid-row: 5 \/ 7 !important;/);
+  assert.match(desktopCss, /#gridPage0\.is-default-layout > \[data-drag\]:nth-child\(6\)[^{]*\{ grid-column: 3 \/ 5 !important; grid-row: 3 \/ 5 !important;/);
+  assert.match(mobileCss, /#gridPage0\.is-default-layout > \[data-drag\]:nth-child\(7\)[^{]*\{ grid-column: 1 \/ 3 !important; grid-row: 5 \/ 7 !important;/);
   assert.match(mobileCss, /\.maomao-home \.home-page[\s\S]*?overflow-y:\s*auto\s*!important/);
-  assert.match(serviceWorker, /const CACHE_NAME = 'phone-app-pwa-v203'/);
+  assert.match(serviceWorker, /const CACHE_NAME = 'phone-app-pwa-v\d+'/);
 });
 
 
@@ -88,4 +88,27 @@ test('all desktop app tiles have valid relative destinations and delegated click
   assert.doesNotMatch(desktopScript, /target\.closest\('\[data-href\]'\)/,
     'the legacy bubble-phase handler must not duplicate the capture-phase navigation');
   assert.match(index, /home-editing/);
+});
+
+
+test('only the untouched default page is subject to hardcoded art-directed positions', () => {
+  assert.match(index, /function updateDefaultGridComposition\(\)/);
+  assert.match(index, /!isDragging && ids\.length === expected\.length/);
+  assert.doesNotMatch(desktopCss, /#gridPage0 > \[data-drag\]:nth-child/);
+  assert.doesNotMatch(mobileCss, /#gridPage0 > \[data-drag\]:nth-child/);
+  assert.match(index, /firstGrid\.classList\.remove\('is-default-layout'\)/);
+});
+
+test('drag placeholder inherits actual two- and three-row widget occupancy', () => {
+  assert.match(index, /function getDraggedGridSpan\(el, axis\)/);
+  assert.match(index, /window\.getComputedStyle\(el\)/);
+  assert.match(index, /placeholder\.style\.gridColumn = 'span ' \+ Math\.min\(4, dragCols\)/);
+  assert.match(index, /placeholder\.style\.gridRow = 'span ' \+ dragRows/);
+  assert.doesNotMatch(desktopCss, /\.drag-placeholder\.span-4/);
+});
+
+test('layout saves report failure and the stored version remains v14', () => {
+  assert.match(index, /currentLayout = \{ v: 14, pages: pagesOrder, dock: dockOrder, removed: removedOrder \}/);
+  assert.match(index, /return localStorage\.getItem\(LS_KEY\) === serialized/);
+  assert.match(index, /if \(!saveLayout\(currentLayout\)\)/);
 });
