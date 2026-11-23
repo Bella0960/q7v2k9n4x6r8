@@ -7,7 +7,8 @@
   <title>管理中心 · 小手机</title>
   <link rel="stylesheet" href="./admin-center.css?v=20261117-ui1">
   <link rel="stylesheet" href="./admin-center-editorial.css?v=20261123-v1">
-  <script src="./admin-center.js?v=20261123-editorial1" defer></script>
+  <link rel="stylesheet" href="./admin-workspace.css?v=20261123-v1">
+  <script src="./admin-center.js?v=20261123-workspace1" defer></script>
 </head>
 <body>
   <main class="admin-shell">
@@ -42,13 +43,65 @@
 
     <div class="section-caption workspace-caption" aria-hidden="true"><span>管理工作台</span><span>WORKSPACE</span></div>
     <nav class="admin-tabs" aria-label="管理项目">
-      <button class="tab-button active" type="button" data-tab="users">用户管理</button>
+      <button class="tab-button active" type="button" data-tab="overview" aria-controls="overviewView" aria-current="page">总览</button>
+      <button class="tab-button" type="button" data-tab="users" aria-controls="usersView">用户管理</button>
       <button class="tab-button" type="button" data-tab="invites">邀请码管理</button>
       <button class="tab-button" type="button" data-tab="audit">操作审计</button>
       <button class="tab-button" type="button" data-tab="settings">后台设置</button>
     </nav>
 
-    <section class="admin-view" id="usersView">
+    <section class="admin-view" id="overviewView" aria-label="管理工作台总览">
+      <div class="view-heading overview-heading">
+        <div>
+          <span class="view-kicker">COMMAND / OVERVIEW</span>
+          <h2>今日工作台</h2>
+          <p>待办、记录与关键入口，集中管理。</p>
+        </div>
+        <button class="refresh-button" id="overviewRefresh" type="button">同步数据</button>
+      </div>
+      <p class="overview-sync" id="overviewSync" role="status" aria-live="polite">尚未核验数据连接</p>
+      <div class="overview-grid">
+        <section class="overview-feature" aria-label="待处理授权">
+          <span class="overview-eyebrow">ACCESS REQUESTS / 待处理</span>
+          <strong id="overviewPendingCount" class="overview-display-number">—</strong>
+          <p id="overviewPendingDescription" class="overview-feature-copy">等待账号目录校验</p>
+          <button id="overviewOpenPending" type="button" class="overview-plain-action">查看待授权账号 <span aria-hidden="true">↗</span></button>
+        </section>
+        <section class="overview-brief" aria-label="授权指标">
+          <div class="overview-brief-row"><div><span>待使用邀请码</span><small>授权流转</small></div><strong id="overviewInviteCount">—</strong></div>
+          <div class="overview-brief-row"><div><span>已授权账号</span><small>正常使用</small></div><strong id="overviewActiveCount">—</strong></div>
+          <div class="overview-brief-row"><div><span>受限账号</span><small>需关注</small></div><strong id="overviewRestrictedCount">—</strong></div>
+        </section>
+      </div>
+
+      <div class="overview-section-head"><div><span class="overview-eyebrow">PENDING / 待办</span><h3>等待处理</h3></div><button type="button" class="overview-text-link" data-overview-target="users">全部账号 <span aria-hidden="true">↗</span></button></div>
+      <div id="overviewPendingList" class="overview-list" aria-live="polite"><p class="overview-muted">尚未读取待授权账号</p></div>
+
+      <div class="overview-section-head overview-activity-head"><div><span class="overview-eyebrow">AUDIT / 动态</span><h3>最近操作</h3></div><div class="overview-periods" role="group" aria-label="操作记录时间范围">
+        <button type="button" class="overview-period active" data-overview-period="7d" aria-pressed="true">近 7 天</button>
+        <button type="button" class="overview-period" data-overview-period="today" aria-pressed="false">今天</button>
+      </div></div>
+      <div id="overviewActivityList" class="overview-list" aria-live="polite"><p class="overview-muted">尚未读取操作记录</p></div>
+      <button type="button" class="overview-more" data-overview-target="audit">打开完整操作审计 <span aria-hidden="true">↗</span></button>
+
+      <div class="overview-section-head overview-status-head"><div><span class="overview-eyebrow">OPERATIONS / 状态</span><h3>管理连接</h3></div></div>
+      <div class="overview-connection" aria-label="管理接口读取状态">
+        <div><span>账号目录</span><strong id="overviewAccountsStatus" data-state="idle">待校验</strong></div>
+        <div><span>邀请码目录</span><strong id="overviewInvitesStatus" data-state="idle">待校验</strong></div>
+        <div><span>操作审计</span><strong id="overviewAuditStatus" data-state="idle">待校验</strong></div>
+      </div>
+      <p class="overview-disclaimer">仅显示当前账号下实际读取到的管理状态，不代表所有云端服务的健康状态。</p>
+
+      <div class="overview-section-head overview-tools-head"><div><span class="overview-eyebrow">SHORTCUTS / 入口</span><h3>快捷管理</h3></div></div>
+      <div class="overview-shortcuts">
+        <button type="button" data-overview-target="users"><span class="overview-shortcut-no">01</span><strong>账号管理</strong><small>搜索、授权与状态调整</small><span class="overview-shortcut-arrow" aria-hidden="true">↗</span></button>
+        <button type="button" data-overview-target="invites"><span class="overview-shortcut-no">02</span><strong>邀请码</strong><small>绑定、查看及撤销</small><span class="overview-shortcut-arrow" aria-hidden="true">↗</span></button>
+        <button type="button" data-overview-target="audit"><span class="overview-shortcut-no">03</span><strong>审计记录</strong><small>查阅操作与授权历史</small><span class="overview-shortcut-arrow" aria-hidden="true">↗</span></button>
+        <a href="./cloud.html" class="overview-cloud-link"><span class="overview-shortcut-no">04</span><strong>云端诊断</strong><small>查看只读运行与错误状态</small><span class="overview-shortcut-arrow" aria-hidden="true">↗</span></a>
+      </div>
+    </section>
+
+    <section class="admin-view" id="usersView" hidden>
       <div class="view-heading"><div><span class="view-kicker">01 / ACCOUNTS</span><h2>账号列表</h2><p>按永久账号 ID 管理独立账号</p></div><button class="refresh-button" id="refreshUsers" type="button">刷新</button></div>
       <label class="search-box"><input id="accountSearch" type="search" placeholder="搜索永久 ID、用户名或邮箱" aria-label="搜索账号"></label>
       <div class="account-filter-row" role="group" aria-label="按账号状态筛选">
