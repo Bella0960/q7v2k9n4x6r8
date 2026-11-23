@@ -402,3 +402,26 @@ test('reordered special JSON keys remain idempotent when payload is unchanged', 
   assert.equal(f.data.chat_history_A, original);
   assert.equal(f.writes.filter(key => key === 'chat_history_A').length, 0);
 });
+
+test('non-scalar message IDs fail closed without invoking custom toString or writing', () => {
+  const raw = '[{"mid":"existing","text":"keep"}]';
+  const f = fixture({ chat_history_A: raw, chat_history_B: '[{"mid":"B"}]' });
+  let invoked = false;
+  const dangerous = { toString() { invoked = true; throw new Error('must not execute'); } };
+  for (const mid of [dangerous, ['existing'], true, Infinity, NaN]) {
+    const result = f.api.result.appendChatHistory('A', { mid, text: 'synthetic' });
+    assert.equal(result.ok, false);
+    assert.equal(result.error.code, 'VALIDATION_FAILED');
+  }
+  assert.equal(invoked, false);
+  assert.equal(f.data.chat_history_A, raw);
+  assert.equal(f.data.chat_history_B, '[{"mid":"B"}]');
+  assert.equal(f.writes.filter(key => key === 'chat_history_A').length, 0);
+});
+
+test('finite numeric and string IDs retain their existing append behavior', () => {
+  const f = fixture({ chat_history_A: '[]' });
+  assert.equal(f.api.result.appendChatHistory('A', { mid: 123, text: 'numeric' }).ok, true);
+  assert.equal(f.api.result.appendChatHistory('A', { mid: '456', text: 'string' }).ok, true);
+  assert.equal(JSON.parse(f.data.chat_history_A).length, 2);
+});
