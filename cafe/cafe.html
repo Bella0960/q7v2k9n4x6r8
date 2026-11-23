@@ -443,14 +443,24 @@ function renderEvent(){
 
 function renderControls(){var max=Math.max(0,Math.min(100,Math.floor(st.cash/20)*20));st.ad=clamp(st.ad,0,max);var modes=[{id:'warm',n:'温柔待客',s:'满意度更高'},{id:'standard',n:'标准服务',s:'收支均衡'},{id:'fast',n:'快速出杯',s:'客流更高'}];return '<div class="module"><div class="module-head"><div><div class="kicker">DAILY PLAN / 02</div><div class="section-title">今天怎么经营？</div></div><span class="tag">随时可调整</span></div><div class="control"><div class="control-row"><div><div class="label">宣传预算</div><div class="hint">投入一点资金，让更多附近客人知道你。</div></div><div class="budget"><button data-ad="-20" aria-label="减少预算">−</button><div class="budget-value">'+money(st.ad)+'</div><button data-ad="20" aria-label="增加预算" '+(st.ad>=max?'disabled':'')+'>＋</button></div></div><div class="control-row" style="display:block"><div class="label">服务策略</div><div class="modes">'+modes.map(function(m){return '<button class="mode '+(st.service===m.id?'active':'')+'" data-service="'+m.id+'">'+m.n+'<span>'+m.s+'</span></button>';}).join('')+'</div></div></div><div style="margin-top:12px"><button class="primary" id="openShop" '+(st.eventChoice===null||st.eventChoice===undefined?'disabled':'')+'>开始营业 · 结算今日账本</button><div class="notice">'+(st.eventChoice===null||st.eventChoice===undefined?'先处理上面的今日事件，再开始营业。':'每天只能结算一次。菜单、库存、宣传预算和服务方式都会影响结果。')+'</div></div></div>';}
 /* 正式角色上下文（fail-closed）：
-   优先复用 PhoneContext.buildPhoneRoleContext 的人格化上下文，但只接受「按当前角色可验证」的段落。
-   共享模块当前把全量 phone_worldbooks 与未按角色过滤的财务/动态快照拼进同一段文本
-   （见 shared/js/phone/phone_context.js 的 getWorldbooks 分支与 gatherSnapshots），
-   因此咖啡馆侧对世界书与「其他 App 已有数据」整段丢弃，不把未授权内容交给外部模型。
-   待共享上下文提供按角色绑定的安全输出后，再在同一处放开，不在应用内复制世界书实现。 */
+   复用 PhoneContext.buildPhoneRoleContext 的人格化上下文，但只取「首次不可信区块之前」的安全前缀。
+   可信边界不依赖段落标题：世界书条目、动态、财务文本都是用户可编辑的原文，里面可以自带
+   「\n\n【长期记忆】」之类的伪造标题，任何“按标题白名单挑选”的做法都能被绕过。
+   因此先按共享模块的固定拼接顺序做前缀截断——世界书（含其条目正文）与「其他 App 已有数据」
+   之前停止，之后一律丢弃；截断后再做白名单与预算，只保留人设/表达习惯/关系/生活线/记忆/聊天/时间。
+   代价：存在世界书时，其后的长期记忆与近期聊天会被一并丢弃（fail-closed，宁缺不乱）。
+   待共享上下文提供按角色绑定的结构化安全来源后，再在此处放开；不在应用内复制世界书实现。 */
 var CAFE_CONTEXT_BUDGET=8000;
+var CAFE_CONTEXT_UNTRUSTED=['【世界书 · 生活背景】','【其他 App 已有数据】'];
 var CAFE_CONTEXT_ALLOWED=['角色人设','说话与表达习惯','人物关系网络','个人生活线','长期记忆','近期聊天','当前设备时间'];
-var CAFE_CONTEXT_DROPPED=['世界书 · 生活背景','世界书的自然使用原则','其他 App 已有数据'];
+function cafeContextSafePrefix(raw){
+ var text=String(raw==null?'':raw),cut=text.length;
+ CAFE_CONTEXT_UNTRUSTED.forEach(function(marker){
+  var at=text.indexOf(marker);
+  if(at>=0&&at<cut)cut=at;
+ });
+ return text.slice(0,cut).replace(/\s+$/,'');
+}
 function cafeContextSections(raw){
  var text=String(raw==null?'':raw);
  if(!text.trim())return [];
@@ -462,7 +472,7 @@ function cafeContextSections(raw){
 }
 function cafeContextBuild(raw){
  var budget=CAFE_CONTEXT_BUDGET,kept=[],dropped=[];
- cafeContextSections(raw).forEach(function(s){
+ cafeContextSections(cafeContextSafePrefix(raw)).forEach(function(s){
   if(CAFE_CONTEXT_ALLOWED.indexOf(s.title)<0){dropped.push(s.title);return;}
   var block=s.text+'\n\n';
   if(block.length>budget){
