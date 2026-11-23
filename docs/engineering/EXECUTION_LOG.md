@@ -166,3 +166,24 @@ On the next turn/session, read this file and the current `AGENTS.md` first. Cont
   - 不产出也不读取世界事件，`ECO-LINK-002` 前不自建。
   - 世界书未接入（共享 `PhoneContext` 仍不安全，#428 已证），保持只读角色卡 + 记忆 + 近期聊天。
 - **未验证：** Vite 全站构建、Chromium 375/390/430、真机、真实配额与 IDB 被禁用场景。
+
+## 2026-11-23 · APP-DIARY-001 · 日记应用首轮核查与写入可信性
+
+- **分支 / PR：** `APP-DIARY-001-storage-trust` · Draft PR。基线 main `40b671bb`。未合并、未部署。
+- **应用构成：** `diary/diary.html`（1311 行单文件）。依赖 `native-feel.js`、`phone_storage.js`、`phone_api.js`。文字键 `maomao_diary_entries_v1`（照片单独存 IndexedDB，`persist()` 写盘前会剔除 `photo/photos`），另有 `char_peek_enabled` 与 `char_last_wrote_<roleId>`。
+- **核查结论（源码级，正向确认）：**
+  - `saveEntry` 已经做了完整事务：文字写失败回滚新条目或还原 `oldSnapshot`；照片写失败再回滚一次并 `persist()`，提示「已回滚到上一版本」。
+  - `deleteCurrent` 写失败会 `entries=entriesBackup` 并提示，失败时不清照片。
+  - 角色接入：`diaryCharacters()` 走 `PhoneStorage.getCharacters()`，`peekCurrentRole()` 优先用 `getCurrentContactId()`，角色 ID 是正式的。
+  - 角色批注按 `characterId` 记录，角色自动写日记按 `author` 标记，不会把 A 的内容算到 B 头上。
+- **P1 已修（本 PR）：**
+  1. `maybeAutoWriteCharEntry()`：`entries.push(entry)` 后 `if(persist())` 失败不回滚 → 下次任一成功保存会把「没存上的角色日记」补写，还可能刷新出重复内容。改为失败即 `entries.pop()` 并 return。
+  2. `maybeAutoPeek()`：`live.charComments.push(...)` 后失败不回滚 → 批注留在内存并可能被后续保存补写。改为失败即 `pop()`。
+  3. `togglePinned` / `toggleFavorite`：原地改标记后失败不回滚，界面上「已置顶」与失败提示自相矛盾。抽出 `toggleEntryFlag(id, field)`，失败时把标记与 `updatedAt` 一起翻回去并明确提示。
+  4. `char_peek_enabled` 开关：`catch(err){}` 空吞 → 开关视觉上切过去了，刷新又恢复。改为检查写入结果，失败时不切换并说明原因。
+- **测试：** 新增 `tests/diary-storage-trust.test.mjs`（9 项，VM 跑真实 `persist` / `toggleEntryFlag` / `maybeAutoWriteCharEntry` / `maybeAutoPeek`），9/9 通过；内联脚本 `node --check` 通过。
+- **登记未做（需产品决策）：**
+  - 角色的自动日记（`author` 标记）与自动批注在首页是**混排展示**，不按当前角色过滤。看起来是有意设计（「Char 往本子上写」），但若产品要求「只看当前角色」，需要加过滤，涉及旧数据语义。
+  - 角色自动批注会挑任意一篇未批注日记（不限 `author`），A 角色可能给 B 角色写的日记批注。
+  - 不产出也不读取世界事件，`ECO-LINK-002` 前不自建。
+- **未验证：** Vite 全站构建、Chromium 375/390/430、真机、真实配额与 IndexedDB 被禁用场景。
