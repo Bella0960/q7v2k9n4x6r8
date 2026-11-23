@@ -53,7 +53,7 @@ function makeEl(id) {
 
 const ROLES = [{ id: 'roleA', name: '阿岚', avatar: 'data:image/png;base64,AAA' }, { id: 'roleB', name: '白露' }];
 
-function makeRuntime({ store, currentRole = 'roleA', confirmAnswer = true } = {}) {
+function makeRuntime({ store, currentRole = 'roleA', confirmAnswer = true, search = '', characters = ROLES } = {}) {
   const els = {};
   const sandbox = {
     localStorage: store,
@@ -62,7 +62,7 @@ function makeRuntime({ store, currentRole = 'roleA', confirmAnswer = true } = {}
       createElement: (tag) => makeEl(tag),
       querySelectorAll: () => [],
     },
-    location: { search: '' },
+    location: { search },
     URLSearchParams,
     confirm: () => confirmAnswer,
     FileReader: class {},
@@ -71,7 +71,7 @@ function makeRuntime({ store, currentRole = 'roleA', confirmAnswer = true } = {}
   };
   sandbox.window = sandbox;
   sandbox.PhoneStorage = {
-    getCharacters: () => ROLES,
+    getCharacters: () => characters,
     getCurrentContactId: () => currentRole,
     getMyProfile: () => ({ name: '我', avatar: '' }),
   };
@@ -185,6 +185,60 @@ test('saveSet 写失败：不会出现「名字变了、绑定没变」', () => 
 
   assert.equal(store.raw['maoer_couple_profile_roleA'], undefined, '写失败不得落盘');
   assert.ok(r.get('toast').textContent.includes('没能保存'));
+});
+
+test('无效深链与失效当前角色：不能写 default 或幽灵角色桶', () => {
+  const store = makeStore();
+  for(const params of [{search:'?id=ghost',currentRole:'roleA'},{search:'',currentRole:'ghost'}]){
+    const r = makeRuntime({store,...params});
+    r.get('bucketInput').value='禁止落库';
+    r.sb.addBucket();
+  }
+  assert.equal(store.raw.maoer_couple_bucket_default,undefined);
+  assert.equal(store.raw.maoer_couple_bucket_ghost,undefined);
+  assert.equal(store.raw.maoer_couple_bucket_roleA,undefined);
+});
+
+test('聊天主键损坏：绑定资料可保存，但邀请不能覆盖历史且必须明确告警', () => {
+  const store=makeStore({chat_history_roleB:'{corrupted-chat'});
+  const r=makeRuntime({store,currentRole:'roleA'});
+  r.get('setNameA').value='玩家';
+  r.get('setNameB').value='角色乙';
+  r.get('setPartner').value='roleB';
+  r.sb.saveSet();
+  assert.equal(store.raw.chat_history_roleB,'{corrupted-chat','绝不把损坏记录写成空数组');
+  assert.equal(JSON.parse(store.raw.maoer_couple_profile_roleA).partnerId,'roleB');
+  assert.match(r.get('toast').textContent,/邀请消息没有写入/);
+});
+
+test('其他角色聊天不变：邀请只追加绑定对象且回读一致', () => {
+  const firstA=JSON.stringify([{role:'user',text:'A-keep',time:1,type:'text'}]);
+  const firstB=JSON.stringify([{role:'user',text:'B-keep',time:2,type:'text'}]);
+  const store=makeStore({chat_history_roleA:firstA,chat_history_roleB:firstB});
+  const r=makeRuntime({store,currentRole:'roleA'});
+  r.get('setNameA').value='玩家';r.get('setNameB').value='角色乙';r.get('setPartner').value='roleB';
+  r.sb.saveSet();
+  const b=JSON.parse(store.raw.chat_history_roleB);
+  assert.equal(store.raw.chat_history_roleA,firstA);
+  assert.equal(b.length,2);
+  assert.equal(b[0].text,'B-keep');
+  assert.equal(b[1].role,'user');
+  assert.match(r.get('toast').textContent,/已保存/);
+});
+
+test('PhoneStorage.result 显示主聊天损坏：禁止创建替代空历史', () => {
+  const store=makeStore({chat_history_roleB:'{corrupt'});
+  const r=makeRuntime({store,currentRole:'roleA'});
+  let saveCalls=0;
+  r.sb.PhoneStorage.result={
+    getChatHistory:()=>({ok:false,error:{code:'CORRUPT_DATA'}}),
+    saveChatHistory:()=>{saveCalls++;return {ok:true};}
+  };
+  r.get('setNameA').value='玩家';r.get('setPartner').value='roleB';
+  r.sb.saveSet();
+  assert.equal(saveCalls,0);
+  assert.equal(store.raw.chat_history_roleB,'{corrupt');
+  assert.match(r.get('toast').textContent,/邀请消息没有写入/);
 });
 
 test('头像地址：非白名单协议不进入 innerHTML', () => {
