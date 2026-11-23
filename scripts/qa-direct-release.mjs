@@ -534,7 +534,20 @@ async function main() {
       // Reproduce the exact full candidate test sequence, then inspect the
       // post-test safety state. No upload, no Worker write and no passwords.
       await check('full-test-suite', async () => {
-        for (const [command, args] of TESTS) run(command, args);
+        // Keep private test output sealed, but pinpoint the exact required
+        // gate number. An opaque "unclassified" exit must not hide whether
+        // the failure occurred before or after the post-test safety checks.
+        for (const [index, [command, args]] of TESTS.entries()) {
+          try {
+            run(command, args);
+          } catch {
+            // Fixed numeric identifiers only: no commands, paths, secrets,
+            // test titles, stack traces or provider data in public logs.
+            console.error('QA_GUARD_DIAG_FAIL:required-test-gate-' +
+              (index + 1) + '-of-' + TESTS.length);
+            throw new Error('Required test gate failed; details remain private');
+          }
+        }
       });
       await check('built-assets', () => assertReadyForUpload());
     }
