@@ -147,3 +147,13 @@ On the next turn/session, read this file and the current `AGENTS.md` first. Cont
 
 - **2026-11-22 storage hardening:** Prevent damaged/non-array primary `chat_memories_<id>` content from being overwritten; reject invalid memory targets; stop memory-library delete, dedupe, and AI merge success displays when write fails; capture AI-merge role ID before network await. Added the corresponding regression tests. **16/16 V8-isolated production-module/DOM-contract checks passed** (not full Node). Parsed all changed JS/inline scripts successfully.
 - **Verification handoff:** PR source remains unmerged; next QA must use the exact pinned branch SHA and the existing public-only verification channel. Do not run exhausted legacy private Actions or bypass existing safety guards.
+
+## 2026-11-23 · APP-CAFE-001 · 咖啡馆搭档决策链路
+
+- **分支 / PR：** `APP-CAFE-001-cafe-partner-decision` · Draft PR（见 PR 链接）。未合并、未部署。
+- **基线：** main `40b671bb`（Merge PR #413）。
+- **实际发现（源码核对，非功能名推断）：** `cafe/cafe.html` 中 `function chooseEvent(` 出现两次（约 L555 与 L842）。函数声明提升使后一份简化版覆盖前一份，于是 `st.partnerDecision`、`p.decisions++`、默契 `p.rapport`、`p.history`、`checkAchievements()` 全部变成不可达代码：搭档决策从未落盘，`listen-partner` 每日目标与「搭档信任」成就无法正常达成，结算时的搭档复盘拿不到当日决策。
+- **修改：** 删除被覆盖的重复实现并留档说明；在保留的实现内增加 `businessStatus==='operating'` 拒绝分支，避免营业中经任何入口改写今日事件。无存储键、无数据结构、无 UI 结构变更。
+- **测试：** 新增 `tests/cafe-app-contract.test.mjs`（4 项，全部通过）；内联脚本经 `node --check` 通过。Vite 构建与浏览器/真机验收 **NOT VERIFIED**（本轮无完整工作区与浏览器运行时）。
+- **回滚：** 纯代码回退，无数据迁移。
+- **未完成依赖：** 世界事件仓储仍只有 forum 局部实现，应用侧统一接口未合并；咖啡馆事件与角色生活线的联动记录为依赖，不另建系统。
