@@ -17,15 +17,16 @@ test('mobile admin uses the native status bar and a compact, functional heading'
   assert.ok(css.includes('grid-template-columns:repeat(4,minmax(0,1fr));gap:0;margin:12px 0 13px'));
 });
 
-test('admin script and CSS versions match the current PWA cache, not the old mobile shell', () => {
-  const version = '20261117-ui1';
-  assert.ok(html.includes('./admin-center.css?v=' + version));
-  assert.ok(html.includes('./admin-center.js?v=20261117-ui3'));
-  assert.ok(!html.includes('./admin-center.js?v=20261117-ui1'));
-  assert.ok(sw.includes("'./admin/admin-center.css?v=" + version + "'"));
-  assert.ok(sw.includes("'./admin/admin-center.js?v=20261117-ui3'"));
+test('editorial admin assets use fresh URLs and never enter the shared PWA shell', () => {
+  assert.ok(html.includes('./admin-center.css?v=20261117-ui1'));
+  assert.ok(html.includes('./admin-center-editorial.css?v=20261123-v1'));
+  assert.ok(html.includes('./admin-center.js?v=20261123-editorial1'));
+  assert.ok(!html.includes('./admin-center.js?v=20261117-ui3'));
+  assert.ok(!sw.includes("'./admin/admin-center.css?v="));
+  assert.ok(!sw.includes("'./admin/admin-center.js?v="));
+  assert.ok(sw.includes("if (url.pathname.startsWith('/admin/')) return;"));
   const cacheVersion = Number(sw.match(/const CACHE_NAME = 'phone-app-pwa-v(\d+)'/)?.[1] || 0);
-  assert.ok(cacheVersion >= 244, 'PWA cache must retain the verified mobile admin baseline');
+  assert.ok(cacheVersion >= 306, 'PWA cache must flush old administrator UI assets');
   assert.doesNotMatch(html, /20261112-nav2/);
 });
 
