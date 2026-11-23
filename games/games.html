@@ -1121,11 +1121,12 @@ function detectiveRemaining(){return Math.max(0,DETECTIVE_DAILY_LIMIT-detectiveB
    之前写失败只弹提示仍继续请求，配额拒写的手机刷新即可恢复次数，可以反复花钱。 */
 function persistDetectiveBudgetVerified(all){
   if(!saveJSON(DETECTIVE_BUDGET_KEY,all,true))return false;
-  var back=readDetectiveBudgetRaw();
-  var rec=back[Object.keys(all)[0]]||null;
-  if(!rec)return false;
-  var written=all[Object.keys(all)[0]];
-  return rec.day===written.day&&Number(rec.used)===Number(written.used);
+  /* 旧角色预算可能排在对象第一个键；必须精确核验本次扣次的 device 桶。 */
+  var owner=detectiveBudgetOwner();
+  var written=all[owner];
+  if(!written)return false;
+  var back=readDetectiveBudgetRaw(),rec=back[owner];
+  return !!rec&&rec.day===written.day&&Number(rec.used)===Number(written.used);
 }
 /* 记账：返回 false 表示这次不允许发请求（额度用完，或本机预算写不进去）。 */
 function consumeDetectiveBudget(){
