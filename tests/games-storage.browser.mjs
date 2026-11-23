@@ -32,34 +32,39 @@ try {
     try {
       await ctx.route('**/*', route => route.request().url().startsWith(origin + '/')
         ? route.continue() : route.abort());
+      await ctx.addInitScript(() => {
+        localStorage.setItem('ai_custom_characters', JSON.stringify([
+          { id: 'qa-A', name: '角色甲' }, { id: 'qa-B', name: '角色乙' }
+        ]));
+        localStorage.setItem('maomao_game_role', 'qa-A');
+      });
       const page = await ctx.newPage();
       const errors = [];
       page.on('pageerror', error => errors.push(error.message));
       const res = await page.goto(pageUrl, { waitUntil: 'domcontentloaded' });
       assert.equal(res.status(), 200, 'game page must load');
       await page.locator('body').waitFor({ state: 'visible' });
-      const tested = await page.evaluate(() => {
-        if (typeof window.saveRaw !== 'function' || typeof window.showToast !== 'function')
-          throw new Error('game storage helper not mounted');
-        const key = 'qa_game_storage_test';
-        const native = Storage.prototype.setItem;
-        localStorage.setItem(key, 'previous');
-        Storage.prototype.setItem = function (k, value) {
-          if (k === key) return; // silent write loss
-          return native.call(this, k, value);
-        };
-        let success;
-        try { success = window.saveRaw(key, 'changed'); }
-        finally { Storage.prototype.setItem = native; }
-        return {
-          success,
-          persisted: localStorage.getItem(key),
-          toast: document.getElementById('toast')?.textContent || ''
+      // The real game helpers live in an IIFE; verify through the rendered
+      // role picker rather than calling unexported implementation functions.
+      await page.locator('#togglePartnerPicker').click();
+      await page.evaluate(() => {
+        const original = Storage.prototype.setItem;
+        window.__restoreGameWrites = () => { Storage.prototype.setItem = original; };
+        Storage.prototype.setItem = function (key, value) {
+          if (key === 'maomao_game_role') return; // silent write loss
+          return original.call(this, key, value);
         };
       });
-      assert.equal(tested.success, false);
-      assert.equal(tested.persisted, 'previous');
-      assert.match(tested.toast, /没能保存|存储空间/);
+      await page.locator('[data-role="qa-B"]').click();
+      const tested = await page.evaluate(() => ({
+        persisted: localStorage.getItem('maomao_game_role'),
+        toast: document.getElementById('toast')?.textContent || '',
+        roleMarkup: document.getElementById('roleRail')?.textContent || ''
+      }));
+      await page.evaluate(() => window.__restoreGameWrites());
+      assert.equal(tested.persisted, 'qa-A', 'role change must not claim persistence');
+      assert.match(tested.toast, /没能存到本机/);
+      assert.match(tested.roleMarkup, /角色乙/);
       assert.ok(!errors.some(e => /saveRaw|showToast|saveJSON.*not defined/.test(e)),
         'no missing storage helper on real page');
       console.log('GAMES_STORAGE_BROWSER_PASS ' + width);
