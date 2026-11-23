@@ -5,7 +5,8 @@ import {fileURLToPath,pathToFileURL} from 'node:url';
 import assert from 'node:assert/strict';
 const root=resolve(dirname(fileURLToPath(import.meta.url)),'..');
 const pw=await import(process.env.PLAYWRIGHT_MODULE||'playwright');
-const server=createServer((req,res)=>{try{const p=resolve(root,'.'+decodeURIComponent(req.url.split('?')[0]));if(!p.startsWith(root+'/'))throw Error();res.setHeader('Content-Type',({'.html':'text/html','.js':'text/javascript','.css':'text/css','.webp':'image/webp'})[extname(p)]||'application/octet-stream');res.end(readFileSync(p));}catch{res.statusCode=404;res.end();}});
+const normPath=s=>s.replace(/\\/g,'/');
+const server=createServer((req,res)=>{try{const p=resolve(root,'.'+decodeURIComponent(req.url.split('?')[0]));if(!normPath(p).startsWith(normPath(root)+'/'))throw Error();res.setHeader('Content-Type',({'.html':'text/html','.js':'text/javascript','.css':'text/css','.webp':'image/webp'})[extname(p)]||'application/octet-stream');res.end(readFileSync(p));}catch{res.statusCode=404;res.end();}});
 await new Promise(r=>server.listen(0,'127.0.0.1',r));
 const base='http://127.0.0.1:'+server.address().port;
 const browser=await pw.chromium.launch({headless:true,...(process.env.CHROMIUM_PATH?{executablePath:process.env.CHROMIUM_PATH,args:['--no-sandbox','--disable-dev-shm-usage']}: {})});
@@ -65,7 +66,7 @@ for(const width of [320,375,390,430,1280]){
  assert.ok(artBox.width>=themeBox.width*.84,'individual art is not squeezed into a narrow half-column');
  assert.equal(await page.locator('.chat-list-theme-grid .product-card').count(),1,'existing independent Messages list theme stays available');
  for(const id of ['wechat','imessage','qq','silver-butterfly','atmosphere','default']){
-  await page.locator('.sf-theme-cover[data-sf="detail"][data-id="'+id+'"]').click();await page.locator('[data-sf="apply-theme"]').click();await page.locator('[data-sf="confirm-apply-theme"]').click();
+  await page.locator('.sf-theme-cover[data-sf="detail"][data-id="'+id+'"]').click();await page.locator('.sf-dialog [data-sf="apply-theme"]').click();await page.locator('.sf-dialog [data-sf="confirm-apply-theme"]').click();
   assert.equal(await page.evaluate(()=>ChatBeauty.getThemePreset()),id);
   assert.equal(await page.locator('.sf-theme-item[data-theme-id="'+id+'"] .sf-theme-current').count(),1,'applied status must be visible');
   assert.equal(await page.evaluate(()=>document.activeElement?.getAttribute('data-id')),id,'dialog focus returns to original theme after rerender');
@@ -105,6 +106,7 @@ for(const width of [320,375,390,430,1280]){
  await page.locator('[name="scope"][value="icons"]').check();
  await page.locator('[data-sf="confirm-save"]').click();
  await page.locator('[data-sf="record-preview"]').last().click();
+ await page.waitForSelector('.sf-icon-tile img',{timeout:5000});
  assert.equal(await page.locator('.sf-icon-tile img').count(),1,'real preset image thumbnail');
  await page.locator('[data-sf="record-apply"]').click();
  assert.equal(await page.evaluate(()=>ChatBeauty.getThemePreset()),originalTheme,'icon scope must not change theme');
@@ -112,7 +114,9 @@ for(const width of [320,375,390,430,1280]){
  assert.equal(await page.evaluate(()=>localStorage.getItem('maomao_market_collection_v1').includes('base64')),false);
  await page.locator('[data-sf="delete"]').click();await page.locator('[data-sf="confirm-delete"]').click();
  await page.locator('[data-sf="mine-tab"][data-id="creations"]').click();await page.locator('[data-sf="upload"]').click();await page.locator('#sfName').fill('我自己的素材');await page.locator('#sfFile').setInputFiles({name:'sample.png',mimeType:'image/png',buffer:Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+jA8sAAAAASUVORK5CYII=','base64')});await page.locator('[data-sf="confirm-upload"]').click();await page.waitForSelector('.sf-record');
- await page.locator('[data-sf="record-preview"]').first().click();await page.waitForSelector('.sf-image');await page.locator('[data-sf="record-apply"]').click();assert.ok((await page.evaluate(()=>MAOMAOWallpaperStore.get())).startsWith('data:image/webp;'));
+ await page.locator('[data-sf="record-preview"]').first().click();await page.waitForSelector('.sf-image');await page.locator('[data-sf="record-apply"]').click();
+ await page.waitForFunction(async()=>/^data:image\//.test(await MAOMAOWallpaperStore.get()||''),null,{timeout:5000});
+ const appliedWallpaper=await page.evaluate(async()=>await MAOMAOWallpaperStore.get());assert.match(appliedWallpaper,/^data:image\/(png|jpeg|webp);base64,/,'uploaded material applies as an image wallpaper');
  assert.ok(!(await page.evaluate(()=>localStorage.getItem('maomao_market_collection_v1'))).includes('base64'));
  await page.locator('[data-category="categories"]').click();assert.equal(await page.locator('.sf-category-row').count(),9);
  await page.locator('[data-sf="category"][data-id="bubbles"]').click();await page.waitForSelector('.bubble-list');

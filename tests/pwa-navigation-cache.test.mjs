@@ -8,7 +8,7 @@ const read = (file) => fs.readFileSync(path.join(root, file), 'utf8');
 const serviceWorker = read('sw.js');
 const desktopScript = read('desktop/js/script.js');
 const homePage = read('index.html');
-assert.match(serviceWorker, /const CACHE_NAME = 'phone-app-pwa-v229'/);
+assert.match(serviceWorker, /const CACHE_NAME = 'phone-app-pwa-v235'/);
 const viteConfig = read('vite.config.js');
 
 test('build emits a manifest containing every HTML entry point', () => {
@@ -79,8 +79,8 @@ test('opt-in atmosphere assets are precached for the mobile PWA',()=>{
    assert.ok(serviceWorker.includes('./theme-store/'+name+'?v=20261113m7'));
  }
  assert.ok(serviceWorker.includes('./theme-store/preview-scene.css?v=20261113m7'));
- assert.ok(serviceWorker.includes('./theme-store/storefront.css?v=20261113m13'));
- assert.ok(serviceWorker.includes('./theme-store/storefront.js?v=20261113m12'))
+ assert.ok(serviceWorker.includes('./theme-store/storefront.css?v=20261119isolated3'));
+ assert.ok(serviceWorker.includes('./theme-store/storefront.js?v=20261119isolated3'))
  assert.ok(serviceWorker.includes('./theme-store/collection-store.js?v=20261112m3'));
 
  assert.ok(serviceWorker.includes('./theme-store/theme-store.html'));
@@ -90,9 +90,9 @@ test('opt-in atmosphere assets are precached for the mobile PWA',()=>{
  assert.ok(serviceWorker.includes('./settings/icon-settings.html'));
  assert.ok(serviceWorker.includes('./settings/appearance.html'));
  assert.ok(serviceWorker.includes('./shared/js/chat-beauty.js?v=20261112at1'));
- assert.ok(serviceWorker.includes('./shared/js/chat-page-theme.js?v=20261105v1'));
+ assert.ok(serviceWorker.includes('./shared/js/chat-page-theme.js?v=20261119scope1'));
 
 
- assert.ok(serviceWorker.includes('./shared/js/chat-list-theme.js?v=20261112at1'));
+ assert.ok(serviceWorker.includes('./shared/js/chat-list-theme.js?v=20261119scope1'));
 });
 
