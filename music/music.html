@@ -548,7 +548,7 @@
         <div id="lyricView" style="position:absolute;top:8px;left:30px;right:30px;height:264px;background:#fff;border-radius:16px;overflow-y:auto;padding:20px;display:none;scroll-behavior:smooth;scrollbar-width:none;-ms-overflow-style:none;">
           <style>
             #lyricView::-webkit-scrollbar { width: 0; height: 0; display: none; }
-          .music-toast{position:fixed;left:50%;bottom:calc(96px + env(safe-area-inset-bottom));transform:translateX(-50%) translateY(8px);max-width:78vw;padding:10px 16px;border-radius:14px;background:rgba(22,22,22,.92);color:#f4f4f4;font-size:12.5px;line-height:1.55;letter-spacing:.01em;opacity:0;transition:opacity .22s ease,transform .22s ease;z-index:120;pointer-events:none;text-align:center;-webkit-backdrop-filter:blur(8px);backdrop-filter:blur(8px)}
+                    .music-toast{position:fixed;left:50%;bottom:calc(96px + env(safe-area-inset-bottom));transform:translateX(-50%) translateY(8px);max-width:78vw;padding:10px 16px;border-radius:14px;background:rgba(22,22,22,.92);color:#f4f4f4;font-size:12.5px;line-height:1.55;letter-spacing:.01em;opacity:0;transition:opacity .22s ease,transform .22s ease;z-index:120;pointer-events:none;text-align:center;-webkit-backdrop-filter:blur(8px);backdrop-filter:blur(8px)}
 .music-toast.show{opacity:1;transform:translateX(-50%) translateY(0)}
 </style>
           <div id="lyrics" style="text-align:center;font-size:14px;color:#999;line-height:1.8;"></div>
@@ -880,8 +880,6 @@
       return raw ? JSON.parse(raw) : [];
     } catch (e) { return []; }
   }
-  /* 页面里原本有 4 处调用 toast(...)，但整个文件既没有定义 toast 也没有 #toast 节点，
-     这些调用会抛 ReferenceError：提示看不见，还会打断播放/导入流程。这里补上统一实现。 */
   var musicToastTimer = null;
   function toast(text) {
     var el = document.getElementById('musicToast');
@@ -904,7 +902,7 @@
     toast(text || '本机存储空间不足，这次的改动没能保存，刷新后会丢失');
   }
   function saveLocal(key, value, quiet) {
-    try { localStorage.setItem(key, value); return true; }
+    try { localStorage.setItem(key, value); if (localStorage.getItem(key) !== String(value)) throw new Error('Music write not persisted'); return true; }
     catch (e) { if (!quiet) warnMusicStorage(); return false; }
   }
   function saveLocalTracksMeta(list) {
@@ -1435,6 +1433,41 @@
     document.getElementById('profileEditMask').style.opacity = '0';
     document.getElementById('profileEditMask').style.pointerEvents = 'none';
   }
+  /* A failed multi-key update must not be reported as success. Keep the
+     legacy keys; snapshot old values, write/read-back, then roll back every
+     field on failure. If rollback itself fails, explicitly warn about partial
+     persistence rather than claiming the old state was restored. */
+  function persistProfileFields(fields) {
+    var before = [];
+    try {
+      fields.forEach(function (pair) { before.push(localStorage.getItem(pair[0])); });
+    } catch (e) {
+      toast('无法读取原有个人资料，本次修改没有保存');
+      return false;
+    }
+    try {
+      fields.forEach(function (pair) {
+        var next = String(pair[1]);
+        localStorage.setItem(pair[0], next);
+        if (localStorage.getItem(pair[0]) !== next) throw new Error('Profile write not persisted');
+      });
+      return true;
+    } catch (e) {
+      var restored = true;
+      for (var i = fields.length - 1; i >= 0; i--) {
+        var key = fields[i][0], prev = before[i];
+        try {
+          if (prev === null) localStorage.removeItem(key);
+          else localStorage.setItem(key, prev);
+          if (localStorage.getItem(key) !== prev) restored = false;
+        } catch (rollbackError) { restored = false; }
+      }
+      toast(restored
+        ? '个人资料保存失败，旧资料已恢复；清理存储空间后可重试'
+        : '个人资料保存失败，可能有部分字段发生变化，请检查后重新保存');
+      return false;
+    }
+  }
   function saveProfileEdit() {
     var nm = document.getElementById('editName').value.trim() || 'Music Lover';
     var hd = document.getElementById('editHandle').value.trim();
@@ -1442,13 +1475,11 @@
     if (!hd) hd = '@music_lover';
     var customColor = document.getElementById('editBgCustom').value;
     var bg = (customColor && customColor !== '#1a1a1a') ? customColor : BG_PRESETS[selectedBg].css;
-    var okName = saveLocal('music_profile_name', nm, true);
-    var okHandle = saveLocal('music_profile_handle', hd, true);
-    var okBg = saveLocal('music_profile_bg', bg, true);
-    if (!okName || !okHandle || !okBg) {
-      warnMusicStorage('昵称或个人主页背景没能保存，本机存储空间不足；清出空间后再点一次保存');
-      return;
-    }
+    if (!persistProfileFields([
+      ['music_profile_name', nm],
+      ['music_profile_handle', hd],
+      ['music_profile_bg', bg]
+    ])) return;
     renderProfile();
     closeProfileEdit();
   }
