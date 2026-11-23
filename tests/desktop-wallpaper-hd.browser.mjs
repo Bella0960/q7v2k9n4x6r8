@@ -64,7 +64,7 @@ try{
   const response=await page.goto(origin+'/settings/appearance.html',{waitUntil:'domcontentloaded',timeout:20000});
   assert.equal(response?.status(),200,'wallpaper upload page');
   stage='wallpaper_input_ready';
-  await page.locator('#wallpaperInput').waitFor({timeout:10000});
+  await page.locator('#wallpaperInput').waitFor({state:'attached',timeout:10000});
 
   stage='original-png-preserved';
   const original=await makePng(page,1200,2400,'#808080');
