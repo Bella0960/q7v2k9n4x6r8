@@ -161,3 +161,19 @@ On the next turn/session, read this file and the current `AGENTS.md` first. Cont
 - **测试：** 新增 `tests/live-role-context.test.mjs`（10 项，VM 跑真实 `readCurrentCharacter` / `liveApiConfig` / `callHostAI` / `saveBg`），10/10 通过。其中「不发自己的 fetch」用 `fetch` 间谍断言为 0 次调用。
 - **登记未做：** 不产出世界事件（依赖 `ECO-LINK-002`）；世界书未接入（共享上下文仍不安全，#428）；观众弹幕/礼物均为本地模拟，非 AI。
 - **未验证：** Vite 全站构建、Chromium 375/390/430、真机。
+
+## 2026-11-23 · APP-LIVE-002 · AI 观众（LIVE-AI-AUDIENCE-001）
+
+- **分支 / PR：** `APP-LIVE-002-ai-audience`（基于 #443 分支）。Draft。未合并、未部署。
+- **先修的 P1：** `liveApiConfig()` 原来在共享 `getApiConfig()` 返回「当前方案没有 key」时**回落到旧键 `api_settings`**，等于未经当前方案授权动用遗留密钥计费。改为：共享模块可用时**一律以当前选中方案为准**（没 key 就没 key），只有共享模块整体不可用时才读旧键。新增测试：「当前方案无 key + 旧键有 key → 0 次 `PhoneAPI.complete`」。
+- **AI 观众实现：**
+  - **默认关闭**；入口在「在线人数」胶囊上（点击打开观众设置面板），开启后发系统提示「AI 观众已开启 · 这些观众是虚拟角色，不是真人」。本地模拟观众始终可用、零费用。
+  - 固定 5 位虚拟观众的昵称与兴趣（`AI_AUDIENCE_ROSTER`），跨批次保持同一个人；最近 8 条 AI 弹幕作为上下文，保证能接得上话题。
+  - **单次批量生成 4–6 条**，本地按 4–11 秒间隔播出，不为每个路人单独请求。
+  - 严格解析：去 Markdown 围栏、取 JSON 数组、`text` 截断到 40 字、空行丢弃、未知名字归一到固定人设、最多 6 条；非 JSON / 空数组直接视为失败。
+  - 付费护栏：每场 ≤6 批、两批间隔 ≥3 分钟、每天 ≤12 批（只持久化当日用量，文案标注「仅本机限制」）；**先记账后请求**，失败也占一次；失败只降级本地模拟并等下一个间隔，**不重试**；无 key 同样只降级不请求。
+  - 关闭模式 / `visibilitychange` 切后台 / `pagehide` 都递增 `aiAudience.token`，返回的旧批次直接丢弃；切后台时不发新请求。
+  - 礼物保持纯动效与剧情，未触碰钱包、余额或交易。
+- **测试：** 新增 `tests/live-ai-audience.test.mjs`（16 项，VM 跑真实 `setAiAudience` / `aiAudienceTick` / `requestAiAudienceBatch` / `parseAiAudienceBatch`，全部 mock），16/16 通过；`tests/live-role-context.test.mjs` 扩到 12 项（含 P1 新用例），12/12 通过。
+- **BLOCKED：** 世界书/RP 人设协议仍不接入（共享 `PhoneContext` 会混入全量世界书与财务快照，#428 已证）；本应用只读角色卡字段。
+- **未验证：** 375/390/430 实际排版（观众面板为新增底部弹层，已用 `env(safe-area-inset-bottom)`，但未在真机核对）、Vite 全站构建、真实 AI 输出质量。

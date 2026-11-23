@@ -20,7 +20,7 @@ function slice(from, to) {
 }
 
 const characterBlock = slice('/* 角色来源：优先用共享 PhoneStorage', '/* ========== 基础设置 ========== */');
-const aiBlock = slice('/* 配置读取：与设置页保持一致', '/* ========== 背景自定义 ========== */');
+const aiBlock = slice('/* 配置读取：与设置页保持一致', '/* ========== AI 观众（默认关闭');
 const bgBlock = slice("const BG_KEY='maomao_live_bg_v1';", 'function openBgSheet()');
 
 function makeStore(seed = {}) {
@@ -115,9 +115,27 @@ test('AI 配置：PhoneStorage.getApiConfig 优先于旧 api_settings', () => {
   assert.equal(sb.liveApiConfig().apiKey, 'real-key');
 });
 
-test('AI 配置：共享模块没配 key 时才用旧键兜底', () => {
+test('AI 配置：共享配置存在但当前方案无 key 时，不得动用旧键（P1 修复）', () => {
   const store = makeStore({ api_settings: JSON.stringify({ apiKey: 'legacy-key' }) });
   const { sb } = makeSandbox({ store, phoneStorage: { getApiConfig: () => ({ apiKey: '' }) } });
+  assert.equal(String(sb.liveApiConfig().apiKey || ''), '', 'shared config wins even without a key');
+});
+
+test('AI 调用：当前方案无 key + 旧键有 key → 0 次 PhoneAPI.complete', async () => {
+  const store = makeStore({ api_settings: JSON.stringify({ apiKey: 'legacy-key' }) });
+  const bubbles = [];
+  const { sb } = makeSandbox({ store, bubbles, phoneStorage: { getApiConfig: () => ({ apiKey: '' }) } });
+  let called = 0;
+  sb.PhoneAPI = { complete: () => { called++; return Promise.resolve('不该被调用'); } };
+
+  await sb.callHostAI('在吗');
+  assert.equal(called, 0, 'must not spend the legacy key without the current scheme authorizing it');
+  assert.equal(bubbles.length, 1, 'falls back to a local line instead');
+});
+
+test('AI 配置：共享模块整体不可用时才用旧键兼容', () => {
+  const store = makeStore({ api_settings: JSON.stringify({ apiKey: 'legacy-key' }) });
+  const { sb } = makeSandbox({ store });
   assert.equal(sb.liveApiConfig().apiKey, 'legacy-key');
 });
 

@@ -340,6 +340,27 @@ button{cursor:pointer;border:0;background:none}
 .bg-item.upload{background:rgba(255,255,255,.08);align-items:center;justify-content:center;color:#fff;font-size:11px}
 .bg-item img{position:absolute;inset:0;width:100%;height:100%;object-fit:cover}
 .bg-item{position:relative}
+.viewer-box{cursor:pointer}
+.viewer-box.ai-on{box-shadow:inset 0 0 0 1px rgba(255,255,255,.35)}
+.audience-sheet{position:fixed;inset:0;z-index:60;display:none}
+.audience-sheet.open{display:block}
+.audience-mask{position:absolute;inset:0;background:rgba(0,0,0,.55);backdrop-filter:blur(3px);-webkit-backdrop-filter:blur(3px)}
+.audience-panel{
+  position:absolute;left:0;right:0;bottom:0;
+  padding:18px 18px calc(20px + env(safe-area-inset-bottom));
+  background:#141416;border-radius:20px 20px 0 0;
+  box-shadow:0 -12px 40px rgba(0,0,0,.5);
+}
+.audience-head{display:flex;align-items:flex-start;justify-content:space-between;gap:12px}
+.audience-kicker{font-size:9px;letter-spacing:.18em;color:var(--muted)}
+.audience-title{font-size:15px;font-weight:600;margin-top:2px}
+.audience-state{font-size:10.5px;color:var(--muted);padding:3px 8px;border-radius:999px;background:rgba(255,255,255,.07);white-space:nowrap}
+.audience-note{margin:12px 0 16px;font-size:11.5px;line-height:1.7;color:rgba(255,255,255,.62)}
+.audience-toggle{
+  width:100%;padding:12px;border-radius:14px;
+  background:rgba(255,255,255,.1);color:#fff;font-size:12.5px;font-weight:600;
+}
+.audience-toggle.is-on{background:rgba(255,255,255,.06);color:rgba(255,255,255,.72);font-weight:400}
 </style>
 </head>
 <body>
@@ -360,7 +381,7 @@ button{cursor:pointer;border:0;background:none}
     </div>
     <div class="top-right">
       <button class="follow-btn" id="followBtn">+ 关注</button>
-      <div class="viewer-box">
+      <div class="viewer-box" id="viewerBox" role="button" tabindex="0" aria-label="观众设置">
         <span class="live-dot"></span>
         <span id="viewerNum">128</span>
       </div>
@@ -427,6 +448,22 @@ button{cursor:pointer;border:0;background:none}
   </div>
 </main>
 <div class="toast" id="toast" role="status"></div>
+
+<!-- 观众设置面板 -->
+<div class="audience-sheet" id="audienceSheet">
+  <div class="audience-mask" id="audienceMask"></div>
+  <div class="audience-panel" role="dialog" aria-modal="true" aria-labelledby="audienceTitle">
+    <div class="audience-head">
+      <div>
+        <div class="audience-kicker">AUDIENCE</div>
+        <div class="audience-title" id="audienceTitle">观众</div>
+      </div>
+      <span class="audience-state" id="audienceState">未开启</span>
+    </div>
+    <p class="audience-note" id="audienceNote">AI 观众是虚拟角色，不是实时真人。</p>
+    <button class="audience-toggle" type="button" id="audienceToggle">开启 AI 观众</button>
+  </div>
+</div>
 
 <script src="../shared/js/phone/phone_storage.js"></script>
 <script src="../shared/js/phone/phone_api.js"></script>
@@ -675,10 +712,12 @@ function scheduleHostReply(userText){
 function liveApiConfig(){
   try{
     if(window.PhoneStorage&&typeof PhoneStorage.getApiConfig==='function'){
-      const cfg=PhoneStorage.getApiConfig()||{};
-      if(String(cfg.apiKey||'').trim())return cfg;
+      /* 共享配置存在时以当前选中方案为准：即使这一方案没有 key，也不再回落到旧
+         api_settings，避免未经当前方案授权就动用遗留密钥产生费用。 */
+      return PhoneStorage.getApiConfig()||{};
     }
   }catch(e){}
+  /* 只有共享模块整体不可用时，才走旧键兼容 */
   try{return JSON.parse(localStorage.getItem('api_settings')||'{}')}catch(e){return{}}
 }
 async function callHostAI(userText){
@@ -708,6 +747,204 @@ async function callHostAI(userText){
     aiPending=false;
   }
 }
+
+/* ========== AI 观众（默认关闭 · 付费护栏 · 可降级） ==========
+   设计要点：
+   1. 默认关闭，只有用户主动开启才会调用付费接口；本地模拟观众始终可用且零费用。
+   2. 单次请求批量生成多条弹幕，本地按时间调度播出，不为每个路人单独请求。
+   3. 频率上限：每场最多 6 批、两批间隔≥3 分钟、每天最多 12 批（本机限制）。
+   4. 关闭模式 / 切后台 / 换页面后立刻作废 token，旧结果不串入。
+   5. 失败不重试，直接降级本地模拟并等下次间隔到点再试。
+   6. 礼物只是动效与剧情，不触碰钱包、余额与交易。 */
+var AI_AUDIENCE_KEY='maomao_live_ai_audience_v1';
+var AI_AUDIENCE_DAILY_LIMIT=12;
+var AI_AUDIENCE_SESSION_LIMIT=6;
+var AI_AUDIENCE_MIN_INTERVAL=3*60*1000;
+var AI_AUDIENCE_MAX_LINES=6;
+var AI_AUDIENCE_LINE_MAX=40;
+
+/* 稳定的观众人设：昵称与兴趣固定，跨批次保持同一个人 */
+var AI_AUDIENCE_ROSTER=[
+  {name:'奶盖不加糖',interest:'甜食与深夜便利店'},
+  {name:'月亮邮递员',interest:'写信与旧邮票'},
+  {name:'气泡水',interest:'livehouse 与贝斯'},
+  {name:'早睡冠军',interest:'熬夜失败的日常'},
+  {name:'一颗西柚',interest:'盆栽与手冲咖啡'}
+];
+
+var aiAudience={
+  enabled:false,
+  busy:false,
+  token:0,
+  sessionUsed:0,
+  lastAt:0,
+  degraded:false,
+  recent:[],
+  released:0
+};
+
+function aiAudienceStore(){
+  try{return JSON.parse(localStorage.getItem(AI_AUDIENCE_KEY)||'{}')||{};}catch(e){return{};}
+}
+function aiAudienceDay(){return new Date().toISOString().slice(0,10);}
+function aiAudienceUsedToday(){
+  var s=aiAudienceStore();
+  return s.day===aiAudienceDay()?Number(s.used)||0:0;
+}
+function aiAudienceRemaining(){
+  return Math.max(0,AI_AUDIENCE_DAILY_LIMIT-aiAudienceUsedToday());
+}
+function aiAudienceBudgetNote(){
+  return '本场剩余 '+Math.max(0,AI_AUDIENCE_SESSION_LIMIT-aiAudience.sessionUsed)+' 批 · 今日剩余 '+aiAudienceRemaining()+' 批（仅本机限制）';
+}
+/* 先记账再请求：失败也占用一次，避免反复失败不断烧额度 */
+function consumeAiAudienceBudget(){
+  var used=aiAudienceUsedToday()+1;
+  aiAudience.sessionUsed+=1;
+  aiAudience.lastAt=Date.now();
+  try{localStorage.setItem(AI_AUDIENCE_KEY,JSON.stringify({day:aiAudienceDay(),used:used,enabled:aiAudience.enabled}));}catch(e){}
+}
+
+function bumpAiAudienceToken(){
+  aiAudience.token++;
+  aiAudience.busy=false;
+}
+
+function setAiAudience(on){
+  var next=!!on;
+  if(next===aiAudience.enabled){renderAiAudiencePanel();return;}
+  aiAudience.enabled=next;
+  bumpAiAudienceToken();                 /* 关掉时旧结果全部作废 */
+  aiAudience.sessionUsed=0;
+  aiAudience.lastAt=0;
+  aiAudience.degraded=false;
+  try{localStorage.setItem(AI_AUDIENCE_KEY,JSON.stringify({day:aiAudienceDay(),used:aiAudienceUsedToday(),enabled:next}));}catch(e){}
+  $('viewerBox').classList.toggle('ai-on',next);
+  renderAiAudiencePanel();
+  pushBubble({text:next?'AI 观众已开启 · 这些观众是虚拟角色，不是真人':'AI 观众已关闭，回到本地模拟观众',type:'system'});
+  if(next)scheduleAiAudience(6000+Math.random()*6000);
+}
+
+function openAudienceSheet(){
+  renderAiAudiencePanel();
+  $('audienceSheet').classList.add('open');
+}
+function closeAudienceSheet(){$('audienceSheet').classList.remove('open')}
+
+function renderAiAudiencePanel(){
+  var box=$('audienceToggle');
+  if(box){
+    box.textContent=aiAudience.enabled?'关闭 AI 观众':'开启 AI 观众';
+    box.classList.toggle('is-on',aiAudience.enabled);
+  }
+  var note=$('audienceNote');
+  if(note){
+    note.textContent=aiAudience.enabled
+      ? '已开启：AI 观众是虚拟角色，会调用你配置的付费 AI 接口批量生成弹幕。'+aiAudienceBudgetNote()
+      : 'AI 观众是虚拟角色，不是实时真人。开启后会调用你配置的付费 AI 接口，'+'默认每场 6 批、间隔至少 3 分钟、每天 12 批（仅本机限制）。不开启时用本地模拟观众，零费用。';
+  }
+  var state=$('audienceState');
+  if(state)state.textContent=aiAudience.enabled?(aiAudience.degraded?'已降级为本地模拟':'运行中'):'未开启';
+}
+
+function scheduleAiAudience(delay){
+  var token=aiAudience.token;
+  setTimeout(function(){
+    if(token!==aiAudience.token||!aiAudience.enabled)return;
+    aiAudienceTick();
+  },delay);
+}
+
+function aiAudienceTick(){
+  if(!aiAudience.enabled)return;
+  if(document.hidden)return;                       /* 切后台不请求 */
+  if(aiAudience.busy)return;
+  if(aiAudience.sessionUsed>=AI_AUDIENCE_SESSION_LIMIT)return;
+  if(Date.now()-aiAudience.lastAt<AI_AUDIENCE_MIN_INTERVAL)return;
+  if(aiAudienceRemaining()<=0)return;
+  requestAiAudienceBatch();
+}
+
+function parseAiAudienceBatch(raw){
+  var txt=String(raw==null?'':raw).trim().replace(/^```(?:json)?/i,'').replace(/```$/,'');
+  var a=txt.indexOf('['),z=txt.lastIndexOf(']');
+  if(a<0||z<=a)throw new Error('bad-json');
+  var list=JSON.parse(txt.slice(a,z+1));
+  if(!Array.isArray(list)||!list.length)throw new Error('bad-shape');
+  var names=AI_AUDIENCE_ROSTER.map(function(r){return r.name;});
+  var out=[];
+  list.forEach(function(item){
+    if(!item||typeof item.text!=='string')return;
+    var text=item.text.replace(/\s+/g,' ').trim().slice(0,AI_AUDIENCE_LINE_MAX);
+    if(!text)return;
+    var name=names.indexOf(String(item.name||''))>=0?String(item.name):names[out.length%names.length];
+    out.push({name:name,text:text});
+  });
+  if(!out.length)throw new Error('empty-lines');
+  return out.slice(0,AI_AUDIENCE_MAX_LINES);
+}
+
+/* 本地按时间播出：每条间隔 4–11 秒，播完再等下一批 */
+function releaseAiAudienceLines(lines,token){
+  var i=0;
+  (function next(){
+    if(token!==aiAudience.token||!aiAudience.enabled)return;
+    if(document.hidden){scheduleAiAudience(20000);return;}
+    if(i>=lines.length){scheduleAiAudience(AI_AUDIENCE_MIN_INTERVAL+3000);return;}
+    var line=lines[i++];
+    pushBubble({name:line.name,text:line.text,type:'viewer ai-viewer'});
+    aiAudience.recent.push(line.name+'：'+line.text);
+    if(aiAudience.recent.length>8)aiAudience.recent=aiAudience.recent.slice(-8);
+    aiAudience.released++;
+    setTimeout(next,4000+Math.random()*7000);
+  })();
+}
+
+function requestAiAudienceBatch(){
+  var cfg=liveApiConfig();
+  if(!String(cfg.apiKey||'').trim()||!window.PhoneAPI||typeof PhoneAPI.complete!=='function'){
+    /* 没有可用接口：保持本地模拟，不重试、不弹窗骚扰 */
+    aiAudience.degraded=true;renderAiAudiencePanel();scheduleAiAudience(AI_AUDIENCE_MIN_INTERVAL);return;
+  }
+  if(aiAudience.sessionUsed>=AI_AUDIENCE_SESSION_LIMIT||aiAudienceRemaining()<=0){
+    aiAudience.degraded=true;renderAiAudiencePanel();return;
+  }
+  var token=aiAudience.token;
+  aiAudience.busy=true;
+  consumeAiAudienceBudget();            /* 先记账，失败也算一次 */
+  var roster=AI_AUDIENCE_ROSTER.map(function(r){return r.name+'（喜欢'+r.interest+'）';}).join('；');
+  var recentDanmaku=[...stream.querySelectorAll('.bubble')].slice(-6).map(b=>b.textContent).join('\n');
+  var system='你正在为一个虚构的直播间接写弹幕。直播间主播叫「'+me.name+'」。观众固定为这几位虚拟观众：'+roster+'。请只用这些名字发言，写出自然、互相接得上、围绕同一话题的弹幕，可以有一个人追问、一个人附和、一个人跑题一句。不要出现真人身份、不要提 AI、不要提礼物价格或收入。只返回 JSON 数组，元素形如 {"name":"观众名","text":"弹幕"}，共 4-6 条，每条不超过 40 字。';
+  var user='最近的弹幕：\n'+(recentDanmaku||'（刚开播，还没有弹幕）')+'\n\n请接着这个气氛，让这几位观众自然地继续聊。';
+  PhoneAPI.complete({system:system,user:user,temperature:.9,timeoutMs:20000}).then(function(raw){
+    if(token!==aiAudience.token||!aiAudience.enabled)return;   /* 过期结果直接丢弃 */
+    var lines=parseAiAudienceBatch(raw);
+    aiAudience.degraded=false;
+    aiAudience.busy=false;
+    renderAiAudiencePanel();
+    releaseAiAudienceLines(lines,token);
+  }).catch(function(){
+    if(token!==aiAudience.token)return;
+    aiAudience.busy=false;
+    aiAudience.degraded=true;           /* 失败只降级，不立即重试 */
+    renderAiAudiencePanel();
+    scheduleAiAudience(AI_AUDIENCE_MIN_INTERVAL);
+  });
+}
+
+/* 切后台 / 离开页面：作废进行中的结果与排期 */
+document.addEventListener('visibilitychange',function(){
+  if(document.hidden){
+    bumpAiAudienceToken();
+  }else if(aiAudience.enabled){
+    scheduleAiAudience(8000);
+  }
+});
+window.addEventListener('pagehide',bumpAiAudienceToken);
+$('viewerBox').addEventListener('click',openAudienceSheet);
+$('audienceMask').addEventListener('click',closeAudienceSheet);
+$('audienceToggle').addEventListener('click',function(){setAiAudience(!aiAudience.enabled);});
+renderAiAudiencePanel();
 
 /* ========== 背景自定义 ========== */
 const BG_KEY='maomao_live_bg_v1';
