@@ -1,0 +1,31 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="robots" content="noindex,nofollow">
+<meta name="referrer" content="no-referrer">
+<title>云端诊断</title>
+<link rel="stylesheet" href="css/cloud-admin.css?v=20261122">
+<script>
+(function () {
+  try { if (localStorage.getItem('settings_dark_mode') === '1') document.documentElement.classList.add('dark'); } catch (e) {}
+})();
+</script>
+</head>
+<body>
+<div class="ca-app">
+  <header class="ca-head">
+    <a class="ca-btn ca-back" href="../index.html">返回</a>
+    <h1 class="ca-title">云端诊断</h1>
+    <button type="button" class="ca-btn" id="ca-refresh">刷新</button>
+  </header>
+  <p class="ca-meta" id="ca-meta" role="status" aria-live="polite">尚未加载</p>
+  <nav class="ca-tabs" id="ca-tabs" role="tablist" aria-label="诊断分区"></nav>
+  <main class="ca-panel" id="ca-panel" role="tabpanel" tabindex="-1"></main>
+  <noscript><p class="ca-error">此页面需要启用 JavaScript。</p></noscript>
+</div>
+<script src="js/cloud-admin-core.js?v=20261122"></script>
+<script src="js/cloud-admin.js?v=20261122"></script>
+</body>
+</html>
