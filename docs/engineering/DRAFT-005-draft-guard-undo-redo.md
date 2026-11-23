@@ -60,6 +60,12 @@
 - `node tests/theme-studio-preview-browser.mjs`：**3/3 PASS**（预览对齐，无回归）。
 - `npx vite build`：**PASS**。
 
+## 3a. 返修记录（#464 总控初审，评论 `7104700423`）
+
+- **P1-1 编辑后未刷新「未应用」标记**：字段 `input` 事件与 `commitFieldEdit` 补充 `refreshDirty()`，拖动过程中同步刷新当前上下文可见标记；快照新增 `contextDirty`（当前上下文是否脏），与全局 `dirty`（任一上下文脏）区分。浏览器断言补真实 DOM：`#dirtyTag.hidden` 编辑后为 `false`、撤销回基线后为 `true`。
+- **P1-2 清除气泡覆盖误用旧缓存草稿更新基线**：`disableCurrent()` 气泡分支在 `ChatBeauty.save(scope, cleared)` 成功后，淘汰当前 scope 的旧 `bubbleDrafts`，从 `ChatBeauty.resolve(scope)` 重建真实已应用值，同步 `drafts.bubble`、`bubbleDrafts[scope]`、`applied.bubble[scope]`；只处理当前 scope，其他角色未应用草稿保留。`save` 返回 false 时直接返回，不碰缓存/基线/历史。浏览器断言：清除后草稿等于真实 resolve 值、当前上下文不脏、标记隐藏；清角色 A 不抹全局与角色 B 草稿。
+- **P2 导入未变化区域写虚假历史**：`unpackImport` 先在局部算出下一份草稿，逐段深比较，仅对确实变化的区域记一笔历史；未变化区域不产生节点、不清 redo；解析失败仍不产生任何节点。浏览器断言：只含 list 的导入不增加 detail / bubble 历史栈。
+
 ## 4. 数据与兼容边界
 
 - 历史栈与未应用状态只存在于当前页面内存，刷新/关闭后不恢复；这是有意取舍，不把临时编辑写入持久存储。

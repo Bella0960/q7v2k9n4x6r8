@@ -77,8 +77,14 @@ async function editColor(page, hex) {
   }, hex);
   await delay(80);
 }
+async function uploadImport(page, name, text, mime) {
+  const buffer = Buffer.from(text, 'utf8');
+  await page.setInputFiles('#importFile', [{ name, mimeType: mime || 'application/json', buffer }]);
+  await delay(120);
+}
 const undoDisabled = page => page.evaluate(() => document.getElementById('undoButton').disabled);
 const redoDisabled = page => page.evaluate(() => document.getElementById('redoButton').disabled);
+const dirtyHidden = page => page.evaluate(() => document.getElementById('dirtyTag').hidden);
 
 let count = 0;
 let browser = null;
@@ -106,6 +112,7 @@ try {
     assert.equal(snap.redo, 0, width + 'px clean load has empty redo stack');
     assert.equal(await undoDisabled(page), true, width + 'px undo disabled on clean load');
     assert.equal(await redoDisabled(page), true, width + 'px redo disabled on clean load');
+    assert.equal(await dirtyHidden(page), true, width + 'px dirty tag hidden on clean load');
     const baseRadius = snap.list.itemRadius;
 
     // 2. One completed slider operation records a single node and marks dirty.
@@ -116,6 +123,7 @@ try {
     assert.equal(snap.undo, 1, width + 'px one slider operation = one history node');
     assert.equal(snap.redo, 0, width + 'px fresh edit clears redo');
     assert.equal(await undoDisabled(page), false, width + 'px undo enabled after edit');
+    assert.equal(await dirtyHidden(page), false, width + 'px dirty tag visible after edit');
 
     // 3. Undo restores the baseline and clears dirty; redo becomes available.
     await page.click('#undoButton');
@@ -124,6 +132,7 @@ try {
     assert.equal(snap.dirty, false, width + 'px undo to baseline clears dirty');
     assert.equal(snap.undo, 0, width + 'px undo popped the node');
     assert.equal(snap.redo, 1, width + 'px redo holds the undone edit');
+    assert.equal(await dirtyHidden(page), true, width + 'px dirty tag hidden after undo to baseline');
 
     // 4. Redo restores the edit.
     await page.click('#redoButton');
@@ -197,6 +206,21 @@ try {
     assert.equal(snap.dirty, true, width + 'px failed apply keeps dirty');
     await page.evaluate(() => { localStorage.setItem = localStorage.setItem._original; });
 
+    // 10b. A list-only import records history only for the list section; the
+    //     detail and bubble stacks gain no phantom node and keep their redo.
+    const detailUndoBefore = (snap.stacks.detail || { undo: 0 }).undo;
+    const bubbleUndoBefore = (snap.stacks['bubble:global'] || { undo: 0 }).undo;
+    await uploadImport(page, 'list-only.json', JSON.stringify({
+      format: 'maomao-theme-studio', version: 1, list: { itemRadius: 14 }
+    }));
+    snap = await snapshot(page);
+    assert.equal((snap.stacks.detail || { undo: 0 }).undo, detailUndoBefore,
+      width + 'px list-only import adds no detail history');
+    assert.equal((snap.stacks['bubble:global'] || { undo: 0 }).undo, bubbleUndoBefore,
+      width + 'px list-only import adds no bubble history');
+    assert.ok((snap.stacks.list || { undo: 0 }).undo >= 1,
+      width + 'px list section records the import node');
+
     // 11. Leaving with dirty drafts asks; cancelling does not navigate away.
     await editRange(page, '29');
     onDialog(page, 'dismiss');
@@ -240,6 +264,42 @@ try {
     roleSnap = await snapshot(page);
     assert.equal(roleSnap.bubble.myBubbleBg, '#bbbbbb', width + 'px role A draft still staged on return');
     assert.deepEqual(await beautyKeys(page), [], width + 'px unsaved bubble draft writes no beauty scope');
+
+    // 12b. Clearing role A's override rebuilds from the real resolved value; it must
+    //     not reuse the stale staged draft as the applied baseline, and must not
+    //     touch global or role B drafts.
+    await page.selectOption('#bubbleScope', 'role-b');
+    await delay(120);
+    await editColor(page, '#cccccc');
+    await page.selectOption('#bubbleScope', 'role-a');
+    await delay(120);
+    const resolvedBefore = await page.evaluate(() => {
+      const v = window.ChatBeauty.resolve('role-a');
+      return { myBubbleBg: v.myBubbleBg };
+    });
+    await page.click('#disableButton');
+    await delay(120);
+    roleSnap = await snapshot(page);
+    const resolvedAfter = await page.evaluate(() => {
+      const v = window.ChatBeauty.resolve('role-a');
+      return { myBubbleBg: v.myBubbleBg };
+    });
+    assert.equal(roleSnap.bubble.myBubbleBg, resolvedAfter.myBubbleBg,
+      width + 'px cleared role A draft matches the real resolved value');
+    assert.equal(resolvedAfter.myBubbleBg, resolvedBefore.myBubbleBg,
+      width + 'px resolve stays stable after clearing role A');
+    assert.equal(roleSnap.contextDirty, false, width + 'px cleared role A context is not dirty');
+    assert.equal(await dirtyHidden(page), true, width + 'px dirty tag hidden after clear');
+
+    await page.selectOption('#bubbleScope', 'role-b');
+    await delay(120);
+    roleSnap = await snapshot(page);
+    assert.equal(roleSnap.bubble.myBubbleBg, '#cccccc', width + 'px role B draft survives clearing role A');
+
+    await page.selectOption('#bubbleScope', 'global');
+    await delay(120);
+    globalSnap = await snapshot(page);
+    assert.equal(globalSnap.bubble.myBubbleBg, '#aaaaaa', width + 'px global draft survives clearing role A');
 
     assert.deepEqual(pageErrors, [], width + 'px workbench should not throw runtime errors');
     await page.screenshot({ path: resolve(outDir, `theme-studio-draft-${width}.png`) });

@@ -85,7 +85,7 @@
       input.addEventListener('input',function(){
         if(pendingBefore==null) pendingBefore=currentSnapshot();
         var value=field[2]==='color'?input.value:Number(input.value);
-        drafts[tab][field[0]]=value;output.textContent=input.value+(field[6]||'');drawPreview();
+        drafts[tab][field[0]]=value;output.textContent=input.value+(field[6]||'');drawPreview();refreshDirty();
       });
       input.addEventListener('change',commitFieldEdit);
       input.addEventListener('blur',commitFieldEdit);
@@ -223,6 +223,7 @@
       pushHistory(ctxKey(), pendingBefore);
       pendingBefore = null;
       refreshHistoryButtons();
+      refreshDirty();
     }
   }
   function refreshHistoryButtons() {
@@ -368,9 +369,14 @@
       if(!window.ChatBeauty||!window.ChatBeauty.save){toast('聊天美化模块未加载');return;}
       var cleared={};BUBBLE.forEach(function(field){cleared[field[0]]=null;});
       if(!window.ChatBeauty.save(scope,cleared)){toast('恢复失败，请检查存储空间');return;}
-      loadBubble();
-      applied.bubble[scope]=cleanBubble(drafts.bubble);
-      bubbleDrafts[scope]=cleanBubble(drafts.bubble);
+      // Drop this scope's stale in-memory draft and rebuild from the real applied
+      // value resolved by ChatBeauty (default for global, inherited for a role).
+      // Only the current scope is touched; other roles' unsaved drafts stay put.
+      delete bubbleDrafts[scope];
+      var restored=resolveBubbleApplied(scope);
+      drafts.bubble=restored;
+      bubbleDrafts[scope]=cleanBubble(restored);
+      applied.bubble[scope]=cleanBubble(restored);
       drawFields();drawPreview();refreshDirty();refreshHistoryButtons();
       toast(scope==='global'?'已恢复原有气泡默认值':'已恢复跟随全局气泡');
     }else{
@@ -523,20 +529,31 @@
       var data = parseJsonImport(text);
       pending = { list: data.list, detail: data.detail, bubble: data.bubble };
     }
-    // One undo node per context, recorded only after parsing/validation fully
-    // succeed; a rejected import leaves no history entry behind.
-    pushHistory('list', api.clean('list', drafts.list));
-    pushHistory('detail', api.clean('detail', drafts.detail));
-    pushHistory('bubble:' + scope, cleanBubble(drafts.bubble));
+    // Compute the next drafts locally first; an undo node is recorded only for a
+    // section that actually changes. An unchanged section keeps its redo stack and
+    // gains no phantom history entry. Rejected parsing never reaches here.
+    var nextList, nextDetail, nextBubble;
     if (/\.css$/i.test(filename)) {
-      drafts.list = Object.assign({}, drafts.list, pending.list);
-      drafts.detail = Object.assign({}, drafts.detail, pending.detail);
-      drafts.bubble = Object.assign({}, drafts.bubble, pending.bubble);
+      nextList = Object.assign({}, drafts.list, pending.list);
+      nextDetail = Object.assign({}, drafts.detail, pending.detail);
+      nextBubble = Object.assign({}, drafts.bubble, pending.bubble);
     } else {
-      if (pending.list) drafts.list = pending.list;
-      if (pending.detail) drafts.detail = pending.detail;
-      if (pending.bubble) drafts.bubble = pending.bubble;
+      nextList = pending.list || drafts.list;
+      nextDetail = pending.detail || drafts.detail;
+      nextBubble = pending.bubble || drafts.bubble;
     }
+    if (!sameValue(api.clean('list', drafts.list), api.clean('list', nextList))) {
+      pushHistory('list', api.clean('list', drafts.list));
+    }
+    if (!sameValue(api.clean('detail', drafts.detail), api.clean('detail', nextDetail))) {
+      pushHistory('detail', api.clean('detail', drafts.detail));
+    }
+    if (!sameValue(cleanBubble(drafts.bubble), cleanBubble(nextBubble))) {
+      pushHistory('bubble:' + scope, cleanBubble(drafts.bubble));
+    }
+    drafts.list = api.clean('list', nextList);
+    drafts.detail = api.clean('detail', nextDetail);
+    drafts.bubble = cleanBubble(nextBubble);
     bubbleDrafts[scope] = cleanBubble(drafts.bubble);
   }
   function populateScopes() {
@@ -605,8 +622,12 @@
   // Read-only snapshot for focused regression tests; the page never writes it back.
   api._draftSnapshot = function () {
     var h = histFor(ctxKey());
-    return { tab: tab, scope: scope, dirty: anyDirty(),
-      undo: h.undo.length, redo: h.redo.length,
+    var stacks = {};
+    Object.keys(history).forEach(function (k) {
+      stacks[k] = { undo: history[k].undo.length, redo: history[k].redo.length };
+    });
+    return { tab: tab, scope: scope, dirty: anyDirty(), contextDirty: isDirty(ctxKey()),
+      undo: h.undo.length, redo: h.redo.length, stacks: stacks,
       list: api.clean('list', drafts.list), detail: api.clean('detail', drafts.detail),
       bubble: cleanBubble(drafts.bubble) };
   };
