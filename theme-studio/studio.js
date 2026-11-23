@@ -211,27 +211,69 @@
     rows.push('}');
     makeDownload('theme-studio.css',rows.join('\n'),'text/css');
   }
-  function unpackImport(text,filename) {
-    if(text.length>65536)throw new Error('文件过大（最多 64KB）');
-    if(/\.css$/i.test(filename)){
-      var found=0,match,regex=/--ts-(list|detail|bubble)-([a-z0-9-]+)\s*:\s*([^;{}]+);/gi;
-      while((match=regex.exec(text))){
-        var group=match[1].toLowerCase(),key=match[2].replace(/-([a-z])/g,function(_,c){return c.toUpperCase();});
-        var defs=group==='bubble'?BUBBLE.map(function(p){return [p[0],p[2],p[4],p[5],p[3]];}):Object.keys(api.SPECS[group]).map(function(k){var s=api.SPECS[group][k];return [k,s[0],s[2],s[3],s[1]];});
-        var d=defs.filter(function(def){return def[0]===key;})[0];if(!d)continue;
-        var value=match[3].trim();
-        if(d[1]==='color' && /^#[0-9a-f]{6}$/i.test(value)){drafts[group][key]=value;found++;}
-        else if(d[1]==='number'&&/^-?\d+(?:\.\d+)?(?:px|%)?$/.test(value)){
-          var number=Number(value.replace(/(px|%)$/,''));if(number>=d[2]&&number<=d[3]){drafts[group][key]=number;found++;}
+  // Parse an imported file into a pending draft. Nothing in `drafts` is touched
+  // until parsing and validation fully succeed, so a rejected import leaves the
+  // three drafts, current tab/scope and the applied theme untouched (no half-new
+  // half-old state).
+  function cssImportSpecs(group) {
+    if (group === 'bubble') return BUBBLE.map(function (p) { return [p[0], p[2], p[4], p[5], p[3]]; });
+    return Object.keys(api.SPECS[group]).map(function (k) { var s = api.SPECS[group][k]; return [k, s[0], s[2], s[3], s[1]]; });
+  }
+  function parseCssImport(text) {
+    var pending = { list: {}, detail: {}, bubble: {} };
+    var found = 0, match, regex = /--ts-(list|detail|bubble)-([a-z0-9-]+)\s*:\s*([^;{}]+);/gi;
+    while ((match = regex.exec(text))) {
+      var group = match[1].toLowerCase();
+      var key = match[2].replace(/-([a-z])/g, function (_, c) { return c.toUpperCase(); });
+      var def = cssImportSpecs(group).filter(function (d) { return d[0] === key; })[0];
+      if (!def) continue; // unknown variable: ignored, does not poison the pending draft
+      var value = match[3].trim();
+      if (def[1] === 'color') {
+        if (/^#[0-9a-f]{6}$/i.test(value)) { pending[group][key] = value; found++; }
+      } else if (def[1] === 'number') {
+        var m = /^(-?\d+(?:\.\d+)?)(px|%)?$/.exec(value);
+        if (m) {
+          var number = Number(m[1]);
+          if (number >= def[2] && number <= def[3]) { pending[group][key] = number; found++; }
         }
       }
-      if(!found)throw new Error('未找到兼容的 --ts-* 变量，请使用 JSON 或工作台导出的 CSS');
-    }else{
-      var value=JSON.parse(text);
-      if(value.format!=='maomao-theme-studio'||value.version!==1)throw new Error('主题格式不兼容');
-      if(value.list)drafts.list=api.clean('list',value.list);
-      if(value.detail)drafts.detail=api.clean('detail',value.detail);
-      if(value.bubble)drafts.bubble=cleanBubble(value.bubble);
+    }
+    if (!found) throw new Error('未找到兼容的 --ts-* 变量，请使用 JSON 或工作台导出的 CSS');
+    return pending;
+  }
+  function parseJsonImport(text) {
+    var parsed;
+    try { parsed = JSON.parse(text); }
+    catch (e) { throw new Error('JSON 解析失败：文件不是有效的 JSON'); }
+    if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) throw new Error('主题格式不兼容：根节点必须是对象');
+    if (parsed.format !== 'maomao-theme-studio' || parsed.version !== 1) throw new Error('主题格式不兼容：仅支持 maomao-theme-studio v1');
+    var pending = { list: null, detail: null, bubble: null };
+    if (parsed.list !== undefined) {
+      if (!parsed.list || typeof parsed.list !== 'object' || Array.isArray(parsed.list)) throw new Error('列表配置格式不正确');
+      pending.list = api.clean('list', parsed.list);
+    }
+    if (parsed.detail !== undefined) {
+      if (!parsed.detail || typeof parsed.detail !== 'object' || Array.isArray(parsed.detail)) throw new Error('详情配置格式不正确');
+      pending.detail = api.clean('detail', parsed.detail);
+    }
+    if (parsed.bubble !== undefined) {
+      if (!parsed.bubble || typeof parsed.bubble !== 'object' || Array.isArray(parsed.bubble)) throw new Error('气泡配置格式不正确');
+      pending.bubble = cleanBubble(parsed.bubble);
+    }
+    return pending;
+  }
+  function unpackImport(text, filename) {
+    if (text.length > 65536) throw new Error('文件过大（最多 64KB）');
+    if (/\.css$/i.test(filename)) {
+      var pending = parseCssImport(text);
+      drafts.list = Object.assign({}, drafts.list, pending.list);
+      drafts.detail = Object.assign({}, drafts.detail, pending.detail);
+      drafts.bubble = Object.assign({}, drafts.bubble, pending.bubble);
+    } else {
+      var data = parseJsonImport(text);
+      if (data.list) drafts.list = data.list;
+      if (data.detail) drafts.detail = data.detail;
+      if (data.bubble) drafts.bubble = data.bubble;
     }
   }
   function populateScopes() {
@@ -272,5 +314,11 @@
     }).catch(function(error){toast(error && error.message ? error.message : '导入失败');});
     this.value='';
   });
+  // Read-only snapshot for focused regression tests; the page never writes it back.
+  api._draftSnapshot = function () {
+    return { tab: tab, scope: scope,
+      list: api.clean('list', drafts.list), detail: api.clean('detail', drafts.detail),
+      bubble: cleanBubble(drafts.bubble) };
+  };
   populateScopes();loadBubble();setTab('list');
 })();

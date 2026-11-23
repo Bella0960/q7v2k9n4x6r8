@@ -36,6 +36,7 @@
     "test:api:image": "node --test tests/phone-api-image-generation.test.mjs",
     "test:forum:seed": "node --test tests/forum-seed-comments.test.mjs",
     "test:forum:mobile": "node tests/forum-media-mobile.mjs",
+    "test:studio:import:browser": "node tests/theme-studio-import-browser.mjs",
     "test:group:ui": "node --test tests/group-ui-collapse-invite.test.mjs",
     "test:group:invite-e2e": "node --test tests/group-chat-invite-e2e.test.mjs",
     "test:wechat:browser": "node tests/wechat-theme-browser.mjs",
