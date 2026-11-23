@@ -3,10 +3,13 @@
 'use strict';
 const model=global.MAOMAOMarketCollection;
 let api,section='discover',mineTab='favorites',overlay,focusBefore,previewTone='light',previewPage='detail';
+// Reuse one parsed collection snapshot for the whole render pass; invalidated on every fresh render.
+let favCache=null;
+function readCache(){if(!favCache)favCache=model.read();return favCache;}
 const e=v=>String(v??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 const icons={home:'M3 11 12 3l9 8M5 10v11h5v-7h4v7h5V10',theme:'M5 3h14v18H5zM8 7h8M8 11h5',category:'M3 3h7v7H3zM14 3h7v7h-7zM3 14h7v7H3zM14 14h7v7h-7z',mine:'M16 7a4 4 0 1 1-8 0 4 4 0 0 1 8 0M4 21v-2a8 8 0 0 1 16 0v2',star:'m12 3 2.8 5.7 6.2.9-4.5 4.4 1.1 6.2-5.6-3-5.6 3 1.1-6.2L3 9.6l6.2-.9Z',close:'m6 6 12 12M18 6 6 18',back:'M15 18l-6-6 6-6',plus:'M12 4v16M4 12h16',chat:'M4 5h16v12H8l-4 3V5z',diary:'M5 3h14v18H5zM9 8h6M9 12h6',music:'M9 18V5l11-2v13M9 18a3 3 0 1 1-6 0 3 3 0 0 1 6 0M20 16a3 3 0 1 1-6 0 3 3 0 0 1 6 0',book:'M3 5h7a3 3 0 0 1 3 3v13a3 3 0 0 0-3-3H3zM21 5h-5a3 3 0 0 0-3 3v13a3 3 0 0 1 3-3h5z',settings:'M12 3v3M12 18v3M3 12h3M18 12h3M6 6l2 2M16 16l2 2M18 6l-2 2M8 16l-2 2M16 12a4 4 0 1 1-8 0 4 4 0 0 1 8 0',photo:'M3 4h18v16H3zM7 9a1 1 0 1 0 .01 0M4 17l5-5 3 3 3-4 5 6'};
 const svg=n=>'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="'+(icons[n]||icons.theme)+'"/></svg>';
-const button=(text,action,id='',cls='sf-button')=>'<button type="button" class="'+cls+'" data-sf="'+action+'" data-id="'+e(id)+'"'+(action==='favorite'?' aria-label="'+(model.read().favorites.includes(id)?'取消收藏':'收藏')+'" aria-pressed="'+model.read().favorites.includes(id)+'"':'')+'>'+text+'</button>';
+const button=(text,action,id='',cls='sf-button')=>'<button type="button" class="'+cls+'" data-sf="'+action+'" data-id="'+e(id)+'"'+(action==='favorite'?' aria-label="'+(readCache().favorites.includes(id)?'取消收藏':'收藏')+'" aria-pressed="'+readCache().favorites.includes(id)+'"':'')+'>'+text+'</button>';
 const pages=[['desktop','桌面'],['list','聊天首页'],['detail','聊天详情'],['moments','动态'],['mine','我的'],['home','我的主页']];
 function covered(id,page){if(page==='desktop')return false;if(page==='home')return id==='atmosphere';if(id==='imessage')return page==='detail';return true;}
 function scene(id,page='detail'){
@@ -33,7 +36,7 @@ const themeProfiles=Object.freeze({
  atmosphere:{type:'氛围主题',scope:'聊天 · 动态 · 个人页',note:'薄影留白与深浅模式；不会重置单独选择的气泡。'}
 });
 function card(t,index=0){
- const fav=model.read().favorites.includes(t.id),active=global.ChatBeauty?.getThemePreset?.()===t.id;
+ const fav=readCache().favorites.includes(t.id),active=global.ChatBeauty?.getThemePreset?.()===t.id;
  const info=themeProfiles[t.id]||{type:'聊天主题',scope:'以实际页面适配为准',note:'只改变原主题设置，不改变个人内容。'};
  return '<article class="sf-theme-item sf-product" data-theme-id="'+e(t.id)+'" aria-label="主题：'+e(t.name)+'">'+
  '<header class="sf-theme-item-header"><span class="sf-theme-index">'+String(index+1).padStart(2,'0')+'</span><div class="sf-theme-titles"><small>'+e(info.type)+'</small><h3>'+e(t.name)+'</h3></div>'+
@@ -68,7 +71,7 @@ const categories=[
 function categoryView(){return heading('分类','从整体到细节，分别搭配')+categories.map(([name,items])=>'<section class="sf-category"><h3>'+name+'</h3>'+items.map(([id,label,sub])=>button('<span><strong>'+label+'</strong><small>'+sub+'</small></span>','category',id,'sf-category-row')).join('')+'</section>').join('');}
 function recordCard(item,type){return '<article class="sf-record"><button class="sf-record-main" data-sf="record-preview" data-id="'+e(type+':'+item.id)+'"><strong>'+e(item.name)+'</strong><small>'+e(type==='outfits'?item.scopes.map(s=>model.scopes[s]).join(' · '):'自己的壁纸与主题素材')+'</small></button><div>'+button('预览与应用','record-preview',type+':'+item.id)+button('编辑','rename',type+':'+item.id)+button('删除','delete',type+':'+item.id)+'</div></article>';}
 function mine(){
- const data=model.read();let body='';
+ const data=readCache();let body='';
  if(mineTab==='favorites')body=gallery(api.themes.filter(t=>data.favorites.includes(t.id)));
  if(mineTab==='outfits')body=button(svg('plus')+' 保存当前搭配','save-outfit')+data.outfits.map(x=>recordCard(x,'outfits')).join('');
  if(mineTab==='creations')body=button(svg('plus')+' 添加壁纸 / 主题素材','upload')+button('编辑气泡与美化方案','category','beauty')+data.creations.map(x=>recordCard(x,'creations')).join('');
@@ -102,7 +105,7 @@ function detail(id){
     '<div class="sf-native-detail-art sf-theme-detail-cover" data-theme-id="'+e(id)+'">'+nativeArt(t)+'</div>'+
     '<div class="sf-theme-detail-copy"><strong>主题说明</strong><p>'+e(t.desc)+'</p><strong>独立设置</strong><p>'+e(info.note)+'</p></div>'+
     '<p class="sf-caption">此处是原主题封面示意，不读取真实聊天；确认后才切换。独立气泡、壁纸和留白 Messages 不会重置。</p>'+
-    '<footer>'+button(model.read().favorites.includes(id)?'已收藏 · 点击取消':'收藏主题','favorite',id)+button('应用这套主题','apply-theme',id,'sf-button primary')+'</footer>');
+    '<footer>'+button(readCache().favorites.includes(id)?'已收藏 · 点击取消':'收藏主题','favorite',id)+button('应用这套主题','apply-theme',id,'sf-button primary')+'</footer>');
    return;
  }
  previewTone='light';previewPage='detail';
@@ -111,7 +114,7 @@ function detail(id){
  pages.map(([p,label])=>button(label,'page',p,'sf-chip')).join('')+
  '</div>'+toneControls+'<div id="sfPreview" tabindex="0" aria-label="手机预览，左右滑动切换页面" data-theme="'+e(id)+'"></div>'+
  '<p class="sf-preview-help">左右滑动预览，或点击上方页面名称</p><p id="sfScope" class="sf-caption" aria-live="polite"></p>'+
- '<footer>'+button(model.read().favorites.includes(id)?'已收藏 · 点击取消':'收藏主题','favorite',id)+button('应用主题','apply-theme',id,'sf-button primary')+'</footer>');
+ '<footer>'+button(readCache().favorites.includes(id)?'已收藏 · 点击取消':'收藏主题','favorite',id)+button('应用主题','apply-theme',id,'sf-button primary')+'</footer>');
  showPage('detail');
  const pane=overlay?.querySelector('#sfPreview');
  if(!pane)return;
@@ -206,5 +209,16 @@ async function handle(action,id){
 }
 let pending=false;
 document.addEventListener('click',async ev=>{const b=ev.target.closest('[data-sf]');if(!b)return;ev.preventDefault();if(pending)return;pending=true;b.disabled=true;try{await handle(b.dataset.sf,b.dataset.id);}catch(error){if(overlay)overlay.querySelector('.sf-error').textContent=error.message;else api.toast(error.message);}finally{pending=false;b.disabled=false;}});
-global.MAOMAOStorefront={init(adapter){api=adapter;},render(category){section=category;const nav=document.getElementById('categoryNav');nav.querySelectorAll('button').forEach(b=>{const active=b.dataset.category===(['bubbles','fonts','wallpapers','widgets'].includes(category)?'categories':category);b.classList.toggle('active',active);b.setAttribute('aria-current',active?'page':'false');});try{if(category==='discover')return discover();if(category==='themes')return themes();if(category==='categories')return categoryView();if(category==='mine')return mine();}catch(error){return '<p class="sf-error">'+e(error.message)+'</p>';}return null;},svg};
+// Pause the floating art on cards scrolled out of the visible rail; keep the motion where it is seen.
+let animIO=null,animMO=null;
+function trackFeaturedAnimation(){
+ if(!('IntersectionObserver' in global)||animIO)return;
+ const content=document.getElementById('storeContent');if(!content)return;
+ animIO=new IntersectionObserver(entries=>{for(const en of entries)en.target.classList.toggle('is-offscreen',!en.isIntersecting);},{root:content,threshold:0});
+ const watch=()=>{content.querySelectorAll('.sf-feature-scene').forEach(el=>{if(!el.dataset.animWatched){el.dataset.animWatched='1';animIO.observe(el);}});};
+ watch();
+ animMO=new MutationObserver(watch);
+ animMO.observe(content,{childList:true});
+}
+global.MAOMAOStorefront={init(adapter){api=adapter;trackFeaturedAnimation();},render(category){favCache=null;section=category;const nav=document.getElementById('categoryNav');nav.querySelectorAll('button').forEach(b=>{const active=b.dataset.category===(['bubbles','fonts','wallpapers','widgets'].includes(category)?'categories':category);b.classList.toggle('active',active);b.setAttribute('aria-current',active?'page':'false');});try{if(category==='discover')return discover();if(category==='themes')return themes();if(category==='categories')return categoryView();if(category==='mine')return mine();}catch(error){return '<p class="sf-error">'+e(error.message)+'</p>';}return null;},svg};
 })(window);
