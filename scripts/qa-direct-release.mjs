@@ -18,6 +18,7 @@
 import assert from 'node:assert/strict';
 import { readFileSync, writeFileSync, existsSync } from 'node:fs';
 import { evaluateQaSnapshot } from './qa-snapshot-policy.mjs';
+import { assertPostUploadQaHttpReady } from './qa-postupload-readiness.mjs';
 import { spawnSync } from 'node:child_process';
 
 const QA = 'maomao-aw-qa-20261114';
@@ -667,8 +668,15 @@ async function main() {
   assert.equal(qaBinding('MAO_QA_AUTHORITY_WORKER')?.text, CORE);
   assert.equal(qaBinding('MAO_QA_IDENTITY_SETUP')?.text,
     JSON.parse(readFileSync('wrangler.qa.jsonc', 'utf8')).vars?.MAO_QA_IDENTITY_SETUP);
-  await qaHttpSmoke(coreInitialized);
-  await verifyOwnerQaOrigin(testedCommit);
+  // Only these two read-only HTTP checks may retry during edge propagation.
+  // All critical identity/DB/binding/Worker version proofs above stay strict.
+  // Every attempt must validate BOTH login readiness and exact owner-domain SHA.
+  const ready = await assertPostUploadQaHttpReady(async () => {
+    await qaHttpSmoke(coreInitialized);
+    await verifyOwnerQaOrigin(testedCommit);
+  });
+  console.log('Post-deployment QA HTTP readiness verified in ' +
+    ready.attempts + ' bounded attempt(s).');
   console.log('Cloudflare active QA identity core version: ' + coreVersion.versionId);
   console.log('Cloudflare active QA Worker version: ' + qaVersion.versionId);
   console.log('QA published tested git SHA: ' + run('git', ['rev-parse', 'HEAD'], true));
