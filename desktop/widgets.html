@@ -227,21 +227,23 @@
             Array.isArray(layout.dock));
         }
 
+        function parseLayout(key) {
+          try { return JSON.parse(localStorage.getItem(key)); }
+          catch (e) { return null; }
+        }
+
         function readLayout() {
-          var result = null;
-          try {
-            result = JSON.parse(localStorage.getItem(LS_KEY));
-            if (!isValidLayout(result)) {
-              result = null;
-              for (var version = 13; version >= 1; version--) {
-                var oldLayout = JSON.parse(localStorage.getItem('ds_layout_v' + version));
-                if (isValidLayout(oldLayout)) {
-                  result = oldLayout;
-                  break;
-                }
+          var result = parseLayout(LS_KEY);
+          if (!isValidLayout(result)) {
+            result = null;
+            for (var version = 13; version >= 1; version--) {
+              var oldLayout = parseLayout('ds_layout_v' + version);
+              if (isValidLayout(oldLayout)) {
+                result = oldLayout;
+                break;
               }
             }
-          } catch (e) { result = null; }
+          }
           if (!result) result = FALLBACK_LAYOUT;
           // Never mutate the shared fallback or a value taken directly from storage.
           var layout = JSON.parse(JSON.stringify(result));
