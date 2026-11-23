@@ -330,28 +330,99 @@
     rows.push('}');
     makeDownload('theme-studio.css',rows.join('\n'),'text/css');
   }
-  function unpackImport(text,filename) {
-    if(text.length>65536)throw new Error('文件过大（最多 64KB）');
-    if(/\.css$/i.test(filename)){
-      var found=0,match,regex=/--ts-(list|detail|bubble)-([a-z0-9-]+)\s*:\s*([^;{}]+);/gi;
-      while((match=regex.exec(text))){
-        var group=match[1].toLowerCase(),key=match[2].replace(/-([a-z])/g,function(_,c){return c.toUpperCase();});
-        var defs=group==='bubble'?BUBBLE.map(function(p){return [p[0],p[2],p[4],p[5],p[3]];}):Object.keys(api.SPECS[group]).map(function(k){var s=api.SPECS[group][k];return [k,s[0],s[2],s[3],s[1]];});
-        var d=defs.filter(function(def){return def[0]===key;})[0];if(!d)continue;
-        var value=match[3].trim();
-        if(d[1]==='color' && /^#[0-9a-f]{6}$/i.test(value)){drafts[group][key]=value;found++;}
-        else if(d[1]==='number'&&/^-?\d+(?:\.\d+)?(?:px|%)?$/.test(value)){
-          var number=Number(value.replace(/(px|%)$/,''));if(number>=d[2]&&number<=d[3]){drafts[group][key]=number;found++;}
-        }
-      }
-      if(!found)throw new Error('未找到兼容的 --ts-* 变量，请使用 JSON 或工作台导出的 CSS');
-    }else{
-      var value=JSON.parse(text);
-      if(value.format!=='maomao-theme-studio'||value.version!==1)throw new Error('主题格式不兼容');
-      if(value.list)drafts.list=api.clean('list',value.list);
-      if(value.detail)drafts.detail=api.clean('detail',value.detail);
-      if(value.bubble)drafts.bubble=cleanBubble(value.bubble);
+  function fieldSpec(group, key) {
+    if (group === 'bubble') {
+      var f = BUBBLE.filter(function (p) { return p[0] === key; })[0];
+      if (!f) return null;
+      return { type: f[2], min: f[4], max: f[5], unit: f[6] };
     }
+    var spec = api.SPECS[group] && api.SPECS[group][key];
+    if (!spec) return null;
+    return { type: spec[0], min: spec[2], max: spec[3], unit: ['avatarRadius','coverPosition','coverOpacity','chatImagePosition'].includes(key) ? '%' : (((api.EXTENSION_FIELDS[group]||[]).find(function(f){return f[0]===key;})||[])[3] || 'px') };
+  }
+  function parseCssImport(text) {
+    var pending = { list: {}, detail: {}, bubble: {} };
+    var KNOWN = ['list', 'detail', 'bubble'];
+    var found = 0, match;
+    // Scan every --ts-* declaration, including a last rule that legally omits the
+    // trailing semicolon. An unknown group or unknown key rejects the whole file;
+    // no declaration may be silently skipped. The value stops at ; { or }.
+    var regex = /--ts-([a-z0-9]+(?:-[a-z0-9]+)*)\s*:\s*([^;{}]+)/gi;
+    while ((match = regex.exec(text))) {
+      var name = match[1].toLowerCase();
+      var group = KNOWN.find(function (g) { return name === g || name.indexOf(g + '-') === 0; });
+      if (!group) throw new Error('不支持的配置组 --ts-' + name);
+      var rest = name === group ? '' : name.slice(group.length + 1);
+      var rawKey = rest;
+      var key = rest.replace(/-([a-z])/g, function (_, c) { return c.toUpperCase(); });
+      var spec = fieldSpec(group, key);
+      // Unknown --ts-* item rejects the whole file; it is not silently skipped.
+      if (!spec) throw new Error('不支持的配置项 --ts-' + name);
+      var value = match[2].trim();
+      if (spec.type === 'asset') throw new Error('图片素材不能从 CSS 变量导入，请在工作台选择图片');
+      if (spec.type === 'color') {
+        if (!/^#[0-9a-f]{6}$/i.test(value)) throw new Error('颜色格式不正确：' + key + ' 需为 6 位十六进制色值');
+        pending[group][key] = value;
+      } else if (spec.type === 'number') {
+        var unitRe = spec.unit === '%' ? /^(-?\d+(?:\.\d+)?)%$/ : /^(-?\d+(?:\.\d+)?)px$/;
+        var m = unitRe.exec(value);
+        if (!m) throw new Error('单位不正确：' + key + ' 需使用 ' + spec.unit);
+        var number = Number(m[1]);
+        if (!Number.isFinite(number) || number < spec.min || number > spec.max) {
+          throw new Error('数值越界：' + key + ' 需在 ' + spec.min + '–' + spec.max + ' ' + spec.unit);
+        }
+        pending[group][key] = number;
+      }
+      found++;
+    }
+    if (!found) throw new Error('未找到兼容的 --ts-* 变量，请使用 JSON 或工作台导出的 CSS');
+    return pending;
+  }
+  // Validate one section strictly before any tolerant clean/clamp runs. Returns
+  // only allowlisted, already-valid fields; the caller fills defaults for the rest.
+  function strictValidateSection(group, raw, label) {
+    if (!raw || typeof raw !== 'object' || Array.isArray(raw)) throw new Error(label + '配置格式不正确');
+    var out = {};
+    Object.keys(raw).forEach(function (key) {
+      var spec = fieldSpec(group, key);
+      if (!spec) throw new Error(label + '包含不支持的配置项：' + key);
+      var value = raw[key];
+      if (spec.type === 'color') {
+        if (typeof value !== 'string' || !/^#[0-9a-f]{6}$/i.test(value)) throw new Error('颜色格式不正确：' + key + ' 需为 6 位十六进制色值');
+        out[key] = value;
+      } else if (spec.type === 'number') {
+        if (typeof value !== 'number' || !Number.isFinite(value)) throw new Error('数值类型不正确：' + key + ' 需为数字');
+        if (value < spec.min || value > spec.max) throw new Error('数值越界：' + key + ' 需在 ' + spec.min + '–' + spec.max + ' ' + spec.unit);
+        out[key] = value;
+      } else if (spec.type === 'asset') {
+        if (typeof value !== 'string' || !(value === '' || /^as_[A-Z2-7]{32}$/.test(value))) throw new Error('图片素材引用格式无效：'+key);
+        out[key] = value;
+      }
+    });
+    return out;
+  }
+  function parseJsonImport(text) {
+    var parsed;
+    try { parsed = JSON.parse(text); }
+    catch (e) { throw new Error('JSON 解析失败：文件不是有效的 JSON'); }
+    if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) throw new Error('主题格式不兼容：根节点必须是对象');
+    if (parsed.format !== 'maomao-theme-studio' || parsed.version !== 1) throw new Error('主题格式不兼容：仅支持 maomao-theme-studio v1');
+    var hasSection = parsed.list !== undefined || parsed.detail !== undefined || parsed.bubble !== undefined;
+    if (!hasSection) throw new Error('配置为空：未包含列表、详情或气泡任一段');
+    var pending = { list: null, detail: null, bubble: null };
+    if (parsed.list !== undefined) pending.list = strictValidateSection('list', parsed.list, '列表');
+    if (parsed.detail !== undefined) pending.detail = strictValidateSection('detail', parsed.detail, '详情');
+    if (parsed.bubble !== undefined) pending.bubble = strictValidateSection('bubble', parsed.bubble, '气泡');
+    return pending;
+  }
+  function unpackImport(text, filename) {
+    if (text.length > 65536) throw new Error('文件过大（最多 64KB）');
+    var isCSS=/\.css$/i.test(filename),pending=isCSS?parseCssImport(text):parseJsonImport(text);
+    // Preserve any field omitted from a partial import, especially existing IDB image IDs.
+    var nextList=api.clean('list',Object.assign({},drafts.list,pending.list||{}));
+    var nextDetail=api.clean('detail',Object.assign({},drafts.detail,pending.detail||{}));
+    var nextBubble=cleanBubble(Object.assign({},drafts.bubble,pending.bubble||{}));
+    drafts.list=nextList;drafts.detail=nextDetail;drafts.bubble=nextBubble;
   }
   function populateScopes() {
     try {
@@ -386,7 +457,9 @@
   $('importFile').addEventListener('change',function(){
     var file=this.files&&this.files[0];if(!file)return;
     if(file.size>65536){toast('文件过大（最多 64KB）');this.value='';return;}
+    var capturedTab=tab,capturedScope=scope;
     file.text().then(function(text){
+      if(tab!==capturedTab||scope!==capturedScope){toast('导入已过期，请重新选择文件');return;}
       unpackImport(text,file.name);drawFields();drawPreview();renderImageSlots();toast('导入成功，请分别检查并应用各区域');
     }).catch(function(error){toast(error && error.message ? error.message : '导入失败');});
     this.value='';
@@ -410,5 +483,9 @@
     Object.keys(photoLeases).forEach(function(key){if(photoLeases[key].asset)photoLeases[key].asset.revoke();});
     document.querySelectorAll('.image-thumb').forEach(function(el){if(el._asset)el._asset.revoke();});
   });
+  // Read-only QA inspection hook; never persists user data.
+  api._draftSnapshot=function(){return {tab:tab,scope:scope,
+    list:api.clean('list',drafts.list),detail:api.clean('detail',drafts.detail),
+    bubble:cleanBubble(drafts.bubble)};};
   populateScopes();loadBubble();setTab('list');
 })();
