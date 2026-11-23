@@ -534,7 +534,17 @@ async function main() {
       // Reproduce the exact full candidate test sequence, then inspect the
       // post-test safety state. No upload, no Worker write and no passwords.
       await check('full-test-suite', async () => {
-        for (const [command, args] of TESTS) run(command, args);
+        for (let gate = 0; gate < TESTS.length; gate++) {
+          const [command, args] = TESTS[gate];
+          try {
+            run(command, args);
+          } catch (error) {
+            // Fixed numeric index only. Never print command arguments,
+            // private test output or environment values in public logs.
+            console.error('QA_GUARD_DIAG_GATE_FAILED:' + (gate + 1));
+            throw error;
+          }
+        }
       });
       await check('built-assets', () => assertReadyForUpload());
     }
