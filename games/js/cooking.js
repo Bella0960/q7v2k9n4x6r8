@@ -282,11 +282,14 @@ function beginTasting(){
  $('reactionQuote').classList.add('loading');
  $('tastingScene').classList.remove('reacted');
  setTimeout(function(){
+  /* 延迟窗口内可能已切换角色 / 重做 / 改菜：先校验归属，无效任务不动 UI、不发请求。 */
+  if(!reactionIsCurrent(token,dish))return;
   $('reactionKicker').textContent='FIRST BITE';$('reactionTitle').textContent='TA 试吃了一口。';$('reactionCopy').textContent='味道如何？让 TA 自己来告诉你。';$('reactionQuote').textContent='正在等 TA 的评价……';
   requestReaction(token,dish);
  },900);
 }
 function requestReaction(token,dish){
+ if(!reactionIsCurrent(token,dish))return;
  var profile=dish.profile,local=localReaction(profile),cfg=window.PhoneStorage&&PhoneStorage.getApiConfig?window.PhoneStorage.getApiConfig():{};
  var canCall=cfg&&String(cfg.apiKey||'').trim()&&window.PhoneAPI&&typeof window.PhoneAPI.complete==='function';
  function finish(text,source){
@@ -306,6 +309,8 @@ function requestReaction(token,dish){
  var userPrompt=isThem
    ? '你（'+roleName(activeRole)+'）刚刚在你们俩的厨房里亲手做了一道菜，端到用户面前。菜名：'+currentDish.name+'。食材：'+items+'。风味：'+profile.flavor+'。组合特点：'+profile.description+'。'+(profile.specialRecipe?'这是你们一起发现的隐藏料理「'+profile.specialRecipe.name+'」，触发了「'+profile.specialRecipe.event+'」的专属时刻。':'')+memoryLine+'\n\n请以你本人的身份，说出你端出这道菜时会对用户说的话——带着点期待、有点小得意，或者温柔地看着用户尝第一口。像真实情侣在厨房里的互动，不要客服口吻，不要分析菜谱，不超过90个汉字。'
    : '用户刚刚在你们俩的厨房里亲手做了一道菜，端到你（'+roleName(activeRole)+'）面前请你试吃。菜名：'+currentDish.name+'。食材：'+items+'。风味：'+profile.flavor+'。组合特点：'+profile.description+'。'+(profile.specialRecipe?'这是你们一起发现的隐藏料理「'+profile.specialRecipe.name+'」，触发了「'+profile.specialRecipe.event+'」的专属时刻。':'')+memoryLine+'\n\n请以你本人的身份，说出你看到这道菜、尝第一口时会说的话——可以惊喜、吐槽、温柔回应，或者有点小感动。这是你们在自己厨房里的亲密互动，不是外面买的外卖，也不是餐厅点菜。像真实情侣在家做饭的感觉，不要客服口吻，不要分析菜谱，不超过90个汉字。';
+ /* 真正花钱的一步：发请求前再确认一次，避免为已失效的试吃付一次调用。 */
+ if(!reactionIsCurrent(token,dish))return;
  window.PhoneAPI.complete({system:'你正在 MAOMAO 小手机里扮演用户选定的聊天角色。保持角色人设和语气，不要声称真实存在。角色设定：'+rolePrompt+'\n\n【场景说明】\n这是你们两个人的专属厨房——不是外面的餐厅，不是外卖，不是买的菜。是你们俩一起在厨房里，一个人做饭、另一个人等着尝，或者两个人一起忙活的亲密日常。\n你要清楚地知道：这道菜是谁做的、是在你们自己的厨房里做的，而不是外面买来的。你的反应要带着「我们在自己家厨房」的那种熟悉感和亲密感。\n只输出角色会说的话，不要解释场景，不要分析菜谱。',user:userPrompt,temperature:0.85,timeoutMs:12000}).then(function(text){finish(text||local.quote,text?'ai':'local')}).catch(function(){finish(local.quote,'local')});
 }
 function saveHistory(){try{localStorage.setItem(HISTORY_KEY,JSON.stringify(history))}catch(e){showToast('记录空间不足，暂时无法保存更多菜品')}}

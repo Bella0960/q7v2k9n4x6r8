@@ -157,3 +157,21 @@ On the next turn/session, read this file and the current `AGENTS.md` first. Cont
 - **修改：** 新增 `reactionToken` 与 `tastingLock`；`beginTasting` 进入即加锁并领 token，延迟调用携带 `(token,dish)`；`finish()` 用 `reactionIsCurrent(token,dish)` 丢弃过期响应；`cookAgain` / `editDish` / 切换角色都会 `reactionToken++`。
 - **测试：** `tests/cooking-interaction-guard.test.mjs` 7 项（VM 跑真实 `reactionIsCurrent` + 源码守卫），7/7 通过；`node --check` 通过。
 - **未验证：** 浏览器实际连点与切换角色的时序（需 Chromium/真机）。
+
+## 2026-11-23 · APP-KITCHEN-001 · 试吃过期任务不再发付费请求（PR #432 返工）
+
+- **审查结论：** `beginTasting()` 的 900ms `setTimeout` 未在首行判断 `reactionIsCurrent(token,dish)`，会先写旧的试吃 UI 再调 `requestReaction()`；900ms 内切角色/重做/改菜虽被 `finish()` 拦住回写，但仍会向收费的 `PhoneAPI.complete()` 发出无意义请求。
+- **修改（三处最小校验，只改 `games/js/cooking.js`）：**
+  1. 900ms 回调首行加 `if(!reactionIsCurrent(token,dish))return;`——失效任务不动 UI。
+  2. `requestReaction()` 入口加同样的校验。
+  3. 付费调用 `PhoneAPI.complete(...)` 正前方再加一次校验，确保不发无意义请求。
+- **测试：** `tests/cooking-interaction-guard.test.mjs` 扩到 12 项，其中 5 项为行为测试（VM 跑真实 `beginTasting` / `requestReaction`，`setTimeout` 由测试手动触发，`PhoneAPI.complete` 只计数不联网）：
+  - 900ms 窗口内切角色 → 0 次付费请求，且 `reactionKicker` 不被覆盖
+  - 900ms 窗口内重做（菜品清空）→ 0 次付费请求
+  - 未失效时恰好 1 次请求并写回结果（正向对照，证明校验没把正常路径堵死）
+  - 直接以过期 token 调 `requestReaction` → 0 次请求
+  - 请求已发出后切角色 → 旧响应不回写
+  - 另有源码守卫：延迟回调与付费调用前都必须有归属校验
+  12/12 通过；`node --check` 通过。
+- **集成交接：** 本 PR 基于 main，#431 也改 `requestReaction`（`saveHistory` 相关）与历史入栈。合并时须保留双方修复：004 系列的 `savedOk` 分支 + 本 PR 的两道 `reactionIsCurrent` 校验。
+- **未验证：** 浏览器实际连点时序、Vite 全站构建、Chromium 375/390/430、真机。
