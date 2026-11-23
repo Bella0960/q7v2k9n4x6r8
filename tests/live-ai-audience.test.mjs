@@ -292,7 +292,8 @@ test('源码守卫：默认关闭、护栏常量与关闭即作废', () => {
 
 /* ---------- 总控 P1：预算落盘失败必须 fail-closed ---------- */
 
-test('P1 存储拒写：只允许第一批，之后 0 次付费调用', async () => {
+/* 总控最新复审 P1：预算写入必须读回确认，第一次失败就是 0 请求。 */
+test('P1 存储拒写：第一次就是 0 次付费调用', async () => {
   const store = makeStore();
   const { sb, calls, toasts } = makeRuntime({ store });
   sb.setAiAudience(true);          /* 此时存储正常，先成功开启 */
@@ -300,7 +301,7 @@ test('P1 存储拒写：只允许第一批，之后 0 次付费调用', async ()
 
   sb.aiAudienceTick();
   await flush();
-  assert.equal(calls.length, 1, '第一批照常（已记账）');
+  assert.equal(calls.length, 0, '预算写不进本机就绝不发出付费请求');
   assert.equal(sb.aiAudienceDaily.persistBroken, true, '必须标记预算写入失败');
 
   for (let i = 0; i < 8; i++) {
@@ -309,7 +310,7 @@ test('P1 存储拒写：只允许第一批，之后 0 次付费调用', async ()
     sb.requestAiAudienceBatch();
     await flush();
   }
-  assert.equal(calls.length, 1, '预算写不进本机时必须停止新的付费调用');
+  assert.equal(calls.length, 0, '后续也保持 0 次');
   assert.ok(toasts.some((t) => t.includes('暂停付费调用')), 'must tell the user why it stopped');
 });
 
@@ -320,7 +321,7 @@ test('P1 续：拒写状态下关闭再打开，仍然 0 次新调用', async ()
   store.failWrites(true);
   sb.aiAudienceTick();
   await flush();
-  assert.equal(calls.length, 1);
+  assert.equal(calls.length, 0);
 
   sb.setAiAudience(false);
   sb.setAiAudience(true);
@@ -329,8 +330,41 @@ test('P1 续：拒写状态下关闭再打开，仍然 0 次新调用', async ()
   sb.requestAiAudienceBatch();
   await flush();
 
-  assert.equal(calls.length, 1, '重开开关不得放开 fail-closed');
+  assert.equal(calls.length, 0, '重开开关不得放开 fail-closed');
   assert.equal(sb.aiAudienceDaily.persistBroken, true);
+});
+
+test('P1 续：模拟刷新（新运行时）后拒写仍 0 请求；读回被改也视为失败', async () => {
+  const store = makeStore();
+  const first = makeRuntime({ store });
+  first.sb.setAiAudience(true);
+  store.failWrites(true);
+  first.sb.aiAudienceTick();
+  await flush();
+  assert.equal(first.calls.length, 0);
+
+  const second = makeRuntime({ store });    // 模拟刷新
+  second.sb.setAiAudience(true);
+  second.sb.aiAudience.lastAt = 0;
+  second.sb.aiAudienceTick();
+  await flush();
+  assert.equal(second.calls.length, 0, '刷新重入仍 fail-closed');
+
+  /* 读回校验：写入后内容被改，读回不一致 → 0 请求 */
+  const raw = {};
+  const weird = {
+    getItem: (k) => (k in raw ? raw[k] : null),
+    setItem: (k, v) => { raw[k] = String(v) + '!corrupted'; },
+    removeItem: (k) => { delete raw[k]; },
+    failWrites: () => {},
+    raw,
+  };
+  const third = makeRuntime({ store: weird });
+  third.sb.setAiAudience(true);
+  third.sb.aiAudience.lastAt = 0;
+  third.sb.aiAudienceTick();
+  await flush();
+  assert.equal(third.calls.length, 0, '读回校验失败也必须 fail-closed');
 });
 
 test('P1 续：开关不重置本场已用批次与 3 分钟间隔', async () => {
