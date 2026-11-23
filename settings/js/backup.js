@@ -473,21 +473,31 @@
 
     // 清空后整份写入；逐键 try/catch，任一键失败即视为整体失败
     function restore(snap) {
-        // A backup must never import a device identity from another account/device.
-        // Keep this device's current credential across a full data restore.
-        var localDevice = null;
-        try { localDevice = localStorage.getItem('cloud_device_v1'); } catch (e) {}
+        // Preserve every locally-authorized device credential. A downloaded
+        // backup cannot move device identities between accounts or browsers.
+        var localDeviceKeys = {};
+        try {
+            Object.keys(localStorage).forEach(function(k) {
+                if (/^cloud_device_v[0-9]+(?::|$)/.test(k)) {
+                    localDeviceKeys[k] = localStorage.getItem(k);
+                }
+            });
+        } catch (e) { return false; }
         localStorage.clear();
         var failed = false;
         Object.keys(snap).forEach(function (k) {
-            if (/^cloud_device_v[0-9]+$/.test(k)) return;
-            try { localStorage.setItem(k, String(snap[k])); }
-            catch (e) { failed = true; }
+            if (/^cloud_device_v[0-9]+(?::|$)/.test(k)) return;
+            try {
+                localStorage.setItem(k, String(snap[k]));
+                if (localStorage.getItem(k) !== String(snap[k])) failed = true;
+            } catch (e) { failed = true; }
         });
-        if (localDevice != null) {
-            try { localStorage.setItem('cloud_device_v1', localDevice); }
-            catch (e) { failed = true; }
-        }
+        Object.keys(localDeviceKeys).forEach(function(k) {
+            try {
+                localStorage.setItem(k, localDeviceKeys[k]);
+                if (localStorage.getItem(k) !== localDeviceKeys[k]) failed = true;
+            } catch (e) { failed = true; }
+        });
         return !failed;
     }
 
