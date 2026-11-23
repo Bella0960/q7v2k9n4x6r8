@@ -25,21 +25,33 @@ test('push requests carry same-origin account context and independent device aut
   assert.match(client, /X-MAO-Account-Context/);
   assert.match(client, /credentials: 'same-origin'/);
   assert.match(client, /'X-Device-Auth'/);
-  assert.match(client, /DEVICE_STORAGE_KEY = 'cloud_device_v1'/);
-  assert.match(client, /localStorage\.getItem\(DEVICE_STORAGE_KEY\) !== serialized/);
+  assert.ok(client.includes("DEVICE_STORAGE_PREFIX = 'cloud_device_v2:'"));
+  assert.ok(client.includes("LEGACY_DEVICE_STORAGE_KEY = 'cloud_device_v1'"));
+  assert.ok(client.includes("localStorage.getItem(key) !== serialized"));
+  assert.ok(client.includes('await requestJson(\'/api/push/subscriptions\', { device: legacy })'));
+  assert.ok(client.includes('SUBSCRIPTION_IN_USE'));
+  assert.ok(client.includes('status.subscriptionEndpoints.indexOf(currentSubscription.endpoint)'));
   assert.match(worker, /assertAccountPageContext\(request, path\)/);
   assert.match(worker, /path === '\/api\/push\/subscriptions'/);
   assert.match(worker, /path === '\/api\/push\/test'/);
 });
 
-test('device identity never travels in full/scoped JSON backups, even with API-key export', () => {
-  assert.match(backup, /function neverBackupKey\(key\)[\s\S]{0,100}\^cloud_device_v/);
-  assert.match(backup, /function snapshot\([\s\S]*?cloud_device_v\[0-9\]/);
-  assert.match(backup, /function restore\(snap\)[\s\S]*?var localDevice/);
-  assert.match(backup, /Object\.keys\(snap\)\.forEach\(function \(k\) \{\s*if \(\/\^cloud_device_v/);
-  assert.match(backup, /function verifyRestore\(snap\)[\s\S]*?filter\(function\(k\) \{ return !\/\^cloud_device_v/);
+test('device identity never travels in backups or full restores', () => {
+  assert.ok(backup.includes('function neverBackupKey(key)'));
+  assert.ok(backup.includes('^cloud_device_v[0-9]+(?::|$)'));
+  assert.ok(backup.includes('function snapshot(dropCaches, dropSecrets)'));
+  assert.ok(backup.includes('var localDeviceKeys = {}'));
+  assert.ok(backup.includes('Object.keys(localDeviceKeys).forEach'));
+  assert.ok(backup.includes('function verifyRestore(snap)'));
+  assert.ok(backup.includes('function restoreScoped(snap, scope)'));
 });
 
+test('failed revoke and unsubscribe do not falsely claim successful disconnection', () => {
+  assert.ok(client.includes("await requestJson('/api/devices/revoke'"));
+  assert.ok(client.indexOf("await requestJson('/api/devices/revoke'") <
+    client.indexOf("clearDevice();\n    return { disconnected: true"));
+  assert.ok(client.includes("error.code !== 'SUBSCRIPTION_NOT_FOUND'"));
+});
 test('cloud background model generation is not falsely advertised as ready', () => {
   assert.match(worker, /autonomousMessageGenerationReady: false/);
   assert.match(page, /关闭应用后生成/);
