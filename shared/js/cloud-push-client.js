@@ -1266,7 +1266,11 @@
         }
       }
     }
-    setStatusText(status.message || '未连接');
+    if (status.subscriptionCount > 0 && !subscribed) {
+      setStatusText('云端有旧订阅，但当前浏览器未匹配；重新开启推送可修复');
+    } else {
+      setStatusText(status.message || '未连接');
+    }
     return status;
   }
 
