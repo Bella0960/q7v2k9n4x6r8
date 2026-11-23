@@ -26,14 +26,17 @@ const script = (() => {
 function makeStore(seed = {}) {
   const raw = { ...seed };
   let quota = false;
+  let silentDrop = false;
   return {
     getItem: (k) => (k in raw ? raw[k] : null),
     setItem: (k, v) => {
       if (quota) throw Object.assign(new Error('QuotaExceededError'), { name: 'QuotaExceededError' });
+      if (silentDrop) return;  // 模拟存储静默失败，不抛出异常
       raw[k] = String(v);
     },
     removeItem: (k) => { delete raw[k]; },
     failWrites: (f) => { quota = f; },
+    dropWrites: (f) => { silentDrop = f; },
     raw,
   };
 }
@@ -212,6 +215,22 @@ test('P1 保存失败回滚：图片与标题不得在后续成功写入中偷�
   assert.equal(saved.title, 'Still, Here');
   assert.equal(saved.desc, '笔记');
   assert.equal(saved.image, undefined);
+  assert.equal(saved.favorite, true);
+});
+
+test('P1 静默写入失败：读回不一致必须回滚并提示，不能假报成功', () => {
+  const store = makeStore({ maomao_visual_archive_v1: SEED });
+  const r = makeRuntime({ store });
+  r.sb.openWork(1);
+  r.get('editTitle').value = '静默丢失的标题';
+  store.dropWrites(true);
+  r.get('save').onclick();
+  assert.ok(r.alerts.some(x => x.includes('读回校验失败')), '静默失败必须显示读回警告');
+  assert.equal(r.sb.works?.[0]?.title, undefined, '页面不应通过全局变量泄露作品引用');
+  store.dropWrites(false);
+  r.get('favorite').onclick();
+  const saved = JSON.parse(store.raw.maomao_visual_archive_v1)[0];
+  assert.equal(saved.title, 'Still, Here', '失败修改不得被后续操作带入持久化');
   assert.equal(saved.favorite, true);
 });
 
