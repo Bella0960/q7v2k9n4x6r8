@@ -28,7 +28,7 @@ const QA_DB = '4a24ce58079f468c87c2f75e107c4d1c';
 const CORE_DB = 'e1b78d3813ae4a819841e8c5c3e9e8ec';
 const QA_DO = '4a10d3dab4e16639445f4afdb0b7e5e2462cf06894cb4ae85f0ac3cd3cdba101';
 const CORE_DO = 'dba114c7b0abd8e53d1d78e579924852b8e40907e50213634aeeaeb41ab51a98';
-const BRANCH = 'integration/qa-story-on-current-20261124';
+const BRANCH = 'integration/qa-second-batch-20261124';
 const QA_SETUP_OPEN = 'isolated_authority';
 const QA_SETUP_CLOSED = 'disabled';
 const TESTS = [
@@ -69,6 +69,10 @@ const TESTS = [
   ['node', ['tests/envelope-draft.browser.mjs']],
   ['node', ['--test', 'tests/story-storage-trust.test.mjs']],
   ['node', ['tests/story-save.browser.mjs']],
+  ['node', ['--test', 'tests/travel-storage-trust.test.mjs', 'tests/cafe-save-reliability.test.mjs', 'tests/cafe-stock-writes.test.mjs']],
+  ['node', ['tests/travel-storage.browser.mjs']],
+  ['node', ['--test', 'tests/cooking-interaction-guard.test.mjs']],
+  ['node', ['tests/cooking-interaction.browser.mjs']],
   ['node', ['tests/admin-cloud-mobile.browser.mjs']],
   ['node', ['tests/admin-center-editorial.browser.mjs']],
   ['node', ['tests/desktop-wallpaper-hd.browser.mjs']],
