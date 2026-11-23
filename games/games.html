@@ -729,7 +729,7 @@ function warnGameStorage(text){
   showToast(text||'本机存储空间不足，这次的进度没能保存，刷新后会丢失');
 }
 function saveRaw(key,value,quiet){
-  try{localStorage.setItem(key,value);return true}
+  try{localStorage.setItem(key,String(value));if(localStorage.getItem(key)!==String(value))throw new Error('Game storage readback mismatch');return true}
   catch(e){if(!quiet)warnGameStorage();return false}
 }
 function saveJSON(key,value,quiet){
@@ -781,20 +781,20 @@ function addChatAfterGame(result,gameType){
     var pendingSaved=false;
     try{
       var key='maomao_game_pending_'+String(activeRole.id);
-      localStorage.setItem(key,JSON.stringify({
+      pendingSaved=saveJSON(key,{
         gameType:gameType,
         gameResult:result,
         draft:draft,
         createdAt:new Date().toISOString()
-      }));
-      pendingSaved=true;
+      },true);
     }catch(e){pendingSaved=false}
-    var chatUrl='../chat/chat/chat-detail.html?id='+encodeURIComponent(activeRole.id)+'&game='+gameType;
+    var chatBase='../chat/chat/chat-detail.html?id='+encodeURIComponent(activeRole.id);
+    var chatUrl=chatBase+'&game='+gameType;
     if(!pendingSaved){
       /* 写不进去就必须清掉上一次的旧草稿，否则聊天页会拿旧话题冒充这一局。 */
       try{localStorage.removeItem('maomao_game_pending_'+String(activeRole.id))}catch(err){}
       showToast('战场小结没能存到本机，这次就不带话题进聊天了');
-      setTimeout(function(){location.href=chatUrl},1100);
+      setTimeout(function(){location.href=chatBase},1100);
       return;
     }
     location.href=chatUrl;
