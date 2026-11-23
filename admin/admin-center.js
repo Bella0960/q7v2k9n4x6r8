@@ -170,7 +170,7 @@
     // or a guessed account ID. The user must re-enter a Worker-gated document.
     const needsFreshEntry = /账号上下文|服务器注入/.test(String(message || ''));
     const friendlyMessage = needsFreshEntry
-      ? '当前页面未正确关联登录账号。请返回桌面重新进入管理中心。'
+      ? '当前页面尚未完成安全账号关联。请在这个测试站登录已有账号，再从桌面进入管理中心。不要重新注册或清除本地数据。'
       : (message || '操作失败，请稍后再试。');
     let node = $('adminError');
     if (!node) {
@@ -181,14 +181,17 @@
     node.replaceChildren(el('span', '', friendlyMessage));
     if (typeof retry === 'function') {
       const retryButton = el('button', 'error-retry', '重新检查');
-      if (needsFreshEntry) retryButton.textContent = '返回桌面';
+      if (needsFreshEntry) retryButton.textContent = '登录已有账号';
       retryButton.type = 'button';
       retryButton.addEventListener('click', async () => {
         if (retryButton.disabled) return;
         retryButton.disabled = true;
         try {
           if (needsFreshEntry) {
-            window.location.assign('/index.html');
+            // Missing injected scope is never fixed by returning to another
+            // protected page in the same unauthenticated browser session.
+            // Use the public same-origin sign-in; never guess or persist an ID.
+            window.location.assign('/account/index.html?admin=1');
             return;
           }
           await retry();
@@ -1417,7 +1420,21 @@
     initializing = true;
     let sessionVerified = false;
     try {
+      // A direct external link may open in a separate browser cookie jar.
+      // Refuse private API reads until the Worker has injected a verified page
+      // scope. Neither a query parameter nor local storage can replace it.
+      const pageAccountId = pageAccountContext();
+      if (!pageAccountId) {
+        const error = new Error('管理中心缺少服务器注入的账号上下文。');
+        error.code = 'ACCOUNT_CONTEXT_REQUIRED';
+        throw error;
+      }
       const me = await api('/api/accounts/me');
+      if (me.account && me.account.id !== pageAccountId) {
+        const error = new Error('管理中心账号上下文与当前登录账号不一致。');
+        error.code = 'ACCOUNT_CONTEXT_CHANGED';
+        throw error;
+      }
       if (!me.account || me.account.role !== 'super_admin' || me.account.status !== 'active') {
         window.location.replace('/account/index.html?admin=1');
         return;

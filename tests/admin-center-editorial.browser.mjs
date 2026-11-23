@@ -173,8 +173,12 @@ try {
     await page.locator('#refreshUsers').click();
     await page.locator('.page-error').waitFor();
     const recovery = await page.locator('.page-error').innerText();
-    assert.match(recovery, /返回桌面/);
+    assert.match(recovery, /登录已有账号/);
     assert.doesNotMatch(recovery, /MAO/);
+    await Promise.all([
+      page.waitForURL(/\/account\/index\.html\?admin=1$/),
+      page.locator('.error-retry').click()
+    ]);
     console.log('EDITORIAL_ADMIN_PASS ' + (process.env.ADMIN_BROWSER || 'chromium') + ' ' + width + 'px tabs, data, layout and safe context recovery');
     await context.close();
   }
