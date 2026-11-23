@@ -81,3 +81,22 @@ test('design stays neutral, responsive and free of fake service health indicator
   assert.ok(html.includes('admin-workspace.css?v=20261123-v1'));
   assert.ok(html.includes('admin-center.js?v=20261123-workspace1'));
 });
+
+// MAOMAO interface preference: only functional back-navigation arrows may appear.
+// Decorative upward, diagonal, link and dropdown arrows are explicitly forbidden.
+test('management dashboard uses no decorative arrow glyphs or arrow icon slots', () => {
+  for (const [filename, source] of [
+    ['admin-center.html', html],
+    ['admin-center.js', js],
+    ['admin-workspace.css', css]
+  ]) {
+    assert.doesNotMatch(source, /[↗↑↖↘↓⇧➚→➔➜➝➞➤]/, filename + ' contains a forbidden arrow');
+    assert.doesNotMatch(source, /overview-(?:shortcut-arrow|entry-chevron)/,
+      filename + ' contains a decorative arrow slot');
+  }
+  // Textual actions and original permissions stay intact.
+  assert.match(html, /id="overviewOpenPending"/);
+  assert.match(html, /data-overview-target="audit"/);
+  assert.match(html, /href="\.\/cloud\.html"/);
+  assert.match(js, /openAccountFromInvite\(account\.id\)/);
+});
