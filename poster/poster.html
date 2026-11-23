@@ -123,6 +123,8 @@ const seed=[
 {id:6,title:'Room for Quiet',caption:'A PLACE TO RETURN',type:'space',desc:'为自己留一小块不被打扰的空间。',art:'a6'}];
 let works;try{works=JSON.parse(localStorage.getItem(KEY))||seed.map(x=>({...x}));if(!Array.isArray(works))works=seed.map(x=>({...x}));}catch(e){works=seed.map(x=>({...x}));}
 let filter='all',current=null;
+/* 每件作品独立记录保存代次，过期的 FileReader 回调不得覆盖该作品更新的编辑。 */
+const workSaveEpoch=new WeakMap();
 /* art 只允许 a1–a6：它会被拼进 className/innerHTML，来自本地存储的值必须过白名单。 */
 const safeArt=a=>/^[a][1-6]$/.test(String(a||''))?String(a):'a2';
 const grid=document.getElementById('grid'),modal=document.getElementById('modal');
@@ -180,19 +182,32 @@ document.getElementById('save').onclick=()=>{
  if(!title){alert('请填写作品标题。');return;}
  const desc=document.getElementById('editDesc').value.trim();
  const file=document.getElementById('editImage').files[0];
- /* 校验必须发生在改动之前：否则超大图片被拒绝时，标题/注释已经悄悄改了内存。 */
+ /* 先完成校验，再推进该作品自己的保存代次。 */
  if(file&&file.size>1.5*1024*1024){alert('图片建议小于 1.5MB，避免占用过多手机存储。');return;}
+ const epoch=(workSaveEpoch.get(target)||0)+1;
+ workSaveEpoch.set(target,epoch);
  const apply=(image)=>{
+   if(workSaveEpoch.get(target)!==epoch)return; /* 同一作品较新的保存已生效，丢弃旧读图回调 */
+   const prevTitle=target.title,prevDesc=target.desc;
+   const hadImage=Object.prototype.hasOwnProperty.call(target,'image'),prevImage=target.image;
    target.title=title;target.desc=desc;
    if(image!==undefined)target.image=image;
-   if(!persist())return;
+   if(!persist()){
+     target.title=prevTitle;target.desc=prevDesc;
+     if(hadImage)target.image=prevImage;else delete target.image;
+     return;
+   }
    render();
    if(current===target)openWork(target.id);
  };
- if(file){const reader=new FileReader();reader.onload=()=>apply(reader.result);reader.readAsDataURL(file);}
- else apply(undefined);
+ if(file){
+   const reader=new FileReader();
+   reader.onload=()=>apply(reader.result);
+   reader.onerror=()=>alert('图片读取失败，作品内容没有修改，请重新选择图片。');
+   try{reader.readAsDataURL(file);}catch(e){alert('图片读取失败，作品内容没有修改，请重新选择图片。');}
+ }else apply(undefined);
 };
-document.getElementById('favorite').onclick=()=>{if(!current)return;current.favorite=!current.favorite;if(!persist())return;render();openWork(current.id);};
+document.getElementById('favorite').onclick=()=>{if(!current)return;const prev=current.favorite;current.favorite=!current.favorite;if(!persist()){current.favorite=prev;return;}render();openWork(current.id);};
 document.getElementById('removeImage').onclick=()=>{if(!current)return;var prevImg=current.image;delete current.image;if(!persist()){current.image=prevImg;return;}render();openWork(current.id);};
 document.getElementById('addWork').onclick=()=>{
  const id=works.reduce((m,w)=>Math.max(m,w.id),0)+1;
