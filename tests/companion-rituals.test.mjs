@@ -23,7 +23,8 @@ const script = (() => {
   return page.slice(start + '<script>'.length, end);
 })();
 
-const KEY = 'maomao_companion_v1';
+/* 状态已按正式角色分桶（总控 P1）：测试的当前角色是 roleA */
+const KEY = 'maomao_companion_v1_roleA';
 
 function makeStore(seed = {}) {
   const raw = { ...seed };
@@ -178,18 +179,35 @@ test('进行中锁：连续点击不会并发花钱', async () => {
   assert.ok(calls.length <= 1, '并发点击不得产生多次请求');
 });
 
-test('预算写不进本机：标记并暂停后续付费调用', async () => {
+test('预算写不进本机：第一次就是 0 次付费请求（fail-closed）', async () => {
   const store = makeStore();
   const { calls, get } = makeRuntime({ store });
   store.failWrites(true);          // 之后任何 setItem 都失败
   await get('askRoleBtn').click();
   await flush();
-  assert.equal(calls.length, 1, '第一批照常（已按保守计数）');
+  assert.equal(calls.length, 0, '预算写不进本机就绝不能发出付费请求');
+  assert.ok(get('toast').textContent.includes('预算') || get('toast').textContent.includes('没能写入'), '必须说明原因');
 
   get('sb').lastReplyAt = 0;
   await get('askRoleBtn').click();
   await flush();
-  assert.equal(calls.length, 1, '预算写不进本机时必须停止继续花钱');
+  assert.equal(calls.length, 0, '后续也保持 0 次');
+});
+
+test('P1 续：预算写入必须读回确认（不是只看有没有抛异常）', () => {
+  /* 用一个会「写进去但读出来不一样」的假存储验证读回校验 */
+  const raw = {};
+  const store = {
+    getItem: (k) => (k in raw ? raw[k] : null),
+    setItem: (k, v) => { raw[k] = String(v) + '!corrupted'; },   /* 写入后内容被改，读回不匹配 */
+    removeItem: (k) => { delete raw[k]; },
+    raw,
+  };
+  const r = makeRuntime({ store });
+  r.get('askRoleBtn').click();
+  return Promise.resolve().then(() => {
+    assert.equal(r.calls.length, 0, '读回校验失败也必须 fail-closed');
+  });
 });
 
 test('失败不自动重试：只 1 次请求并提示', async () => {
@@ -219,4 +237,50 @@ test('源码守卫：不再自建 AI 通道、不读旧配置、有成本护栏'
   assert.ok(script.includes('REPLY_MIN_INTERVAL'), '必须有最小间隔');
   assert.ok(script.includes('getCurrentContactId'), '必须绑定正式角色');
   assert.equal(/Made by|作者：/.test(page), false, 'no developer signature');
+});
+
+/* ---------- 总控首轮审查：真实脚本链与角色私有数据 ---------- */
+
+test('真实 HTML 真的加载了 phone_storage.js 与 phone_api.js，且在内联脚本之前', () => {
+  for (const lib of ['shared/js/phone/phone_storage.js', 'shared/js/phone/phone_api.js']) {
+    const at = page.indexOf(lib);
+    assert.ok(at > 0, '独立页面必须加载 ' + lib);
+    const inlineAt = page.indexOf("<script>");
+    assert.ok(at < page.lastIndexOf('<script>'), lib + ' 必须在内联脚本之前');
+  }
+});
+
+test('状态按正式角色分桶：A 的留言不会跟着 B 出现', () => {
+  const store = makeStore();
+  const a = makeRuntime({ store, currentRole: 'roleA' });
+  a.get('commentInput').value = '阿岚房间的留言';
+  a.get('commentForm')._h.submit({ preventDefault() {} });
+
+  const b = makeRuntime({ store, currentRole: 'roleB' });
+  const savedB = JSON.parse(store.raw['maomao_companion_v1_roleB'] || '{}');
+  assert.equal((savedB.comments || []).length, 0, 'B 打开时留言区必须是空的');
+  const savedA = JSON.parse(store.raw['maomao_companion_v1_roleA'] || '{}');
+  assert.ok((savedA.comments || []).some((c) => c.includes('阿岚房间的留言')));
+});
+
+test('自由输入的名字不能作为付费人设：未绑正式角色时只给本地回应', async () => {
+  const store = makeStore();
+  const r = makeRuntime({ store, currentRole: '' });    // 没有当前正式角色
+  await r.get('askRoleBtn').click();
+  await flush();
+  assert.equal(r.calls.length, 0, '没有合法正式角色就绝不调用模型');
+  assert.ok(r.get('toast').textContent.includes('正式角色'));
+});
+
+test('旧全局键只对「归属角色」兼容：A 的旧留言不会以 B 的身份出现', () => {
+  const store = makeStore({
+    'maomao_companion_v1': JSON.stringify({ role: '白露', comments: ['白露的旧留言'], alarms: [], steps: 0, shakes: 0, likes: 0 }),
+  });
+  const a = makeRuntime({ store, currentRole: 'roleA' });   // 阿岚 ≠ 白露
+  const aState = JSON.parse(store.raw['maomao_companion_v1_roleA'] || '{}');
+  assert.equal((aState.comments || []).length, 0, '阿岚不得继承白露的旧留言');
+
+  const b = makeRuntime({ store, currentRole: 'roleB' });   // 白露 = 归属角色
+  const bState = JSON.parse(store.raw['maomao_companion_v1_roleB'] || '{}');
+  assert.ok((bState.comments || []).some((c) => c.includes('白露的旧留言')), '归属角色可以只读兼容旧数据');
 });
