@@ -372,6 +372,29 @@ test('预算落盘失败：读回被改也视为失败（不只看有没有抛�
   assert.equal(calls.length, 0, '读回校验失败也必须 fail-closed');
 });
 
+test('P1 旧角色预算键先于 device 时，必须读回核对本次 device 扣次', async () => {
+  const raw = {
+    maomao_detective_gen_budget_v1: JSON.stringify({ roleA: { day: today(), used: 1 } }),
+  };
+  /* 有旧角色预算键时首键为 roleA。模拟浏览器读回 device 被改，旧键却不变。
+     旧实现只检查首键，会误判已成功扣次并发出付费请求。 */
+  const store = {
+    getItem: (k) => (k in raw ? raw[k] : null),
+    setItem: (k, value) => {
+      const data = JSON.parse(value);
+      if (k === 'maomao_detective_gen_budget_v1' && data.device) data.device.used = 0;
+      raw[k] = JSON.stringify(data);
+    },
+    removeItem: (k) => { delete raw[k]; },
+    raw,
+  };
+  const { sb, calls, toasts } = makeRuntime({ store });
+  sb.generateDetectiveCase();
+  await flush();
+  assert.equal(calls.length, 0, '本次 device 桶未按预期落盘时必须 0 请求');
+  assert.ok(toasts.some(t => t.includes('暂停生成')), '必须明确提示预算保存失败');
+});
+
 test('预算落盘失败：模拟刷新后重试同样 0 请求', async () => {
   const store = makeStore({ saveWorks: true });
   const first = makeRuntime({ store, saveWorks: false });
