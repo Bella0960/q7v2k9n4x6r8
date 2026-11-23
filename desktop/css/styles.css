@@ -1575,6 +1575,16 @@ button { color: inherit; font: inherit; }
   border-radius: 4px;
 }
 
+/* Keep widget geometry in sync with desktop/widgets.html CATALOG (2×2).
+   Without an explicit row span these cards occupy only one physical row. */
+.desktop-grid .ds-todo,
+.desktop-grid .ds-cal,
+.desktop-grid .ds-count {
+  grid-column: span 2;
+  grid-row: span 2;
+  min-height: 0;
+}
+
 /* ===== 今日待办（2×2） ===== */
 .ds-todo {
   display: flex;
