@@ -68,7 +68,9 @@
 
 ## 3. 自测证据（headless Chromium，非真机；开发者自测，非公共 QA 总控验证）
 
-- `node --check theme-studio/studio.js`：通过。
+> 返修（#478 评论 7108275575，3 P1 + 2 P2）后已重跑以下全量回归，结果如下。
+
+- `node --check theme-studio/studio.js`、`node --check tests/theme-studio-draft-browser.mjs`：通过。
 - `node --test tests/theme-studio.test.mjs tests/theme-studio-advanced.test.mjs tests/theme-studio-preset.test.mjs`：**22/22 PASS**。
 - `node tests/theme-studio-draft-browser.mjs`（`test:studio:draft:browser`）：**3/3 PASS**（375 / 390 / 430）。
 - `node tests/theme-studio-preset-browser.mjs`（#473 预设管理）：**3/3 PASS**，无回归。
@@ -91,3 +93,21 @@
 ## 6. 回滚方法
 
 - 改动集中在 `theme-studio/studio.js` 的基线/历史/保护段、`theme-studio/studio.css` 标题区样式、`theme-studio/theme-studio.html` 按钮、新增 `tests/theme-studio-draft-browser.mjs` 与 `package.json` 脚本；`tests/theme-studio-preset-browser.mjs` 仅补 beforeunload 对话框适配。如需回滚，还原上述文件并删除新增测试与脚本入口即可；runtime 与存储 schema 未改动，老配置读取不受影响。
+
+## 7. 复审返修（#478 评论 7108275575：3 P1 + 2 P2）
+
+均为定向最小修改，未改 runtime、存储 schema、CSS/HTML 结构与其他模块。
+
+- **P1-1 气泡编辑 dirty 不出现**：`snapshotKey('bubble:<scope>')` 原先只读暂存缓存/已应用基线，不读正在编辑的 `drafts.bubble`，导致不切作用域直接改气泡时脏标记隐藏、离开不拦截。现仅当 `scope===当前作用域 && tab==='bubble'` 时直读 `cleanBubble(drafts.bubble)`，其他作用域仍回退缓存/真实 resolve，避免跨角色串草稿。
+- **P1-2 导入后 UI 不刷新**：导入成功 Promise 分支原先只 `drawFields/drawPreview/renderImageSlots`，缺 dirty 与历史按钮刷新。已在该分支末尾补 `refreshDirty()`、`refreshHistoryButtons()`。
+- **P1-3 异步图片上传撤销连带抹掉期间其它编辑**：原先在上传开始前缓存整份 `before`，Promise 返回后用过期快照入栈，会撤掉上传期间同 tab 的圆角/颜色修改。现移除开始前快照；新增按槽位计数的 `imageSeq` 序号防旧上传迟到覆盖；成功当下取最新 `before=api.clean(target.tab,drafts[target.tab])`，写入新 ID 后比较 before/after，有实质差异才 `pushHistory`；过期序号的 then/catch 直接丢弃。
+- **P2-1 幽灵历史节点**：`applyPresetToDraft` 与 `restoreDraft` 原先无条件 `pushHistory`。改为先算目标值/基线，与当前快照一致则不入栈，分别提示「草稿与该方案一致」「草稿已是最后保存的配置」并返回。
+- **P2-2 双确认**：返回链接 confirm 确认离开后，浏览器可能再弹原生 beforeunload。新增 `allowLeaveOnce` 标志：confirm 取消则 `preventDefault` 停留、标志保持 false；confirm 确定则置 true，beforeunload 单次放行后复位 false；取消仍完全停留。
+- 自查附带修复：`restoreSnapshot` 原先未调 `renderImageSlots()`，撤销/重做还原图片 ID 后缩略图槽不刷新，已补入。
+
+### 返修新增回归断言（`theme-studio-draft-browser.mjs`）
+- P1-1：global 与 role-A 气泡编辑后**不切作用域**即断言 `contextDirty===true`、dirtyTag 可见、undo 可点。
+- P1-2：list-only 与 bubble JSON 导入后同 tab 立即断言脏标记可见、撤销可点。
+- P1-3：两次上传不同色合成图，上传期间改 `itemRadius=30`；一次撤销只回退到第一张图，非图片草稿（圆角 30）保留；过期序号结果不覆盖当前草稿。
+- P2-1：干净基线态点还原草稿不增 undo；载入与草稿一致的预设不增 undo、redo 保持空。
+- P2-2：confirm accept 后单次放行导航到 `index.html`，原生 beforeunload 不再二次拦截。

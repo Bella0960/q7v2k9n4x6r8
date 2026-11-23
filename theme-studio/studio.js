@@ -80,6 +80,7 @@
   var pendingBefore = null;
   var tab = 'list', scope = 'global', noticeTimer, chosenImageSlot = null;
   var photoLeases = Object.create(null);
+  var imageSeq = Object.create(null);
   var imageFields = {list:[['coverImage','聊天主页封面','封面图片'],['listImage','聊天卡片底纸','列表图片']], detail:[['chatImage','聊天背景图','背景图片']]};
   var $ = function (id) { return document.getElementById(id); };
   function toast(message) {
@@ -109,7 +110,14 @@
   function ctxKey(){ return tab==='bubble' ? 'bubble:'+scope : tab; }
   function histFor(key){ if(!history[key]) history[key]={undo:[],redo:[]}; return history[key]; }
   function snapshotKey(key){
-    if(key.indexOf('bubble:')===0){ var s=key.slice(7); return cleanBubble(bubbleDrafts[s]||resolveBubbleApplied(s)); }
+    if(key.indexOf('bubble:')===0){
+      var s=key.slice(7);
+      // The scope currently being edited holds its live draft in drafts.bubble; only
+      // that context reads it directly. Other scopes fall back to their staged cache
+      // or the real resolved baseline, so a stale drafts.bubble never leaks across roles.
+      if(s===scope && tab==='bubble') return cleanBubble(drafts.bubble);
+      return cleanBubble(bubbleDrafts[s]||resolveBubbleApplied(s));
+    }
     return api.clean(key, drafts[key]);
   }
   function currentSnapshot(){
@@ -339,12 +347,16 @@
         var to=scopeName(scope);
         if(!window.confirm('该方案来自「'+from+'」，载入到「'+to+'」草稿？仅作模板，不会自动应用。'))return;
       }
+      var next=cleanBubble(p.values);
+      if(sameValue(currentSnapshot(),next)){ toast('草稿与该方案一致'); return; }
       pushHistory('bubble:'+scope, currentSnapshot());
-      drafts.bubble=cleanBubble(p.values);
+      drafts.bubble=next;
       bubbleDrafts[scope]=cleanBubble(drafts.bubble);
     } else {
+      var nextT=api.clean(p.tab,p.values);
+      if(sameValue(currentSnapshot(),nextT)){ toast('草稿与该方案一致'); return; }
       pushHistory(p.tab, currentSnapshot());
-      drafts[p.tab]=api.clean(p.tab,p.values);
+      drafts[p.tab]=nextT;
     }
     drawFields();drawPreview();renderImageSlots();refreshDirty();refreshHistoryButtons();toast('已载入草稿，点应用后生效');
   }
@@ -662,22 +674,31 @@
   $('savePreset').addEventListener('click',storePreset);
   $('undoButton').addEventListener('click',undo);
   $('redoButton').addEventListener('click',redo);
+  var allowLeaveOnce=false;
   var backLink=document.querySelector('.back');
   if(backLink){
     backLink.addEventListener('click',function(event){
-      if(anyDirty() && !window.confirm('有未应用的改动，离开工作台将丢失这些草稿。确定离开吗？')) event.preventDefault();
+      if(!anyDirty()) return;
+      if(!window.confirm('有未应用的改动，离开工作台将丢失这些草稿。确定离开吗？')){ event.preventDefault(); return; }
+      // The user confirmed leaving through the custom dialog: allow this one navigation
+      // past the native beforeunload guard instead of asking a second time. Cancelling
+      // stays on the page and leaves the dirty guard armed.
+      allowLeaveOnce=true;
     });
   }
   window.addEventListener('beforeunload',function(event){
+    if(allowLeaveOnce){ allowLeaveOnce=false; return; }
     if(anyDirty()){ event.preventDefault(); event.returnValue=''; }
   });
   $('restoreDraft').addEventListener('click',function(){
+    var base=tab==='bubble'?cleanBubble(applied.bubble[scope]||resolveBubbleApplied(scope)):api.clean(tab,applied[tab]);
+    if(sameValue(currentSnapshot(),base)){ toast('草稿已是最后保存的配置'); return; }
     pushHistory(ctxKey(),currentSnapshot());
     if(tab==='bubble'){
-      drafts.bubble=cleanBubble(applied.bubble[scope]||resolveBubbleApplied(scope));
+      drafts.bubble=base;
       bubbleDrafts[scope]=cleanBubble(drafts.bubble);
     } else {
-      drafts[tab]=api.clean(tab,applied[tab]);
+      drafts[tab]=base;
     }
     drawFields();drawPreview();renderImageSlots();refreshDirty();refreshHistoryButtons();toast('已还原到最后保存的配置');
   });
@@ -690,7 +711,7 @@
     var capturedTab=tab,capturedScope=scope;
     file.text().then(function(text){
       if(tab!==capturedTab||scope!==capturedScope){toast('导入已过期，请重新选择文件');return;}
-      unpackImport(text,file.name);drawFields();drawPreview();renderImageSlots();toast('导入成功，请分别检查并应用各区域');
+      unpackImport(text,file.name);drawFields();drawPreview();renderImageSlots();refreshDirty();refreshHistoryButtons();toast('导入成功，请分别检查并应用各区域');
     }).catch(function(error){toast(error && error.message ? error.message : '导入失败');});
     this.value='';
   });
@@ -701,15 +722,24 @@
     if(!file||!target)return;
     var assets=window.MAOMAOThemeStudioAssets;
     if(!assets){toast('图片仓库未加载，请刷新再试');return;}
-    var before=api.clean(target.tab,drafts[target.tab]);
+    var slot=target.tab+'.'+target.key;
+    var mySeq=(imageSeq[slot]||0)+1; imageSeq[slot]=mySeq;
     toast('正在处理并保存图片…');
-    assets.upload(file,target.tab+'.'+target.key).then(function(id){
-      pushHistory(target.tab,before);
+    assets.upload(file,slot).then(function(id){
+      // A newer upload for this slot wins; a stale late result must not overwrite the
+      // current draft or history. The history before-value is read now (latest draft),
+      // so other field edits made while the upload was in flight are not rolled back.
+      if(imageSeq[slot]!==mySeq) return;
+      var before=api.clean(target.tab,drafts[target.tab]);
       drafts[target.tab][target.key]=id;
+      var after=api.clean(target.tab,drafts[target.tab]);
+      if(!sameValue(before,after)) pushHistory(target.tab,before);
       if(tab===target.tab)renderImageSlots();
       drawPreview();refreshDirty();refreshHistoryButtons();
       toast('图片已导入本机，请点「应用到聊天」');
-    }).catch(function(error){toast(error&&error.message||'图片导入失败');});
+    }).catch(function(error){
+      if(imageSeq[slot]===mySeq) toast(error&&error.message||'图片导入失败');
+    });
   });
   window.addEventListener('pagehide',function(){
     Object.keys(photoLeases).forEach(function(key){if(photoLeases[key].asset)photoLeases[key].asset.revoke();});

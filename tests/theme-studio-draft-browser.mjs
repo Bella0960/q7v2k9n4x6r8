@@ -80,13 +80,13 @@ async function editColor(page, selector, hex) {
   }, { sel: selector, h: hex });
   await delay(80);
 }
-async function uploadCoverImage(page) {
-  const imageData = await page.evaluate(() => {
+async function uploadCoverImage(page, fill) {
+  const imageData = await page.evaluate((color) => {
     const canvas = document.createElement('canvas');
     canvas.width = 16; canvas.height = 12;
-    const ctx = canvas.getContext('2d'); ctx.fillStyle = '#777777'; ctx.fillRect(0, 0, 16, 12);
+    const ctx = canvas.getContext('2d'); ctx.fillStyle = color || '#777777'; ctx.fillRect(0, 0, 16, 12);
     return canvas.toDataURL('image/png');
-  });
+  }, fill || '#777777');
   const buffer = Buffer.from(imageData.slice(imageData.indexOf(',') + 1), 'base64');
   await page.locator('#imageSlots .image-slot').first().locator('button').first().click();
   await page.locator('#imageFile').setInputFiles({ name: 'synthetic-qa.png', mimeType: 'image/png', buffer });
@@ -128,6 +128,14 @@ try {
     assert.equal(await redoDisabled(page), true, width + 'px redo disabled on clean load');
     assert.equal(await dirtyHidden(page), true, width + 'px dirty tag hidden on clean load');
     const baseRadius = snap.list.itemRadius;
+
+    // 1b. Restoring an unchanged draft creates no phantom undo node and keeps redo empty.
+    await page.click('#restoreDraft');
+    await delay(80);
+    snap = await snapshot(page);
+    assert.equal(snap.undo, 0, width + 'px restore on unchanged draft adds no history node');
+    assert.equal(snap.redo, 0, width + 'px unchanged restore keeps redo empty');
+    assert.equal(snap.dirty, false, width + 'px unchanged restore stays clean');
 
     // 2. One completed slider operation records a single node and marks dirty.
     await editRange(page, '#edit-itemRadius', '22');
@@ -192,6 +200,15 @@ try {
     onDialog(page, 'accept', '列表方案');
     await page.click('#savePreset');
     await delay(120);
+
+    // 9b. Loading a preset that already matches the draft records no phantom history node.
+    let snapMatch = await snapshot(page);
+    const undoBeforeMatchingLoad = snapMatch.undo;
+    await page.locator('.preset-entry .preset-use').first().click();
+    await delay(120);
+    snapMatch = await snapshot(page);
+    assert.equal(snapMatch.undo, undoBeforeMatchingLoad, width + 'px matching preset load adds no history node');
+
     await editRange(page, '#edit-itemRadius', '30');
     await page.locator('.preset-entry .preset-use').first().click();
     await delay(120);
@@ -234,22 +251,44 @@ try {
       width + 'px list-only import adds no bubble history');
     assert.ok((snap.stacks.list || { undo: 0 }).undo >= 1,
       width + 'px list section records the import node');
+    assert.equal(await dirtyHidden(page), false, width + 'px import marks current context dirty immediately');
+    assert.equal(await undoDisabled(page), false, width + 'px import enables undo immediately');
 
-    // 10c. Uploaded image asset id is part of the snapshot: undo drops it, redo restores it.
-    await uploadCoverImage(page);
-    await page.waitForFunction(() => {
-      const s = window.MAOMAOThemeStudio._draftSnapshot();
-      return /^as_[A-Z2-7]{32}$/.test(s.list.coverImage);
-    }, { timeout: 15000 });
+    // 10c. Image asset ids are part of the snapshot. A later upload's undo must roll
+    //      back only that image: an unrelated radius edit made after the first upload
+    //      survives undoing the second upload.
+    await uploadCoverImage(page, '#777777');
+    await page.waitForFunction(() =>
+      /^as_[A-Z2-7]{32}$/.test(window.MAOMAOThemeStudio._draftSnapshot().list.coverImage),
+      null, { timeout: 15000 });
     snap = await snapshot(page);
-    const coverId = snap.list.coverImage;
-    assert.match(coverId, /^as_[A-Z2-7]{32}$/, width + 'px uploaded image stores an asset id');
+    const coverA = snap.list.coverImage;
+    assert.match(coverA, /^as_[A-Z2-7]{32}$/, width + 'px first uploaded image stores an asset id');
+
+    await editRange(page, '#edit-itemRadius', '30');
+
+    await uploadCoverImage(page, '#333333');
+    await page.waitForFunction((prev) => {
+      const id = window.MAOMAOThemeStudio._draftSnapshot().list.coverImage;
+      return /^as_[A-Z2-7]{32}$/.test(id) && id !== prev;
+    }, coverA, { timeout: 15000 });
+    snap = await snapshot(page);
+    const coverB = snap.list.coverImage;
+    assert.notEqual(coverB, coverA, width + 'px second upload produces a distinct asset id');
+
+    // Undo the second upload: first image returns, the radius edit (30) is NOT rolled back.
     await page.click('#undoButton');
     snap = await snapshot(page);
-    assert.equal(snap.list.coverImage, '', width + 'px undo drops the uploaded image id');
-    await page.click('#redoButton');
+    assert.equal(snap.list.coverImage, coverA, width + 'px undo second upload restores first image');
+    assert.equal(snap.list.itemRadius, 30, width + 'px unrelated radius edit survives undoing the image');
+
+    // Undo the radius edit, then the first upload.
+    await page.click('#undoButton');
     snap = await snapshot(page);
-    assert.equal(snap.list.coverImage, coverId, width + 'px redo restores the uploaded image id');
+    assert.equal(snap.list.coverImage, coverA, width + 'px undo radius edit keeps the first image');
+    await page.click('#undoButton');
+    snap = await snapshot(page);
+    assert.equal(snap.list.coverImage, '', width + 'px undo drops the first uploaded image id');
 
     // 11. Leaving with dirty drafts asks; cancelling does not navigate away.
     await editRange(page, '#edit-itemRadius', '29');
@@ -273,6 +312,9 @@ try {
     await editColor(page, '#edit-myBubbleBg', '#aaaaaa');
     let globalSnap = await snapshot(page);
     assert.equal(globalSnap.bubble.myBubbleBg, '#aaaaaa', width + 'px global bubble draft staged');
+    assert.equal(globalSnap.contextDirty, true, width + 'px global bubble edit is dirty without switching scope');
+    assert.equal(await dirtyHidden(page), false, width + 'px global dirty tag visible without scope switch');
+    assert.equal(await undoDisabled(page), false, width + 'px global undo enabled without scope switch');
     const globalUndo = globalSnap.undo;
 
     await page.selectOption('#bubbleScope', 'role-a');
@@ -281,6 +323,7 @@ try {
     let roleSnap = await snapshot(page);
     assert.equal(roleSnap.bubble.myBubbleBg, '#bbbbbb', width + 'px role A bubble draft staged');
     assert.equal(roleSnap.scope, 'role-a', width + 'px scope switched to role A');
+    assert.equal(roleSnap.contextDirty, true, width + 'px role A bubble edit is dirty without switching back');
 
     // Back to global: its staged draft survives; role A's history does not leak in.
     await page.selectOption('#bubbleScope', 'global');
@@ -333,6 +376,17 @@ try {
 
     assert.deepEqual(pageErrors, [], width + 'px workbench should not throw runtime errors');
     await page.screenshot({ path: resolve(outDir, `theme-studio-draft-${width}.png`) });
+
+    // 13. Confirming the back navigation leaves once; the native beforeunload must not
+    //     block the accepted navigation a second time.
+    onDialog(page, 'accept');
+    await Promise.all([
+      page.waitForNavigation({ timeout: 5000 }),
+      page.evaluate(() => document.querySelector('.back').click())
+    ]);
+    assert.ok(!page.url().includes('theme-studio.html'),
+      width + 'px accepted back navigates away from the workbench');
+
     count++;
     console.log('PASS theme-studio draft guard + undo/redo @ ' + width + 'px');
     await context.close();
