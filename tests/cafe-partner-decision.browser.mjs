@@ -65,10 +65,12 @@ try {
     const buy = page.locator('#view-stock [data-buy="beans"]');
     const stockBefore = await readState();
     await page.evaluate(() => { window.ignoreCafeWrites = true; });
+    await page.locator('#view-stock [data-buy-qty="beans"]').fill('1');
     await buy.tap();
     assert.deepEqual(await readState(), stockBefore);
     assert.match(await page.locator('#toast').innerText(), /写入失败/);
     await page.evaluate(() => { window.ignoreCafeWrites = false; });
+    await page.locator('#view-stock [data-buy-qty="beans"]').fill('1');
     await buy.tap();
     const stockAfter = await readState();
     assert.equal(stockAfter.stock.beans, stockBefore.stock.beans + 1);
