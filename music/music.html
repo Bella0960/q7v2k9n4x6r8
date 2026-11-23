@@ -1694,7 +1694,8 @@
     saveRecentIds(recent);
     // 更新播放计数
     var played = parseInt(localStorage.getItem('music_played_count') || '0', 10) + 1;
-    try { localStorage.setItem('music_played_count', String(played)); }
+    try { localStorage.setItem('music_played_count', String(played));
+      if(localStorage.getItem('music_played_count')!==String(played))throw new Error('Playback count not persisted'); }
     catch (err) { musicWarnOnce('music-played-count','播放已开始，播放次数暂未保存'); }
     // 保存断点
     saveState();
@@ -1868,7 +1869,8 @@
     if (!saveFavIds(next)) { updateHeartIcon(); return; }
     window.isHeart = newState;
     updateHeartIcon();
-    try { localStorage.setItem('music_fav_count', String(next.length)); }
+    try { localStorage.setItem('music_fav_count', String(next.length));
+      if(localStorage.getItem('music_fav_count')!==String(next.length))throw new Error('Favorites count not persisted'); }
     catch (err) { musicWarnOnce('music-fav-count','收藏已保存，但统计更新失败'); }
     var btn = document.getElementById('btnHeart');
     btn.style.transform = 'scale(1.2)';
@@ -2316,6 +2318,37 @@
     document.getElementById('profileEditMask').style.opacity = '0';
     document.getElementById('profileEditMask').style.pointerEvents = 'none';
   }
+  function persistProfileFields(fields) {
+    var before = [];
+    try {
+      fields.forEach(function (pair) { before.push(localStorage.getItem(pair[0])); });
+    } catch (e) {
+      toast('无法读取原有个人资料，本次修改没有保存');
+      return false;
+    }
+    try {
+      fields.forEach(function (pair) {
+        var next = String(pair[1]);
+        localStorage.setItem(pair[0], next);
+        if (localStorage.getItem(pair[0]) !== next) throw new Error('Profile write not persisted');
+      });
+      return true;
+    } catch (e) {
+      var restored = true;
+      for (var i = fields.length - 1; i >= 0; i--) {
+        var key = fields[i][0], prev = before[i];
+        try {
+          if (prev === null) localStorage.removeItem(key);
+          else localStorage.setItem(key, prev);
+          if (localStorage.getItem(key) !== prev) restored = false;
+        } catch (rollbackError) { restored = false; }
+      }
+      toast(restored
+        ? '个人资料保存失败，旧资料已恢复；清理存储空间后可重试'
+        : '个人资料保存失败，可能有部分字段发生变化，请检查后重新保存');
+      return false;
+    }
+  }
   function saveProfileEdit() {
     var nm = document.getElementById('editName').value.trim() || 'Music Lover';
     var hd = document.getElementById('editHandle').value.trim();
@@ -2323,9 +2356,11 @@
     if (!hd) hd = '@music_lover';
     var customColor = document.getElementById('editBgCustom').value;
     var bg = (customColor && customColor !== '#1a1a1a') ? customColor : BG_PRESETS[selectedBg].css;
-    localStorage.setItem('music_profile_name', nm);
-    localStorage.setItem('music_profile_handle', hd);
-    localStorage.setItem('music_profile_bg', bg);
+    if (!persistProfileFields([
+      ['music_profile_name', nm],
+      ['music_profile_handle', hd],
+      ['music_profile_bg', bg]
+    ])) return;
     renderProfile();
     closeProfileEdit();
   }
