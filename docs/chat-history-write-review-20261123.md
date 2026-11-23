@@ -18,7 +18,7 @@
 | `couple/couple.html` | 已修 | 资料保存与邀请消息结果分开提示；写后校验目标会话末条消息 |
 | `forum/forum-detail.html` | 已修 | 只有读回校验通过才提示「已分享」，失败改为明确错误提示 |
 | `wallet/shop.html` / `wallet/takeout.html` / `wallet/family-cards.html` | 已修 | 统一 `appendChatHistoryMessage`：写后读回比对，失败返回 false 且不回滚业务状态 |
-| `chat/shake/shake.html` | 已修 | 同一 ID 已有历史时直接拒绍创建；写入后校验条数与首条内容 |
+| `chat/shake/shake.html` | 已修 | 同一 ID 已有历史时直接拒绝创建；写入后校验条数与首条内容 |
 | `shared/js/chat-notifier.js` | **未修** | 两处写入只取布尔返回值，没有读回比对；由 #305 负责 |
 | `PhoneStorage.saveChatHistory`（所有门面写入） | **未修（系统性）** | 整表覆盖写入，没有 compare-and-swap；读改写窗口内的并发追加会被旧快照覆盖 |
 
@@ -30,7 +30,7 @@
 | #371 | 情侣绑定邀请改为原子追加 |
 | #372 | 亲属卡状态通知改为原子追加 |
 | #305 | 自动回复防多标签页旧快照覆盖 |
-| #358 / #361 | 线下聊天拒绍旧历史覆盖新消息；重新生成失败保留旧回复 |
+| #358 / #361 | 线下聊天拒绝旧历史覆盖新消息；重新生成失败保留旧回复 |
 | #366 | 线下聊天写入接入底层 CAS |
 
 ## 4. 结论
