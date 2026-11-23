@@ -84,9 +84,10 @@ export function normalizeProviderUsage(providerUsage) {
 }
 
 function estimatedMicros(usage, pricing) {
-  if (!pricing || usage.inputTokens === null || usage.outputTokens === null) return null;
+  if (!pricing) return null;
   const inputPrice = counter(pricing.inputPerMillionMicros, 'input unit price');
   const outputPrice = counter(pricing.outputPerMillionMicros, 'output unit price');
+  if (usage.inputTokens === null || usage.outputTokens === null) return null;
   // Rate is in currency micro-units per one million tokens. Amount remains
   // an ESTIMATE — actual provider invoicing may differ.
   const total = BigInt(usage.inputTokens) * BigInt(inputPrice) +
@@ -150,7 +151,7 @@ export function normalizeUsageAttempt(input) {
  * attemptId remains separate. A conflicting duplicate is an error, NOT a
  * silent last-write-wins or a made-up billing adjustment.
  *
- * Aggregation rejects multi-account data even for administrator views.
+ * Input is an array of RAW sanitized provider attempts; this function validates\n * each attempt itself. Aggregation rejects multi-account data even for administrator views.
  */
 export function summarizeUsageAttempts(receipts, ownerAccountId) {
   requiredString(ownerAccountId, 'account', ACCOUNT_ID);
@@ -169,34 +170,13 @@ export function summarizeUsageAttempts(receipts, ownerAccountId) {
   let priceCurrency = null;
   const statuses = Object.fromEntries([...ALLOWED_STATUSES].map(s => [s, 0]));
   for (const item of receipts) {
-    // Normalize independently, so passing an untrusted raw object cannot
-    // sneak arbitrary metadata into the resulting ledger.
-    const r = normalizeUsageAttempt({
-      ...item,
-      providerUsage: item?.usage?.source === 'provider_reported'
-        ? {
-          input_tokens: item.usage.inputTokens,
-          output_tokens: item.usage.outputTokens,
-          total_tokens: item.usage.totalTokens
-        }
-        : item?.providerUsage,
-      pricing: item?.pricing ?? (
-        item?.costKind === 'estimate' && item?.priceVersion
-          ? null : undefined
-      )
-    });
+    const r = normalizeUsageAttempt(item);
     if (r.ownerAccountId !== ownerAccountId) throw new Error('Cross-account usage is forbidden');
     const key = r.logicalRequestId + '\u0000' + r.attemptId;
     const old = seen.get(key);
     // Caller-supplied pre-normalized receipts are revalidated separately
     // below: no conflicting duplicates may silently overwrite each other.
-    const signature = JSON.stringify({
-      account: r.ownerAccountId, provider: r.provider, model: r.model,
-      kind: r.requestType, status: r.status, started: r.startedAt,
-      finished: r.finishedAt, usage: r.usage,
-      priceVersion: item?.priceVersion ?? r.priceVersion,
-      estimated: item?.estimatedCostMicros ?? r.estimatedCostMicros
-    });
+    const signature = JSON.stringify(r);
     if (old !== undefined) {
       if (old !== signature) throw new Error('Conflicting usage attempt receipt');
       continue;
@@ -208,8 +188,8 @@ export function summarizeUsageAttempts(receipts, ownerAccountId) {
     if (u.inputTokens !== null) { reportedInputTokens += BigInt(u.inputTokens); knownInputAttempts++; }
     if (u.outputTokens !== null) { reportedOutputTokens += BigInt(u.outputTokens); knownOutputAttempts++; }
     if (u.totalTokens !== null) { reportedTotalTokens += BigInt(u.totalTokens); knownTotalAttempts++; }
-    const cost = item?.costKind === 'estimate' ? item.estimatedCostMicros : r.estimatedCostMicros;
-    const ccy = item?.costKind === 'estimate' ? item.currency : r.currency;
+    const cost = r.estimatedCostMicros;
+    const ccy = r.currency;
     if (cost === null || cost === undefined) {
       unknownCostAttempts++;
     } else {
