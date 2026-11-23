@@ -138,6 +138,11 @@ function persist(){
       return false;
     }
     localStorage.setItem(KEY,payload);
+    // 某些受限存储环境写入会静默丢弃；只有读回值完全一致才能报告保存成功。
+    if(localStorage.getItem(KEY)!==payload){
+      alert('本地存储读回校验失败，修改没有可靠保存。请检查存储空间后重试。');
+      return false;
+    }
     return true;
   }catch(e){
     alert('本地存储空间不足或读写异常，请先移除较大的图片后再保存。这次修改没有写入。');
