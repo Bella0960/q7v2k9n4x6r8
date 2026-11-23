@@ -166,3 +166,11 @@ On the next turn/session, read this file and the current `AGENTS.md` first. Cont
 - **测试：** `tests/cafe-save-reliability.test.mjs` 重写为 11 项（真实 `clone/save/cafeStateSnapshot/cafeStateRestore` 在 VM 执行）：正常写入、配额失败旧存档字节不变、整份回滚含嵌套、引用不变且旧引用不复活、失败操作不混入下一次成功写入、刷新回读、失败文案、六路径事务边界、结算失败不弹窗不推进、领奖失败可重领、无静默空 catch。11/11 通过；内联脚本 `node --check` 通过。
 - **未覆盖：** 其余 17 处写入点（补货、解锁菜品、自定义菜品、装修、采纳方案、开始营业、搭档切换、`saveOpinion`）留在 CAFE-004b。
 - **未验证：** Vite 全站构建、Chromium 375/390/430、真机、真实配额场景。
+
+## 2026-11-23 · APP-CAFE-004b · 采购场景写入可信性（第一批）
+
+- **分支：** `APP-CAFE-004b-stock-writes`（基于 #429 分支，复用其快照/回滚实现）。Draft PR 待网络恢复后提交。
+- **范围（一个业务场景一批）：** 手动补货 `[data-buy]` 与智能补货 `[data-auto-buy]`。二者都会同时改现金与库存，写入失败时最易出现「扣了钱没入库」或反之。
+- **修改：** 两个入口在扣款前取快照；`save()` 失败时整份回滚、重新渲染库存并提示，不再提示「已补货 / 智能补货完成」。余额校验仍在扣款之前。
+- **测试：** `tests/cafe-stock-writes.test.mjs` 5 项：手动补货失败回滚、多原料整批回滚、失败采购不混入下次成功写入、两个入口的事务边界、余额校验顺序。5/5 通过；内联脚本 `node --check` 通过。
+- **未覆盖：** 解锁菜品、自定义菜品保存、装修、采纳方案、开始营业、搭档切换、`saveOpinion`（后续按场景分批）。
