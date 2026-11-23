@@ -1069,7 +1069,10 @@ function generateDetectiveCase(){
   var txt=String(raw||'').trim().replace(/^```(?:json)?s*/i,'').replace(/s*```$/,'');var a=txt.indexOf('{'),z=txt.lastIndexOf('}');if(a>=0&&z>a)txt=txt.slice(a,z+1);
   var c=JSON.parse(txt);if(!c.title||!c.intro||!Array.isArray(c.evidence)||c.evidence.length<4||!Array.isArray(c.suspects)||c.suspects.length!==3||![0,1,2].includes(Number(c.answer))||!c.explain)throw new Error('invalid case');
   c.answer=Number(c.answer);c.generated=true;c.chapter=String(c.chapter||'');c.evidence=c.evidence.slice(0,7);
-  var saved=JSON.parse(localStorage.getItem('maomao_detective_generated_cases_v1')||'[]');saved.push(c);
+  var saved;
+  try{saved=JSON.parse(localStorage.getItem('maomao_detective_generated_cases_v1')||'[]');if(!Array.isArray(saved))throw new Error('Invalid case archive');}
+  catch(storageError){showToast('案件已生成，但本机旧档案无法读取，已保护原数据；请先检查存储');return;}
+  saved.push(c);
   var caseSaved=saveJSON('maomao_detective_generated_cases_v1',saved,true);CASES.push(c);
   showToast(caseSaved?'新案件已加入案件档案':('新案件已生成，但本机存储空间不足，没能存下，刷新后会消失'));startCase();
  }).catch(function(){showToast('生成失败，请检查 API 配置或稍后重试。');}).finally(function(){var b=byId('generateDetectiveCase');if(b){b.disabled=false;b.textContent='生成新案';}});
