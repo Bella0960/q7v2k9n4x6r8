@@ -112,7 +112,14 @@ try {
     assert.match(details.serif, /georgia|songti|iowan/);
     assert.equal(details.columns, 2, 'mobile account metrics must be two columns');
     assert.equal(details.accountCount, 1);
-    assert.equal(details.navCount, 4);
+    assert.equal(details.navCount, 5);
+    assert.ok(details.links.some(url => url.includes('admin-operations.css')));
+    assert.equal(await page.locator('#overviewView').isVisible(), true);
+    await page.locator('[data-quick-tab="users"][data-quick-filter="pending_invite"]').click();
+    await page.waitForFunction(() => document.querySelector('[data-account-filter="pending_invite"]')?.getAttribute('aria-pressed') === 'true');
+    assert.equal(await page.locator('#usersView').isVisible(), true);
+    await page.locator('[data-tab="overview"]').click();
+    assert.equal(await page.locator('#overviewView').isVisible(), true);
     assert.ok(details.links.some(url => url.includes('admin-center-editorial.css')));
     await page.locator('[data-tab="invites"]').click();
     assert.equal(await page.locator('#invitesView').isVisible(), true);
