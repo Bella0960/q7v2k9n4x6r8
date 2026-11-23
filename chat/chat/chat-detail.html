@@ -7843,7 +7843,12 @@
             });
             if (!receiver) return;
             receiver.start();
-            window.addEventListener('pagehide', function () { receiver.stop(); });
+            window.addEventListener('pagehide', function (event) {
+                // BFCache suspends timers but restores the same JS document.
+                // Keep the controller recoverable on pageshow; permanently
+                // stop only when this page is genuinely being discarded.
+                if (!event.persisted) receiver.stop();
+            });
             window.addEventListener('pageshow', function (event) {
                 if (event.persisted) {
                     // BFCache may be restored after sibling tabs added records.
