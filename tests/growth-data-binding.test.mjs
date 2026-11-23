@@ -230,6 +230,24 @@ test('目标静默丢写：回读失败且不改变已存目标', () => {
   assert.match(r.get('toast').textContent,/没能保存/);
 });
 
+test('已有目标存档损坏：不得把损坏原文覆盖为空清单', () => {
+  const damaged='{old-goals-corrupt';
+  const store=makeStore({...SEED,maoer_growth_goals_roleA:damaged});
+  const r=makeRuntime({store});
+  r.get('goalInput').value='不许破坏旧存档';r.get('goalForm').submit();
+  assert.equal(store.raw.maoer_growth_goals_roleA,damaged);
+  assert.match(r.get('toast').textContent,/禁止覆盖/);
+});
+
+test('已有目标数据格式不对：禁止重新保存覆盖', () => {
+  const stale='{"wrong":"object-instead-of-list"}';
+  const store=makeStore({...SEED,maoer_growth_goals_roleA:stale});
+  const r=makeRuntime({store});
+  r.get('goalInput').value='只能保留旧数据';r.get('goalForm').submit();
+  assert.equal(store.raw.maoer_growth_goals_roleA,stale);
+  assert.match(r.get('toast').textContent,/禁止覆盖/);
+});
+
 test('源码守卫：键名按角色命名、无角色只读、写入有返回检查', () => {
   assert.ok(script.includes("'maoer_couple_moments_'+roleId"), '必须读按角色命名的真实键');
   assert.equal(script.includes('LEGACY'), false, '不得再无条件兜底旧全局键');

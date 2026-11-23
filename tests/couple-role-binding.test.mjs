@@ -241,6 +241,27 @@ test('PhoneStorage.result 显示主聊天损坏：禁止创建替代空历史', 
   assert.match(r.get('toast').textContent,/邀请消息没有写入/);
 });
 
+test('既有情侣清单损坏：拒绝覆盖原始字节，不把损坏数据变成空数组', () => {
+  const raw='{damaged-original';
+  const store=makeStore({maoer_couple_bucket_roleA:raw});
+  const r=makeRuntime({store});
+  r.get('bucketInput').value='新的清单';
+  r.sb.addBucket();
+  assert.equal(store.raw.maoer_couple_bucket_roleA,raw);
+  assert.match(r.get('toast').textContent,/禁止覆盖/);
+});
+
+test('另一个标签修改了同一角色的清单：拒绝用旧页面内容覆盖', () => {
+  const store=makeStore({maoer_couple_bucket_roleA:'[]'});
+  const r=makeRuntime({store});
+  const newer=JSON.stringify([{id:'other-tab',text:'另一标签的清单',done:false}]);
+  store.raw.maoer_couple_bucket_roleA=newer;
+  r.get('bucketInput').value='旧标签的新内容';
+  r.sb.addBucket();
+  assert.equal(store.raw.maoer_couple_bucket_roleA,newer);
+  assert.match(r.get('toast').textContent,/其他标签页/);
+});
+
 test('头像地址：非白名单协议不进入 innerHTML', () => {
   const store = makeStore();
   store.raw['maoer_couple_profile_roleA'] = JSON.stringify({ taAvatar: 'x" onerror="alert(1)', myAvatar: 'javascript:alert(1)' });

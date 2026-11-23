@@ -407,16 +407,39 @@
     mood:'maoer_couple_mood_'+roleId
   };
   const $ = id => document.getElementById(id);
-  const read = (k,d) => { if(!canStore)return d; try { let v = JSON.parse(localStorage.getItem(k)); return v==null?d:v; } catch(e){ return d; } };
-  /* 写失败必须让用户知道：原来直接 setItem，配额满时抛异常而界面已经提示成功。 */
+  const originalRaw=Object.create(null), invalidStoredKeys=new Set();
+  const read = (k,d) => {
+    if(!canStore)return d;
+    try {
+      const raw=localStorage.getItem(k);
+      originalRaw[k]=raw;
+      if(raw===null)return d;
+      const parsed=JSON.parse(raw);
+      const typeOk=parsed!==null &&
+        (Array.isArray(d)?Array.isArray(parsed):
+          (typeof d==='object' ? typeof parsed==='object'&&!Array.isArray(parsed) : typeof parsed===typeof d));
+      if(!typeOk){invalidStoredKeys.add(k);return d;}
+      return parsed;
+    } catch(e){invalidStoredKeys.add(k);return d;}
+  };
+  /* Bad existing data is NEVER overwritten. Detect stale other-tab changes,
+     writes silently dropped by storage, and real quota errors separately. */
   let storeWarned = false;
   const write = (k,v) => {
     if(!canStore){ toast('未绑定有效角色，只能查看不能保存'); return false; }
-    try { const payload=JSON.stringify(v);localStorage.setItem(k,payload);
+    if(invalidStoredKeys.has(k)){toast('原有存档无法读取，为保护数据已禁止覆盖');return false;}
+    try {
+      const current=localStorage.getItem(k);
+      if(Object.prototype.hasOwnProperty.call(originalRaw,k) && current!==originalRaw[k]){
+        toast('资料已在其他标签页更新，请刷新后重试');return false;
+      }
+      const payload=JSON.stringify(v);
+      localStorage.setItem(k,payload);
       if(localStorage.getItem(k)!==payload)throw new Error('Couple storage readback mismatch');
-      return true; }
-    catch(e){
-      if(!storeWarned){ storeWarned = true; toast('本机存储空间不足，这次修改没能保存'); }
+      originalRaw[k]=payload;
+      return true;
+    } catch(e) {
+      if(!storeWarned){storeWarned=true;toast('本机存储空间不足，这次修改没能保存');}
       return false;
     }
   };
