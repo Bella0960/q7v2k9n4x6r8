@@ -147,3 +147,17 @@ On the next turn/session, read this file and the current `AGENTS.md` first. Cont
 
 - **2026-11-22 storage hardening:** Prevent damaged/non-array primary `chat_memories_<id>` content from being overwritten; reject invalid memory targets; stop memory-library delete, dedupe, and AI merge success displays when write fails; capture AI-merge role ID before network await. Added the corresponding regression tests. **16/16 V8-isolated production-module/DOM-contract checks passed** (not full Node). Parsed all changed JS/inline scripts successfully.
 - **Verification handoff:** PR source remains unmerged; next QA must use the exact pinned branch SHA and the existing public-only verification channel. Do not run exhausted legacy private Actions or bypass existing safety guards.
+
+## 2026-11-23 · APP-LIVE-001 · 直播间角色来源与 AI 调用
+
+- **分支 / PR：** `APP-LIVE-001-role-context` · Draft PR。基线 main `40b671bb`。未合并、未部署。
+- **应用构成：** `companion/live.html`（752 行单文件），原本**不引入任何共享脚本**（连 `phone_storage.js` 都没有），只有一个内联脚本。
+- **P1 已修：**
+  1. **角色来源绕开正式接口**：`readCurrentCharacter()` 只读旧键 `phone_current_contact` + `ai_custom_characters`。角色实际存在 `PhoneStorage` 时这个旧键可能是空的，直播间就把主播显示成无名的「TA」，头像人设全丢。改为 `PhoneStorage.getCharacters()` + `getCurrentContactId()` 优先，旧键仅兜底。
+  2. **AI 调用另起一套**：`callHostAI()` 自带 `fetch(base+'/chat/completions')`，并只读私有键 `api_settings`。用户在设置页用共享配置配的 API 对它不可见 → 会静默降级成 4 句固定台词（假 AI 回复）。改为 `PhoneAPI.complete()` 统一入口 + `PhoneStorage.getApiConfig()` 优先、旧键兜底；PhoneAPI 不可用时给可读兜底而不是崩。
+  3. **人设字段只取一个**：原来只读 `persona||description||personality`。改为聚合 persona/description/personality/character/speechStyle/prompt，上限 1600 字。
+  4. **背景写入空 catch + 无条件成功提示**：`saveBg()` 吞异常，调用方仍 `toast('背景已切换')`。改为返回布尔，失败提示「背景只在这次显示…没能保存」。
+  5. 头像 `'<img src="'+me.avatar+'"'` 未转义，改为 `esc()`。
+- **测试：** 新增 `tests/live-role-context.test.mjs`（10 项，VM 跑真实 `readCurrentCharacter` / `liveApiConfig` / `callHostAI` / `saveBg`），10/10 通过。其中「不发自己的 fetch」用 `fetch` 间谍断言为 0 次调用。
+- **登记未做：** 不产出世界事件（依赖 `ECO-LINK-002`）；世界书未接入（共享上下文仍不安全，#428）；观众弹幕/礼物均为本地模拟，非 AI。
+- **未验证：** Vite 全站构建、Chromium 375/390/430、真机。

@@ -428,19 +428,38 @@ button{cursor:pointer;border:0;background:none}
 </main>
 <div class="toast" id="toast" role="status"></div>
 
+<script src="../shared/js/phone/phone_storage.js"></script>
+<script src="../shared/js/phone/phone_api.js"></script>
 <script>
 (function(){
 'use strict';
 const $=id=>document.getElementById(id);
 
 /* ========== 数据读取：当前角色 ========== */
+/* 角色来源：优先用共享 PhoneStorage（与聊天/世界书同一套正式角色 ID），
+   共享模块不可用时才回落到旧键，避免直播间把人显示成无名的「TA」。 */
+function characterPersona(c){
+  return [c.persona,c.description,c.personality,c.character,c.speechStyle,c.prompt,c.systemPrompt]
+    .filter(Boolean).join('\n').slice(0,1600);
+}
 function readCurrentCharacter(){
+  try{
+    if(window.PhoneStorage&&typeof PhoneStorage.getCharacters==='function'){
+      const list=PhoneStorage.getCharacters()||[];
+      if(Array.isArray(list)&&list.length){
+        let cid='';
+        try{cid=PhoneStorage.getCurrentContactId?String(PhoneStorage.getCurrentContactId()||''):'';}catch(e){cid='';}
+        const hit=list.find(x=>x&&String(x.id)===cid)||list[0];
+        if(hit)return {name:hit.name||'TA',avatar:hit.avatar||'',persona:characterPersona(hit)};
+      }
+    }
+  }catch(e){}
   try{
     const cid=localStorage.getItem('phone_current_contact')||'';
     const list=JSON.parse(localStorage.getItem('ai_custom_characters')||'[]');
     if(Array.isArray(list)&&list.length){
       let me=list.find(x=>String(x.id||'')===String(cid))||list[0];
-      return {name:me.name||'TA',avatar:me.avatar||'',persona:me.persona||me.description||me.personality||''};
+      return {name:me.name||'TA',avatar:me.avatar||'',persona:characterPersona(me)};
     }
   }catch(e){}
   return {name:'TA',avatar:'',persona:''};
@@ -470,8 +489,8 @@ function renderHost(){
   const p=$('hostPortrait');
   const t=$('hostAvatarTop');
   if(me.avatar){
-    p.innerHTML='<img src="'+me.avatar+'" alt="">';
-    t.innerHTML='<img src="'+me.avatar+'" alt="">';
+    p.innerHTML='<img src="'+esc(me.avatar)+'" alt="">';
+    t.innerHTML='<img src="'+esc(me.avatar)+'" alt="">';
   }else{
     p.textContent=initial;
     t.textContent=initial;
@@ -652,8 +671,18 @@ function scheduleHostReply(userText){
   },rand(900,1800));
 }
 
+/* 配置读取：与设置页保持一致，PhoneStorage 优先，旧键仅作兜底。 */
+function liveApiConfig(){
+  try{
+    if(window.PhoneStorage&&typeof PhoneStorage.getApiConfig==='function'){
+      const cfg=PhoneStorage.getApiConfig()||{};
+      if(String(cfg.apiKey||'').trim())return cfg;
+    }
+  }catch(e){}
+  try{return JSON.parse(localStorage.getItem('api_settings')||'{}')}catch(e){return{}}
+}
 async function callHostAI(userText){
-  const cfg=JSON.parse(localStorage.getItem('api_settings')||'{}');
+  const cfg=liveApiConfig();
   const key=String(cfg.apiKey||'').trim();
   if(!key){
     // 没配 API：本地兜底一句温柔的话
@@ -662,27 +691,17 @@ async function callHostAI(userText){
     aiPending=false;return;
   }
   aiPending=true;
-  const base=String(cfg.baseUrl||'https://api.openai.com/v1').replace(/\/+$/,'');
-  const model=String(cfg.model||'gpt-3.5-turbo').trim();
   const persona=String(me.persona||'自然、温柔的日常口吻').slice(0,1600);
   const recent=[...stream.querySelectorAll('.bubble')].slice(-6).map(b=>b.textContent).join('\n');
+  const system='你正在直播间里扮演「'+me.name+'」主播。人设：'+persona+'。你在和看直播的人轻松聊天，像真实主播一样自然接话，中文1-2句，口语化，带一点直播感（偶尔可以接梗），不要复述弹幕，不要说教。';
+  const user='观众刚发了一条弹幕：「'+userText+'」\n最近弹幕：\n'+recent+'\n请以主播身份回应。';
   try{
-    const res=await fetch(base+'/chat/completions',{
-      method:'POST',
-      headers:{'Content-Type':'application/json','Authorization':'Bearer '+key},
-      body:JSON.stringify({
-        model,
-        messages:[
-          {role:'system',content:'你正在直播间里扮演「'+me.name+'」主播。人设：'+persona+'。你在和看直播的人轻松聊天，像真实主播一样自然接话，中文1-2句，口语化，带一点直播感（偶尔可以接梗），不要说自己是AI。'},
-          {role:'user',content:'观众刚发了一条弹幕：「'+userText+'」\n最近弹幕：\n'+recent+'\n请以主播身份回应。'}
-        ],
-        temperature:.85,max_tokens:160
-      })
-    });
-    if(!res.ok)throw new Error('HTTP '+res.status);
-    const data=await res.json();
-    const text=String(data.choices?.[0]?.message?.content||'').trim();
+    /* 统一走 PhoneAPI：与聊天等应用同一套传输/超时/重试，避免各自维护一份请求实现。 */
+    if(!window.PhoneAPI||typeof PhoneAPI.complete!=='function')throw new Error('api-unavailable');
+    const raw=await PhoneAPI.complete({system,user,temperature:.85,timeoutMs:20000});
+    const text=String(raw==null?'':raw).trim();
     if(text)pushBubble({name:me.name,text,type:'host'});
+    else throw new Error('empty');
   }catch(e){
     pushBubble({name:me.name,text:'（信号不太好，等一下再说哦）',type:'host'});
   }finally{
@@ -719,12 +738,13 @@ function renderBgGrid(){
   const saved=readBg();
   grid.querySelectorAll('[data-bg]').forEach(b=>b.classList.toggle('active',saved.key===b.dataset.bg&&saved.type==='preset'));
   grid.querySelectorAll('[data-bg]').forEach(b=>b.addEventListener('click',()=>{
-    saveBg({type:'preset',key:b.dataset.bg});applyBg({type:'preset',key:b.dataset.bg});closeBgSheet();toast('背景已切换');
+    const savedOk=saveBg({type:'preset',key:b.dataset.bg});applyBg({type:'preset',key:b.dataset.bg});closeBgSheet();bgToast(savedOk);
   }));
   $('bgUploadBtn').addEventListener('click',()=>$('bgUpload').click());
 }
 function readBg(){try{return JSON.parse(localStorage.getItem(BG_KEY)||'{}')}catch(e){return{}}}
-function saveBg(b){try{localStorage.setItem(BG_KEY,JSON.stringify(b))}catch(e){}}
+function saveBg(b){try{localStorage.setItem(BG_KEY,JSON.stringify(b));return true}catch(e){return false}}
+function bgToast(ok){toast(ok?'背景已切换':'背景只在这次显示，本机存储空间不足，没能保存')}
 function openBgSheet(){$('bgSheet').classList.add('open');renderBgGrid()}
 function closeBgSheet(){$('bgSheet').classList.remove('open')}
 $('bgBtn').addEventListener('click',openBgSheet);
@@ -732,7 +752,7 @@ $('bgMask').addEventListener('click',closeBgSheet);
 $('bgUpload').addEventListener('change',e=>{
   const f=e.target.files[0];if(!f)return;
   const r=new FileReader();
-  r.onload=()=>{saveBg({type:'image',data:r.result});applyBg({type:'image',data:r.result});closeBgSheet();toast('背景已更换');};
+  r.onload=()=>{const savedOk=saveBg({type:'image',data:r.result});applyBg({type:'image',data:r.result});closeBgSheet();bgToast(savedOk);};
   r.readAsDataURL(f);
 });
 // 恢复上次背景
