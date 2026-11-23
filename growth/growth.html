@@ -6,6 +6,9 @@
 <meta name="theme-color" content="#1a1a1a">
 <title>共同成长</title>
 <script src="../shared/js/native-feel.js"></script>
+<!-- 独立页面必须自己加载共享存储：否则真实浏览器里 window.PhoneStorage 不存在，
+     sharedRoleId() 永远为空，成长统计读不到情侣空间写在正式角色键上的资料。 -->
+<script src="../shared/js/phone/phone_storage.js?v=20261031-envelope1"></script>
 <link rel="stylesheet" href="../shared/css/mobile-fit.css">
 <style>
   * { margin:0; padding:0; box-sizing:border-box; -webkit-tap-highlight-color:transparent; }
@@ -217,15 +220,61 @@
 <script>
 (function(){
   const $ = id => document.getElementById(id);
+  /* 数据必须和情侣空间写在同一组键上：couple.html 实际用的是「按正式角色 ID 命名」的键，
+     之前这里读的是另一套 maoer_couple_*_v1，两个键永远对不上，
+     所以成长点数、统计、勋章从来没有真正生效过。 */
+  function sharedRoleId(){
+    try{
+      var ps=window.PhoneStorage;
+      if(ps&&typeof ps.getCurrentContactId==='function'&&typeof ps.getCharacters==='function'){
+        var id=String(ps.getCurrentContactId()||'');
+        var list=ps.getCharacters()||[];
+        if(id&&Array.isArray(list)&&list.some(function(r){return r&&r.id!=null&&String(r.id)===id;}))return id;
+      }
+    }catch(e){}
+    return '';
+  }
+  /* ?id= 深链必须能在正式角色列表里查到；否则不猜，进入只读。 */
+  function roleById(id){
+    if(id==null||id==='')return null;
+    try{
+      var ps=window.PhoneStorage;
+      if(ps&&typeof ps.getCharacters==='function'){
+        var list=ps.getCharacters()||[];
+        var hit=(Array.isArray(list)?list:[]).filter(function(r){return r&&r.id!=null&&String(r.id)===String(id);})[0];
+        if(hit)return{id:String(hit.id),name:String(hit.name||'')};
+      }
+    }catch(e){}
+    return null;
+  }
+  var roleId=(function(){
+    try{
+      var fromUrl=new URLSearchParams(location.search).get('id');
+      if(fromUrl!==null&&fromUrl!=='')return roleById(fromUrl)?fromUrl:'';
+    }catch(e){}
+    return sharedRoleId()||'';
+  })();
+  /* 没有合法正式角色时只读：绝不读/写 default 或任何共享桶，避免跨角色泄漏。 */
+  var canStore=!!roleId;
   const KEY = {
-    profile:'maoer_couple_profile_v1',
-    mood:'maoer_couple_mood_v1',
-    bucket:'maoer_couple_bucket_v1',
-    moments:'maoer_couple_moments_v1',
-    goals:'maoer_growth_goals_v1'
+    profile:'maoer_couple_profile_'+roleId,
+    mood:'maoer_couple_mood_'+roleId,
+    bucket:'maoer_couple_bucket_'+roleId,
+    moments:'maoer_couple_moments_'+roleId,
+    goals:'maoer_growth_goals_'+roleId
   };
   function read(k, d){ try { let v = JSON.parse(localStorage.getItem(k)); return v==null?d:v; } catch(e){ return d; } }
-  function write(k,v){ try { localStorage.setItem(k, JSON.stringify(v)); return true; } catch(e){ return false; } }
+  /* 只读当前正式角色自己的键。旧全局 _v1 键从未被任何应用写入过，
+     无条件兜底只会把 A 的历史资料广播给所有角色，已按总控意见移除。 */
+  function readData(kind, fallback){
+    if(!canStore) return fallback;
+    let v = read(KEY[kind], null);
+    return v != null ? v : fallback;
+  }
+  function write(k,v){
+    if(!canStore){ toast('还没有绑定正式角色，成长数据只能看不能存'); return false; }
+    try { var payload=JSON.stringify(v);localStorage.setItem(k,payload);if(localStorage.getItem(k)!==payload)throw new Error('Growth storage readback mismatch');return true; } catch(e){ return false; }
+  }
   function toast(s){ let t=$('toast'); t.textContent=s; t.classList.add('show'); clearTimeout(t._t); t._t=setTimeout(()=>t.classList.remove('show'),1800); }
   function esc(s){ return String(s||'').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])); }
   function safeDate(s){ if(!s||!/^\d{4}-\d{2}-\d{2}$/.test(s)) return null; let d=new Date(s+'T00:00:00'); return isNaN(d.getTime())?null:d; }
@@ -255,12 +304,17 @@
 
   function render(){
     let d = {
-      profile: read(KEY.profile, {}),
-      moods: read(KEY.mood, {}),
-      bucket: read(KEY.bucket, []),
-      moments: read(KEY.moments, []),
-      goals: read(KEY.goals, [])
+      profile: readData('profile', {}),
+      moods: readData('mood', {}),
+      bucket: readData('bucket', []),
+      moments: readData('moments', []),
+      goals: readData('goals', [])
     };
+    d.profile = d.profile && typeof d.profile === 'object' ? d.profile : {};
+    d.moods = d.moods && typeof d.moods === 'object' && !Array.isArray(d.moods) ? d.moods : {};
+    d.bucket = Array.isArray(d.bucket) ? d.bucket : [];
+    d.moments = Array.isArray(d.moments) ? d.moments : [];
+    d.goals = Array.isArray(d.goals) ? d.goals : [];
     let completed = d.bucket.filter(x=>x.done).length;
     let moodDays = Object.values(d.moods).filter(a=>Array.isArray(a)&&a.some(x=>String(x||'').trim())).length;
     let earned = milestones.filter(m => { try { return m.test(d); } catch(e){ return false; } }).length;
@@ -303,13 +357,16 @@
   }
 
   window.toggleGoal = function(id){
-    let goals = read(KEY.goals, []).map(g => g.id===id ? {...g, done:!g.done} : g);
-    write(KEY.goals, goals); render();
-    toast('完成一项小目标 +15');
+    let goals = readData('goals', []).map(g => g.id===id ? {...g, done:!g.done} : g);
+    if(!write(KEY.goals, goals)){ toast('目标没能保存，请清理本机存储后再试'); return; }
+    render();
+    let target = goals.filter(g => g.id===id)[0];
+    toast(target && target.done ? '完成一项小目标 +15' : '已取消完成，点数同步减少');
   };
   window.delGoal = function(id){
     if(!confirm('删除这个目标？')) return;
-    write(KEY.goals, read(KEY.goals, []).filter(g => g.id!==id));
+    let goals = readData('goals', []).filter(g => g.id!==id);
+    if(!write(KEY.goals, goals)){ toast('删除没能保存，请清理本机存储后再试'); return; }
     render(); toast('已删除');
   };
 
@@ -317,9 +374,9 @@
     e.preventDefault();
     let v = $('goalInput').value.trim();
     if(!v) return;
-    let goals = read(KEY.goals, []);
+    let goals = readData('goals', []);
     goals.push({id:Date.now().toString(36), text:v, done:false, created:new Date().toISOString().slice(0,10)});
-    write(KEY.goals, goals);
+    if(!write(KEY.goals, goals)){ toast('目标没能保存，请清理本机存储后再试'); return; }
     $('goalInput').value = '';
     render(); toast('已加入成长清单');
   });
