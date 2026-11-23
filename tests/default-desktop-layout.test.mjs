@@ -275,3 +275,11 @@ test('cancelled cross-page gesture navigates back without storing a drop', () =>
   assert.equal(context.dragOriginPage, null);
   assert.equal(writes, 0);
 });
+
+
+test('all 2x2 utility widgets occupy the two physical grid rows advertised in the catalog', () => {
+  assert.match(desktopCss, /\.desktop-grid \.ds-todo,[\s\S]*?\.desktop-grid \.ds-cal,[\s\S]*?\.desktop-grid \.ds-count \{[\s\S]*?grid-column: span 2;[\s\S]*?grid-row: span 2;/);
+  for (const id of ['todo', 'calendar', 'countdown']) {
+    assert.match(widgetManager, new RegExp("id: '" + id + "',[^\\n]*cols: 2, rows: 2"));
+  }
+});
