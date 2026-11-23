@@ -241,3 +241,25 @@ On the next turn/session, read this file and the current `AGENTS.md` first. Cont
 - **未验证：** Vite 全站构建、Chromium 375/390/430、真机、真实配额场景。
 
 **2026-11-24 总控续接：** PR #431 代码已在原分支补齐 #432 已入主线的试吃并发/旧响应防串写守卫；`games/js/cooking.js` 完整语法检查通过。专项 Node/浏览器 QA 待独立复核，不据此声明发布。
+
+## 2026-11-23 · APP-MUSIC-001 · 音乐应用提示与写入可信性
+
+- **分支 / PR：** `APP-MUSIC-001-storage-trust` · Draft PR。基线 main `40b671bb`。未合并、未部署。
+- **应用构成：** `music/music.html`（1653 行单文件），引入 `home-indicator.js` 与 `phone_storage.js`。键：`music_state`、`music_recent`、`music_fav_list`、`music_fav_count`、`music_played_count`、`music_profile_name/handle/bg`、本地曲目元信息键。
+- **P0 已修（本轮最重要的发现）：**
+  - 页面里有 4 处调用 `toast(...)`，但**整个文件既没有定义 `toast`，也没有 `#toast` 节点**，`home-indicator.js` 也不提供。这些调用会抛 `ReferenceError`：
+    - `if(!t){toast('曲目不存在');return;}` → 变成抛错而不是安全返回
+    - 本地音频缺失时的「已从历史/收藏中移除」提示 → 抛进外层 `catch` 再抛一次 → `playTrack` 变 unhandled rejection，播放器卡住
+    - `catch(e){toast('音频加载失败')}` → 用户看不到任何原因
+    - 导入失败分支 `catch(err){tracks.pop();toast('本地导入失败…')}` → 错误原因不可见
+  - 修法：补一个统一 `toast()` 实现（自建 `#musicToast` 节点 + 自动收起 + 复用节点不堆叠），并补 `env(safe-area-inset-bottom)` 的样式，不依赖新增外部文件。
+- **P1 已修：**
+  1. `saveProfileEdit()` 三条 `setItem` 裸调后立刻 `renderProfile(); closeProfileEdit();` → 容量满时抛异常，昵称没存上、编辑面板留在原地且没有任何说明。改为按结果分支：任一失败就提示「没能保存，清出空间后再点一次保存」并保持面板打开。
+  2. `music_played_count` / `music_fav_count` 裸调 → 抛未捕获异常打断 `saveState()` 与 `showNP()`。改走统一入口。
+  3. `saveRecentIds` / `saveFavIds` / `saveLocalTracksMeta` 的空 catch → 收藏、历史、本地曲目元信息静默丢失。改为返回布尔 + 同会话只提示一次。
+  4. `saveState()` 断点续播写入失败保持静默（低频、非关键），但不再吞掉异常对象。
+- **测试：** 新增 `tests/music-storage-trust.test.mjs`（8 项，VM 跑真实 `toast` / `saveLocal` / `saveFavIds` / `saveProfileEdit`），8/8 通过。
+- **登记未做：** 音乐应用不接角色人设/记忆（只有 `getMyProfile` 读取本机资料）；不产出世界事件（依赖 `ECO-LINK-002`）；本地音频走 IndexedDB，配额错误提示依赖浏览器实现。
+- **未验证：** Vite 全站构建、Chromium 375/390/430、真机、真实音频播放与配额场景。
+
+**2026-11-24 总控续接：** 在原 PR 上与当前 main 进行源代码对齐；原先 `saveProfileEdit()` 三字段写入仍可能部分成功，现补写入前快照、逐字段写入回读、失败反向回滚、回滚不能完成时明确提示部分数据风险；旧存储键不迁移。新增第三字段失败专项测试。尚需公共 QA 门禁，未合并/未部署。
