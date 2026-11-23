@@ -272,17 +272,18 @@
     var registration = await getRegistration();
     var subscription = await registration.pushManager.getSubscription();
     var endpoint = subscription ? subscription.endpoint : '';
-    if (subscription) await subscription.unsubscribe();
-
     var device = readDevice();
+    // Revoke server-side first; never report OFF if the cloud could not confirm it.
     if (device) {
       await requestJson('/api/push/unsubscribe', {
-        method: 'POST',
-        device: device,
-        body: endpoint ? { endpoint: endpoint } : {}
-      }).catch(function () {
-        // 服务端不可达时仍然完成本机退订，避免界面卡在“已连接”。
+        method: 'POST', device: device, body: endpoint ? { endpoint: endpoint } : {}
       });
+    }
+    if (subscription) {
+      var unsubscribed = await subscription.unsubscribe();
+      if (unsubscribed === false) {
+        throw new Error('服务器已退订，本机浏览器仍保留订阅；请重试以完成清理');
+      }
     }
     return { endpoint: endpoint };
   }
@@ -1122,22 +1123,21 @@
 
   async function disconnect() {
     var device = readDevice();
-    try {
-      if (device) {
-        await requestJson('/api/devices/revoke', { method: 'POST', device: device });
-      }
-    } catch (error) {
-      // 撤销失败也要清掉本机凭据，避免残留一个无效连接。
+    // A failed revoke must retain the device secret so the user can retry.
+    if (device) {
+      await requestJson('/api/devices/revoke', {
+        method: 'POST', device: device
+      });
     }
     try {
       var registration = await getRegistration();
       var subscription = await registration.pushManager.getSubscription();
       if (subscription) await subscription.unsubscribe();
     } catch (error) {
-      // ignore
+      // The server revocation already guarantees this endpoint is disabled.
     }
     clearDevice();
-    return { disconnected: true };
+    return { disconnected: true, serverRevoked: Boolean(device) };
   }
 
   async function getStatus() {
@@ -1152,7 +1152,13 @@
       message: ''
     };
     if (!status.supported) {
-      status.message = '当前浏览器不支持 Web Push';
+      var onAppleMobile = /iPhone|iPad|iPod/i.test(String(navigator.userAgent || ''));
+      var standalone = navigator.standalone === true ||
+        (typeof global.matchMedia === 'function' &&
+          global.matchMedia('(display-mode: standalone)').matches);
+      status.message = onAppleMobile && !standalone
+        ? 'iPhone 请先在 Safari 中添加到主屏幕，再从桌面图标开启通知'
+        : '当前浏览器不支持 Web Push';
       return status;
     }
     try {
@@ -1211,9 +1217,12 @@
       registration = null;
     }
     var subscribed = false;
-    if (registration && registration.pushManager) {
-      subscribed = Boolean(await registration.pushManager.getSubscription());
+    if (registration && registration.pushManager && status.supported &&
+        status.permission === 'granted' && status.subscriptionCount > 0) {
+      try { subscribed = Boolean(await registration.pushManager.getSubscription()); }
+      catch (error) { subscribed = false; }
     }
+    // Server and browser must both confirm subscription before displaying ON.
     setToggle(subscribed);
     var autonomyToggle = document.getElementById('cloudAutonomyToggle');
     if (autonomyToggle) {
@@ -1561,7 +1570,7 @@
           if (!summary.sent && summary.skipped) {
             setStatusText('这条测试通知刚刚已经发送过（已去重）');
           } else {
-            setStatusText('测试推送已发送：成功 ' + (summary.sent || 0) + '，失败 ' + (summary.failed || 0));
+            setStatusText('推送服务已接收：' + (summary.sent || 0) + '，失败 ' + (summary.failed || 0) + '。请以手机通知栏实际显示为准');
           }
         } catch (error) {
           setStatusText('测试推送失败：' + (error.message || '未知错误'));
