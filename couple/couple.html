@@ -378,7 +378,7 @@
       const ps=window.PhoneStorage;
       if(ps&&typeof ps.getCharacters==='function'){
         const list=ps.getCharacters()||[];
-        if(Array.isArray(list))return list.filter(r=>r&&r.id!=null&&r.name);
+        if(Array.isArray(list))return list.filter(r=>r&&r.id!=null&&String(r.id).trim());
       }
     }catch(e){}
     return [];
@@ -390,7 +390,14 @@
     }catch(e){}
     return '';
   }
-  const roleId = urlParams.get('id') || sharedCurrentRoleId() || localStorage.getItem('currentRoleId') || 'default';
+  function validatedRoleId(id){
+    if(id==null||!String(id).trim())return '';
+    const hit=sharedRoles().find(r=>String(r.id)===String(id));
+    return hit?String(hit.id):'';
+  }
+  const explicitRole=urlParams.get('id');
+  const roleId=explicitRole!==null ? validatedRoleId(explicitRole) : validatedRoleId(sharedCurrentRoleId());
+  const canStore=!!roleId; // missing/invalid IDs never use a shared default bucket
   const K = {
     profile:'maoer_couple_profile_'+roleId,
     bucket:'maoer_couple_bucket_'+roleId,
@@ -400,11 +407,14 @@
     mood:'maoer_couple_mood_'+roleId
   };
   const $ = id => document.getElementById(id);
-  const read = (k,d) => { try { let v = JSON.parse(localStorage.getItem(k)); return v==null?d:v; } catch(e){ return d; } };
+  const read = (k,d) => { if(!canStore)return d; try { let v = JSON.parse(localStorage.getItem(k)); return v==null?d:v; } catch(e){ return d; } };
   /* 写失败必须让用户知道：原来直接 setItem，配额满时抛异常而界面已经提示成功。 */
   let storeWarned = false;
   const write = (k,v) => {
-    try { localStorage.setItem(k, JSON.stringify(v)); return true; }
+    if(!canStore){ toast('未绑定有效角色，只能查看不能保存'); return false; }
+    try { const payload=JSON.stringify(v);localStorage.setItem(k,payload);
+      if(localStorage.getItem(k)!==payload)throw new Error('Couple storage readback mismatch');
+      return true; }
     catch(e){
       if(!storeWarned){ storeWarned = true; toast('本机存储空间不足，这次修改没能保存'); }
       return false;
@@ -640,6 +650,9 @@
   window.saveSet = function(){
     const hadPartner = !!profile.partnerId;
     const nextProfile = { nameA:$('setNameA').value.trim(), nameB:$('setNameB').value.trim(), startDate:$('setDate').value, partnerId:$('setPartner').value, myAvatar:profile.myAvatar||'', taAvatar:profile.taAvatar||'' };
+    if(nextProfile.partnerId&&!validatedRoleId(nextProfile.partnerId)){
+      toast('邀请对象不是有效的正式角色，资料没有保存');return;
+    }
     /* 资料写失败就整体不生效，不能出现「名字变了、绑定没变」或者反过来。 */
     if(!write(K.profile, nextProfile)){ toast('资料没能保存，请清理本机存储后再试'); return; }
     profile = nextProfile; renderProfile(); closeSet();
@@ -652,35 +665,41 @@
       const message = { role: 'user', text: msg, time: Date.now(), type: 'text' };
       try {
         const storage = window.PhoneStorage;
-        let history;
-        if (storage && typeof storage.getChatHistory === 'function') {
-          history = storage.getChatHistory(profile.partnerId);
-        } else {
-          const raw = localStorage.getItem('chat_history_' + profile.partnerId);
-          history = raw ? JSON.parse(raw) : [];
+        const authoritativeKey='chat_history_'+profile.partnerId;
+        /* NEVER trust a legacy getter that turns corrupt primary chat into [].
+           Distinguish missing data from corruption before appending. */
+        function readSafeHistory() {
+          if(storage&&storage.result&&typeof storage.result.getChatHistory==='function'){
+            const result=storage.result.getChatHistory(profile.partnerId);
+            if(result&&result.ok){if(!Array.isArray(result.value))throw new Error('聊天数据格式错误');return result.value;}
+            if(result&&result.error&&result.error.code==='NOT_FOUND')return [];
+            throw new Error('聊天记录读取失败或损坏，已拒绝覆盖');
+          }
+          const raw=localStorage.getItem(authoritativeKey);
+          if(raw!==null){const parsed=JSON.parse(raw);if(!Array.isArray(parsed))throw new Error('聊天记录格式无法识别');return parsed;}
+          const rootRaw=localStorage.getItem('phone_data_v2');
+          if(rootRaw!==null){
+            const root=JSON.parse(rootRaw);
+            const legacy=root&&root[profile.partnerId]&&root[profile.partnerId].chat&&root[profile.partnerId].chat.history;
+            if(legacy!=null){if(!Array.isArray(legacy))throw new Error('旧聊天数据格式无法识别');return legacy;}
+          }
+          return [];
         }
-        if (!Array.isArray(history)) throw new Error('聊天记录格式无法识别');
-
-        const next = history.slice();
-        next.push(message);
-        let saved = false;
-        if (storage && typeof storage.saveChatHistory === 'function') {
-          saved = storage.saveChatHistory(profile.partnerId, next) === true;
-        } else {
-          localStorage.setItem('chat_history_' + profile.partnerId, JSON.stringify(next));
-          saved = true;
+        const history=readSafeHistory();
+        const next=history.concat([message]);
+        let saved=false;
+        if(storage&&storage.result&&typeof storage.result.saveChatHistory==='function'){
+          const result=storage.result.saveChatHistory(profile.partnerId,next);
+          saved=!!(result&&result.ok);
+        }else if(storage&&typeof storage.saveChatHistory==='function'){
+          saved=storage.saveChatHistory(profile.partnerId,next)===true;
+        }else{
+          localStorage.setItem(authoritativeKey,JSON.stringify(next));
+          saved=true;
         }
-        if (!saved) throw new Error('聊天记录写入失败');
-
-        const verified = storage && typeof storage.getChatHistory === 'function'
-          ? storage.getChatHistory(profile.partnerId)
-          : JSON.parse(localStorage.getItem('chat_history_' + profile.partnerId) || '[]');
-        const last = Array.isArray(verified) && verified.length ? verified[verified.length - 1] : null;
-        if (!Array.isArray(verified) || verified.length !== next.length ||
-            !last || last.role !== message.role || last.type !== message.type ||
-            last.time !== message.time || last.text !== message.text) {
-          throw new Error('聊天记录写入后校验失败');
-        }
+        if(!saved)throw new Error('聊天记录写入失败');
+        const verified=readSafeHistory();
+        if(JSON.stringify(verified)!==JSON.stringify(next))throw new Error('聊天记录写入后校验失败');
       } catch(error) {
         invitationSaved = false;
         console.error('[Couple] partner invitation history persistence failed:', error);
