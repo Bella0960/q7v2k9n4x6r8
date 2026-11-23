@@ -49,6 +49,7 @@ function makeSandbox({ store, roles = [{ id: 'a', name: '甲' }, { id: 'b', name
     rolePickerOpen: true,
     reactionSequence: 0,
     gameStorageWarned: false,
+    detectiveGenToken: 0,   /* #445 在 selectRole 里作废旧生成结果，此沙箱只需提供变量 */
     byId: (id) => (id === 'toast' ? toastEl : { textContent: '', innerHTML: '', style: {}, classList: { add() {}, remove() {}, toggle() {} } }),
     showToast: (t) => toasts.push(t),
     roleName: (r) => (r && (r.name || r.nickname)) || '游戏搭档',
