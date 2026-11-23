@@ -57,7 +57,7 @@ const APP_SHELL = [
   './games/games.html',
   './games/cooking.html',
   './games/css/cooking.css?v=20261025v3',
-  './games/js/cooking.js?v=20261025v3',
+  './games/js/cooking.js?v=20261124v4',
   './games/js/interrogation-v20.js?v=20',
   './games/assets/tidal-archive-room-v18.webp',
   './cafe/cafe.html',
