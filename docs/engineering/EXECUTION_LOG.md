@@ -213,3 +213,15 @@ On the next turn/session, read this file and the current `AGENTS.md` first. Cont
 - **修改：** 改为容器级一次性事件委托 `bindGrowthClaim(#view-extra)`（含 `growthClaimDelegated` 去重），点击经 `closest('[data-growth-claim]')` 命中后调用既有 `claimGrowthReward`，其内部 `st.growthClaims[id]` 判重继续防重复领取；新增 `syncArchiveState()`，由 `setTab`/`renderAll` 统一维护 `aria-expanded`。
 - **测试：** 新增 `tests/cafe-growth-claim.test.mjs`——从源码截取 `claimGrowthReward` 与 `bindGrowthClaim` 真实实现，在 `node:vm` 隔离上下文里模拟点击：发放一次、重复点击不再发放、未达成/未知奖励不发放、非领奖区域不触发、重复绑定只注册一次，另加「不得在 innerHTML 前绑定」的源码守卫。连续运行 10/10 通过（含 `cafe-archive-entry` 4 项）；内联脚本 `node --check` 通过。
 - **仍未验证：** 浏览器/真机实际点击、Vite 全站构建（`vite build` 清空 `dist/` 被沙箱策略拒绝）、屏幕阅读器下的 `aria-expanded` 播报。
+
+## 2026-11-23 · APP-STORY-001 · 剧情应用存档读写一致性
+- **分支 / PR：** `APP-STORY-001-storage-trust` · Draft。基线 main `40b671bb`。未合并、未部署。
+- **应用构成：** `games/story.html`（676 行单文件）。剧情本数据在 `story-books.js`。键：`maomao_story_player`、`maomao_story_difficulty`、`maomao_story_npc_names`、`maomao_story_npc_<bookId>`、`maomao_story_save_<bookId>`。
+- **P1 已修：**
+  1. **读写后端不一致（真实功能 Bug）**：`writeSave()` 在 `PhoneStorage` 缺失时写 `localStorage`，但 `loadSave()` 与 `renderCover()` 只从 `PhoneStorage.rawGet` 读 → **存了但封面永远看不到进度**。统一为 `storyRead()/storyWrite()`（共享存储优先，回落 localStorage）。
+  2. `PhoneStorage.rawSet` 的布尔返回被忽略（未包在 if 里），写失败当作成功。
+  3. `writeSave()` 的 `catch(e){}` 全空 → 失败无任何提示；`$('btnSave')` 更是无条件 `toast('已保存')`。改为返回布尔并分支提示。
+  4. `setPlayerName` / `saveNpc` / `saveDiff` 静默吞异常 → 改为失败时给具体原因（名字/角色名/难度分别提示），同会话只提示一次。
+- **测试：** 新增 `tests/story-storage-trust.test.mjs`（9 项，VM 跑真实 `storyRead/storyWrite/writeSave/loadSave/setPlayerName`），9/9 通过；内联脚本解析通过。
+- **登记未做：** 剧情应用不产出世界事件（依赖 `ECO-LINK-002`）；`PhoneContext` 未接入（#428）；封面进度条只显示有无存档，不显示百分比（既有设计，未改）。
+- **未验证：** Vite 全站构建、Chromium 375/390/430、真机。
