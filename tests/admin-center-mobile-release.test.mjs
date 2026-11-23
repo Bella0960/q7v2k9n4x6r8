@@ -263,7 +263,7 @@ test('partial directory failures preserve the other successful mobile list', asy
     let renderedInvites = 0;
     const constructor = new Function(
       '$', 'api', 'directoryPath', 'renderAccounts', 'renderInvites',
-      'updateStats', 'updateAccountFilterCounts', 'updateInviteFilterCounts',
+      'updateStats', 'updateAccountFilterCounts', 'updateInviteFilterCounts', 'renderOverviewSummary',
       'renderAccountDetail', 'closeDetail', 'setButtonsDisabled', 'verifiedDirectoryPayload',
       "let accountDirectoryKey='',accountNextCursor='',accountFilter='all',accountHasMore=false," +
       "accountTotalCount=0,accountSummary=null,accountPageError=false,accounts=[]," +
@@ -276,7 +276,7 @@ test('partial directory failures preserve the other successful mobile list', asy
     const app = constructor(
       get, directoryApi, path => path,
       () => { renderedAccounts++; }, () => { renderedInvites++; },
-      () => {}, () => {}, () => {}, async () => {}, () => {}, () => {}, verifiedDirectoryPayload
+      () => {}, () => {}, () => {}, () => {}, async () => {}, () => {}, () => {}, verifiedDirectoryPayload
     );
     if (scenario.failure) {
       await assert.rejects(() => app.refreshAll(), /offline/);
