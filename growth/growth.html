@@ -226,7 +226,11 @@
   function sharedRoleId(){
     try{
       var ps=window.PhoneStorage;
-      if(ps&&typeof ps.getCurrentContactId==='function')return String(ps.getCurrentContactId()||'');
+      if(ps&&typeof ps.getCurrentContactId==='function'&&typeof ps.getCharacters==='function'){
+        var id=String(ps.getCurrentContactId()||'');
+        var list=ps.getCharacters()||[];
+        if(id&&Array.isArray(list)&&list.some(function(r){return r&&r.id!=null&&String(r.id)===id;}))return id;
+      }
     }catch(e){}
     return '';
   }
@@ -269,7 +273,7 @@
   }
   function write(k,v){
     if(!canStore){ toast('还没有绑定正式角色，成长数据只能看不能存'); return false; }
-    try { localStorage.setItem(k, JSON.stringify(v)); return true; } catch(e){ return false; }
+    try { var payload=JSON.stringify(v);localStorage.setItem(k,payload);if(localStorage.getItem(k)!==payload)throw new Error('Growth storage readback mismatch');return true; } catch(e){ return false; }
   }
   function toast(s){ let t=$('toast'); t.textContent=s; t.classList.add('show'); clearTimeout(t._t); t._t=setTimeout(()=>t.classList.remove('show'),1800); }
   function esc(s){ return String(s||'').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])); }
