@@ -85,6 +85,8 @@ const APP_SHELL = [
   './manifest.json',
   'desktop/css/styles.css',
   './settings/font-settings.html',
+  './settings/cloud-push.html',
+  './shared/js/cloud-push-client.js',
   './settings/image-generation.html',
   './settings/js/image-generation.js?v=20261106v1',
   'settings/css/settings.css',
