@@ -6,6 +6,9 @@
 <meta name="theme-color" content="#1a1a1a">
 <title>共同成长</title>
 <script src="../shared/js/native-feel.js"></script>
+<!-- 独立页面必须自己加载共享存储：否则真实浏览器里 window.PhoneStorage 不存在，
+     sharedRoleId() 永远为空，成长统计读不到情侣空间写在正式角色键上的资料。 -->
+<script src="../shared/js/phone/phone_storage.js?v=20261031-envelope1"></script>
 <link rel="stylesheet" href="../shared/css/mobile-fit.css">
 <style>
   * { margin:0; padding:0; box-sizing:border-box; -webkit-tap-highlight-color:transparent; }
@@ -227,13 +230,28 @@
     }catch(e){}
     return '';
   }
+  /* ?id= 深链必须能在正式角色列表里查到；否则不猜，进入只读。 */
+  function roleById(id){
+    if(id==null||id==='')return null;
+    try{
+      var ps=window.PhoneStorage;
+      if(ps&&typeof ps.getCharacters==='function'){
+        var list=ps.getCharacters()||[];
+        var hit=(Array.isArray(list)?list:[]).filter(function(r){return r&&r.id!=null&&String(r.id)===String(id);})[0];
+        if(hit)return{id:String(hit.id),name:String(hit.name||'')};
+      }
+    }catch(e){}
+    return null;
+  }
   var roleId=(function(){
     try{
       var fromUrl=new URLSearchParams(location.search).get('id');
-      if(fromUrl)return fromUrl;
+      if(fromUrl!==null&&fromUrl!=='')return roleById(fromUrl)?fromUrl:'';
     }catch(e){}
-    return sharedRoleId()||(function(){try{return localStorage.getItem('currentRoleId')||''}catch(e){return ''}})()||'default';
+    return sharedRoleId()||'';
   })();
+  /* 没有合法正式角色时只读：绝不读/写 default 或任何共享桶，避免跨角色泄漏。 */
+  var canStore=!!roleId;
   const KEY = {
     profile:'maoer_couple_profile_'+roleId,
     mood:'maoer_couple_mood_'+roleId,
@@ -241,22 +259,18 @@
     moments:'maoer_couple_moments_'+roleId,
     goals:'maoer_growth_goals_'+roleId
   };
-  /* 旧版本把成长数据写在共享的 _v1 键上：仅当新键还没有数据时作为一次性兼容来源。 */
-  const LEGACY = {
-    profile:'maoer_couple_profile_v1',
-    mood:'maoer_couple_mood_v1',
-    bucket:'maoer_couple_bucket_v1',
-    moments:'maoer_couple_moments_v1',
-    goals:'maoer_growth_goals_v1'
-  };
   function read(k, d){ try { let v = JSON.parse(localStorage.getItem(k)); return v==null?d:v; } catch(e){ return d; } }
+  /* 只读当前正式角色自己的键。旧全局 _v1 键从未被任何应用写入过，
+     无条件兜底只会把 A 的历史资料广播给所有角色，已按总控意见移除。 */
   function readData(kind, fallback){
+    if(!canStore) return fallback;
     let v = read(KEY[kind], null);
-    if(v != null) return v;
-    let legacy = read(LEGACY[kind], null);
-    return legacy != null ? legacy : fallback;
+    return v != null ? v : fallback;
   }
-  function write(k,v){ try { localStorage.setItem(k, JSON.stringify(v)); return true; } catch(e){ return false; } }
+  function write(k,v){
+    if(!canStore){ toast('还没有绑定正式角色，成长数据只能看不能存'); return false; }
+    try { localStorage.setItem(k, JSON.stringify(v)); return true; } catch(e){ return false; }
+  }
   function toast(s){ let t=$('toast'); t.textContent=s; t.classList.add('show'); clearTimeout(t._t); t._t=setTimeout(()=>t.classList.remove('show'),1800); }
   function esc(s){ return String(s||'').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])); }
   function safeDate(s){ if(!s||!/^\d{4}-\d{2}-\d{2}$/.test(s)) return null; let d=new Date(s+'T00:00:00'); return isNaN(d.getTime())?null:d; }
