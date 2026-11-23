@@ -102,6 +102,32 @@ try{
   assert.equal(await page.evaluate(()=>getComputedStyle(document.querySelector('.phone-screen')).backgroundSize),'cover');
   ok('desktop_render_uses_full_saved_resolution');
 
+  stage='refocus-does-not-redecode-wallpaper';
+  const refocusStats=await page.evaluate(async()=>{
+    const store=window.MAOMAOWallpaperStore;
+    const get=store.get, tone=store.applyTone;
+    const initial=document.documentElement.style.getPropertyValue('--desktop-bg-img');
+    let reads=0, analyses=0;
+    store.get=function(){reads++;return get.apply(this,arguments);};
+    store.applyTone=function(){analyses++;return tone.apply(this,arguments);};
+    try{
+      await new Promise(resolve=>setTimeout(resolve,1350));
+      window.dispatchEvent(new Event('focus'));
+      window.dispatchEvent(new Event('pageshow'));
+      window.dispatchEvent(new Event('focus'));
+      await new Promise(resolve=>setTimeout(resolve,400));
+      await window.MAOMAOApplyDesktopWallpaper();
+      return {reads,analyses,unchanged:initial===document.documentElement.style.getPropertyValue('--desktop-bg-img')};
+    }finally{
+      store.get=get;
+      store.applyTone=tone;
+    }
+  });
+  assert.ok(refocusStats.reads<=2,'mobile refocus repeatedly read a large wallpaper');
+  assert.equal(refocusStats.analyses,0,'same HD wallpaper triggered duplicate full-image tone decode');
+  assert.equal(refocusStats.unchanged,true,'mobile refocus unnecessarily changed rendered wallpaper');
+  ok('mobile_refocus_does_not_redecode_hd_wallpaper');
+
   stage='failure-recovery';
   await page.goto(origin+'/settings/appearance.html',{waitUntil:'domcontentloaded',timeout:20000});
   const before=await getSaved(page);
