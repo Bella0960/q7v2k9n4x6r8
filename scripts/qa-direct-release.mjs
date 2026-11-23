@@ -27,7 +27,7 @@ const QA_DB = '4a24ce58079f468c87c2f75e107c4d1c';
 const CORE_DB = 'e1b78d3813ae4a819841e8c5c3e9e8ec';
 const QA_DO = '4a10d3dab4e16639445f4afdb0b7e5e2462cf06894cb4ae85f0ac3cd3cdba101';
 const CORE_DO = 'dba114c7b0abd8e53d1d78e579924852b8e40907e50213634aeeaeb41ab51a98';
-const BRANCH = 'integration/qa-admin-workspace-on-v146-20261123';
+const BRANCH = 'fix/admin-v147-post-test-diagnostics-20261123';
 const QA_SETUP_OPEN = 'isolated_authority';
 const QA_SETUP_CLOSED = 'disabled';
 const TESTS = [
@@ -484,8 +484,54 @@ async function main() {
   const qaOnly = process.argv.includes('--qa-only');
   const deploy = qaOnly || process.argv.includes('--deploy');
   const flags = process.argv.slice(2);
-  assert.ok(flags.length <= 1 && flags.every(x => x === '--deploy' || x === '--qa-only'),
+  const diagnoseGuards = flags.length === 1 && flags[0] === '--diagnose-guards';
+  assert.ok(flags.length <= 1 && flags.every(x =>
+    x === '--deploy' || x === '--qa-only' || x === '--diagnose-guards'),
     'Unsupported or conflicting release arguments');
+  // Read-only segmented reproduction of the exact post-test safety contracts.
+  // Never provides deploy credentials, changes Workers, DBs, secrets or identity.
+  // Deliberately runs before the costly full release gate.
+  if (diagnoseGuards) {
+    const labelError = error => {
+      const message = String(error?.message || '');
+      const allowlist = [
+        ['candidate-ref', /Unexpected remote branch ref|QA snapshot|candidate HEAD|Remote QA HEAD/],
+        ['working-tree', /Checkout must be clean|Tests altered the checkout/],
+        ['qa-assets', /QA Vite asset missing/],
+        ['identity-binding', /identity service binding|runtime variable|runtime binding|QA bootstrap lifecycle/],
+        ['account-proof', /Cloudflare account counts|founder\/admin no longer matches|identity core contains conflicting accounts/],
+        ['qa-route', /workers\.dev|preview URLs|QA core is not reachable/],
+        ['login-js-version', /login HTML is still referencing cached older JavaScript/],
+        ['login-css', /login source stylesheet|login HTML does not actually load|QA login stylesheet/],
+        ['login-form', /existing QA login form is missing/],
+        ['setup-html', /QA founder setup|QA setup cannot accept/],
+        ['http-status', /HTTP 200|QA status endpoint/],
+        ['cloudflare-api', /Read-only Cloudflare preflight failed/],
+        ['qa-identity-state', /QA account mode|QA identity|QA login readiness|QA one-time setup|QA bootstrap status|QA login page/],
+        ['identity-core-state', /isolated identity core|identity initialization/],
+        ['source', /Unexpected repository origin|Only the approved isolated QA candidate branch/]
+      ];
+      return allowlist.find(([, pattern]) => pattern.test(message))?.[0] || 'unclassified';
+    };
+    const check = async (name, callback) => {
+      try {
+        const result = await callback();
+        console.log('QA_GUARD_DIAG_OK:' + name);
+        return result;
+      } catch (error) {
+        console.error('QA_GUARD_DIAG_FAIL:' + name + ':' + labelError(error));
+        throw new Error('QA read-only diagnostic stopped; detailed evidence kept private');
+      }
+    };
+    await check('candidate', () => preflightCheckout());
+    const proof = await check('cloudflare-preflight', cloudflarePreflight);
+    await check('login-http-smoke', () => qaHttpSmoke(proof.coreInitialized));
+    await check('dependencies', () => run('npm', ['ci', '--no-audit', '--no-fund'], true));
+    await check('vite-build', () => run('npm', ['run', 'build'], true));
+    await check('built-assets', () => assertReadyForUpload());
+    console.log('QA_GUARD_DIAG_PASS:read-only');
+    return;
+  }
   preflightCheckout();
   // Fail fast on a missing explicit QA-only confirmation or Cloudflare access,
   // instead of burning an entire expensive test suite before discovering it.
