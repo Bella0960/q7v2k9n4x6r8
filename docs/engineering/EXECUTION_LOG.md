@@ -147,3 +147,12 @@ On the next turn/session, read this file and the current `AGENTS.md` first. Cont
 
 - **2026-11-22 storage hardening:** Prevent damaged/non-array primary `chat_memories_<id>` content from being overwritten; reject invalid memory targets; stop memory-library delete, dedupe, and AI merge success displays when write fails; capture AI-merge role ID before network await. Added the corresponding regression tests. **16/16 V8-isolated production-module/DOM-contract checks passed** (not full Node). Parsed all changed JS/inline scripts successfully.
 - **Verification handoff:** PR source remains unmerged; next QA must use the exact pinned branch SHA and the existing public-only verification channel. Do not run exhausted legacy private Actions or bypass existing safety guards.
+
+## 2026-11-23 · APP-CAFE-002 · 经营档案入口
+
+- **分支 / PR：** `APP-CAFE-002-archive-entry` · Draft PR。未合并、未部署。
+- **实际发现：** `<main>` 内没有 `#view-extra`，`renderCafeDetails()` 第一行 `if(!root)return;` 直接返回。于是成长面板、每日目标、搭档建议（`askPlan`/`acceptPlan`）、结算复盘、成就列表全部没有渲染出口；页头 `功能 +` 只有 `data-open-cafe` 属性，处理器绑在首行即 `return` 的 `initCafeCompactUI()` 内，属于无逻辑按钮。
+- **修改：** 挂载 `#view-extra`；`setTab`/`renderAll`/`renderTab` 增加 `extra` 路由；页头控件改为 `#openArchive`（`aria-controls`/`aria-expanded`），点击在档案与今日经营间切换；档案顶部提供「返回」；总览重渲染时仅在档案打开状态下刷新档案，避免移动端无谓重绘。样式复用既有 `#view-extra` 规则，未新增视觉语言。
+- **测试：** 新增 `tests/cafe-archive-entry.test.mjs`（4/4 通过）；内联脚本 `node --check` 通过。本轮未重新执行 Vite 构建（`vite build` 会清空 `dist/`，被沙箱策略拒绝），也未做浏览器/真机验收 → **NOT VERIFIED**。
+- **回滚：** 纯代码回退。无存储键、无存档结构变化。
+- **待确认（产品）：** 页头文案由「功能 +」改为「档案」。原控件无任何行为，若希望恢复成功能菜单形态，需要单独设计，不在本 PR 范围。
