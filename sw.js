@@ -1,7 +1,7 @@
 /* 小手机 PWA Service Worker
  * 页面与静态资源均采用缓存优先+后台更新，断网/慢网时秒开。
  */
-const CACHE_NAME = 'phone-app-pwa-v205';
+const CACHE_NAME = 'phone-app-pwa-v206';
 const FONT_ASSET_CACHE = 'maomao-font-assets-v1';
 // v196 release: sweep orphaned role-owned media refs during avatar cleanup.
 const APP_SHELL = [
@@ -147,7 +147,12 @@ self.addEventListener('install', event => {
         // 清单不可用时仍继续安装已有核心资源，不阻塞整个 PWA。
       }
 
-      const resources = Array.from(new Set(APP_SHELL.concat(pageEntries)));
+      // Account-bearing HTML must never enter a cache shared by different users.
+      const resources = Array.from(new Set(APP_SHELL.concat(pageEntries))).filter(function (entry) {
+        const pathname = new URL(entry, self.registration.scope).pathname;
+        return pathname !== '/' && !pathname.endsWith('.html') &&
+          !pathname.startsWith('/admin/');
+      });
       await Promise.all(resources.map(url => cache.add(url).catch(() => undefined)));
     }).then(() => self.skipWaiting())
   );
@@ -200,44 +205,20 @@ self.addEventListener('fetch', event => {
     return;
   }
 
-  // 页面导航采用“缓存优先、后台更新”：
-  // 已缓存的应用立即打开，不让慢网络/VPN 阻塞页面；缓存未命中时才等待网络。
-  // 绝不把 index.html 当作其他应用的兜底页面，避免点开应用却重新显示桌面。
-  if (req.mode === 'navigate') {
-    event.respondWith((async function () {
-      var cachedPromise = caches.match(req).catch(function () { return null; });
-      var cacheWritePromise = null;
-      var networkPromise = fetch(req).then(function (response) {
-        if (response && response.ok) {
-          var copy = response.clone();
-          // 写回缓存单独成 Promise：失败只影响缓存，不影响已成功的网络响应。
-          cacheWritePromise = caches.open(CACHE_NAME)
-            .then(function (cache) { return cache.put(req, copy); })
-            .catch(function () { return undefined; });
-        }
-        return response;
-      }).catch(function () {
-        return null;
-      });
-
-      // 后台生命周期必须覆盖“取网络 + 打开缓存 + 写入缓存”的完整异步过程。
-      var updatePromise = networkPromise.then(function () { return cacheWritePromise; });
-      event.waitUntil(updatePromise.then(function () { return undefined; }));
-
-      var cached = await cachedPromise;
-      if (cached) return cached;
-
-      var fresh = await networkPromise;
-      if (fresh) return fresh;
-
-      return new Response('此页面暂时无法连接，请检查网络后重试。', {
-        status: 503,
-        headers: {
-          'Content-Type': 'text/plain; charset=UTF-8',
-          'Cache-Control': 'no-store'
-        }
-      });
-    })());
+  // Account-scoped HTML is injected by the Worker: do not serve a previous
+  // user's cached document. Fail closed offline without changing local records.
+  if (req.mode === 'navigate' || url.pathname.endsWith('.html')) {
+    event.respondWith(
+      fetch(req, { cache: 'no-store' }).catch(function () {
+        return new Response('当前离线，无法安全验证账号。联网后重试，不会清除本机数据。', {
+          status: 503,
+          headers: {
+            'Content-Type': 'text/plain; charset=UTF-8',
+            'Cache-Control': 'no-store'
+          }
+        });
+      })
+    );
     return;
   }
 
