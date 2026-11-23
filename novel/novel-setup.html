@@ -142,6 +142,10 @@ textarea{resize:vertical;min-height:88px}
 <section id="pane-audience" class="hidden"><h2 class="section-title">读者来信</h2><p class="hint">发布章节后，可以查看模拟读者的评论、追更反应和人气变化。此处为本地模拟读者系统，不代表真实联网读者。</p><div class="stats"><div class="stat"><small>阅读量</small><strong id="views">0</strong></div><div class="stat"><small>收藏</small><strong id="likes">0</strong></div><div class="stat"><small>追更</small><strong id="follows">0</strong></div></div><div class="field"><label>按章节查看反馈</label><select id="readerChapterFilter"><option value="all">全部章节与作品动态</option></select></div><div class="field"><label>反馈类型</label><select id="readerTypeFilter"><option value="all">全部反馈</option><option value="读者">读者评论</option><option value="发布">发布记录</option><option value="更新">更新记录</option></select></div><div id="chapterReaderStats"></div><div class="actions"><button class="btn dark" id="simulateReaders">AI 生成读者反馈</button><button class="btn" id="exportWork">导出当前作品</button></div><div id="readerNotes"></div></section>
 <p class="footer">LOCAL FIRST / 内容保存在当前浏览器。大纲、章节续写与改写、读者反馈可调用小手机现有 AI API；未配置 API 时请先到设置中完成配置。读者互动数据仍为本地模拟，不代表真实联网读者。清理浏览器数据可能导致本地作品丢失，请定期导出备份。</p>
 </div></main><div class="toast" id="toast"></div>
+<!-- 小说模块的付费 AI 调用依赖共享存储与共享通道：独立页面必须自己加载，
+     否则 PhoneStorage/PhoneAPI 不存在，配置读取会静默失效。 -->
+<script src="../shared/js/phone/phone_storage.js?v=20261031-envelope1"></script>
+<script src="../shared/js/phone/phone_api.js?v=20261031-envelope1"></script>
 <script src="js/novel-ai.js?v=20261030"></script>
 <script>
 (function(){
