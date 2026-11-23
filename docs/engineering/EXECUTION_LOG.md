@@ -147,3 +147,13 @@ On the next turn/session, read this file and the current `AGENTS.md` first. Cont
 
 - **2026-11-22 storage hardening:** Prevent damaged/non-array primary `chat_memories_<id>` content from being overwritten; reject invalid memory targets; stop memory-library delete, dedupe, and AI merge success displays when write fails; capture AI-merge role ID before network await. Added the corresponding regression tests. **16/16 V8-isolated production-module/DOM-contract checks passed** (not full Node). Parsed all changed JS/inline scripts successfully.
 - **Verification handoff:** PR source remains unmerged; next QA must use the exact pinned branch SHA and the existing public-only verification channel. Do not run exhausted legacy private Actions or bypass existing safety guards.
+
+## 2026-11-23 · APP-KITCHEN-001 · 投喂厨房试吃交互（PR 2/2）
+
+- **分支 / PR：** `APP-KITCHEN-001-interaction` · Draft PR。基线 main `40b671bb`。未合并、未部署。
+- **问题：**
+  1. 「端给 TA」没有连点锁，双击会让 TA 做的菜重复入历史。
+  2. `requestReaction()` 无归属校验：请求期间切换角色、重做、改菜，旧响应会写回当前菜品并在新角色名下展示。
+- **修改：** 新增 `reactionToken` 与 `tastingLock`；`beginTasting` 进入即加锁并领 token，延迟调用携带 `(token,dish)`；`finish()` 用 `reactionIsCurrent(token,dish)` 丢弃过期响应；`cookAgain` / `editDish` / 切换角色都会 `reactionToken++`。
+- **测试：** `tests/cooking-interaction-guard.test.mjs` 7 项（VM 跑真实 `reactionIsCurrent` + 源码守卫），7/7 通过；`node --check` 通过。
+- **未验证：** 浏览器实际连点与切换角色的时序（需 Chromium/真机）。

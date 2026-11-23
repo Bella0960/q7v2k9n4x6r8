@@ -71,6 +71,7 @@ function dishPlatingArt(list){
 }
 var selected={},activeCategory='all',roles=[],activeRole=null,currentDish=null,history=[],tasteMemory={},discoveries=[],progress={dishes:0,feedback:0,ingredients:[],unlocked:[]};
 var cookBy='me'; // 'me' = 用户做的, 'them' = 角色做的
+var tastingLock=false,reactionToken=0;
 var CUSTOM_RECIPES_KEY='maomao_custom_recipes_v1';
 var customRecipes=[];
 function loadCustomRecipes(){
@@ -242,8 +243,13 @@ function localReaction(profile){
  if(/活泼|开朗|热情/.test(personality))lines=['哇，居然还不错！再给我一口！','这个组合好有创意，你是不是偷偷练过？','我宣布，这道菜今天有资格上桌！'];
  var flavorScore=(tasteMemory.flavors&&tasteMemory.flavors[profile.flavor])||0,ingredientScore=(profile.ingredients||[]).reduce(function(sum,item){return sum+((tasteMemory.ingredients&&tasteMemory.ingredients[item.name])||0)},0);var eventLine=profile.specialRecipe?({ 'midnight-rice':'你居然做出了深夜酱香蛋炒饭……这组合有种被认真照顾到的感觉。','sunset-egg':'番茄和芝士的味道意外合拍。这个配方，我想记住。','rainy-noodles':'这碗面很适合慢慢吃。今天好像真的被安慰到了。','midnight-toast':'蜂蜜和巧克力？这份甜点有点犯规，我想再尝一口。'}[profile.specialRecipe.id]||'这个隐藏配方让我有点惊喜。'):null;if(eventLine)lines=[eventLine];else if(flavorScore>0||ingredientScore>=2)lines=['你记得我喜欢这样的味道吧？这次真的很合口味。','这份搭配很对我的胃口，感觉你有认真记住之前的反馈。','嗯，这次比上次更合适了。我愿意把它列进喜欢的菜。'];else if(flavorScore<0||ingredientScore<=-2)lines=['这次的味道和我平常喜欢的有点不一样，不过我能感受到你的用心。','好像有一点点不太合口味。下次我们可以试着调整一下搭配。'];return {title:profile.specialRecipe?'发现隐藏料理！':profile.odd?'TA 有点意外。':profile.flavor.indexOf('均衡')>=0?'TA 看起来很满意。':'TA 认真尝了一口。',copy:profile.specialRecipe?name+'触发了「'+profile.specialRecipe.event+'」。':name+'先看了看菜品，然后终于尝了一口。',quote:lines[Math.floor(Math.random()*lines.length)]};
 }
+/* 试吃请求的归属判定：角色切换、重做、改菜都会让旧请求失效。 */
+function reactionIsCurrent(token,dish){return token===reactionToken&&currentDish===dish}
 function beginTasting(){
- if(!currentDish)return;currentDish.tasteFeedback='';currentDish.name=$('dishName').value.trim()||currentDish.profile.dishName;
+ if(!currentDish||tastingLock)return;
+ tastingLock=true;setTimeout(function(){tastingLock=false},700);
+ var dish=currentDish,token=++reactionToken;
+ currentDish.tasteFeedback='';currentDish.name=$('dishName').value.trim()||currentDish.profile.dishName;
  var isThem=cookBy==='them';
  setStage('tastingStage');$('tastingActions').hidden=true;$('tasteFeedback').hidden=true;$('tasteLiked').classList.remove('selected');$('tasteDisliked').classList.remove('selected');
  $('tasteFeedbackNote').textContent='你的选择会记进 TA 的口味档案，影响之后的试吃反应。';
@@ -277,14 +283,14 @@ function beginTasting(){
  $('tastingScene').classList.remove('reacted');
  setTimeout(function(){
   $('reactionKicker').textContent='FIRST BITE';$('reactionTitle').textContent='TA 试吃了一口。';$('reactionCopy').textContent='味道如何？让 TA 自己来告诉你。';$('reactionQuote').textContent='正在等 TA 的评价……';
-  requestReaction();
+  requestReaction(token,dish);
  },900);
 }
-function requestReaction(){
- var profile=currentDish.profile,local=localReaction(profile),cfg=window.PhoneStorage&&PhoneStorage.getApiConfig?window.PhoneStorage.getApiConfig():{};
+function requestReaction(token,dish){
+ var profile=dish.profile,local=localReaction(profile),cfg=window.PhoneStorage&&PhoneStorage.getApiConfig?window.PhoneStorage.getApiConfig():{};
  var canCall=cfg&&String(cfg.apiKey||'').trim()&&window.PhoneAPI&&typeof window.PhoneAPI.complete==='function';
  function finish(text,source){
-  if(!currentDish)return;
+  if(!reactionIsCurrent(token,dish))return;
   var clean=String(text||local.quote).trim().replace(/^["“”'「」]+|["“”'「」]+$/g,'').slice(0,420);
   currentDish.reaction=clean;currentDish.reactionSource=source;currentDish.name=$('dishName').value.trim()||currentDish.name;
   $('reactionKicker').textContent='THE VERDICT';$('reactionTitle').textContent=local.title;$('reactionCopy').textContent=local.copy;$('reactionQuote').textContent='“'+clean+'”';$('reactionQuote').classList.remove('loading');$('tastingScene').classList.add('reacted');$('tastingActions').hidden=false;
@@ -319,9 +325,9 @@ function continueChat(){
  location.href='../chat/chat/chat-detail.html?id='+encodeURIComponent(activeRole.id)+'&cooking=1';
 }
 $('backButton').onclick=function(){if(window.history.length>1)window.history.back();else location.href='games.html'};
-$('changeRole').onclick=function(){var box=$('roleOptions');if(!roles.length){showToast('暂未找到角色，请先在聊天角色管理中创建');return}box.hidden=!box.hidden;if(!box.hidden){box.innerHTML='';roles.forEach(function(r){var b=document.createElement('button');b.type='button';b.className='role-option'+(String(r.id)===String(activeRole.id)?' active':'');b.textContent=roleName(r);b.onclick=function(){activeRole=r;localStorage.setItem(ROLE_KEY,String(r.id));renderRole();box.hidden=true};box.appendChild(b)})}};
+$('changeRole').onclick=function(){var box=$('roleOptions');if(!roles.length){showToast('暂未找到角色，请先在聊天角色管理中创建');return}box.hidden=!box.hidden;if(!box.hidden){box.innerHTML='';roles.forEach(function(r){var b=document.createElement('button');b.type='button';b.className='role-option'+(String(r.id)===String(activeRole.id)?' active':'');b.textContent=roleName(r);b.onclick=function(){reactionToken++;activeRole=r;localStorage.setItem(ROLE_KEY,String(r.id));renderRole();box.hidden=true};box.appendChild(b)})}};
 $('clearIngredients').onclick=function(){selected={};renderIngredients();renderPot()};
-$('cookButton').onclick=cook;$('editDish').onclick=function(){setStage('cookStage')};$('serveButton').onclick=beginTasting;$('continueChat').onclick=continueChat;$('cookAgain').onclick=function(){selected={};currentDish=null;renderIngredients();renderPot();setStage('cookStage')};
+$('cookButton').onclick=cook;$('editDish').onclick=function(){reactionToken++;setStage('cookStage')};$('serveButton').onclick=beginTasting;$('continueChat').onclick=continueChat;$('cookAgain').onclick=function(){reactionToken++;selected={};currentDish=null;renderIngredients();renderPot();setStage('cookStage')};
 $('historyButton').onclick=openHistory;$('closeHistory').onclick=function(){$('historyPanel').hidden=true};
 $('tasteLiked').onclick=function(){saveTasteFeedback(true)};$('tasteDisliked').onclick=function(){saveTasteFeedback(false)};
 
