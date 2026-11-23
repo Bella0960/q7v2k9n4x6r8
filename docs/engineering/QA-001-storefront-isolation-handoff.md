@@ -9,7 +9,7 @@
 
 ## 0. 当前状态（与远端一致）
 
-- 分支已推送到远端，本分支 head `8ee9d34edc7f5d570ab553d85a924dbe5c5febf5`（相对 #275 head 领先 5 commits）；基线为 #275 head `1df1388c40c585628ada2e754c585a62ca03e572`，未改 `main`、`#275`、`#348`。
+- 分支已推送到远端（当前 head SHA 以 PR #433 分支为准）；基线为 #275 head `1df1388c40c585628ada2e754c585a62ca03e572`，未改 `main`、`#275`、`#348`。测试代码固定提交 `8ee9d34edc7f5d570ab553d85a924dbe5c5febf5`，其后仅追加交接文档回填。
 - 独立 Draft PR：[#433](https://github.com/Bella0960/q7v2k9n4x6r8/pull/433)，base `task-THEME-MARKET-001/storefront-expansion`；总控只读复审静态初筛通过，保留 Draft，移交总控做安全 QA 集成。
 - 未合并、未部署、未触发私有 Actions、未改动正式环境与真实用户数据。
 - 运行时业务源码（商城控制器/样式、共享主题引擎、聊天、存储、SW）本轮未做功能性修改；改动集中在测试、工程脚本与本交接文档。
