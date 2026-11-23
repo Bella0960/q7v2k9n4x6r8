@@ -15,7 +15,7 @@ import assert from 'node:assert/strict';
 import { readFile, mkdir } from 'node:fs/promises';
 import { extname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { chromium } from 'playwright';
+import { chromium, webkit } from 'playwright';
 import { createHarness, SENTINELS, T0, HOUR } from './fixtures/admin-cloud-harness.mjs';
 import worker from '../worker.js';
 
@@ -100,12 +100,25 @@ await step('page gate: anonymous is redirected to the account entry; non-admin i
 });
 
 /* ---- B. browser ---- */
-const browser = await chromium.launch({ executablePath: process.env.CHROMIUM_PATH || undefined });
+const engineName = process.env.ADMIN_BROWSER_ENGINE === 'webkit' ? 'webkit' : 'chromium';
+const browserEngine = engineName === 'webkit' ? webkit : chromium;
+const browser = await browserEngine.launch({
+  ...(engineName === 'chromium' && process.env.CHROMIUM_PATH
+    ? { executablePath: process.env.CHROMIUM_PATH } : {})
+});
+console.log('ADMIN_BROWSER_ENGINE=' + engineName);
 const shots = process.env.SCREENSHOT_DIR;
 if (shots) await mkdir(shots, { recursive: true });
 
 async function open(session, { width = 390, height = 844, dark = false } = {}) {
-  const context = await browser.newContext({ viewport: { width, height }, deviceScaleFactor: 2, isMobile: true, hasTouch: true, locale: 'zh-CN' });
+  const mobileUserAgent = engineName === 'webkit'
+    ? 'Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.0 Mobile/15E148 Safari/604.1'
+    : 'Mozilla/5.0 (Linux; Android 14; Pixel 8) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0.0.0 Mobile Safari/537.36';
+  const context = await browser.newContext({
+    viewport: { width, height }, deviceScaleFactor: 2,
+    isMobile: true, hasTouch: true, locale: 'zh-CN',
+    userAgent: mobileUserAgent
+  });
   if (session) await context.addCookies([{ name: 'MAO_SESSION', value: cookieValue(session), url: base, httpOnly: true, sameSite: 'Lax' }]);
   if (dark) await context.addInitScript(() => localStorage.setItem('settings_dark_mode', '1'));
   const page = await context.newPage();
