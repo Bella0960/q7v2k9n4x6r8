@@ -182,6 +182,8 @@ try {
       { id: 'legacy', name: '旧泡', tab: 'bubble', values: { myBubbleBg: '#222222' } },
       { id: 'role-a-p', name: 'A 的泡', tab: 'bubble', scope: 'role-a', values: { myBubbleBg: '#333333' } }
     ] });
+    // Accept the beforeunload prompt for this automated reload.
+    dialogQueue.push({ action: 'accept' });
     await page.reload({ waitUntil: 'domcontentloaded' });
     await page.waitForSelector('.chat-slim-card', { timeout: 15000 });
     await delay(200);
@@ -281,7 +283,9 @@ try {
     assert.deepEqual(afterList.detail, beforeDetail, width + 'px list load does not touch detail draft');
     assert.deepEqual(afterList.bubble, beforeBubble, width + 'px list load does not touch bubble draft');
 
-    // 9. Persisted presets survive reload.
+    // 9. Persisted presets survive reload. Accept the beforeunload prompt raised by
+    //    the unsaved draft; this is an automated reload, not a user leaving early.
+    dialogQueue.push({ action: 'accept' });
     await page.reload({ waitUntil: 'domcontentloaded' });
     await page.waitForSelector('.chat-slim-card', { timeout: 15000 });
     await delay(200);

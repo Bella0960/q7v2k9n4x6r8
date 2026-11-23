@@ -38,6 +38,7 @@
     "test:forum:mobile": "node tests/forum-media-mobile.mjs",
     "test:studio:import:browser": "node tests/theme-studio-import-browser.mjs",
     "test:studio:preset:browser": "node tests/theme-studio-preset-browser.mjs",
+    "test:studio:draft:browser": "node tests/theme-studio-draft-browser.mjs",
     "test:group:ui": "node --test tests/group-ui-collapse-invite.test.mjs",
     "test:group:invite-e2e": "node --test tests/group-chat-invite-e2e.test.mjs",
     "test:wechat:browser": "node tests/wechat-theme-browser.mjs",

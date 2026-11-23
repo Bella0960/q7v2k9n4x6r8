@@ -28,7 +28,17 @@
   ];
   var state = api.read();
   var drafts = { list: api.clean('list',state.list), detail: api.clean('detail',state.detail), bubble: {} };
+  // Per-scope in-memory bubble drafts: switching role never silently discards an
+  // unsaved draft for the previous role, and it is never written to the other role's
+  // applied ChatBeauty config.
+  var bubbleDrafts = {};
+  // Last successfully applied values — the baseline for dirty comparison. Saving a
+  // preset does not clear it; a failed apply does not clear it either.
+  var applied = { list: api.clean('list',state.list), detail: api.clean('detail',state.detail), bubble: {} };
   var tab = 'list', scope = 'global', noticeTimer;
+  var HISTORY_LIMIT = 30;
+  var history = {};
+  var pendingBefore = null;
   var $ = function (id) { return document.getElementById(id); };
   function toast(message) {
     var el = $('notice');
@@ -44,10 +54,13 @@
   function cleanBubble(raw) {
     var obj={}; BUBBLE.forEach(function(field){obj[field[0]]=bubbleValue(field,raw);}); return obj;
   }
-  function loadBubble() {
+  function resolveBubbleApplied(scopeId) {
     var beauty=window.ChatBeauty;
-    var config=beauty && beauty.resolve ? beauty.resolve(scope==='global'?null:scope) : {};
-    drafts.bubble=cleanBubble(config);
+    var config=beauty && beauty.resolve ? beauty.resolve(scopeId==='global'?null:scopeId) : {};
+    return cleanBubble(config);
+  }
+  function loadBubble() {
+    drafts.bubble = bubbleDrafts[scope] ? cleanBubble(bubbleDrafts[scope]) : resolveBubbleApplied(scope);
   }
   function fieldsFor(group) {
     if(group==='bubble')return BUBBLE;
@@ -68,10 +81,14 @@
       input.dataset.key=field[0];input.type=field[2]==='color'?'color':'range';
       if(field[2]==='number'){input.min=field[4];input.max=field[5];input.step='1';}
       input.value=String(drafts[tab][field[0]]); output.textContent=input.value+(field[6]||'');
+      input.addEventListener('focus',function(){ pendingBefore=currentSnapshot(); });
       input.addEventListener('input',function(){
+        if(pendingBefore==null) pendingBefore=currentSnapshot();
         var value=field[2]==='color'?input.value:Number(input.value);
-        drafts[tab][field[0]]=value;output.textContent=input.value+(field[6]||'');drawPreview();
+        drafts[tab][field[0]]=value;output.textContent=input.value+(field[6]||'');drawPreview();refreshDirty();
       });
+      input.addEventListener('change',commitFieldEdit);
+      input.addEventListener('blur',commitFieldEdit);
       wrap.appendChild(label);wrap.appendChild(input);$('editorFields').appendChild(wrap);
     });
   }
@@ -143,6 +160,78 @@
     if (value === 'global') return '全局';
     return roleNameById(value) || '当前角色';
   }
+  // --- Undo/redo history and dirty state (memory only; no persistence) ---
+  function ctxKey() { return tab === 'bubble' ? 'bubble:' + scope : tab; }
+  function histFor(key) { if (!history[key]) history[key] = { undo: [], redo: [] }; return history[key]; }
+  function currentSnapshot() {
+    if (tab === 'bubble') return cleanBubble(drafts.bubble);
+    return api.clean(tab, drafts[tab]);
+  }
+  function snapshotKey(key) {
+    if (key === 'list') return api.clean('list', drafts.list);
+    if (key === 'detail') return api.clean('detail', drafts.detail);
+    var s = key.slice(7);
+    if (s === scope) return cleanBubble(drafts.bubble);
+    return cleanBubble(bubbleDrafts[s] || resolveBubbleApplied(s));
+  }
+  function appliedFor(key) {
+    if (key === 'list') return applied.list;
+    if (key === 'detail') return applied.detail;
+    var s = key.slice(7);
+    if (!applied.bubble[s]) applied.bubble[s] = resolveBubbleApplied(s);
+    return applied.bubble[s];
+  }
+  function sameValue(a, b) {
+    var ak = Object.keys(a), bk = Object.keys(b);
+    if (ak.length !== bk.length) return false;
+    return ak.every(function (k) { return String(a[k]) === String(b[k]); });
+  }
+  function isDirty(key) { return !sameValue(snapshotKey(key), appliedFor(key)); }
+  function anyDirty() {
+    if (isDirty('list') || isDirty('detail') || isDirty(ctxKey())) return true;
+    return Object.keys(bubbleDrafts).some(function (s) { return isDirty('bubble:' + s); });
+  }
+  function pushHistory(key, before) {
+    var h = histFor(key);
+    h.undo.push(before);
+    if (h.undo.length > HISTORY_LIMIT) h.undo.shift();
+    h.redo.length = 0;
+  }
+  function restoreSnapshot(key, snap) {
+    if (key.indexOf('bubble:') === 0) {
+      drafts.bubble = cleanBubble(snap);
+      bubbleDrafts[scope] = cleanBubble(snap);
+    } else {
+      drafts[key] = api.clean(key, snap);
+    }
+    drawFields(); drawPreview(); refreshDirty(); refreshHistoryButtons();
+  }
+  function undo() {
+    var key = ctxKey(), h = histFor(key);
+    if (!h.undo.length) return;
+    h.redo.push(currentSnapshot());
+    restoreSnapshot(key, h.undo.pop());
+  }
+  function redo() {
+    var key = ctxKey(), h = histFor(key);
+    if (!h.redo.length) return;
+    h.undo.push(currentSnapshot());
+    restoreSnapshot(key, h.redo.pop());
+  }
+  function commitFieldEdit() {
+    if (pendingBefore) {
+      pushHistory(ctxKey(), pendingBefore);
+      pendingBefore = null;
+      refreshHistoryButtons();
+      refreshDirty();
+    }
+  }
+  function refreshHistoryButtons() {
+    var h = histFor(ctxKey());
+    $('undoButton').disabled = !h.undo.length;
+    $('redoButton').disabled = !h.redo.length;
+  }
+  function refreshDirty() { $('dirtyTag').hidden = !isDirty(ctxKey()); }
   function applyPresetToDraft(p) {
     if(p.tab==='bubble'){
       if(isCrossScopeBubble(p)){
@@ -150,11 +239,14 @@
         var to=scopeName(scope);
         if(!window.confirm('该方案来自「'+from+'」，载入到「'+to+'」草稿？仅作模板，不会自动应用。'))return;
       }
+      pushHistory('bubble:'+scope, currentSnapshot());
       drafts.bubble=cleanBubble(p.values);
+      bubbleDrafts[scope]=cleanBubble(drafts.bubble);
     } else {
+      pushHistory(p.tab, currentSnapshot());
       drafts[p.tab]=api.clean(p.tab,p.values);
     }
-    drawFields();drawPreview();toast('已载入草稿，点应用后生效');
+    drawFields();drawPreview();refreshDirty();refreshHistoryButtons();toast('已载入草稿，点应用后生效');
   }
   function renamePreset(p) {
     var input=window.prompt('重命名方案',p.name);
@@ -243,6 +335,7 @@
     });
   }
   function setTab(next) {
+    pendingBefore=null;
     tab=next;
     document.querySelectorAll('[data-tab]').forEach(function(btn){
       var selected=btn.dataset.tab===next;
@@ -252,18 +345,22 @@
     $('panelSubtitle').textContent=next==='bubble'?'全局或角色独立':next==='list'?'卡片与布局':'顶部、聊天区与输入栏';
     $('bubbleScopeRow').hidden=next!=='bubble';
     $('disableButton').textContent=next==='bubble'?'清除气泡覆盖':'停用当前定制';
-    $('editor').scrollTop=0;drawFields();drawPreview();renderPresets();
+    $('editor').scrollTop=0;drawFields();drawPreview();renderPresets();refreshDirty();refreshHistoryButtons();
   }
   function saveCurrent() {
     if(tab==='bubble'){
       if(!window.ChatBeauty||!window.ChatBeauty.save){toast('聊天美化模块未加载');return;}
       if(!window.ChatBeauty.save(scope,cleanBubble(drafts.bubble))){toast('气泡保存失败，请检查存储空间');return;}
+      applied.bubble[scope]=cleanBubble(drafts.bubble);
+      bubbleDrafts[scope]=cleanBubble(drafts.bubble);
     }else{
       var next=api.read();next[tab]=api.clean(tab,drafts[tab]);
       next.enabled[tab]=true;next.updatedAt=Date.now();
       if(!api.save(next)){toast('保存失败，请检查存储空间');return;}
       state=api.read();
+      applied[tab]=api.clean(tab,drafts[tab]);
     }
+    refreshDirty();refreshHistoryButtons();
     toast('已应用，重新打开聊天即可查看');
     try{window.dispatchEvent(new CustomEvent('maomao:chat-theme-change',{detail:{source:'theme-studio',tab:tab,scope:scope}}));}catch(e){}
   }
@@ -272,11 +369,24 @@
       if(!window.ChatBeauty||!window.ChatBeauty.save){toast('聊天美化模块未加载');return;}
       var cleared={};BUBBLE.forEach(function(field){cleared[field[0]]=null;});
       if(!window.ChatBeauty.save(scope,cleared)){toast('恢复失败，请检查存储空间');return;}
-      loadBubble();drawFields();drawPreview();toast(scope==='global'?'已恢复原有气泡默认值':'已恢复跟随全局气泡');
+      // Drop this scope's stale in-memory draft and rebuild from the real applied
+      // value resolved by ChatBeauty (default for global, inherited for a role).
+      // Only the current scope is touched; other roles' unsaved drafts stay put.
+      delete bubbleDrafts[scope];
+      var restored=resolveBubbleApplied(scope);
+      drafts.bubble=restored;
+      bubbleDrafts[scope]=cleanBubble(restored);
+      applied.bubble[scope]=cleanBubble(restored);
+      drawFields();drawPreview();refreshDirty();refreshHistoryButtons();
+      toast(scope==='global'?'已恢复原有气泡默认值':'已恢复跟随全局气泡');
     }else{
       var next=api.read();next.enabled[tab]=false;next.updatedAt=Date.now();
       if(!api.save(next)){toast('停用失败，请检查存储空间');return;}
-      state=api.read();toast('已停用，原有聊天样式会恢复');
+      state=api.read();
+      drafts[tab]=api.clean(tab,state[tab]);
+      applied[tab]=api.clean(tab,state[tab]);
+      drawFields();drawPreview();refreshDirty();refreshHistoryButtons();
+      toast('已停用，原有聊天样式会恢复');
     }
   }
   function storePreset() {
@@ -412,17 +522,39 @@
   }
   function unpackImport(text, filename) {
     if (text.length > 65536) throw new Error('文件过大（最多 64KB）');
+    var pending;
     if (/\.css$/i.test(filename)) {
-      var pending = parseCssImport(text);
-      drafts.list = Object.assign({}, drafts.list, pending.list);
-      drafts.detail = Object.assign({}, drafts.detail, pending.detail);
-      drafts.bubble = Object.assign({}, drafts.bubble, pending.bubble);
+      pending = parseCssImport(text);
     } else {
       var data = parseJsonImport(text);
-      if (data.list) drafts.list = data.list;
-      if (data.detail) drafts.detail = data.detail;
-      if (data.bubble) drafts.bubble = data.bubble;
+      pending = { list: data.list, detail: data.detail, bubble: data.bubble };
     }
+    // Compute the next drafts locally first; an undo node is recorded only for a
+    // section that actually changes. An unchanged section keeps its redo stack and
+    // gains no phantom history entry. Rejected parsing never reaches here.
+    var nextList, nextDetail, nextBubble;
+    if (/\.css$/i.test(filename)) {
+      nextList = Object.assign({}, drafts.list, pending.list);
+      nextDetail = Object.assign({}, drafts.detail, pending.detail);
+      nextBubble = Object.assign({}, drafts.bubble, pending.bubble);
+    } else {
+      nextList = pending.list || drafts.list;
+      nextDetail = pending.detail || drafts.detail;
+      nextBubble = pending.bubble || drafts.bubble;
+    }
+    if (!sameValue(api.clean('list', drafts.list), api.clean('list', nextList))) {
+      pushHistory('list', api.clean('list', drafts.list));
+    }
+    if (!sameValue(api.clean('detail', drafts.detail), api.clean('detail', nextDetail))) {
+      pushHistory('detail', api.clean('detail', drafts.detail));
+    }
+    if (!sameValue(cleanBubble(drafts.bubble), cleanBubble(nextBubble))) {
+      pushHistory('bubble:' + scope, cleanBubble(drafts.bubble));
+    }
+    drafts.list = api.clean('list', nextList);
+    drafts.detail = api.clean('detail', nextDetail);
+    drafts.bubble = cleanBubble(nextBubble);
+    bubbleDrafts[scope] = cleanBubble(drafts.bubble);
   }
   function populateScopes() {
     try {
@@ -441,15 +573,35 @@
     var button=event.target.closest('[data-tab]');if(button)setTab(button.dataset.tab);
   });
   $('bubbleScope').addEventListener('change',function(){
-    scope=this.value;loadBubble();drawFields();drawPreview();
+    pendingBefore=null;
+    bubbleDrafts[scope]=cleanBubble(drafts.bubble);
+    scope=this.value;loadBubble();drawFields();drawPreview();refreshDirty();refreshHistoryButtons();
   });
   $('applyButton').addEventListener('click',saveCurrent);
   $('disableButton').addEventListener('click',disableCurrent);
   $('savePreset').addEventListener('click',storePreset);
   $('restoreDraft').addEventListener('click',function(){
-    var saved=api.read();
-    if(tab==='bubble')loadBubble();else drafts[tab]=api.clean(tab,saved[tab]);
-    drawFields();drawPreview();toast('已还原到最后保存的配置');
+    pushHistory(ctxKey(),currentSnapshot());
+    if(tab==='bubble'){
+      drafts.bubble=cleanBubble(applied.bubble[scope]||resolveBubbleApplied(scope));
+      bubbleDrafts[scope]=cleanBubble(drafts.bubble);
+    } else {
+      drafts[tab]=api.clean(tab,applied[tab]);
+    }
+    drawFields();drawPreview();refreshDirty();refreshHistoryButtons();toast('已还原到最后保存的配置');
+  });
+  $('undoButton').addEventListener('click',undo);
+  $('redoButton').addEventListener('click',redo);
+  var backLink=document.querySelector('.back');
+  if(backLink){
+    backLink.addEventListener('click',function(event){
+      if(anyDirty() && !window.confirm('有未应用的改动，离开工作台将丢失这些草稿。确定离开吗？')){
+        event.preventDefault();
+      }
+    });
+  }
+  window.addEventListener('beforeunload',function(event){
+    if(anyDirty()){ event.preventDefault(); event.returnValue=''; }
   });
   $('exportButton').addEventListener('click',exportJSON);
   $('exportCssButton').addEventListener('click',exportCSS);
@@ -469,9 +621,15 @@
   });
   // Read-only snapshot for focused regression tests; the page never writes it back.
   api._draftSnapshot = function () {
-    return { tab: tab, scope: scope,
+    var h = histFor(ctxKey());
+    var stacks = {};
+    Object.keys(history).forEach(function (k) {
+      stacks[k] = { undo: history[k].undo.length, redo: history[k].redo.length };
+    });
+    return { tab: tab, scope: scope, dirty: anyDirty(), contextDirty: isDirty(ctxKey()),
+      undo: h.undo.length, redo: h.redo.length, stacks: stacks,
       list: api.clean('list', drafts.list), detail: api.clean('detail', drafts.detail),
       bubble: cleanBubble(drafts.bubble) };
   };
-  populateScopes();loadBubble();setTab('list');
+  populateScopes();loadBubble();applied.bubble[scope]=cleanBubble(drafts.bubble);setTab('list');
 })();
