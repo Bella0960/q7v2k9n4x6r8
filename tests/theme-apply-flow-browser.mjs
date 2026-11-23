@@ -36,6 +36,7 @@ function startServer() {
 
 const SHOP = '/theme-store/theme-store.html';
 const DETAIL = '/chat/chat/chat-detail.html?id=apply-flow';
+const LIST = '/chat/chat/chat.html';
 
 async function openShop(page, origin) {
   await page.goto(origin + SHOP, { waitUntil: 'domcontentloaded' });
@@ -62,15 +63,30 @@ async function inspectDetail(page, origin) {
     const send = document.getElementById('myFloatSend');
     const cs = getComputedStyle(shell);
     const snd = send ? getComputedStyle(send) : null;
+    // The WeChat home header only lives in the chat list DOM; the detail page
+    // does not render that element, so record existence instead of treating a
+    // missing element as a visible header.
     const head = document.querySelector('.wechat-home-header');
     return {
       preset: shell.getAttribute('data-chat-theme-preset'),
       green: cs.getPropertyValue('--wechat-green').trim(),
       sendBg: snd ? snd.backgroundColor : '',
       sendRadius: snd ? snd.borderRadius : '',
-      headDisplay: head ? getComputedStyle(head).display : 'absent',
+      headExists: !!head,
       docWidth: document.documentElement.scrollWidth,
       viewport: document.documentElement.clientWidth
+    };
+  });
+}
+
+async function inspectList(page, origin) {
+  await page.goto(origin + LIST, { waitUntil: 'domcontentloaded' });
+  await page.waitForSelector('.phone-mockup', { timeout: 15000 });
+  return page.evaluate(() => {
+    const head = document.querySelector('.wechat-home-header');
+    return {
+      headExists: !!head,
+      headDisplay: head ? getComputedStyle(head).display : 'absent'
     };
   });
 }
@@ -95,15 +111,20 @@ try {
   process.stdout.write('PASS read-only preview leaves storage untouched\n');
 
   // wechat -> qq -> default -> wechat through the real confirm-apply path.
+  // The WeChat home header lives only in the list DOM; the detail page does
+  // not render it, so header visibility is asserted against the list page.
   await applyFromShop(page, 'wechat');
   let m = await inspectDetail(page, origin);
   assert.equal(m.preset, 'wechat', 'wechat detail preset');
   assert.equal(m.green, '#07C160', 'wechat green variable applied');
   assert.equal(m.sendBg, 'rgb(7, 193, 96)', 'wechat send button is green');
   assert.equal(m.sendRadius, '6px', 'wechat send button square corner');
-  assert.notEqual(m.headDisplay, 'none', 'wechat home header visible');
+  assert.equal(m.headExists, false, 'detail page does not render WeChat home header');
   assert.ok(m.docWidth <= m.viewport + 1, 'wechat no horizontal overflow');
-  process.stdout.write('PASS wechat applied from storefront, detail styles clean\n');
+  let h = await inspectList(page, origin);
+  assert.equal(h.headExists, true, 'wechat list header element present');
+  assert.equal(h.headDisplay, 'flex', 'wechat list header visible');
+  process.stdout.write('PASS wechat applied from storefront, detail + list styles clean\n');
 
   await openShop(page, origin);
   await applyFromShop(page, 'qq');
@@ -111,8 +132,11 @@ try {
   assert.equal(m.preset, 'qq', 'qq detail preset');
   assert.equal(m.green, '', 'qq clears the WeChat green variable');
   assert.notEqual(m.sendBg, 'rgb(7, 193, 96)', 'qq send button has no WeChat green residual');
-  assert.equal(m.headDisplay, 'absent', 'qq has no WeChat header');
+  assert.equal(m.headExists, false, 'qq detail page does not render WeChat home header');
   assert.ok(m.docWidth <= m.viewport + 1, 'qq no horizontal overflow');
+  h = await inspectList(page, origin);
+  assert.equal(h.headExists, true, 'qq list header element still in DOM');
+  assert.equal(h.headDisplay, 'none', 'qq list hides the WeChat header');
   process.stdout.write('PASS qq replaces wechat without green/header residual\n');
 
   await openShop(page, origin);
@@ -122,7 +146,11 @@ try {
   assert.equal(m.green, '', 'default clears the WeChat green variable');
   assert.equal(m.sendBg, 'rgb(255, 255, 255)', 'default send button is white');
   assert.equal(m.sendRadius, '50%', 'default send button round');
+  assert.equal(m.headExists, false, 'default detail page does not render WeChat home header');
   assert.ok(m.docWidth <= m.viewport + 1, 'default no horizontal overflow');
+  h = await inspectList(page, origin);
+  assert.equal(h.headExists, true, 'default list header element still in DOM');
+  assert.equal(h.headDisplay, 'none', 'default list hides the WeChat header');
   process.stdout.write('PASS default restores native white round control\n');
 
   await openShop(page, origin);
@@ -131,6 +159,9 @@ try {
   assert.equal(m.preset, 'wechat', 'wechat re-entry preset');
   assert.equal(m.green, '#07C160', 'wechat green variable restored on re-entry');
   assert.equal(m.sendBg, 'rgb(7, 193, 96)', 'wechat green restored on re-entry');
+  h = await inspectList(page, origin);
+  assert.equal(h.headExists, true, 'wechat re-entry list header present');
+  assert.equal(h.headDisplay, 'flex', 'wechat re-entry list header visible again');
   process.stdout.write('PASS re-entering wechat restores full theme\n');
 
   assert.deepEqual(errors, [], 'apply flow must not throw runtime errors');

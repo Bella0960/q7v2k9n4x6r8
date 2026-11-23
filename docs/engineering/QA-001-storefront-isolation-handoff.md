@@ -18,8 +18,8 @@
 
 | 文件 | 改动 |
 | --- | --- |
-| `tests/theme-isolation-matrix-browser.mjs` | 新增：六主题 × 列表/详情 × 375/390/430 隔离矩阵 + 详情页重入循环（Vite dev，跨平台） |
-| `tests/theme-apply-flow-browser.mjs` | 新增：从商城真实「预览 → 应用 → 确认应用」入口驱动 wechat→qq→default→wechat，检查聊天详情页 computed style 与 UI 残留；预览不落盘 |
+| `tests/theme-isolation-matrix-browser.mjs` | 新增：六主题 × 列表/详情 × 375/390/430 隔离矩阵 + 详情页重入循环（Vite dev，跨平台）；微信头断言按列表/详情分别收紧（列表页存在且 flex/none，详情页不渲染该元素） |
+| `tests/theme-apply-flow-browser.mjs` | 新增：从商城真实「预览 → 应用 → 确认应用」入口驱动 wechat→qq→default→wechat；详情页读 computed style（发送按钮背景/圆角、绿色变量），列表页断言微信头存在且 flex/none；预览不落盘 |
 | `tests/market-storefront-browser.mjs` | 修复裸静态服务器 Windows 路径前缀判断；应用按钮限定到弹窗内；补图标/素材异步等待；素材格式断言对齐当前保留上传格式（png/jpeg/webp），不放松校验 |
 | `tests/market-preview-scene.test.mjs` | 对齐 head 重构后的版本号、目录接入点、列表卡片函数拆分与只读封面文案；校验意图不变 |
 | `tests/pwa-navigation-cache.test.mjs` | 对齐 sw.js 缓存名 v235 与隔离层资源版本；不放松缓存覆盖校验 |
@@ -112,7 +112,7 @@
 | `imessage` | default（降级） | imessage | editorial（仅列表） |
 | `default` | default | default | editorial（仅列表） |
 
-非微信主题 `--wechat-green` 为空，`.wechat-home-header` 隐藏或不存在；微信专属头仅在微信列表页出现。
+非微信主题 `--wechat-green` 为空。`.wechat-home-header` 是聊天列表页常驻 DOM：微信主题 `display:flex`，非微信 `display:none`；聊天详情页不渲染该元素。微信专属头仅在微信列表页可见。
 
 ## 5. 本轮真实执行证据（headless Chromium + Node，Windows 本地）
 
@@ -123,12 +123,13 @@
 | 微信隔离浏览器 | `npm run test:wechat:browser` | **15/15 PASS**（5 页面 × 375/390/430） |
 | 隔离回归矩阵 | `npm run test:theme:isolation:browser` | **39/39 PASS**（6 主题 × 2 页 × 3 视口 = 36 + 重入循环 3） |
 | 商城页面浏览器 | `npm run test:theme:market:browser` | **6/6 PASS**（320/375/390/430/1280 + reduced motion） |
-| 商城应用入口隔离流程 | `npm run test:theme:apply-flow:browser` | **5 PASS**（预览不落盘 + wechat/qq/default/wechat computed style） |
-| 生产构建 | `npx vite build` | **PASS**，6.85s；storefront / preview-scene 资源均打包 |
+| 商城应用入口隔离流程 | `npm run test:theme:apply-flow:browser` | **5 PASS**（预览不落盘 + wechat/qq/default/wechat；详情页 computed style + 列表页微信头显隐） |
+| 生产构建 | `npx vite build` | **PASS**，8.06s；storefront / preview-scene 资源均打包 |
 
 覆盖要点：
-- 矩阵：六主题列表/详情 preset 与列表主题属性、微信绿色变量残留、微信专属头显隐、横向溢出、运行时报错；详情页 `wechat → qq → default → wechat` 重入，每次 preset 与变量完全覆盖。
-- 应用流程：从商城真实封面 → 弹窗「应用这套主题」→「确认应用」写入；回到聊天详情页读 computed style（发送按钮背景/圆角、绿色变量、微信头显隐），确认 qq/default 无微信绿与头部残留，default 恢复白底圆角，再入 wechat 完整恢复。
+- 矩阵：六主题列表/详情 preset 与列表主题属性、微信绿色变量残留、微信专属头显隐（仅列表页断言 flex/none，详情页确认不渲染该元素）、横向溢出、运行时报错；详情页 `wechat → qq → default → wechat` 重入，每次 preset 与变量完全覆盖。
+- 应用流程：从商城真实封面 → 弹窗「应用这套主题」→「确认应用」写入；详情页读 computed style（发送按钮背景/圆角、绿色变量），列表页核对微信头存在且 `flex`（微信）/ `none`（qq、default）；确认 qq/default 无微信绿与头部残留，default 恢复白底圆角，再入 wechat 完整恢复。
+- 断言修正：早期版本用 `headDisplay !== 'none'` 判断微信头可见，元素不存在（返回 `absent`）时也会通过，属假阳性；本轮改为先断言元素存在、再断言 display，且头显隐只在真正渲染该 DOM 的列表页检查。
 - 商城页面：原生六主题优先于列表主题与精选位、只读预览不改存储、收藏 aria 状态、搭配默认仅 theme 范围、六主题 setter 持久化、图标预设缩略图、个人素材上传/应用、栏目与滑动、reduced motion。
 
 ## 6. 覆盖边界与未通过 / 未运行
@@ -136,6 +137,7 @@
 - **角色气泡 / 背景 / 名片 / 封面隔离**：由既有 `tests/chat-data-isolation-browser.mjs` 覆盖（角色 A/B 背景不串、名片不串、列表封面与主页封面互不覆盖）；本轮未重复实现。
 - **多账号隔离**：本地基线无多用户账号切换机制（`api_profiles_v1` 是 API 配置多方案，不是多用户）；云端账号在 `#299` / worker 安全基线，不在本分支。**两个账号不同配置的样式隔离为 NOT VERIFIED**，需在唯一 QA 账号环境补测。
 - **保存失败回滚**：整套主题/列表主题/搭配的部分写入失败回滚由 Node 合同（`market-collection.test.mjs` 等）覆盖；浏览器层未模拟 IDB 写入失败注入。
+- **应用流程测试范围**：`theme-apply-flow-browser.mjs` 仅在 390px、`wechat→qq→default→wechat` 四次切换下驱动真实商城入口；其他视口的头显隐由矩阵 375/390/430 覆盖，但应用入口的多视口交互未单独跑。两账号不同自定义配置、角色专属气泡/背景在真实应用路径下的隔离，本轮未在浏览器层验证（角色背景/名片/封面由既有 `chat-data-isolation-browser.mjs` 从数据层覆盖）。
 - **`tests/market-storefront-browser.mjs`**：已在本地修通；其裸静态服务器路径判断的跨平台修复为本轮最小改动，未改动既有断言意图。
 - headless Chromium 视口模拟不等于真机验收。
 

@@ -57,6 +57,7 @@ async function readTheme(page) {
       preset: shell.getAttribute('data-chat-theme-preset'),
       listTheme: shell.getAttribute('data-chat-list-theme'),
       green: cs.getPropertyValue('--wechat-green').trim(),
+      wxHeadExists: !!wxHead,
       wxHeadDisplay: wxHead ? getComputedStyle(wxHead).display : 'absent',
       docWidth: document.documentElement.scrollWidth,
       viewport: document.documentElement.clientWidth
@@ -109,8 +110,16 @@ try {
             assert.equal(m.listTheme, listTheme, `${theme} ${label} @ ${width}px list-theme`);
             assert.equal(m.green, exp.green, `${theme} ${label} @ ${width}px wechat green variable`);
             assert.ok(m.docWidth <= m.viewport + 1, `${theme} ${label} @ ${width}px horizontal overflow: ${JSON.stringify(m)}`);
-            if (theme !== 'wechat') {
-              assert.notEqual(m.wxHeadDisplay, 'flex', `${theme} ${label} @ ${width}px keeps the WeChat header hidden`);
+            if (label === 'list') {
+              if (theme === 'wechat') {
+                assert.equal(m.wxHeadExists, true, `${theme} ${label} @ ${width}px list header element present`);
+                assert.equal(m.wxHeadDisplay, 'flex', `${theme} ${label} @ ${width}px WeChat header visible`);
+              } else {
+                assert.equal(m.wxHeadExists, true, `${theme} ${label} @ ${width}px list header element still in DOM`);
+                assert.equal(m.wxHeadDisplay, 'none', `${theme} ${label} @ ${width}px WeChat header hidden`);
+              }
+            } else {
+              assert.equal(m.wxHeadExists, false, `${theme} ${label} @ ${width}px detail page does not render the list header`);
             }
             process.stdout.write(`PASS ${theme.padEnd(18)} ${label.padEnd(6)} @ ${width}px\n`);
           }
