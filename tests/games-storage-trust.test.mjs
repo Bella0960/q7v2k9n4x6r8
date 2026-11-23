@@ -91,6 +91,19 @@ test('saveRaw：写入成功返回 true，失败返回 false 且不抛异常', (
   assert.ok(toastEl.textContent.includes('没能保存'), 'failure must be surfaced to the player');
 });
 
+test('saveRaw：静默丢弃写入也必须被回读检测', () => {
+  const store = makeStore({ safe: 'previous' });
+  const { sb } = makeSandbox({ store });
+  store.setItem = () => {}; // malicious/failed storage implementation silently drops writes
+  assert.equal(sb.saveRaw('safe', 'changed'), false);
+  assert.equal(store.getItem('safe'), 'previous');
+});
+
+test('源码守卫：旧案件档案损坏不再误报付费 API 失败', () => {
+  assert.ok(page.includes("catch(storageError){showToast('案件已生成，但本机旧档案无法读取"),
+    'corrupt local archive must report storage failure in paid generation path');
+});
+
 test('写入失败只提示一次，不连点刷屏', () => {
   const store = makeStore();
   const { sb, toastEl } = makeSandbox({ store });
