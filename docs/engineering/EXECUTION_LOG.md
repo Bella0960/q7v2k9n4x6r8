@@ -147,3 +147,39 @@ On the next turn/session, read this file and the current `AGENTS.md` first. Cont
 
 - **2026-11-22 storage hardening:** Prevent damaged/non-array primary `chat_memories_<id>` content from being overwritten; reject invalid memory targets; stop memory-library delete, dedupe, and AI merge success displays when write fails; capture AI-merge role ID before network await. Added the corresponding regression tests. **16/16 V8-isolated production-module/DOM-contract checks passed** (not full Node). Parsed all changed JS/inline scripts successfully.
 - **Verification handoff:** PR source remains unmerged; next QA must use the exact pinned branch SHA and the existing public-only verification channel. Do not run exhausted legacy private Actions or bypass existing safety guards.
+
+## 2026-11-23 · APP-CAFE-003 · 咖啡馆接入统一角色上下文
+
+- **分支 / PR：** `APP-CAFE-003-role-context` · Draft PR。基线 main `40b671bb`。未合并、未部署。
+- **只读核查结论：** 咖啡馆页面只加载 `phone_storage.js` + `phone_api.js`；`askPartnerOpinion()` 与 `askPlan()` 的 system prompt 仅由 `roleTraits()` 拼出角色卡的 5 个字段（名称/简介/性格/说话习惯/原始提示）。世界书、长期记忆、人物关系、生活线、人设协议内容完全不进入请求。角色 ID 本身是正式的（`PhoneStorage.getCharacters()` + `getCurrentContactId()`，存档按 roleId 分桶）。
+- **修改（仅 cafe 页面，不动共享基础设施）：**
+  - 按依赖顺序引入 `shared/js/phone/phone_context.js`（在 `phone_storage.js`、`phone_api.js` 之后）。
+  - 新增 `roleContextBlock()`：仅当角色确实存在于正式角色列表时，才用 `buildPhoneRoleContext(roleId, 'cafe')` 取上下文；占位错误文案（`无法构建上下文`）、空值、异常、缺少模块一律返回空串，并把长度限制在 8000 字符。
+  - 新增 `partnerPersonaText()`：有上下文时以「自然遵守、不要逐条复述」的说明包裹上下文，否则回退原有 `roleTraits()`。
+  - 两处请求（搭档意见、经营方案）改用它；JSON 输出契约、温度、超时、返回校验、角色切换竞态保护均未改动。
+- **测试：** 新增 `tests/cafe-role-context.test.mjs`——从源码截取三个函数的真实实现，在 `node:vm` 中执行：正式 ID 与 `'cafe'` 应用标识、未知角色不调用、占位错误不注入、异常安全回退、8000 字符上限、脚本加载顺序与两处调用点；6/6 通过。内联脚本 `node --check` 通过。
+- **未验证：** 真实模型回复是否更贴合人设（需配置 API 的浏览器/真机）、提示词体积对首字延迟的影响、Vite 全站构建（清空 `dist/` 被环境策略拒绝）。
+- **依赖记录：** 人设协议（RP protocol）目前不在 `buildPhoneRoleContext` 的拼装范围内。本应用不另建协议层，若要纳入需在共享上下文模块统一扩展，属其他组范围。
+
+## 2026-11-23 · APP-CAFE-003 · 返工：共享上下文按角色 fail-closed（PR #428）
+
+- **审查结论：** P1-01 世界书未按角色绑定筛选，新调用可能串角色；P1-02 财务/动态快照未按角色过滤；P2 8000 字符从头裁剪。要求应用侧 fail-closed，不改共享模块、不复制世界书实现。
+- **独立复核（真实共享模块 + 假存储）：** 直接运行未改动的 `shared/js/phone/phone_context.js`，`buildPhoneRoleContext('A','cafe')` 的实际输出同时包含 `A专属设定`、`B专属设定` 两个世界书条目与 `钱包/财务` 快照。审查意见成立，此前「调用统一接口即等于正确接入」的判断不成立。
+- **修改（仅 cafe 页面 + 测试）：**
+  - 新增段落白名单 `CAFE_CONTEXT_ALLOWED`（角色人设 / 说话与表达习惯 / 人物关系网络 / 个人生活线 / 长期记忆 / 近期聊天 / 当前设备时间）。
+  - `cafeContextSections()` 按 `\n\n【` 切段；`cafeContextBuild()` 只保留白名单段落，其余记入 `dropped`。世界书段（含其嵌套 `【书 · 条目】` 子块）与「其他 App 已有数据」（动态/财务快照）整段丢弃。
+  - 预算改为**按段落累计**：超预算段落整段跳过并记录，不再 `slice(0,8000)` 从中间截断；首段（人设）保底。
+  - `roleContextBlock()` 返回过滤后的文本；无安全内容时返回空串，`partnerPersonaText()` 回退角色卡。
+- **测试：** `tests/cafe-role-context.test.mjs` 重写为 8 项：段落过滤、真实模块下 A/B 跨角色隔离（记忆/聊天/世界书/财务/对方姓名）、整段丢弃、预算不丢人设、未知角色不调用、占位错误/缺模块/抛错回退、脚本顺序与调用点。8/8 通过；内联脚本 `node --check` 通过。
+- **仍未完成 / 依赖：**
+  - 世界书按角色绑定注入需共享上下文负责人提供安全输出（`chat_worldbooks_<contactId>` 绑定域已有 repository 定义）。本 PR 不放行，标记 BLOCKED。
+  - 人设协议（RP protocol）同样不在共享上下文范围内，未接通，不宣称。
+  - 真实模型回复、首字延迟、Vite 全站构建、浏览器/真机仍未验证。
+
+## 2026-11-23 · APP-CAFE-003 · 二次返工：标题白名单可被伪造（PR #428）
+
+- **审查结论：** 段落标题白名单可被世界书条目正文里自带的 `\n\n【长期记忆】` 伪造，B 角色秘密可被识别为合法段落。
+- **复核（构造数据，真实模块）：** B 世界书条目正文写入 `B_ROLE_SECRET_ZONE\n\n【长期记忆】\nB_ROLE_SECRET_LEAK` 后，仅按标题白名单筛选的旧逻辑确实把 `B_ROLE_SECRET_LEAK` 保留下来，并出现两个 `【长期记忆】` 段。审查成立。
+- **修改：** 安全边界改为**前缀截断** `cafeContextSafePrefix()`：在首次出现 `【世界书 · 生活背景】` 或 `【其他 App 已有数据】` 处停止，之后（含世界书条目正文、动态、财务）一律丢弃；截断后再做白名单与按段落预算。代价明确：存在世界书时，其后的长期记忆与近期聊天会一并丢弃（fail-closed）。标题不再承担安全职责。
+- **测试：** 10 项，全部使用真实 `phone_context.js` + A/B 假存储：含伪造标题的世界书、伪造的动态/财务字段、合法无世界书、超长聊天、超长人设、未知角色、占位错误/缺模块/抛错、脚本顺序与调用点。10/10 通过；内联脚本 `node --check` 通过。
+- **仍未完成：** 世界书按角色绑定、RP 协议、财务/动态按角色过滤都需要共享上下文的安全结构化来源，保持 BLOCKED；未验证真实模型输出、Vite 全站构建、浏览器/真机。
