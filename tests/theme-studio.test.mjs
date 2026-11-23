@@ -73,6 +73,23 @@ test('phone viewport and safe-area layout exist without a separate desktop app',
   assert.match(css,/safe-area-inset-bottom/);
   assert.match(css,/-webkit-overflow-scrolling:touch/);
 });
+test('list preview mirrors the native chat card structure',()=>{
+  const html=readFileSync(new URL('../theme-studio/theme-studio.html',import.meta.url),'utf8');
+  for (const cls of ['chat-slim-card','chat-avatar','chat-meta','chat-title-row','chat-name','chat-time','chat-last-msg']) {
+    assert.match(html, new RegExp('class="[^"]*\\b'+cls+'\\b'));
+  }
+  // legacy self-made preview classes and glyph-only controls must be gone
+  assert.doesNotMatch(html, /mock-card|mock-avatar|mock-card-copy|mock-list-header|mock-bubble-row|mock-bubble-avatar|mock-composer|mock-input|mock-send/);
+  assert.doesNotMatch(html, /⌕|‹|···|↑/);
+});
+
+test('detail and bubble preview mirror the native chat detail structure',()=>{
+  const html=readFileSync(new URL('../theme-studio/theme-studio.html',import.meta.url),'utf8');
+  for (const cls of ['chat-header','chat-title-box','chat-user-name','msg-row','msg-avatar','msg-bubble','input-dock','input-capsule','send-icon-btn']) {
+    assert.match(html, new RegExp('class="[^"]*\\b'+cls+'\\b'));
+  }
+});
+
 test('runtime CSS is opt-in and scoped to native chat pages',()=>{
   const css=readFileSync(new URL('../shared/css/theme-studio-runtime.css',import.meta.url),'utf8');
   assert.match(css,/data-ts-list="1"/);
