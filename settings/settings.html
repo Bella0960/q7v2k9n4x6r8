@@ -325,6 +325,13 @@
                         <div class="param-hint">需要服务商兼容 OpenAI Images API；图片模型使用同一 API Key。支持 Base64 图片或可下载的图片 URL。</div>
                     </div>
 
+                    <div class="api-image-test-block">
+                        <button type="button" id="btn-test-image-connection" class="btn-test">测试图片连接（可能收费）</button>
+                        <p class="param-hint">会实际请求生成 1 张测试图片。只有图片返回并可显示才算成功；不会自动重试，不会进入角色图库。</p>
+                        <p id="image-test-msg" class="model-fetch-msg" role="status" aria-live="polite"></p>
+                        <img id="image-test-preview" alt="图片接口生成的测试图片" hidden>
+                    </div>
+
                     </details>
                     <details class="api-editorial-details" id="api-advanced-settings">
                         <summary><span>高级参数</span><small>温度 · Token · 记忆</small></summary>
@@ -396,6 +403,7 @@
     </div>
     <script src="js/settings.js"></script>
     <script src="js/api-config-tools.js"></script>
+    <script src="js/api-image-connection-test.js?v=20261123v1"></script>
     <script src="js/backup-modules.js"></script>
     <script src="js/backup.js"></script>
     <script>
