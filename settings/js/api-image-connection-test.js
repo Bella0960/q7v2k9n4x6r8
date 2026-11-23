@@ -35,8 +35,8 @@
       var result = JSON.parse(raw || 'null');
       if (!result || result.model !== config.model ||
           result.endpoint !== config.publicEndpoint || !Number.isFinite(result.testedAt)) return '';
-      return '上次图片连接成功：' + new Date(result.testedAt).toLocaleString() +
-        ' · ' + result.durationMs + 'ms（本机记录）';
+      return '历史图片连接成功记录：' + new Date(result.testedAt).toLocaleString() +
+        ' · ' + result.durationMs + 'ms（本机记录，当前 Key 仍需重测）';
     } catch (_) { return ''; }
   }
   function rememberSuccess(config, duration) {
