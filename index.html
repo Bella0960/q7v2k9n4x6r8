@@ -30,21 +30,6 @@
         } catch (e) {}
       })();
     </script>
-    <script>
-      // Start with the approved component-first desktop. Remove obsolete layout records only;
-      // wallpaper, widget content, chat, profiles, and other app data remain untouched.
-      (function () {
-        try {
-          Object.keys(localStorage).forEach(function (key) {
-            if (/^ds_layout_v\d+$/.test(key) && key !== 'ds_layout_v14') {
-              localStorage.removeItem(key);
-            }
-          });
-          localStorage.removeItem('ds_home_default_revision');
-          localStorage.removeItem('maomao_home_layout_backup_20261106');
-        } catch (err) {}
-      })();
-    </script>
     <title>MAo</title>
     <meta name="description" content="MAo · 私人互动小手机，支持聊天、论坛、音乐、记忆、世界书等完整手机功能" />
     <meta property="og:title" content="MAo" />
@@ -673,6 +658,7 @@
       var dragEl = null;
       var dragClone = null;
       var placeholder = null;
+      var dragOriginPage = null;
 
       var activePageIndex = 0;
       var edgeTimer = null;
@@ -726,9 +712,20 @@
 
       function loadLayout() {
         var v = readJSON(LS_KEY);
+        // Preserve old records. Only fall back to them when the current key is invalid.
+        if (!isValidLayout(v)) {
+          for (var version = 13; version >= 1; version--) {
+            var legacy = readJSON('ds_layout_v' + version);
+            if (isValidLayout(legacy)) {
+              v = legacy;
+              break;
+            }
+          }
+        }
         if (isValidLayout(v)) {
           if (!Array.isArray(v.removed)) v.removed = [];
           while (v.pages.length < 3) v.pages.push([]);
+          v.v = 14;
           return v;
         }
         return getDefaultLayout();
@@ -736,8 +733,12 @@
 
       function saveLayout(data) {
         try {
-          localStorage.setItem(LS_KEY, JSON.stringify(data));
-        } catch (e) {}
+          var serialized = JSON.stringify(data);
+          localStorage.setItem(LS_KEY, serialized);
+          return localStorage.getItem(LS_KEY) === serialized;
+        } catch (e) {
+          return false;
+        }
       }
 
       var currentLayout = loadLayout();
@@ -916,6 +917,20 @@
         getShelf().appendChild(el);
       }
 
+      // Preserve the art-directed first screen only while its original order is intact.
+      // Custom orders must be laid out by widget spans rather than nth-child positions.
+      function updateDefaultGridComposition() {
+        var grid = document.getElementById('gridPage0');
+        if (!grid) return;
+        var expected = getDefaultLayout().pages[0];
+        var ids = Array.from(grid.children).filter(function (el) {
+          return !!(el.dataset && el.dataset.drag);
+        }).map(function (el) { return el.dataset.drag; });
+        var matchesDefault = !isDragging && ids.length === expected.length &&
+          ids.every(function (id, i) { return id === expected[i]; });
+        grid.classList.toggle('is-default-layout', matchesDefault);
+      }
+
       // ===== 恢复布局到 DOM =====
       function restoreLayout() {
         if (!homeScreen || !dockBar) return;
@@ -1007,6 +1022,7 @@
         }
 
         updateDotsUI();
+        updateDefaultGridComposition();
       }
 
       // 样式归一化转换
@@ -1222,8 +1238,24 @@
           if (el.dataset && el.dataset.drag) removedOrder.push(el.dataset.drag);
         });
 
-        currentLayout = { v: 6, pages: pagesOrder, dock: dockOrder, removed: removedOrder };
-        saveLayout(currentLayout);
+        currentLayout = { v: 14, pages: pagesOrder, dock: dockOrder, removed: removedOrder };
+        if (!saveLayout(currentLayout)) {
+          showTip('桌面布局保存失败，请检查存储空间');
+        }
+        updateDefaultGridComposition();
+      }
+
+      // Measure actual grid occupancy (e.g. 4×2 clock, 4×3 social card).
+      function getDraggedGridSpan(el, axis) {
+        if (!el || !el.closest('.desktop-grid')) return 1;
+        var style = window.getComputedStyle(el);
+        var start = axis === 'column' ? style.gridColumnStart : style.gridRowStart;
+        var end = axis === 'column' ? style.gridColumnEnd : style.gridRowEnd;
+        var fromSpan = /span\s+(\d+)/.exec(start) || /span\s+(\d+)/.exec(end);
+        if (fromSpan) return Math.max(1, Math.min(10, Number(fromSpan[1])));
+        var first = Number(start), last = Number(end);
+        return Number.isInteger(first) && Number.isInteger(last) && last > first
+          ? Math.min(10, last - first) : 1;
       }
 
       // ===== 拖拽系统核心实现 =====
@@ -1231,23 +1263,20 @@
         if (!targetItem) return;
         if (!editing) enterEdit();
 
+        var dragCols = getDraggedGridSpan(targetItem, 'column');
+        var dragRows = getDraggedGridSpan(targetItem, 'row');
+        var originalPageElement = targetItem.closest('.home-page');
+        dragOriginPage = originalPageElement ? getPages().indexOf(originalPageElement) : null;
         isDragging = true;
         dragEl = targetItem;
+        var firstGrid = document.getElementById('gridPage0');
+        if (firstGrid) firstGrid.classList.remove('is-default-layout');
 
-        var isWidget = dragEl.classList.contains('ds-widget');
-        var dragId = dragEl.dataset.drag;
-
-        // 创建占位符（保持尺寸，确保 CSS 网格其他元素自然推移让位）
+        // Match the occupied grid span, not a hardcoded list of widget IDs.
         placeholder = document.createElement('div');
         placeholder.className = 'drag-placeholder';
-
-        if (isWidget) {
-          if (dragId === 'postcard' || dragId === 'image') {
-            placeholder.classList.add('span-4');
-          } else {
-            placeholder.classList.add('span-2');
-          }
-        }
+        placeholder.style.gridColumn = 'span ' + Math.min(4, dragCols);
+        placeholder.style.gridRow = 'span ' + dragRows;
 
         // 把占位符插入源位置
         if (dragEl.parentNode) {
@@ -1261,6 +1290,13 @@
         dragClone = dragEl.cloneNode(true);
         dragClone.classList.add('drag-avatar');
         dragClone.classList.remove('is-dragging-source');
+        // Ghosts must not duplicate live widget IDs or appear as placeable items.
+        dragClone.removeAttribute('data-drag');
+        dragClone.removeAttribute('id');
+        dragClone.querySelectorAll('[id], [data-drag]').forEach(function (node) {
+          node.removeAttribute('id');
+          node.removeAttribute('data-drag');
+        });
         var delIcon = dragClone.querySelector('.ds-del');
         if (delIcon) delIcon.remove();
 
@@ -1443,6 +1479,40 @@
         }
       }
 
+      // A system-interrupted touch is not a completed drop.
+      // The original DOM element stays in its original parent until endDrag().
+      function cancelDrag() {
+        if (!isDragging) return;
+        isDragging = false;
+        if (edgeTimer) {
+          clearTimeout(edgeTimer);
+          edgeTimer = null;
+        }
+        lastEdgeSide = null;
+        edgeCooldown = false;
+        if (placeholder) {
+          placeholder.remove();
+          placeholder = null;
+        }
+        if (dragClone) {
+          dragClone.remove();
+          dragClone = null;
+        }
+        if (dragEl) {
+          dragEl.classList.remove('is-dragging-source');
+          dragEl.style.display = '';
+          dragEl = null;
+        }
+        cleanupEmptyTrailingPages();
+        updateDefaultGridComposition();
+        // A cancelled cross-page drop should return to the page that owns the source.
+        if (dragOriginPage !== null && dragOriginPage >= 0 &&
+            dragOriginPage < getPages().length && activePageIndex !== dragOriginPage) {
+          goToPage(dragOriginPage);
+        }
+        dragOriginPage = null;
+      }
+
       function endDrag() {
         if (!isDragging) return;
         isDragging = false;
@@ -1480,6 +1550,7 @@
         }
 
         dragEl = null;
+        dragOriginPage = null;
 
         // 清理空页与持久化
         cleanupEmptyTrailingPages();
@@ -1516,7 +1587,7 @@
           pressTimer = setTimeout(function () {
             pressTimer = null;
             startDrag(t, startX, startY);
-          }, 40);
+          }, 120);
         } else {
           // 常态下长按 280ms 触发编辑模式与拖拽
           pressTimer = setTimeout(function () {
@@ -1561,8 +1632,17 @@
           pressTimer = null;
         }
         if (isDragging) {
-          endDrag();
+          cancelDrag();
         }
+      });
+
+      // Interruption outside the page must not leave a hidden source or a ghost.
+      window.addEventListener('blur', function () {
+        if (pressTimer) {
+          clearTimeout(pressTimer);
+          pressTimer = null;
+        }
+        if (isDragging) cancelDrag();
       });
 
       // 2. Mouse Events
@@ -1580,7 +1660,7 @@
           pressTimer = setTimeout(function () {
             pressTimer = null;
             startDrag(t, startX, startY);
-          }, 30);
+          }, 100);
         } else {
           pressTimer = setTimeout(function () {
             pressTimer = null;
