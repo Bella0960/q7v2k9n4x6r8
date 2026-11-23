@@ -519,3 +519,21 @@ body.settings-home #modelModalOverlay .model-modal-close {
 @media (prefers-reduced-motion: reduce) {
     #api-panel .api-tools-drawer > summary svg { transition: none; }
 }
+
+/* API-IMAGE-TEST-001: scoped image provider verification. */
+#api-panel .api-image-test-block { padding: 4px 0 2px; }
+#api-panel .api-image-test-block .btn-test {
+  display: block; width: 100%; min-height: 43px;
+  padding: 9px 12px; border-radius: 11px;
+  border: 1px solid var(--api-line); background: var(--api-input);
+  color: var(--api-ink); font-size: 13px; font-weight: 600;
+}
+#api-panel .api-image-test-block .btn-test:disabled { opacity: .5; }
+#api-panel .api-image-test-block .param-hint { font-size: 11px; line-height: 1.5; margin: 8px 0; }
+#api-panel #image-test-msg { font-size: 12px; line-height: 1.55; min-height: 18px; }
+#api-panel #image-test-preview {
+  display: block; width: min(100%, 230px); height: auto;
+  margin: 9px auto 0; border-radius: 12px; border: 1px solid var(--api-line);
+  object-fit: contain;
+}
+#api-panel #image-test-preview[hidden] { display: none; }
