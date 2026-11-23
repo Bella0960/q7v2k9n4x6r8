@@ -15,7 +15,8 @@
   var scriptEl = document.currentScript;
   var basePath = scriptEl ? new URL('../../', scriptEl.src).pathname : '/';
   basePath = basePath.replace(/\/+$/, '');
-  var DEVICE_STORAGE_KEY = 'cloud_device_v1';
+  var LEGACY_DEVICE_STORAGE_KEY = 'cloud_device_v1';
+  var DEVICE_STORAGE_PREFIX = 'cloud_device_v2:';
   var CONTEXT_FINGERPRINT_PREFIX = 'cloud_context_fingerprint_v1:';
   var CONTEXT_PENDING_PREFIX = 'cloud_context_pending_v1:';
   var contextSyncPromises = Object.create(null);
@@ -28,33 +29,73 @@
     return basePath + path;
   }
 
-  function readDevice() {
+  function pageAccountId() {
+    var meta = document.querySelector('meta[name="mao-account-id"]');
+    var accountId = String(meta && meta.getAttribute('content') || '');
+    return /^MAO-[A-Z0-9]{12,24}$/.test(accountId) ? accountId : '';
+  }
+
+  function deviceStorageKey() {
+    var accountId = pageAccountId();
+    return accountId ? DEVICE_STORAGE_PREFIX + accountId : '';
+  }
+
+  function parseDevice(raw) {
     try {
-      var raw = localStorage.getItem(DEVICE_STORAGE_KEY);
-      if (!raw) return null;
-      var parsed = JSON.parse(raw);
-      if (!parsed || typeof parsed.deviceId !== 'string' || typeof parsed.secret !== 'string') return null;
+      var parsed = JSON.parse(raw || 'null');
+      if (!parsed || typeof parsed.deviceId !== 'string' ||
+          typeof parsed.secret !== 'string') return null;
       return parsed;
     } catch (error) {
       return null;
     }
   }
 
+  function readDevice() {
+    var key = deviceStorageKey();
+    if (!key) return null;
+    try {
+      return parseDevice(localStorage.getItem(key));
+    } catch (error) {
+      return null;
+    }
+  }
+
   function writeDevice(device) {
-    // A volatile device identity would register successfully then disappear on reload.
-    // Never report connection success unless the credential is persisted and read back.
+    var key = deviceStorageKey();
+    if (!key) throw new Error('当前页面未关联账号，无法保存设备凭据');
     var serialized = JSON.stringify(device);
-    localStorage.setItem(DEVICE_STORAGE_KEY, serialized);
-    if (localStorage.getItem(DEVICE_STORAGE_KEY) !== serialized) {
+    localStorage.setItem(key, serialized);
+    if (localStorage.getItem(key) !== serialized) {
       throw new Error('设备凭据无法可靠保存，请检查浏览器存储权限');
     }
   }
 
   function clearDevice() {
+    var key = deviceStorageKey();
+    if (!key) return;
+    try { localStorage.removeItem(key); } catch (error) {}
+  }
+
+  // Legacy identity has no account key. Adopt it ONLY if the authenticated
+  // server confirms that the device belongs to this precise signed-in account.
+  // A wrong-account legacy device stays untouched for manual recovery.
+  async function adoptLegacyDevice() {
+    var current = readDevice();
+    if (current) return current;
+    if (!deviceStorageKey()) return null;
+    var legacy = null;
+    try { legacy = parseDevice(localStorage.getItem(LEGACY_DEVICE_STORAGE_KEY)); }
+    catch (error) { return null; }
+    if (!legacy) return null;
     try {
-      localStorage.removeItem(DEVICE_STORAGE_KEY);
+      await requestJson('/api/push/subscriptions', { device: legacy });
+      writeDevice(legacy);
+      localStorage.removeItem(LEGACY_DEVICE_STORAGE_KEY);
+      return legacy;
     } catch (error) {
-      // ignore
+      // No cross-account import and no destructive fallback on API failures.
+      return null;
     }
   }
 
@@ -103,8 +144,7 @@
     var opts = options || {};
     // Authenticated HTML receives this immutable account id from the Worker.
     // Never fallback to an unscoped API request or reuse another account's device.
-    var accountMeta = document.querySelector('meta[name="mao-account-id"]');
-    var accountId = String(accountMeta && accountMeta.getAttribute('content') || '');
+    var accountId = pageAccountId();
     if (!/^MAO-[A-Z0-9]{12,24}$/.test(accountId)) {
       return Promise.reject(new Error('当前页面未关联账号，请从小手机登录入口重新打开'));
     }
@@ -174,7 +214,7 @@
   }
 
   async function registerDeviceForCurrentAccount(enrollmentToken) {
-    var device = ensureDevice();
+    var device = (await adoptLegacyDevice()) || ensureDevice();
     try {
       await registerDevice(device, enrollmentToken);
       return device;
@@ -1101,6 +1141,7 @@
   }
 
   async function getStatus() {
+    await adoptLegacyDevice();
     var status = {
       supported: isSupported(),
       permission: 'Notification' in global ? Notification.permission : 'unsupported',
