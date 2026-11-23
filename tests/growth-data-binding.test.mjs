@@ -211,6 +211,25 @@ test('脏数据不崩：非法结构回落到空集合', () => {
   assert.equal(r.get('memoryStat').textContent, '0');
 });
 
+test('过期当前角色 ID 不在正式角色列表：不可读取或写入旧共享桶', () => {
+  const store=makeStore({ ...SEED });
+  const r=makeRuntime({store,currentRole:'ghost'});
+  assert.equal(r.get('points').textContent,'0');
+  r.get('goalInput').value='不写入幽灵桶';r.get('goalForm').submit();
+  assert.equal(store.raw.maoer_growth_goals_ghost,undefined);
+  assert.equal(store.raw.maoer_growth_goals_default,undefined);
+});
+
+test('目标静默丢写：回读失败且不改变已存目标', () => {
+  const store=makeStore({ ...SEED, maoer_growth_goals_roleA:'[]' });
+  const r=makeRuntime({store});
+  const set=store.setItem;
+  store.setItem=(key,value)=>{if(key==='maoer_growth_goals_roleA')return;return set(key,value);};
+  r.get('goalInput').value='应该保存失败';r.get('goalForm').submit();
+  assert.equal(store.raw.maoer_growth_goals_roleA,'[]');
+  assert.match(r.get('toast').textContent,/没能保存/);
+});
+
 test('源码守卫：键名按角色命名、无角色只读、写入有返回检查', () => {
   assert.ok(script.includes("'maoer_couple_moments_'+roleId"), '必须读按角色命名的真实键');
   assert.equal(script.includes('LEGACY'), false, '不得再无条件兜底旧全局键');
