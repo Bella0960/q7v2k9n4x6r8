@@ -648,10 +648,24 @@ html,body{background:#f7f7f8}
     try{var v=JSON.parse(localStorage.getItem(STORAGE_KEY)||'[]');return Array.isArray(v)?v.filter(function(x){return x&&x.id&&x.date;}):[]}
     catch(e){return []}
   }
+  var diaryLegacyPhotosMigrated=false;
   function persist(){
     try{
-      var safe=entries.map(function(entry){var copy=Object.assign({},entry);delete copy.photos;delete copy.photo;return copy});
-      localStorage.setItem(STORAGE_KEY,JSON.stringify(safe));return true
+      var stored=localStorage.getItem(STORAGE_KEY),previous=stored===null?[]:JSON.parse(stored);
+      if(!Array.isArray(previous))throw new Error('Invalid diary archive');
+      var legacy=typeof diaryLegacyPhotosMigrated==='undefined'||!diaryLegacyPhotosMigrated;
+      var originalById=new Map(previous.filter(Boolean).map(function(row){return [row.id,row]}));
+      var safe=entries.map(function(entry){
+        var copy=Object.assign({},entry),original=legacy&&originalById.get(entry.id);
+        delete copy.photos;delete copy.photo;
+        if(original&&original.photos)copy.photos=original.photos;
+        if(original&&original.photo)copy.photo=original.photo;
+        return copy;
+      });
+      var payload=JSON.stringify(safe);
+      localStorage.setItem(STORAGE_KEY,payload);
+      if(localStorage.getItem(STORAGE_KEY)!==payload)throw new Error('Diary archive not saved');
+      return true
     }catch(e){showToast('日记文字保存失败。请导出备份并检查浏览器存储空间；照片现在独立保存在照片数据库中。');return false}
   }
   function hydratePhotos(){
@@ -662,7 +676,7 @@ html,body{background:#f7f7f8}
         if(photos.length){entry.photos=photos;entry.photo=photos[0]}
       });
       var legacy=entries.filter(function(entry){return (Array.isArray(entry.photos)&&entry.photos.length)||(entry.photo&&/^data:image\//i.test(entry.photo))});
-      return legacy.reduce(function(chain,entry){return chain.then(function(){var photos=photosFor(entry);return photos.reduce(function(promise,photo,index){return promise.then(function(){return putPhoto(photoKey(entry.id,index),photo)})},Promise.resolve()).then(function(){delete entry.photos;delete entry.photo})})},Promise.resolve()).then(function(){if(legacy.length)persist();return {migrated:legacy.length}})
+      return legacy.reduce(function(chain,entry){return chain.then(function(){var photos=photosFor(entry);return photos.reduce(function(promise,photo,index){return promise.then(function(){return putPhoto(photoKey(entry.id,index),photo)})},Promise.resolve()).then(function(){delete entry.photos;delete entry.photo})})},Promise.resolve()).then(function(){diaryLegacyPhotosMigrated=true;if(legacy.length)persist();return {migrated:legacy.length}})
     }).catch(function(error){photoDbError=String(error&&error.message||error);return {error:photoDbError}})
   }
   function savePhotosForEntry(entryId,photos){
@@ -1091,15 +1105,20 @@ html,body{background:#f7f7f8}
       showToast('记录文字已删除，但关联照片未完全清理：'+String(error&&error.message||error).slice(0,70));
     });
   }
+  /* 置顶/收藏都是原地改标记。写失败必须把标记翻回去，否则界面上「已置顶」
+     会在下一次成功保存时被补写进存档，与用户看到的失败提示相矛盾。 */
+  function toggleEntryFlag(id,field){
+    var e=entries.find(function(x){return x.id===id});if(!e)return false;
+    var before=!!e[field],beforeUpdated=e.updatedAt;
+    e[field]=!before;e.updatedAt=new Date().toISOString();
+    if(!persist()){e[field]=before;e.updatedAt=beforeUpdated;render();showToast('这次改动没能保存，请检查浏览器存储空间');return false}
+    return true;
+  }
   function togglePinned(id){
-    var e=entries.find(function(x){return x.id===id});if(!e)return;
-    e.pinned=!e.pinned;e.updatedAt=new Date().toISOString();
-    if(persist()){render();showToast(e.pinned?'已置顶，记录会优先显示':'已取消置顶')}
+    if(toggleEntryFlag(id,'pinned')){var e=entries.find(function(x){return x.id===id});render();showToast(e&&e.pinned?'已置顶，记录会优先显示':'已取消置顶')}
   }
   function toggleFavorite(id){
-    var e=entries.find(function(x){return x.id===id});if(!e)return;
-    e.favorite=!e.favorite;e.updatedAt=new Date().toISOString();
-    if(persist()){render();showToast(e.favorite?'已加入收藏':'已取消收藏')}
+    if(toggleEntryFlag(id,'favorite')){var e=entries.find(function(x){return x.id===id});render();showToast(e&&e.favorite?'已加入收藏':'已取消收藏')}
   }
   function renderPhotoPreview(){
     var box=$('photoPreview');if(!box)return;
@@ -1174,7 +1193,14 @@ html,body{background:#f7f7f8}
   function closeMenu(){menu.classList.remove('show')}
   root.addEventListener('click',function(e){
     var peekBtn=e.target.closest('#peekToggle');
-    if(peekBtn){var willOn=!peekEnabled();try{localStorage.setItem('char_peek_enabled',willOn?'1':'0')}catch(err){}showToast(willOn?'Char 偷看已开启':'Char 偷看已关闭');render();if(willOn){setTimeout(maybeAutoPeek,500);setTimeout(maybeAutoWriteCharEntry,1500)}return}
+    if(peekBtn){
+      var willOn=!peekEnabled(),peekSaved=true;
+      try{var value=willOn?'1':'0';localStorage.setItem('char_peek_enabled',value);peekSaved=localStorage.getItem('char_peek_enabled')===value}catch(err){peekSaved=false}
+      if(!peekSaved){render();showToast('这个开关没能存到本机，刷新后会恢复原来的状态');return}
+      showToast(willOn?'Char 偷看已开启':'Char 偷看已关闭');render();
+      if(willOn){setTimeout(maybeAutoPeek,500);setTimeout(maybeAutoWriteCharEntry,1500)}
+      return
+    }
     var typeFilter=e.target.closest('[data-note-type-filter]');
     if(typeFilter){noteTypeFilter=noteTypeFilter===typeFilter.dataset.noteTypeFilter?'全部':typeFilter.dataset.noteTypeFilter;render();return}
     var pin=e.target.closest('[data-pin]');
@@ -1270,11 +1296,12 @@ html,body{background:#f7f7f8}
     var user='用户备忘录：\n日期：'+target.date+'\n标题：'+(target.title||'（无标题）')+'\n心情：'+target.mood+'\n正文：'+(diaryText||'（空白）');
     PhoneAPI.complete({system:system,user:user,temperature:0.85,timeoutMs:20000}).then(function(text){
       text=String(text||'').trim().replace(/^["「『]+|["」』]+$/g,'').slice(0,120);
-      if(!text)return;
+      if(!text||!peekEnabled())return;
       var live=entries.find(function(e){return e.id===target.id});if(!live)return;
       if(!Array.isArray(live.charComments))live.charComments=[];
       live.charComments.push({id:'peek_'+Date.now().toString(36)+'_'+Math.random().toString(36).slice(2,6),characterId:role.id,characterName:role.name,text:text,createdAt:new Date().toISOString(),auto:true});
-      if(persist()){render();console.log('[Char Peek] 已在日记旁涂鸦:',text)}
+      if(!persist()){live.charComments.pop();return}
+      render()
     }).catch(function(err){
       console.warn('[Char Peek] 备忘录偷看失败:',err&&err.message?err.message:err);
       if(err&&/API Key|未配置|api/i.test(String(err.message||'')))showToast('Char 偷看失败：还没配 AI API Key，去设置配一下');
@@ -1294,15 +1321,12 @@ html,body{background:#f7f7f8}
     var user='今天日期：'+new Date().toLocaleDateString('zh-CN')+'。写今天的日记。';
     PhoneAPI.complete({system:system,user:user,temperature:0.85,timeoutMs:25000}).then(function(text){
       text=String(text||'').trim();
-      if(text.length<20)return;
-      var firstLine=text.split('\n')[0].slice(0,20);
+      if(text.length<20||!peekEnabled())return;
       var entry={id:'d_char_'+Date.now().toString(36)+'_'+Math.random().toString(36).slice(2,6),createdAt:new Date().toISOString(),date:todayKey(),title:'',content:text.slice(0,2000),mood:'平静',noteType:'日记',author:String(role.id),authorName:role.name,favorite:false,pinned:false,charWritten:true};
       entries.push(entry);
-      if(persist()){
-        try{localStorage.setItem(lastKey,String(Date.now()))}catch(e){}
-        render();
-        console.log('[Char Peek] Char 自己写了日记:',firstLine);
-      }
+      if(!persist()){entries.pop();return}
+      try{localStorage.setItem(lastKey,String(Date.now()))}catch(e){}
+      render();
     }).catch(function(err){console.warn('[Char Peek] Char 写日记失败:',err&&err.message?err.message:err)});
   }
   setTimeout(maybeAutoWriteCharEntry,3000);
