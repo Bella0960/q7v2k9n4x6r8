@@ -139,3 +139,18 @@ test('runtime CSS is opt-in and scoped to native chat pages',()=>{
   assert.match(launcher,/data-drag="app_theme_studio"/);
   assert.match(launcher,/addThemeStudioShortcut/);
 });
+
+test('draft guard and undo/redo controls are wired in the workbench shell',()=>{
+  const html=readFileSync(new URL('../theme-studio/theme-studio.html',import.meta.url),'utf8');
+  const js=readFileSync(new URL('../theme-studio/studio.js',import.meta.url),'utf8');
+  const css=readFileSync(new URL('../theme-studio/studio.css',import.meta.url),'utf8');
+  assert.match(html,/id="undoButton"/);
+  assert.match(html,/id="redoButton"/);
+  assert.match(html,/id="dirtyTag"/);
+  assert.match(js,/HISTORY_LIMIT\s*=\s*30/);
+  assert.match(js,/beforeunload/);
+  assert.match(js,/anyDirty/);
+  assert.match(js,/bubbleDrafts/);
+  assert.match(css,/\.history-btn/);
+  assert.match(css,/\.dirty-tag/);
+});
