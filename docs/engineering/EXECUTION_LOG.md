@@ -147,3 +147,39 @@ On the next turn/session, read this file and the current `AGENTS.md` first. Cont
 
 - **2026-11-22 storage hardening:** Prevent damaged/non-array primary `chat_memories_<id>` content from being overwritten; reject invalid memory targets; stop memory-library delete, dedupe, and AI merge success displays when write fails; capture AI-merge role ID before network await. Added the corresponding regression tests. **16/16 V8-isolated production-module/DOM-contract checks passed** (not full Node). Parsed all changed JS/inline scripts successfully.
 - **Verification handoff:** PR source remains unmerged; next QA must use the exact pinned branch SHA and the existing public-only verification channel. Do not run exhausted legacy private Actions or bypass existing safety guards.
+
+## 2026-11-23 · 应用功能组 · 4 项 P1 返工 + 陪伴/信封/情侣/成长 4 个模块
+
+- **返工（均在原 Draft PR 上追加 commit，未合并、未部署）**
+  - #450 `a41c2816`：`getPlayerName/loadNpc/loadDiff` 统一走 `storyRead()`；补「无 PhoneStorage 写→刷新→三项完整回读」回归。13/13。
+  - #448 `91eabf02`：伴听 P1-01 无 API 不扣额不占名额、P1-02 会话单调预算 + 落盘失败 fail-closed、P1-03 等 `audio playing` 事件才请求、P2 资料单键原子写 + 读回校验。24/24。
+  - #446 `ae74503f`：`aiAudienceDaily` 会话单调镜像 + `persistBroken` fail-closed，`setAiAudience` 不再重置 `sessionUsed/lastAt`。21/21。
+  - #445 `c815be71`：恢复案件对象形状提示词与 `campaignBrief()`、`normalizeDetectiveCase()` 严格校验、旧存档兜底；限额由角色改为 `'device'` 且升级当天兼容旧分桶。21/21（另回归 games-storage-trust 9/9）。
+- **新模块 Draft PR**
+  - #456：陪伴日历绑正式角色 + `storeSet` 失败回滚 + 切 Tab 草稿。12/12。
+  - #457：仪式页改共享 `PhoneAPI`/`getApiConfig`、正式角色人设、每日 20 次 + 10s 间隔 + 进行中锁 + 无 API 零费用本地回应。10/10。
+  - #460：信封写盘 `mutateAndPersist` 回滚、离开写信页自动存草稿、动画 `paperAnimToken` 可取消 + `finally` 解锁、图片并发锁、排版 4s 兜底。12/12。
+  - #461：情侣空间修复 `doCheckin` 未暴露到 window（P0 打卡按钮不可用）、绑正式角色、写入先算后写、头像 `safeSrc` 白名单；新增「内联 onclick 必须全局可用」通用回归。11/11。
+  - #463：成长页改读 `maoer_couple_*_<roleId>` 真实键（此前读 `_v1` 永不匹配，点数/勋章恒 0），旧键只读兼容、写失败提示。11/11。
+- **Executed:** 全部为 `node --test` 本地真实执行，共 133 个用例通过（13+24+21+21+12+10+12+11+9 分组统计见各 PR）；所有改动文件 `vm.Script` 语法解析通过。
+- **Not verified:** Vite 生产构建、Chromium 375/390/430、真机 iOS/Android、真实配额写满、真实模型调用（全部 mock，0 额度消耗）。
+- **Blocked / 依赖:** 世界书按角色绑定、RP 协议注入、`ECO-LINK-002` 世界事件接入、聊天发送 API 仍依赖共享底层，未自建并行实现。外卖需总控协调钱包边界；聊天美化与主题商店归豆包。
+
+
+## 2026-11-23 晚 · 应用功能组 · 6 项复审返工 + 海报/小说工坊两个新模块
+
+- **返工（原 PR 追加 commit，均 Draft）**
+  - #445 `0acb3fd2`：预算写入+读回确认才发请求（读回被改也判失败）；失败 0 请求、释放 busy；恢复成功保存后 `startCase()` 刷新列表。24/24。
+  - #446 `b6ca3ef0`：`persistAiAudienceVerified()` 写+读回；第一次预算写失败即 0 请求（按总控要求改写测试目标）；补模拟刷新与读回被改用例。22/22。
+  - #448 `dd04b555`：`persistTogetherVerified()` 写+读回；拒写即 fail-closed 0 请求；QuotaExceededError 下测试目标改为 0 调用；补刷新重入与读回被改用例。26/26。
+  - #456 `5157b31d`：companion.html 真实加载 phone_storage.js；`?id=` 必须经 getCharacters 验证；无合法角色只读、不再制造 default 共享桶。15/15。
+  - #457 `f99e1c20`：rituals.html 加载共享两件套；预算写+读回后才允许付费；状态按正式角色分桶；旧全局键只对归属角色只读兼容；自由名字不进模型。15/15。
+  - #460 `f56eb93f`：composeSignature 补图片指纹（长度+头尾采样）与信封颜色。16/16。
+  - #463 `db5e8ef8`：growth.html 加载共享存储；`?id=` 验证；无角色只读；移除无条件旧全局键兜底（该键从未被任何应用写入）。14/14。
+- **新模块 Draft PR**
+  - #468 海报：保存竞态锁定目标（FileReader 异步期间切换作品不再写错目标）、校验前置、art 白名单；旧数据键不变。8/8。
+  - #471 小说工坊：novel-ai.js 从自建 fetch 收敛到共享 PhoneAPI.complete + 共享配置，删除旧 api_settings 兜底；七个调用页补真实脚本链；错误文案兼容、global.novelAI 签名不变；作品数据键不动。7/7（另七页内联脚本语法解析通过）。
+- **Executed:** 本轮新增/改写测试 105 个用例全部通过（24+22+26+15+15+16+14+8+7 分组统计见各 PR）；全部为 `node --test` 本地真实执行；改动文件语法解析通过。
+- **Not verified:** Vite 生产构建、Chromium 375/390/430、真机、真实配额写满、真实模型调用（全 mock，0 额度）。
+- **P2 登记：** 海报 alert 错误提示与 O(n²) 渲染；小说 read/readers/stats 移动端与长列表性能；付费生成次数预算待总控确认产品预期（长文写作与单次互动不同，硬性日上限可能打断连载）。
+- **依赖边界不变：** 世界书按角色绑定、RP 协议、ECO-LINK-002、聊天发送 API 仍 BLOCKED；beauty/主题商店/主题工作台未触碰；外卖待钱包组确认。
