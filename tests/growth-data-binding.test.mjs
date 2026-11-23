@@ -128,14 +128,15 @@ test('URL ?id= 优先', () => {
   assert.equal(get('memoryStat').textContent, '2');
 });
 
-test('旧数据兼容：只有 _v1 键时仍能读到（不丢老用户记录）', () => {
+/* 总控复审：旧全局 _v1 键从未被任何应用写入，无条件兜底只会跨角色泄漏 → 已移除。 */
+test('旧全局 _v1 键不再兜底：不会把历史资料广播给所有角色', () => {
   const store = makeStore({
     'maoer_couple_moments_v1': JSON.stringify([{ id: 'old', text: '旧记录' }]),
     'maoer_couple_bucket_v1': JSON.stringify([{ id: 'ob', text: '旧计划', done: true }]),
   });
-  const { get } = makeRuntime({ store });
-  assert.equal(get('memoryStat').textContent, '1');
-  assert.equal(get('planStat').textContent, '1');
+  const { get } = makeRuntime({ store, currentRole: 'roleA' });
+  assert.equal(get('memoryStat').textContent, '0', 'A 不得继承从未归属过自己的全局旧数据');
+  assert.equal(get('planStat').textContent, '0');
 });
 
 test('目标写进当前角色的键，写失败要提示且不谎报成功', () => {
@@ -210,11 +211,41 @@ test('脏数据不崩：非法结构回落到空集合', () => {
   assert.equal(r.get('memoryStat').textContent, '0');
 });
 
-test('源码守卫：键名按角色命名、有旧键兼容、写入有返回检查', () => {
+test('源码守卫：键名按角色命名、无角色只读、写入有返回检查', () => {
   assert.ok(script.includes("'maoer_couple_moments_'+roleId"), '必须读按角色命名的真实键');
-  assert.ok(script.includes('LEGACY'), '必须保留旧键兼容');
+  assert.equal(script.includes('LEGACY'), false, '不得再无条件兜底旧全局键');
   assert.ok(script.includes('getCurrentContactId'), '必须绑定共享当前角色');
+  assert.ok(script.includes('canStore'), '必须有只读闸门');
+  assert.ok(script.includes('getCharacters'), '?id= 必须经正式角色列表验证');
   assert.ok(script.includes('未能保存') || script.includes('没能保存'), '写入失败必须提示');
   assert.equal(/https?:\/\/|fetch\(|PhoneAPI/.test(script), false, '成长页不应有网络/模型调用');
   assert.equal(/Made by|作者：/.test(page), false, 'no developer signature');
+});
+
+test('真实 HTML 真的加载了 phone_storage.js，且在内联脚本之前', () => {
+  const libAt = page.indexOf('shared/js/phone/phone_storage.js');
+  assert.ok(libAt > 0, '独立页面必须引入共享存储');
+  assert.ok(libAt < page.lastIndexOf('<script>'), '必须在内联脚本之前加载');
+});
+
+test('无合法正式角色：只读，不写任何键', () => {
+  const store = makeStore();
+  const r = makeRuntime({ store, currentRole: '' });
+  r.get('goalInput').value = '不该写进去';
+  r.get('goalForm').submit();
+  const keys = Object.keys(store.raw).filter((k) => k.startsWith('maoer_growth_goals_'));
+  assert.deepEqual(keys, [], '无角色时不得创建任何目标桶');
+  assert.ok(
+    r.get('toast').textContent.includes('正式角色') || r.get('toast').textContent.includes('没能保存'),
+    '必须给出未绑定或保存失败的原因');
+});
+
+test('?id= 指向不存在的角色：只读', () => {
+  const store = makeStore({ ...SEED });
+  const r = makeRuntime({ store, currentRole: 'roleA', search: '?id=ghost' });
+  assert.equal(r.get('memoryStat').textContent, '0', '失效深链不得读到当前角色的数据');
+  r.get('goalInput').value = 'x';
+  r.get('goalForm').submit();
+  const keys = Object.keys(store.raw).filter((k) => k.startsWith('maoer_growth_goals_'));
+  assert.deepEqual(keys, []);
 });
