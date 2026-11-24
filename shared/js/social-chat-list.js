@@ -19,8 +19,9 @@
   }
 
   function reset() {
+    const hadOwner = currentOwner !== null;
     currentOwner = null;
-    if (records.length) {
+    if (hadOwner || records.length) {
       records = [];
       changed();
     }
@@ -51,6 +52,8 @@
       var me = await request('/api/accounts/me');
       var owner = me.account && me.account.id;
       if (!ACCOUNT_ID.test(owner) || me.account.status !== 'active') return;
+      const scope = root.__MAO_ACCOUNT_SCOPE__;
+      if (scope && (scope.ready !== true || scope.accountId !== owner)) return;
       var payload = await request('/api/social/e2ee/conversations',owner);
       if (payload.ownerAccountId !== owner || !Array.isArray(payload.conversations))
         throw new Error('Conversation account mismatch');

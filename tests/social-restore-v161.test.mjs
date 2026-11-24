@@ -14,7 +14,7 @@ test('delegated identity rejects every social route before accessing local peer 
 test('0017-0019 append to the current migration history and are idempotent on a disposable database',()=>{
  const db=new DatabaseSync(':memory:');
  try{
- const exec=(sql,...args)=>{const st=db.prepare(sql);if(/^\\s*SELECT/i.test(sql))return st.all(...args);st.run(...args);return [];};
+ const exec=(sql,...args)=>{const st=db.prepare(sql);if(/^\s*SELECT/i.test(sql))return st.all(...args);st.run(...args);return [];};
  exec('CREATE TABLE schema_migrations (version TEXT PRIMARY KEY, applied_at INTEGER NOT NULL)');
  const previous=MIGRATIONS.slice(0,-3);
  for(const migration of previous){for(const sql of splitSql(migration.sql))exec(sql);exec('INSERT INTO schema_migrations VALUES (?,?)',migration.version,1);}
