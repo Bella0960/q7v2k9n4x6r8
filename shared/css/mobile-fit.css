@@ -294,4 +294,13 @@
     grid-template-rows: repeat(6, var(--desktop-icon-row, 68px)) !important;
     grid-auto-rows: var(--desktop-icon-row, 68px) !important;
   }
+  /* The desktop stylesheet computes the larger square-widget row budget.
+     Keep this later-loaded mobile stylesheet from overriding it. */
+  body.maomao-home .desktop-grid {
+    grid-auto-rows: var(--desktop-track-row, var(--desktop-icon-row, 68px)) !important;
+  }
+  body.maomao-home #gridPage0.is-default-layout {
+    grid-template-rows: repeat(6, var(--desktop-track-row, var(--desktop-icon-row, 68px))) !important;
+    grid-auto-rows: var(--desktop-track-row, var(--desktop-icon-row, 68px)) !important;
+  }
 }
