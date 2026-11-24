@@ -645,7 +645,7 @@ a:active, button:active, [role="button"]:active { transform: scale(0.97); }</sty
     </div>
 
     <script src="../../shared/js/phone/role-public-timeline.js?v=20261102v1"></script>
-    <script src="../../shared/js/phone/moments-chat-action.js?v=20261124v3"></script>
+    <script src="../../shared/js/phone/moments-chat-action.js?v=20261124v4"></script>
         <script src="../../shared/js/nav.js"></script>
     <script>
         /* ================= 数据层 ================= */
@@ -1245,10 +1245,10 @@ a:active, button:active, [role="button"]:active { transform: scale(0.97); }</sty
                     user: '以你自己的身份发布此刻的日常动态。',
                     timeoutMs: 30000
                 });
-            }).then(function (result) {
+            }).then(async function (result) {
                 var content = action.parsePost(result);
                 if (!content) throw new Error('模型没有返回可发布正文');
-                var post = action.publish({
+                var post = await action.publishLocked({
                     roleId: selectedId, requestId: requestId, content: content,
                     source: 'menu', storage: localStorage, getCharacters: getCharacterList
                 });
