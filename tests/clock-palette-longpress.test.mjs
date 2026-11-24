@@ -81,8 +81,12 @@ function startServer() {
         res.writeHead(403).end('Forbidden');
         return;
       }
-      const data = await readFile(filePath);
-      res.writeHead(200, { 'Content-Type': MIME[path.extname(filePath).toLowerCase()] || 'application/octet-stream' });
+      const ext = path.extname(filePath).toLowerCase();
+      let data = await readFile(filePath);
+      // Serve the same root URL substitution as the real build. Browser URL
+      // parsing can reject an unresolved percent placeholder before routing.
+      if (ext === '.html') data = Buffer.from(data.toString('utf8').replaceAll('%BASE_URL%', '/'));
+      res.writeHead(200, { 'Content-Type': MIME[ext] || 'application/octet-stream' });
       res.end(data);
     } catch {
       res.writeHead(404, { 'Content-Type': 'text/plain; charset=utf-8' }).end('Not found');
@@ -100,6 +104,8 @@ function check(name, ok, detail) {
   results.push({ name, ok, detail });
   if (!ok) failed = true;
   console.log(`${ok ? 'PASS' : 'FAIL'} ${name} ${JSON.stringify(detail)}`);
+  // Public runner may expose only an ordinal, never source or detail values.
+  if (!ok) console.log('CLOCK_REGRESSION_FAILURE:' + results.length);
 }
 
 async function openPage(browser, origin, viewport, touch) {

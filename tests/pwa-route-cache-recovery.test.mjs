@@ -43,7 +43,7 @@ function harness(fetchImpl = async () => { throw Error('offline'); }) {
     addEventListener:(type,callback)=>{listeners[type]=callback;}
   };
   const scope=createContext({self,caches,fetch:fetchImpl,Response,Request,Headers,
-    URL,URLSearchParams,console,Promise,setTimeout,clearTimeout});
+    URL,URLSearchParams,AbortController,console,Promise,setTimeout,clearTimeout});
   runInContext(sw,scope,{filename:'sw.js'});
   function request(path, mode='cors', destination='') {
     return {method:'GET',url:origin+path,mode,destination,headers:new Headers(),referrer:''};
@@ -99,7 +99,8 @@ test('CSS must not come from a foreign cache or from a 200 HTML response',async(
   const res=await event.response;
   assert.equal(await res.text(),'body { color: black; }');
   assert.equal(h.globalLookups,0);
-  assert.ok(h.scopedLookups>0);
+  // Untagged executable assets must bypass all shell caches entirely.
+  assert.equal(h.scopedLookups,0);
 });
 
 test('new SW is adopted without forcing a second protected-page navigation',()=>{
