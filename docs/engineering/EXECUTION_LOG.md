@@ -647,3 +647,10 @@ On the next turn/session, read this file and the current `AGENTS.md` first. Cont
 - ecf05ba270afe7b323c6dd6172e8029a308cf219 的三套群设置 Chromium 回归在 #44843160164 通过。完整发布仍须以 QA-only 门禁和同源 SHA 回执为准。
 
 - 第二轮定位记忆清理回归仍走旧入口，旧档案的角色副本与群共享 ID 时还会遮蔽群记录。明确从群选项入口进入时优先按群 ID 读取，单聊入口沿用原规则。Vite 和四套 Chromium 专项（含 375、390、430、1100px 的记忆清理）在 #44843984791 通过。
+
+
+## 2026-11-24 | REAL-FRIEND-001 historical restore on v161 (verify only)
+
+- Source reference: 32ce400d; v161 base 2e60e5e8. Restore QR, approved E2EE conversations, text/media/voice source and synthetic regression files; merge only social rows/actions into the current chat home, preserve group invitations and current roles.
+- Register original additive migrations 0017-0019 in this **unpublished** candidate for disposable SQLite tests. Do not deploy this candidate or migrate any live database. Current QA is delegated identity; peer status is not authoritatively available from the current mirror, so routes refuse delegated mode before data access. Preserve account core and old database bindings; no historical account/message/key copying. Requires separate reviewed authority contract and migration approval before release.
+- Verification pending; old results not attributed to new candidate.
