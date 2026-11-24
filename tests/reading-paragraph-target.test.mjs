@@ -11,13 +11,13 @@ function harness(){
  const stored=new Map(),saved=[],toasts=[],requests=[],cache={};
  const input={value:''};
  const c=vm.createContext({
-  activeParagraph:target('a',0),paragraphRequest:null,paragraphRoleSelect:{value:'r1'},settings:{commentRoleId:'r1',comments:true},
+  activeParagraph:target('a',0),paragraphRequest:null,readerPublishing:false,paragraphRoleSelect:{value:'r1'},settings:{commentRoleId:'r1',comments:true},
   state:{book:{id:'a'},ch:0},document:{hidden:false,getElementById:()=>input},
   readerView:{getAttribute:()=> 'false'},sheetBackdrop:{classList:{contains:()=>false}},
   navigator:{locks:{request:async(name,options,fn)=>fn({})}},
   readerRoleById:id=>({id,name:id,worldBookIds:[]}),readerAccountToken:()=>c.account,account:'account-a',
   findBook:id=>({id}),commentKey:(...a)=>a.join('|'),commentCache:cache,
-  getParagraphComment:(...a)=>cache[a.join('|')],saveReaderComment:async x=>{saved.push(x);cache[x.id]=x},
+  ownReadingKey:(t,token)=>[t.bookId,t.chapterIndex,t.paragraphIndex,'@reader:'+encodeURIComponent(token)].join('|'),getParagraphComment:(...a)=>cache[a.join('|')],saveReaderComment:async x=>{saved.push(x);cache[x.id]=x},
   renderParagraphCommentThread:()=>{},showToast:x=>toasts.push(x),
   localStorage:{getItem:k=>stored.has(k)?stored.get(k):null,setItem:(k,v)=>{if(denyWrite)throw Error('quota');stored.set(k,v);}},
   PhoneStorage:{getApiConfig:()=>({apiKey:'mock'}),getWorldbooks:()=>[]},
@@ -72,4 +72,22 @@ test('worldbook context selects only current role bindings',()=>{
  assert.equal(c.readingWorldbook({id:'r1',worldBookIds:['allowed']},target('a',0),''),'allowed');
  h.stored.set('chat_worldbooks_r1',JSON.stringify([]));
  assert.equal(c.readingWorldbook({id:'r1',worldBookIds:['allowed']},target('a',0),''),'');
+});
+
+test('AI reads a saved personal comment without duplicating it in the role thread',async()=>{
+ const h=harness();
+ const key=h.c.ownReadingKey(h.c.activeParagraph,h.c.account);
+ h.cache[key]={id:key,thread:[{role:'user',text:'我的段评',createdAt:1}]};
+ const p=h.start();await h.waitForCall();
+ assert.ok(h.requests[0].user.includes('我的段评'));
+ h.resolve('角色回复');await p;
+ assert.deepEqual(Array.from(h.saved[0].thread,m=>m.text),['角色回复']);
+ assert.equal(h.cache[key].thread[0].text,'我的段评');
+});
+test('failed AI reply leaves independently saved personal comment untouched',async()=>{
+ const h=harness();
+ const key=h.c.ownReadingKey(h.c.activeParagraph,h.c.account);
+ h.cache[key]={id:key,thread:[{role:'user',text:'离线也要保留',createdAt:1}]};
+ const p=h.start();await h.waitForCall();h.reject(Error('offline'));await p;
+ assert.equal(h.saved.length,0);assert.equal(h.cache[key].thread[0].text,'离线也要保留');
 });
