@@ -134,7 +134,12 @@ try {
             return route.fulfill({contentType:'text/event-stream', body});
         });
         await chat.goto(origin + '/chat/chat/chat-detail.html?id=A');
+        // A saved assistant message precedes completion of the asynchronous turn.
+        // Wait for the actual send lock, not a fixed delay or a persisted reply alone.
+        const waitForIdle = () => chat.waitForFunction(() =>
+            typeof singleChatSendPending === 'boolean' && !singleChatSendPending && !aiSending);
         async function send(text, response) {
+            await waitForIdle();
             const count = calls.length;
             replies.push(response);
             await chat.locator('#chat-input').fill(text);
@@ -142,6 +147,7 @@ try {
             await chat.waitForFunction(message => JSON.parse(localStorage.chat_history_A || '[]')
                 .some(row => row.role === 'assistant' && row.text === message),
                 response.startsWith('[朋友圈动态:') ? '朋友圈已发布。' : response.split('\n')[0]);
+            await waitForIdle();
             assert.equal(calls.length, count + 1);
             return calls.at(-1);
         }
