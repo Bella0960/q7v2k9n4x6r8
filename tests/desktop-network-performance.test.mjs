@@ -56,7 +56,7 @@ test('wallpaper, icons and session checks guard duplicate work and stale results
   assert.match(home, /revision !== iconRefreshRevision/);
   assert.match(home, /appliedIcons.get\(iconEl\) === dataUrl/);
   assert.match(home, /if \(!reads.has\(appId\)\)/);
-  assert.match(account, /if \(sessionProbeInFlight\) return sessionProbeInFlight/);
+  assert.match(account, /now - lastSessionProbeAt < 1000\) return sessionProbeInFlight/);
   assert.match(account, /controller.abort\(\)/);
   assert.match(home, /maxRefractive: 2/);
   assert.doesNotMatch(read('desktop/js/script.js'), /localStorage.getItem\('home_custom_wallpaper'\)/);

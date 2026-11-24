@@ -75,6 +75,30 @@ try{
     await page.waitForFunction(()=>document.documentElement.getAttribute('data-home-wallpaper')==='custom');
     assert.deepEqual((await readLayout(page)).pages,baseline.pages);
     pass('wallpaper_idb_persistence_'+width);
+    step='desktop_refresh_burst_'+width;
+    const burst=await page.evaluate(async()=>{
+      const store=window.MAOMAOWallpaperStore;
+      await window.MAOMAOApplyDesktopWallpaper();
+      await window.MAOMAORefreshCustomIcons();
+      await new Promise(r=>setTimeout(r,200));
+      const get=store.get, tone=store.applyTone, getByKey=store.getByKey;
+      const count={wallpaper:0,tone:0,icons:{}};
+      store.get=function(){count.wallpaper++;return get.apply(this,arguments);};
+      store.applyTone=function(){count.tone++;return tone.apply(this,arguments);};
+      store.getByKey=function(key){if(key.startsWith('home_icon_img_'))count.icons[key]=(count.icons[key]||0)+1;return getByKey.apply(this,arguments);};
+      try {
+        window.dispatchEvent(new Event('focus'));
+        document.dispatchEvent(new Event('visibilitychange'));
+        window.dispatchEvent(new Event('pageshow'));
+        await new Promise(r=>setTimeout(r,350));
+        return count;
+      } finally {store.get=get;store.applyTone=tone;store.getByKey=getByKey;}
+    });
+    assert.equal(burst.wallpaper,1,'resume burst must read wallpaper once');
+    assert.equal(burst.tone,0,'unchanged wallpaper must not be decoded for tone again');
+    assert.ok(Object.keys(burst.icons).length>0,'icon refresh did not run');
+    assert.ok(Object.values(burst.icons).every(n=>n===1),'resume burst must read each icon once');
+    pass('desktop_refresh_burst_'+width);
     step='photo_'+width;
     const upload=await makeImage(page,'#707070');
     const picker=page.waitForEvent('filechooser',{timeout:12000});

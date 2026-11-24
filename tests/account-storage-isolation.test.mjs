@@ -86,6 +86,7 @@ function createScope({ accountId, role = 'user', fetchImpl = null, caches = null
     documentElement: {}
   };
   const storageListeners = [];
+  const clock = { now: 10000 };
   function MockXHR() {
     this.headers = {};
   }
@@ -116,6 +117,9 @@ function createScope({ accountId, role = 'user', fetchImpl = null, caches = null
     fetch: fetchImpl || defaultFetch,
     Headers,
     URL,
+    AbortController,
+    setTimeout() { return 1; },
+    clearTimeout() {},
     XMLHttpRequest: MockXHR,
     localStorage: local,
     sessionStorage: session,
@@ -126,8 +130,8 @@ function createScope({ accountId, role = 'user', fetchImpl = null, caches = null
     },
     stop() { this.stopped = true; }
   };
-  vm.runInNewContext(scopeSource, { window, document, console, Object, Array, Proxy, Reflect, Promise, encodeURIComponent, Symbol });
-  return { window, document, local, session, openCalls, nativeIndexedDB, nativeCaches, storageListeners };
+  vm.runInNewContext(scopeSource, { window, document, console, Object, Array, Proxy, Reflect, Promise, encodeURIComponent, Symbol, Date: { now: () => clock.now } });
+  return { window, document, local, session, openCalls, nativeIndexedDB, nativeCaches, storageListeners, clock };
 }
 
 test('普通 MAO 账号的 localStorage 与 sessionStorage 只读写自己的命名空间', () => {
@@ -234,6 +238,7 @@ test('QA session probe failure must not redirect a verified account page', async
   const accountId = 'MAO-AAAAAAAAAAAA';
   for (const scenario of [
     { label: 'temporary unavailable', status: 503, code: 'IDENTITY_AUTHORITY_UNAVAILABLE' },
+    { label: 'unconfirmed 401', status: 401, code: 'IDENTITY_SERVICE_TRANSIENT' },
     { label: 'API forbidden without proof of logout', status: 403, code: 'DELEGATED_ACCOUNT_MANAGED_CENTRALLY' },
     { label: 'invalid response', status: 200, code: '', ok: true }
   ]) {
@@ -302,7 +307,10 @@ test('late 409 from older heartbeat cannot undo a newer verified session', async
   const focus = a.storageListeners.find(item => item.type === 'focus');
   assert.ok(focus, 'session validation must also run when tab receives focus');
   focus.listener();
-  assert.equal(pending.length, 2);
+  assert.equal(pending.length, 1, 'startup/focus burst must not duplicate requests');
+  a.clock.now += 1100;
+  focus.listener();
+  assert.equal(pending.length, 2, 'later independent focus supersedes stale probe');
 
   // A newer check sees the correct account first.
   pending[1]({
@@ -330,6 +338,7 @@ test('latest 409 redirects an old account tab even when an earlier check was val
     fetchImpl: () => new Promise(resolve => pending.push(resolve))
   });
   const focus = a.storageListeners.find(item => item.type === 'focus');
+  a.clock.now += 1100;
   focus.listener();
   pending[1]({
     ok: false, status: 409, json: async () => ({
@@ -450,9 +459,9 @@ test('Worker 只对已授权账号页面注入数据命名空间，并禁止缓�
   assert.match(workerSource, /meta name="mao-account-id"/);
   assert.match(workerSource, /mao-account-role/);
   assert.ok(workerSource.includes('shared/js/mao-account-scope.js'));
-  assert.match(workerSource, /mao-account-scope\.js\?v=3/,
+  assert.match(workerSource, /mao-account-scope\.js\?v=4/,
     'Worker 注入的账号隔离脚本必须使用本次更新版本，避免旧 PWA 缓存继续加载 v1');
-  assert.match(serviceWorkerSource, /mao-account-scope\.js\?v=3/,
+  assert.match(serviceWorkerSource, /mao-account-scope\.js\?v=4/,
     'Service Worker 预缓存必须与 Worker 注入版本一致');
   assert.doesNotMatch(workerSource, /mao-account-scope\.js\?v=2/);
   assert.doesNotMatch(serviceWorkerSource, /mao-account-scope\.js\?v=2/);

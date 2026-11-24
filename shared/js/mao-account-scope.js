@@ -121,6 +121,7 @@
   // after a newer session check has started, even if it arrives last.
   var latestSessionProbe = 0;
   var sessionProbeInFlight = null;
+  var sessionProbeController = null;
   var lastSessionProbeAt = 0;
 
   function redirectToAccountEntry(query) {
@@ -134,12 +135,15 @@
 
   function verifyAccountSession() {
     if (typeof global.fetch !== 'function' || redirectingToAccountEntry) return;
-    if (sessionProbeInFlight) return sessionProbeInFlight;
     var now = Date.now();
-    if (lastSessionProbeAt && now - lastSessionProbeAt < 1000) return;
+    // Collapse the startup/focus/visibility burst. A later independent focus
+    // supersedes an older pending check so stale account results cannot win.
+    if (lastSessionProbeAt && now - lastSessionProbeAt < 1000) return sessionProbeInFlight;
     lastSessionProbeAt = now;
     var probe = ++latestSessionProbe;
+    if (sessionProbeController) sessionProbeController.abort();
     var controller = typeof global.AbortController === 'function' ? new global.AbortController() : null;
+    sessionProbeController = controller;
     var options = {
       method: 'GET',
       credentials: 'same-origin',
@@ -148,9 +152,10 @@
     };
     if (controller) options.signal = controller.signal;
     var timer = controller ? global.setTimeout(function () { controller.abort(); }, 8000) : null;
-    sessionProbeInFlight = Promise.resolve().then(function () {
-      return global.fetch('/api/accounts/me', options);
-    }).then(function (response) {
+    var request;
+    try { request = global.fetch('/api/accounts/me', options); }
+    catch (error) { request = Promise.reject(error); }
+    sessionProbeInFlight = Promise.resolve(request).then(function (response) {
       return response.json().catch(function () { return {}; }).then(function (payload) {
         if (probe !== latestSessionProbe || redirectingToAccountEntry) return null;
         var current = payload && payload.account;
@@ -188,7 +193,10 @@
       // individually session-checked and the next focus/heartbeat retries.
     }).then(function () {
       if (timer !== null) global.clearTimeout(timer);
-      sessionProbeInFlight = null;
+      if (probe === latestSessionProbe) {
+        sessionProbeInFlight = null;
+        sessionProbeController = null;
+      }
     });
     return sessionProbeInFlight;
   }
