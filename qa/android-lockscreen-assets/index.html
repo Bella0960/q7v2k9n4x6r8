@@ -1,0 +1,114 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#f7f7f8">
+<meta name="robots" content="noindex,nofollow">
+<link rel="manifest" href="/manifest.webmanifest">
+<title>小手机｜安卓通知验收</title>
+<style>
+:root { color-scheme: light; font-family: -apple-system, BlinkMacSystemFont, "Noto Sans SC", sans-serif; color:#111; background:#f7f7f8; }
+* { box-sizing:border-box; } body { margin:0; padding:0 0 env(safe-area-inset-bottom); }
+main { max-width:460px; margin:0 auto; padding:52px 24px 30px; }
+.eyebrow { font-size:11px; letter-spacing:2px; color:#777; }
+h1 { margin:18px 0 12px; font: normal 42px/1.16 Georgia, "Songti SC", serif; letter-spacing:-1.2px; }
+p { font-size:13px; line-height:1.9; color:#555; }
+.panel { margin-top:28px; padding:24px; background:#fff; border-radius:18px; box-shadow:0 2px 16px rgba(0,0,0,.03); }
+.preview { background:#f6f6f7; padding:17px 18px; border-radius:14px; margin:18px 0; }
+.preview strong { display:block; font-size:15px; margin:0 0 5px; }
+.preview div { font-size:13px; color:#444; }
+button { width:100%; min-height:49px; border:1px solid #111; background:#111; color:#fff; border-radius:8px; font:500 14px/1.4 inherit; margin-top:12px; cursor:pointer; }
+button.alt { background:#fff; color:#111; border-color:#dedee0; }
+button:disabled { opacity:.45; cursor:wait; }
+.status { margin-top:16px; white-space:pre-wrap; font-size:12px; min-height:22px; color:#444; }
+small { color:#888; font-size:11px; line-height:1.8; display:block; margin-top:20px; }
+</style>
+</head>
+<body>
+<main>
+  <div class="eyebrow">ANDROID / WEB PUSH / ISOLATED QA</div>
+  <h1>通知真机验收</h1>
+  <p>这是独立的安卓推送测试环境，不会修改你正在使用的小手机，也不会读取聊天、账号或 API 设置。</p>
+  <section class="panel">
+    <div class="eyebrow">LOCK SCREEN PREVIEW</div>
+    <div class="preview"><strong>小狐狸</strong><div>我到家啦，你今天怎么样？</div></div>
+    <p>真实锁屏通知应显示角色名与消息正文。测试不包含网站链接；Android 系统自身添加的应用来源标识不受页面控制。</p>
+    <button id="allow">1. 开启系统通知</button>
+    <button id="send" class="alt" disabled>2. 发送真实云端通知</button>
+    <div class="status" id="status" role="status" aria-live="polite">正在检查浏览器支持情况…</div>
+    <small>只发送固定的虚拟测试消息，不调用 AI，不保存聊天记录。每台设备每 30 分钟最多发送 4 次。</small>
+  </section>
+  <p>建议使用 Android Chrome，允许通知后锁屏，再从另一设备点击发送，或先点击发送并立即锁屏。点击通知应进入本站的虚拟角色对话页。</p>
+</main>
+<script>
+(function () {
+  var status = document.getElementById('status');
+  var allow = document.getElementById('allow');
+  var send = document.getElementById('send');
+  var cached = null;
+  function info(text) { status.textContent = text; }
+  function byteKey(base64url) {
+    var str = base64url.replace(/-/g, '+').replace(/_/g, '/');
+    var bytes = atob(str.padEnd(Math.ceil(str.length / 4) * 4, '='));
+    return Uint8Array.from(bytes, function (ch) { return ch.charCodeAt(0); });
+  }
+  var supported = window.isSecureContext && 'serviceWorker' in navigator &&
+    'PushManager' in window && 'Notification' in window;
+  if (!supported) {
+    info('当前浏览器不支持 Web Push。请使用 Android Chrome 的 HTTPS 页面。');
+    allow.disabled = true;
+    return;
+  }
+  info('浏览器支持 Web Push。点击第一步开启通知。');
+  allow.addEventListener('click', async function () {
+    allow.disabled = true;
+    try {
+      // This must be called directly inside the button click gesture.
+      var permission = Notification.permission === 'granted'
+        ? 'granted' : await Notification.requestPermission();
+      if (permission !== 'granted') throw new Error('你尚未允许通知，请在 Chrome 网站设置中开启');
+      info('正在安装此测试环境专属的 Service Worker…');
+      var registration = await navigator.serviceWorker.register('/sw.js', { scope: '/' });
+      var response = await fetch('/api/config', { cache:'no-store' });
+      var config = await response.json();
+      if (!response.ok || !config.publicKey) throw new Error('测试推送密钥未准备好');
+      cached = await registration.pushManager.getSubscription();
+      if (!cached) {
+        cached = await registration.pushManager.subscribe({
+          userVisibleOnly: true,
+          applicationServerKey: byteKey(config.publicKey)
+        });
+      }
+      if (!cached) throw new Error('浏览器未返回有效订阅');
+      info('系统通知已开启，云端订阅已创建。可以发送真实测试消息。');
+      send.disabled = false;
+      allow.textContent = '系统通知已开启';
+    } catch (e) {
+      info('开启失败：' + String(e && e.message || '未知错误'));
+      allow.disabled = false;
+    }
+  });
+  send.addEventListener('click', async function () {
+    send.disabled = true;
+    try {
+      var registration = await navigator.serviceWorker.ready;
+      var subscription = cached || await registration.pushManager.getSubscription();
+      if (!subscription) throw new Error('没有可用订阅，请先开启系统通知');
+      info('正在向浏览器推送服务发送真实加密通知…');
+      var response = await fetch('/api/send', {
+        method:'POST', credentials:'same-origin', cache:'no-store',
+        headers:{ 'content-type':'application/json' },
+        body:JSON.stringify({ subscription: subscription.toJSON() })
+      });
+      var result = await response.json();
+      if (!response.ok || !result.providerAccepted)
+        throw new Error(result.error || '云端推送服务未接受');
+      info('云端推送服务已接受。现在检查你的安卓通知栏或锁屏。注意：接受不等于手机已显示。');
+    } catch (e) {
+      info('发送失败：' + String(e && e.message || '未知错误'));
+    } finally { send.disabled = false; }
+  });
+})();
+</script>
+</body></html>
