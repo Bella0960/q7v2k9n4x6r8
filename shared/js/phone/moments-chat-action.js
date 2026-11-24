@@ -36,7 +36,7 @@
         var storage = opts.storage;
         var role = resolveRole(opts.getCharacters(), roleId);
         if (!role) throw new Error('角色已不存在');
-        var source = opts.source === 'menu' ? 'menu' : 'chat';
+        var source = opts.source === 'menu' ? 'menu' : (opts.source === 'auto' ? 'auto' : 'chat');
         var id = 'm_' + source + '_' + encodeURIComponent(roleId) + '_' + encodeURIComponent(String(opts.requestId));
         var list = JSON.parse(storage.getItem('moments') || '[]');
         if (!Array.isArray(list)) throw new Error('动态数据格式异常');
@@ -57,5 +57,35 @@
         })) throw new Error('动态保存校验失败');
         return post;
     }
-    root.MomentsChatAction = { requestsPost: requestsPost, resolveRole: resolveRole, postPrompt: postPrompt, parsePost: parsePost, parseNoPost: parseNoPost, publish: publish };
+    // The opt-in can be revoked while the model is generating. Never pay
+    // for a separate automatic post, and limit it to one per rolling 24 hours.
+    function autoEligible(storage, roleId, now) {
+        try {
+            if (!roleId || JSON.parse(storage.getItem('chat_auto_moment_' + roleId) || 'false') !== true) return false;
+            var raw = storage.getItem('moments');
+            var list = JSON.parse(raw || '[]');
+            if (!Array.isArray(list)) return false;
+            var cutoff = now - 24 * 60 * 60 * 1000;
+            return !list.some(function (post) {
+                return post && String(post.authorId) === String(roleId) && post.byAI === true &&
+                    Number(post.time) >= cutoff;
+            });
+        } catch (error) { return false; }
+    }
+    function autoPrompt() {
+        return '【可选朋友圈自主发布】当前虚构角色已开启自动发动态。如果本轮有自然的、适合分享的角色日常，保持正常聊天回复，并在最后另起一行添加 [自主朋友圈:独立动态正文]，最多120字。没有合适内容就正常聊天，不添加标记。不得发布用户或其他角色的私聊、现实资料、地址、联系方式、密钥，不得声称已经发出。不要把聊天中的私人内容改写为公开动态，不要强行编造事件。';
+    }
+    function extractAuto(value) {
+        var text = String(value || '');
+        var pattern = /\[自主朋友圈[:：]\s*([^\[\]\r\n]{1,200})\s*\]/g;
+        var matches = Array.from(text.matchAll(pattern));
+        var content = matches.length === 1 && !text.slice(matches[0].index + matches[0][0].length).trim()
+            ? matches[0][1].trim() : '';
+        return { text: stripAuto(text).trim(), content: content };
+    }
+    function stripAuto(value) {
+        return String(value || '').replace(/\[自主朋友圈[:：][^\]]*(?:\]|$)/g, '')
+            .replace(/\[(?:自(?:主(?:朋(?:友(?:圈)?)?)?)?)?$/g, '');
+    }
+    root.MomentsChatAction = { requestsPost: requestsPost, resolveRole: resolveRole, postPrompt: postPrompt, parsePost: parsePost, parseNoPost: parseNoPost, autoEligible: autoEligible, autoPrompt: autoPrompt, extractAuto: extractAuto, stripAuto: stripAuto, publish: publish };
 })(typeof window !== 'undefined' ? window : globalThis);
