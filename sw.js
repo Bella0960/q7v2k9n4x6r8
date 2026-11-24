@@ -307,7 +307,10 @@ async function fetchProtectedNavigation(req) {
     const abort = () => controller.abort();
     if (req.signal) req.signal.addEventListener('abort', abort, { once: true });
     if (req.signal && req.signal.aborted) controller.abort();
-    const timeout = setTimeout(abort, 7000);
+    // Do not mistake a slow but valid mobile navigation for a broken connection.
+    // Give the initial request a generous deadline; the one transport retry
+    // has its own shorter budget. HTTP responses, including 401/503, never retry.
+    const timeout = setTimeout(abort, attempt === 0 ? 25000 : 15000);
     try {
       return await fetch(req, { cache: 'no-store', signal: controller.signal });
     } catch (error) {

@@ -61,3 +61,52 @@ test('wallpaper, icons and session checks guard duplicate work and stale results
   assert.match(home, /maxRefractive: 2/);
   assert.doesNotMatch(read('desktop/js/script.js'), /localStorage.getItem\('home_custom_wallpaper'\)/);
 });
+
+test('slow successful navigation is not cut off by the optional precache deadline', async () => {
+  let now=0, serial=0, calls=0;
+  const timers=new Map();
+  let fetchSignal, finish;
+  const ctx=vm.createContext({
+    AbortController,URL,Map,Date,
+    fetch(_req,opts) { calls++; fetchSignal=opts.signal; return new Promise(resolve=>{finish=resolve;}); },
+    setTimeout(fn,ms){const id=++serial;timers.set(id,{fn,at:now+ms});return id;},
+    clearTimeout(id){timers.delete(id);}
+  });
+  vm.runInContext(section,ctx);
+  const result=ctx.fetchProtectedNavigation({signal:new AbortController().signal});
+  now=12000;
+  for(const [id,timer] of timers)if(timer.at<=now){timers.delete(id);timer.fn();}
+  assert.equal(fetchSignal.aborted,false,'a valid slow response must not be prematurely aborted');
+  assert.equal(calls,1);
+  finish({status:200});
+  assert.equal((await result).status,200);
+  assert.equal(timers.size,0);
+});
+test('hung navigation has two finite deadlines, no infinite retry and no false HTTP logout',async()=>{
+  let now=0,serial=0,calls=0;
+  const timers=new Map();
+  const ctx=vm.createContext({
+    AbortController,URL,Map,Date,
+    fetch(_req,opts){calls++;return new Promise((resolve,reject)=>{
+      opts.signal.addEventListener('abort',()=>reject(new Error('transport deadline')),{once:true});
+    });},
+    setTimeout(fn,ms){const id=++serial;timers.set(id,{fn,at:now+ms});return id;},
+    clearTimeout(id){timers.delete(id);}
+  });
+  vm.runInContext(section,ctx);
+  const result=ctx.fetchProtectedNavigation({signal:new AbortController().signal});
+  const checked=assert.rejects(result,/transport deadline/);
+  async function advance(ms){
+    now+=ms;
+    for(const [id,timer] of [...timers])if(timer.at<=now){timers.delete(id);timer.fn();}
+    // A rejected fetch settles before the retry delay is scheduled.
+    await Promise.resolve();await Promise.resolve();await Promise.resolve();
+  }
+  await advance(25000);
+  assert.equal(calls,1);
+  await advance(300);
+  assert.equal(calls,2);
+  await advance(15000);
+  await checked;
+  assert.equal(timers.size,0);
+});
