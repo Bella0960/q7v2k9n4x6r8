@@ -203,9 +203,50 @@ const APP_SHELL = [
   './assets/avatar-cat-dark.svg'
 ];
 
+// Optional prefetch must never prevent the new Worker from becoming active.
+// A stalled connection can otherwise leave navigator.serviceWorker.ready
+// pending indefinitely, including after a mobile network change.
+async function boundedReleasePrefetch(task, budgetMs = 6000) {
+  const controller = new AbortController();
+  let timer;
+  try {
+    await Promise.race([
+      Promise.resolve().then(() => task(controller.signal)).catch(() => undefined),
+      new Promise(resolve => {
+        timer = setTimeout(() => { controller.abort(); resolve(); }, budgetMs);
+      })
+    ]);
+  } finally {
+    clearTimeout(timer);
+    controller.abort();
+  }
+}
+
 self.addEventListener('install', event => {
   event.waitUntil(
     caches.open(CACHE_NAME).then(async cache => {
+      if (/^[a-f0-9]{24}$/.test(BUILD_RELEASE)) {
+        await boundedReleasePrefetch(async signal => {
+          const core = [...new Set(BUILD_CORE_ASSETS.concat(
+            ['./account/index.html','./account/bootstrap.html']))];
+          for (let i=0; i<core.length && !signal.aborted; i+=4) {
+            await Promise.all(core.slice(i,i+4).map(async url => {
+              try {
+                if (signal.aborted) return;
+                const request = new Request(new URL(url, self.registration.scope), {cache:'no-store',signal});
+                const response = await fetch(request);
+                if (signal.aborted) return;
+                const served = response.headers.get('x-mao-release');
+                if (served && served !== BUILD_RELEASE) return;
+                if (/\.html$/.test(url) ? cacheablePublicNavigationHtml(response) : cacheableStaticAsset(response, request)) {
+                  await cache.put(request,response);
+                }
+              } catch (_) {}
+            }));
+          }
+        });
+        return;
+      }
       // Vite 在构建时生成全部 HTML 页面清单，避免手机端只缓存少数入口。
       let pageEntries = [];
       try {
@@ -225,28 +266,6 @@ self.addEventListener('install', event => {
       const resources = Array.from(new Set(APP_SHELL.concat(pageEntries)))
         .filter(url => url === './account/index.html' || url === './account/bootstrap.html' ||
           (url !== './' && url !== '/' && !/\.html(?:\?|$)/i.test(url)));
-      const stamped = /^[a-f0-9]{24}$/.test(BUILD_RELEASE);
-      if (stamped) {
-        // Precache just current core resources and small public shell images.
-        // Avoid a burst of 100+ old classic script downloads during startup.
-        const core = [...new Set(BUILD_CORE_ASSETS.concat(resources.filter(url =>
-          url === './account/index.html' || url === './account/bootstrap.html' ||
-          /\.(?:png|svg|ico)$/i.test(url))))];
-        for (let i=0; i<core.length; i+=4) {
-          await Promise.all(core.slice(i,i+4).map(async url => {
-            try {
-              const request = new Request(new URL(url, self.registration.scope), {cache:'no-store'});
-              const response = await fetch(request);
-              const served = response.headers.get('x-mao-release');
-              if (served && served !== BUILD_RELEASE) return;
-              if (/\.html$/.test(url) ? cacheablePublicNavigationHtml(response) : cacheableStaticAsset(response, request)) {
-                await cache.put(request,response);
-              }
-            } catch (_) {}
-          }));
-        }
-        return;
-      }
       await Promise.all(resources.map(function (url) {
         if (url === './account/index.html' || url === './account/bootstrap.html') {
           return fetch(url, { cache: 'no-store' }).then(function (response) {
@@ -255,7 +274,7 @@ self.addEventListener('install', event => {
         }
         return cache.add(url).catch(function () { return undefined; });
       }));
-    }).then(() => self.skipWaiting())
+    }).catch(() => undefined).then(() => self.skipWaiting())
   );
 });
 

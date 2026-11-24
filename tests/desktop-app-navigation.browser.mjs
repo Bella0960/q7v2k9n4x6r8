@@ -1,61 +1,14 @@
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
-import http from 'node:http';
+import { startPwaBuiltServer } from './helpers/pwa-built-server.mjs';
 import path from 'node:path';
 import { chromium } from 'playwright';
 
 const distRoot = path.resolve('dist');
 assert.ok(fs.existsSync(path.join(distRoot, 'index.html')), 'production build is missing dist/index.html');
 
-const server = http.createServer((req, res) => {
-  let pathname;
-  try {
-    pathname = decodeURIComponent(new URL(req.url || '/', 'http://127.0.0.1').pathname);
-  } catch {
-    res.writeHead(400).end('Bad request');
-    return;
-  }
-
-  if (pathname === '/') pathname = '/index.html';
-  const filePath = path.resolve(distRoot, '.' + pathname);
-  if (filePath !== distRoot && !filePath.startsWith(distRoot + path.sep)) {
-    res.writeHead(403).end('Forbidden');
-    return;
-  }
-
-  fs.readFile(filePath, (error, bytes) => {
-    if (error) {
-      res.writeHead(error.code === 'ENOENT' ? 404 : 500).end('Not found');
-      return;
-    }
-    const extension = path.extname(filePath).toLowerCase();
-    const types = {
-      '.html': 'text/html; charset=utf-8',
-      '.js': 'text/javascript; charset=utf-8',
-      '.css': 'text/css; charset=utf-8',
-      '.json': 'application/json; charset=utf-8',
-      '.svg': 'image/svg+xml',
-      '.png': 'image/png',
-      '.webp': 'image/webp',
-      '.woff2': 'font/woff2',
-      '.woff': 'font/woff'
-    };
-    res.writeHead(200, {
-      'Content-Type': types[extension] || 'application/octet-stream',
-      'Cache-Control': 'no-store'
-    });
-    res.end(bytes);
-  });
-});
-
-await new Promise((resolve, reject) => {
-  server.once('error', reject);
-  server.listen(0, '127.0.0.1', resolve);
-});
-
-const address = server.address();
-assert.ok(address && typeof address === 'object');
-const baseUrl = `http://127.0.0.1:${address.port}`;
+const fixture = await startPwaBuiltServer();
+const baseUrl = fixture.origin;
 const browser = await chromium.launch({ headless: true });
 
 try {
@@ -68,11 +21,14 @@ try {
   const page = await context.newPage();
   const pageErrors = [];
   page.on('pageerror', error => pageErrors.push(error.message));
-  const homeResponse = await page.goto(`${baseUrl}/index.html`, { waitUntil: 'load' });
+  console.log('PWA_NAV_STAGE:home');
+  const homeResponse = await page.goto(`${baseUrl}/index.html`, { waitUntil: 'load', timeout:30000 });
   assert.equal(homeResponse?.status(), 200, 'desktop home should load from the production build');
+  console.log('PWA_NAV_STAGE:controller');
+  await page.waitForFunction(() => !!navigator.serviceWorker?.controller, null, { timeout: 30000 });
   const serviceWorkerState = await page.evaluate(async () => {
     if (!('serviceWorker' in navigator)) return { supported: false, controller: false };
-    const registration = await navigator.serviceWorker.ready;
+    const registration = await navigator.serviceWorker.getRegistration();
     return {
       supported: true,
       scope: registration.scope,
@@ -90,6 +46,7 @@ try {
   assert.equal(new Set(routes).size, routes.length, 'app shortcut routes should be unique');
 
 
+  console.log('PWA_NAV_STAGE:photo');
   // A default-home photo upload must survive paging away/back and a full reload.
   const photoSlot = page.locator('#pw1');
   const photoChooserPromise = page.waitForEvent('filechooser', { timeout: 10000 });
@@ -131,7 +88,8 @@ try {
     'the photo wall image must remain visible after swiping to another page and back'
   );
 
-  await page.reload({ waitUntil: 'load' });
+  console.log('PWA_NAV_STAGE:reload');
+  await page.reload({ waitUntil: 'load',timeout:30000 });
   await page.waitForFunction(async (key) => {
     const store = window.MAOMAOWallpaperStore;
     const slot = document.querySelector('#pw1');
@@ -142,6 +100,7 @@ try {
   assert.equal(pageErrors.length, 0,
     'photo upload, page swipe, and reload must not throw JavaScript errors: ' + pageErrors.join(' | '));
 
+  console.log('PWA_NAV_STAGE:routes');
   for (const route of routes) {
     const response = await context.request.get(`${baseUrl}/${route}`);
     assert.equal(response.status(), 200, `app page should be served: ${route}`);
@@ -155,6 +114,7 @@ try {
   const firstRoute = await tile.getAttribute('data-href');
   assert.ok(firstRoute, 'first app tile should declare its destination');
 
+  console.log('PWA_NAV_STAGE:tap');
   const navigation = page.waitForNavigation({ waitUntil: 'domcontentloaded', timeout: 20000 });
   await tile.tap({ timeout: 10000 });
   const appResponse = await navigation;
@@ -169,5 +129,5 @@ try {
   console.log(`PASS: service worker ${serviceWorkerState.activeState}; ${routes.length} app routes exist; mobile tap navigates without page errors.`);
 } finally {
   await browser.close();
-  await new Promise(resolve => server.close(resolve));
+  await fixture.close();
 }

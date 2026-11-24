@@ -96,3 +96,13 @@ test('activation removes only obsolete app-shell generations, never media or sco
   await h.activate();
   assert.deepEqual(h.calls.deleted,['phone-app-pwa-v310']);
 });
+
+test('optional precache has a bounded deadline even when a request never settles',async()=>{
+  const source=fs.readFileSync('sw.js','utf8');
+  const code=source.slice(source.indexOf('async function boundedReleasePrefetch('),source.indexOf("self.addEventListener('install'"));
+  let aborted=false;
+  const context=vm.createContext({AbortController,setTimeout,clearTimeout});
+  vm.runInContext(code,context);
+  await context.boundedReleasePrefetch(signal=>new Promise(()=>{signal.addEventListener('abort',()=>{aborted=true;});}),10);
+  assert.equal(aborted,true);
+});
