@@ -6284,7 +6284,7 @@
             if (momentsAction && momentsAction.requestId) {
                 systemPrompt += '\n\n' + window.MomentsChatAction.postPrompt();
             } else momentsAction = null;
-            var autoMomentsRoleId = (!momentsAction && !isGroupChat && !isRegen && !contextOnly && !silent &&
+            var autoMomentsRoleId = (!momentsAction && !/(?:朋友圈|动态)/.test(String(text || '')) && !isGroupChat && !isRegen && !contextOnly && !silent &&
                 presenceMode === 'online' && currentCharacter && currentCharacter.id != null &&
                 failureTarget && failureTarget.mid && window.MomentsChatAction)
                 ? String(currentCharacter.id) : '';
