@@ -2353,6 +2353,8 @@
     </div>
     <script src="../../shared/js/memory.js"></script>
     <script src="../../shared/js/sound-system.js"></script>
+    <script src="../../shared/js/cloud-push-client.js?v=20261124inbox1"></script>
+    <script src="../../shared/js/cloud-outbound-inbox.js?v=20261124inbox1"></script>
     <script>
         // ===== 加载壁纸到手机背景（iMessage 透明主题，支持 IndexedDB + 明暗自动切换） =====
         (function loadWallpaper() {
@@ -7781,6 +7783,79 @@
 
         renderAllMessages();
         highlightMessageFromUrl();
+
+        // Restore authenticated cloud outbox messages into this role's existing
+        // chat history. No server ACK until local save and readback both succeed.
+        // A missing account namespace or Web Locks means no automatic writes.
+        (function installCloudInboxForSingleChat() {
+            var cloud = window.MaomaoCloud;
+            var bridge = window.MaomaoCloudInbox;
+            var accountMeta = document.querySelector('meta[name="mao-account-id"]');
+            var accountId = String(accountMeta && accountMeta.content || '');
+            if (isGroupChat || !currentRoleId || !cloud || !bridge ||
+                !/^MAO-[A-Z0-9]{12,24}$/.test(accountId)) return;
+
+            var cloudRoleId = String(currentCharacter.id || currentRoleId);
+            var needsRerender = false;
+            function readStoredChat() {
+                try {
+                    // Do not use loadMessages() here: a damaged/missing primary
+                    // must not be synthesized or overwritten to accept an ACK.
+                    var raw = localStorage.getItem(storageKey);
+                    if (raw === null) return null;
+                    var rows = JSON.parse(raw);
+                    return Array.isArray(rows) ? rows : null;
+                } catch (error) { return null; }
+            }
+            function refreshCloudChatIfNearBottom() {
+                if (!chatMessages || !isNearBottom(120)) {
+                    needsRerender = true;
+                    return;
+                }
+                needsRerender = false;
+                renderAllMessages();
+            }
+            chatMessages.addEventListener('scroll', function () {
+                if (needsRerender && isNearBottom(120)) refreshCloudChatIfNearBottom();
+            }, { passive: true });
+
+            var receiver = bridge.create({
+                accountId: accountId,
+                roleId: cloudRoleId,
+                cloud: cloud,
+                readHistory: readStoredChat,
+                saveHistory: function (rows) { return saveMessages(rows) === true; },
+                onSaved: refreshCloudChatIfNearBottom,
+                verifySession: async function (expectedAccount) {
+                    try {
+                        var response = await fetch('/api/accounts/me', {
+                            method: 'GET', credentials: 'same-origin',
+                            cache: 'no-store',
+                            headers: { 'x-mao-account-context': expectedAccount }
+                        });
+                        if (!response.ok) return false;
+                        var body = await response.json();
+                        return body && body.account &&
+                            body.account.id === expectedAccount &&
+                            body.account.status === 'active';
+                    } catch (error) { return false; }
+                }
+            });
+            if (!receiver) return;
+            receiver.start();
+            window.addEventListener('pagehide', function (event) {
+                // BFCache suspends timers but restores the same JS document.
+                // Keep the controller recoverable on pageshow; permanently
+                // stop only when this page is genuinely being discarded.
+                if (!event.persisted) receiver.stop();
+            });
+            window.addEventListener('pageshow', function (event) {
+                if (event.persisted) {
+                    // BFCache may be restored after sibling tabs added records.
+                    renderAllMessages();
+                }
+            });
+        })();
 
         // 美化中心保存后，页面从返回缓存恢复时重新读取最新配置。
         function refreshChatBeautyConfig() {

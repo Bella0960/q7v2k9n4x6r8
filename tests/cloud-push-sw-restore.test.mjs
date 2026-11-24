@@ -117,3 +117,50 @@ test('cache version advances and private HTML is network-only', () => {
   assert.match(source, /self\.addEventListener\('push'/);
   assert.match(source, /self\.addEventListener\('notificationclick'/);
 });
+
+test('lock screen never displays arbitrary payload titles, links, account IDs or message text', async () => {
+  const h = harness();
+  await sendPush(h, {
+    accountId: ACCOUNT,
+    title: 'https://private.example/invite',
+    body: ACCOUNT + ' secret message https://private.example/api',
+    url: './chat/chat/chat-detail.html?id=role-01'
+  });
+  assert.equal(h.notifications.length, 1);
+  assert.equal(h.notifications[0].title, '新消息');
+  assert.equal(h.notifications[0].options.body, 'secret message');
+  assert.equal(h.notifications[0].options.body.includes('https://'), false);
+  await clickNotice(h, h.notifications[0].options.data);
+  assert.equal(h.opened[0], 'https://preview.mao520.com/chat/chat/chat-detail.html?id=role-01');
+});
+
+test('signed-in recipient sees the actual character and message preview without a visible origin', async () => {
+  const h = harness();
+  await sendPush(h, {
+    accountId: ACCOUNT,
+    title: '小狐狸',
+    body: '你吃过饭了吗？我刚下课，想和你聊聊天。',
+    url: './chat/chat/chat-detail.html?id=role-fox',
+    tag: 'maomao-chat-autonomy_abcde0123456789_1'
+  });
+  assert.equal(h.notifications.length, 1);
+  const { title, options } = h.notifications[0];
+  assert.equal(title, '小狐狸');
+  assert.equal(options.body, '你吃过饭了吗？我刚下课，想和你聊聊天。');
+  assert.equal(JSON.stringify({ title, body: options.body }).includes('mao520.com'), false);
+  assert.equal(JSON.stringify({ title, body: options.body }).includes('http'), false);
+  await clickNotice(h, options.data);
+  assert.equal(h.opened[0], 'https://preview.mao520.com/chat/chat/chat-detail.html?id=role-fox');
+});
+
+test('URLs in a sender or message are removed but ordinary conversation stays visible', async () => {
+  const h = harness();
+  await sendPush(h, {
+    accountId: ACCOUNT,
+    title: '小狐狸 https://preview.mao520.com',
+    body: '我到家啦 https://preview.mao520.com/chat/chat/chat-detail.html?id=123 你呢？',
+    url: './chat/chat/chat-detail.html?id=role-fox'
+  });
+  assert.equal(h.notifications[0].title, '小狐狸');
+  assert.equal(h.notifications[0].options.body, '我到家啦 你呢？');
+});

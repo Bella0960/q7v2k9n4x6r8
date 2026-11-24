@@ -280,6 +280,19 @@ function pushTargetUrl(value) {
   }
 }
 
+// The OS may render title/body on the lock screen, so neither may contain
+// the PWA origin, a URL, account IDs or control characters. Routing is data-only.
+function visiblePushText(value, limit) {
+  if (typeof value !== 'string') return '';
+  var cleaned = value
+    .replace(/(?:https?:\/\/|www\.)[^\s<>]+/gi, ' ')
+    .replace(/\b(?:[a-z0-9-]+\.)+(?:com|net|org|io|app|dev|cn|me|xyz)(?:\/[^\s]*)?/gi, ' ')
+    .replace(/\bMAO-[A-Z0-9]{12,24}\b/g, ' ')
+    .replace(/[\u0000-\u001F\u007F-\u009F<>\u2028\u2029]+/g, ' ')
+    .replace(/\s+/g, ' ').trim();
+  return Array.from(cleaned).slice(0, limit).join('');
+}
+
 self.addEventListener('push', event => {
   let payload = {};
   try {
@@ -316,8 +329,10 @@ self.addEventListener('push', event => {
         currentAccount.id !== accountId ||
         currentAccount.status !== 'active') return;
 
-    const title = String(payload.title || '新消息');
-    const body = String(payload.body || '你有一条新消息。');
+    // Show the sender and actual preview, not server-provided URLs or routes.
+    // Legacy generic pushes keep a safe fallback for backwards compatibility.
+    const title = visiblePushText(payload.title, 48) || '新消息';
+    const body = visiblePushText(payload.body, 120) || '发来一条新消息';
     const targetUrl = pushTargetUrl(payload.url);
     // 相同 tag 的通知会在系统里合并，避免多端/重试造成重复提醒。
     const tag = String(payload.tag || payload.dedupeKey || 'maomao-cloud').slice(0, 64);
@@ -378,8 +393,8 @@ self.addEventListener('notificationclick', event => {
       // 已有本站窗口时，直接在该窗口内跳到目标聊天页，避免重复开窗。
       if (client.url.indexOf(self.registration.scope) === 0 && 'navigate' in client) {
         try {
-          await client.navigate(targetUrl);
-          return client.focus ? client.focus() : undefined;
+          const navigated = await client.navigate(targetUrl);
+          if (navigated) return navigated.focus ? navigated.focus() : undefined;
         } catch (error) {
           // navigate 失败（例如页面正在卸载）时退回 openWindow。
         }
