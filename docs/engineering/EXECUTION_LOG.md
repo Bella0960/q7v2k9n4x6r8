@@ -1,5 +1,7 @@
 # MAOMAO Execution Log
 
+> Release instructions: always read the latest main [RELEASE_POLICY.md](RELEASE_POLICY.md). Historical workflow names, versions, and checkpoints are not active instructions.
+
 This is the durable checkpoint for owner-assigned, multi-step work. Update it after meaningful milestones and before ending a session.
 
 ## 2026-11-22 · ARCH-002 · Chat HTTP error body timeout
