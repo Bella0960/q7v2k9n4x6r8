@@ -316,8 +316,9 @@ self.addEventListener('push', event => {
         currentAccount.id !== accountId ||
         currentAccount.status !== 'active') return;
 
-    const title = String(payload.title || '新消息');
-    const body = String(payload.body || '你有一条新消息。');
+    // Never display server-controlled text on the OS lock screen.
+    const title = '新消息';
+    const body = '你收到了一条新消息，打开应用查看。';
     const targetUrl = pushTargetUrl(payload.url);
     // 相同 tag 的通知会在系统里合并，避免多端/重试造成重复提醒。
     const tag = String(payload.tag || payload.dedupeKey || 'maomao-cloud').slice(0, 64);
@@ -378,8 +379,8 @@ self.addEventListener('notificationclick', event => {
       // 已有本站窗口时，直接在该窗口内跳到目标聊天页，避免重复开窗。
       if (client.url.indexOf(self.registration.scope) === 0 && 'navigate' in client) {
         try {
-          await client.navigate(targetUrl);
-          return client.focus ? client.focus() : undefined;
+          const navigated = await client.navigate(targetUrl);
+          if (navigated) return navigated.focus ? navigated.focus() : undefined;
         } catch (error) {
           // navigate 失败（例如页面正在卸载）时退回 openWindow。
         }
