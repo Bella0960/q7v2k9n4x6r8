@@ -50,6 +50,8 @@
                 maomaoThemeLink.rel = 'stylesheet';
                 var themeCssUrl = new URL('../css/liquid-glass-theme.css', current.src);
                 themeCssUrl.searchParams.set('v', '20261024v1');
+                var themeRelease = new URL(current.src).searchParams.get('mao_rev');
+                if (/^[a-f0-9]{24}$/.test(themeRelease || '')) themeCssUrl.searchParams.set('mao_rev', themeRelease);
                 maomaoThemeLink.href = themeCssUrl.href;
                 maomaoThemeLink.media = 'all';
             } catch (err) {
@@ -292,6 +294,12 @@
         if (!nativeScript || !nativeScript.src) return;
         var helper = document.createElement('script');
         helper.src = new URL('home-indicator.js?v=20261023v1', nativeScript.src).href;
+        var helperRelease = new URL(nativeScript.src).searchParams.get('mao_rev');
+        if (/^[a-f0-9]{24}$/.test(helperRelease || '')) {
+            var helperUrl = new URL(helper.src);
+            helperUrl.searchParams.set('mao_rev', helperRelease);
+            helper.src = helperUrl.href;
+        }
         helper.async = false;
         helper.setAttribute('data-maomao-home-indicator-loader', '1');
         (document.head || document.documentElement).appendChild(helper);

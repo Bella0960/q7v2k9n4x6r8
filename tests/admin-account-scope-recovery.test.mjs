@@ -98,5 +98,6 @@ test('missing scope notice leads to existing same-origin login, never desktop lo
   assert.doesNotMatch(src, /location\.assign\('\/index\.html'\)/);
   assert.doesNotMatch(src.replace(/\/\/[^\n]*/g, ''), /localStorage|sessionStorage|document\.cookie/);
   assert.match(worker, /return redirectToVerifiedLogin\(url/);
-  assert.match(worker, /return isHtmlDocument && authorizedAccount\s*\? await injectAccountScope/);
+  assert.match(worker, /if \(isHtmlDocument && authorizedAccount\) return await injectAccountScope\(response, authorizedAccount, env\)/);
+  assert.match(worker, /return authorizedAccount \? await injectAccountScope\(response, authorizedAccount, env\) : response/);
 });

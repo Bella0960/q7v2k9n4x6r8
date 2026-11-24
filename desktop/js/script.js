@@ -4,7 +4,8 @@
   function tick() {
     if (!el) return;
     var now = new Date();
-    el.textContent = now.toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit', hour12: false });
+    var time = now.toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit', hour12: false });
+    if (el.textContent !== time) el.textContent = time;
   }
   tick();
   setInterval(tick, 1000);
@@ -25,19 +26,7 @@ function showToast(msg) {
 
 // ===== 桌面主题：应用外观页保存的壁纸与图标底色（写入方为 settings/appearance.html） =====
 (function () {
-  // 壁纸：Base64 dataURL，铺满手机屏幕；宫格/页面容器均为透明背景，图标与挂件卡片自带底色不受影响
-  var screen = document.querySelector('.phone-screen');
-  if (screen) {
-    try {
-      var wp = localStorage.getItem('home_custom_wallpaper');
-      if (wp) {
-        screen.style.backgroundImage = 'url("' + wp + '")';
-        screen.style.backgroundSize = 'cover';
-        screen.style.backgroundPosition = 'center';
-        screen.style.backgroundRepeat = 'no-repeat';
-      }
-    } catch (e) {}
-  }
+  // Wallpaper is read once by the IndexedDB/legacy-compatible desktop loader in index.html.
   // 图标风格：毛玻璃(半透明底+背景模糊) / 纯净(实色底无模糊)。
   // 写入方为 appearance.html（home_icon_style / home_custom_icon_bg），消费方为 styles.css 的
   // .app-icon { background: var(--icon-bg); backdrop-filter: var(--icon-blur) }

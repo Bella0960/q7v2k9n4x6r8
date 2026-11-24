@@ -16,5 +16,6 @@ test('character profile scripts and PWA shell use the same cache-busted URLs', (
 });
 test('PWA protected navigations remain network-first and do not serve cached login redirects', () => {
   assert.match(sw, /req\.mode === 'navigate' && !isPublicAccountPage/);
-  assert.match(sw, /return await fetch\(req, \{ cache: 'no-store' \}\)/);
+  assert.match(sw, /return await fetchProtectedNavigation\(req\)/);
+  assert.match(sw, /return await fetch\(req, \{ cache: 'no-store', signal: controller.signal \}\)/);
 });

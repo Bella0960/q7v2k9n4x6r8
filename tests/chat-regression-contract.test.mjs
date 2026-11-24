@@ -1898,11 +1898,17 @@ test('PWA manifest is referenced from the deployment root so relative icon and s
   assert.ok(serviceWorker.includes("'./manifest.json'"));
 });
 
-test('Service Worker navigation does not abort slow mobile page requests', () => {
+test('Service Worker navigation preserves slow mobile requests and retries only bounded transport failures', () => {
   assert.match(serviceWorker, /req\.mode === 'navigate'/, 'navigation must have explicit handling');
-  assert.ok(serviceWorker.includes('fetch(req).then'));
-  assert.equal(serviceWorker.includes('new AbortController()'), false);
-  assert.equal(serviceWorker.includes('controller.abort()'), false);
+  assert.match(serviceWorker, /return await fetchProtectedNavigation\(req\)/);
+  const navigation = serviceWorker.slice(serviceWorker.indexOf('async function fetchProtectedNavigation('), serviceWorker.indexOf('// Bounded in-memory cooldown'));
+  assert.match(navigation, /attempt < 2/);
+  assert.match(navigation, /setTimeout\(abort, attempt === 0 \? 25000 : 15000\)/,
+    'slow initial page requests must receive a separate, generous deadline; do not reuse the optional precache budget');
+  assert.match(navigation, /return await fetch\(req, \{ cache: 'no-store', signal: controller.signal \}\)/,
+    'authoritative HTTP responses must be returned without retry or cache substitution');
+  assert.match(navigation, /clearTimeout\(timeout\)/);
+  assert.match(navigation, /req\.signal\.removeEventListener\('abort', abort/);
 });
 
 test('Cloudflare Worker preserves explicit HTML routes and maps only the root to the desktop index', () => {

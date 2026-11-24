@@ -256,6 +256,7 @@ test('touchcancel restores original element without persisting a partially moved
     dragEl: { style: { display: 'none' }, classList: {
       remove(className) { assert.equal(className, 'is-dragging-source'); }
     } },
+    resetDragMotion() {},
     cleanupEmptyTrailingPages() { counts.cleanup++; },
     updateDefaultGridComposition() { counts.refresh++; },
     persistCurrentDOM() { counts.writes++; },
@@ -274,6 +275,7 @@ test('cancelled cross-page gesture navigates back without storing a drop', () =>
   const context = {
     isDragging: true, edgeTimer: null, dragOriginPage: 0, activePageIndex: 1,
     placeholder: null, dragClone: null, dragEl: null,
+    resetDragMotion() {},
     cleanupEmptyTrailingPages() {}, updateDefaultGridComposition() {},
     getPages() { return [{}, {}]; },
     goToPage(page) { returned = page; },
@@ -355,4 +357,39 @@ test('the Dock centers one to five shortcuts without losing the default app pair
   // 375px viewport: outer 14px padding per side, Dock 8px inner padding and 1px border.
   // All five allowed 50px tiles must fit even on the narrowest required phone viewport.
   assert.ok(5 * 50 + 4 * gap <= 375 - 2 * (14 + 8 + 1));
+});
+
+
+test('drag input coalesces into a single frame and flushes the last point on drop', () => {
+  const start = index.indexOf('function queueDragMove(');
+  const end = index.indexOf('function resetDragMotion(', start);
+  assert.ok(start >= 0 && end > start);
+  const calls = [], frames = new Map();
+  let serial = 0;
+  const ctx = {
+    isDragging: true, pendingDragPoint: null, dragFrame: null,
+    requestAnimationFrame(fn) { frames.set(++serial, fn); return serial; },
+    cancelAnimationFrame(id) { frames.delete(id); },
+    moveDrag(x,y) { calls.push([x,y]); }
+  };
+  runInNewContext(index.slice(start,end),ctx);
+  ctx.queueDragMove(1,2); ctx.queueDragMove(3,4); ctx.queueDragMove(5,6);
+  assert.equal(frames.size,1);
+  const [id,fn] = [...frames.entries()][0]; frames.delete(id); fn();
+  assert.deepEqual(calls,[[5,6]]);
+  ctx.queueDragMove(7,8); ctx.flushDragMove();
+  assert.deepEqual(calls,[[5,6],[7,8]]);
+  assert.equal(frames.size,0);
+});
+test('desktop motion avoids left/top writes and live glass sampling during gestures', () => {
+  assert.match(index,/function setDragAvatarPosition[\s\S]*?--drag-x/);
+  assert.match(index,/if \(isDragging\) return;\s*var cur = getCurrentPageFromScroll/);
+  assert.match(desktopCss,/translate3d\(var\(--drag-x/);
+  assert.match(desktopCss,/home-dragging \.app-icon::before[\s\S]*?backdrop-filter: none/);
+});
+
+test('desktop icons cannot shrink into a rectangle; row height accounts for text',()=>{
+  assert.match(desktopCss,/flex:\s*0 0 auto !important;[\s\S]*?aspect-ratio:\s*1 \/ 1 !important/);
+  assert.match(desktopCss,/--desktop-icon-row:\s*max\(72px,\s*calc\(var\(--desktop-icon-edge\) \+ 6px \+ \.86rem \+ 2px\)\)/);
+  assert.match(mobileCss,/grid-auto-rows:\s*var\(--desktop-icon-row,\s*68px\) !important/);
 });

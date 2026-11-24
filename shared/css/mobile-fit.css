@@ -282,3 +282,25 @@
   .maomao-home #gridPage0.is-default-layout > [data-drag]:nth-child(10) { grid-column: 3 !important; grid-row: 6 !important; }
   .maomao-home #gridPage0.is-default-layout > [data-drag]:nth-child(11) { grid-column: 4 !important; grid-row: 6 !important; }
 }
+
+
+/* Match the desktop icon+label row budget on real touch viewports. The old
+   68px rule is a compatibility fallback, not permission to shrink icons. */
+@media (max-width: 768px) {
+  body.maomao-home .desktop-grid {
+    grid-auto-rows: var(--desktop-icon-row, 68px) !important;
+  }
+  body.maomao-home #gridPage0.is-default-layout {
+    grid-template-rows: repeat(6, var(--desktop-icon-row, 68px)) !important;
+    grid-auto-rows: var(--desktop-icon-row, 68px) !important;
+  }
+  /* The desktop stylesheet computes the larger square-widget row budget.
+     Keep this later-loaded mobile stylesheet from overriding it. */
+  body.maomao-home .desktop-grid {
+    grid-auto-rows: var(--desktop-track-row, var(--desktop-icon-row, 68px)) !important;
+  }
+  body.maomao-home #gridPage0.is-default-layout {
+    grid-template-rows: repeat(6, var(--desktop-track-row, var(--desktop-icon-row, 68px))) !important;
+    grid-auto-rows: var(--desktop-track-row, var(--desktop-icon-row, 68px)) !important;
+  }
+}

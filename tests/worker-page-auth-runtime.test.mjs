@@ -27,7 +27,7 @@ function makeEnv(account = null, overrides = {}) {
       if (overrides.noHead) return new Response('<html><body>no head</body></html>', {
         headers: { 'content-type': 'text/html' }
       });
-      return new Response(html, {
+      return new Response(overrides.html || html, {
         headers: { 'content-type': 'text/html; charset=utf-8', 'cache-control': 'public,max-age=3600', etag: '"old-etag"' }
       });
     }
@@ -273,4 +273,39 @@ test('delegated QA fails closed when the trusted founder ID configuration is mis
   const desktop = await worker.fetch(req('/index.html'), env);
   assert.equal(desktop.status, 200);
   assert.match(await desktop.text(), /meta name="mao-account-role" content="user"/);
+});
+
+test('release-stamped assets reject stale version and preserve private page authorization', async () => {
+  const release='a'.repeat(24);
+  const calls=[];
+  const env={ASSETS:{async fetch(req) {
+    const url=new URL(req.url);
+    calls.push(url.pathname);
+    if(url.pathname==='/pwa-release.json')return Response.json({release});
+    return new Response('const current = true;', {headers:{'content-type':'application/javascript'}});
+  }}};
+  const ok=await worker.fetch(req('/shared/app.js?mao_rev='+release),env);
+  assert.equal(ok.status,200);
+  assert.equal(ok.headers.get('x-mao-release'),release);
+  const old=await worker.fetch(req('/shared/app.js?mao_rev='+'b'.repeat(24)),env);
+  assert.equal(old.status,409);
+  assert.equal(old.headers.get('cache-control'),'no-store');
+  assert.deepEqual(calls,['/pwa-release.json','/shared/app.js']);
+  const manifest=await worker.fetch(req('/pwa-release.json'),env);
+  assert.equal(manifest.headers.get('cache-control'),'no-store');
+  assert.equal((await manifest.json()).release,release);
+  const blocked=await worker.fetch(req('/index.html?mao_rev='+release),env);
+  assert.equal(blocked.status,503);
+});
+
+test('built private HTML binds the synchronously injected account runtime to its own release',async()=>{
+  const release='e'.repeat(24);
+  const {env,calls}=makeEnv(active(),{html:html.replace('<head>','<head><meta name="mao-build-release" content="'+release+'">')});
+  const response=await worker.fetch(req('/index.html'),env);
+  assert.equal(response.status,200);
+  assert.equal(response.headers.get('cache-control'),'private, no-store, max-age=0');
+  const body=await response.text();
+  assert.match(body,new RegExp('mao-account-scope\\.js\\?v=\\d+&mao_rev='+release+'" data-mao-account-scope'));
+  assert.ok(body.indexOf('name="mao-account-id"')<body.indexOf('data-mao-account-scope'));
+  assert.equal(calls.auth.length,1);
 });

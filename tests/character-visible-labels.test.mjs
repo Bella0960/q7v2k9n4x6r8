@@ -39,8 +39,15 @@ test('PWA refreshes the edited resources and notification headings use neutral n
   assert.ok(sw.includes('character-card-client.js?v=20261122-neutral-v1'));
   assert.ok(html.includes('characters-manager.js?v=20261122-inline-v2'));
   assert.ok(sw.includes('characters-manager.js?v=20261122-inline-v2'));
-  assert.match(sw, /showNotification\('远程连接提醒'/);
-  assert.match(sw, /showNotification\('云端推送测试'/);
-  assert.match(sw, /payload\.title \|\| '新消息'/);
-  assert.match(sw, /\.replace\(\/MAOMAO\/gi,\s*'消息'\)/);
+  // Use the validated role name and one persisted message; never render
+  // arbitrary server URLs or raw payload directly in the OS notification.
+  assert.match(sw, /showNotification\('推送测试'/);
+  assert.match(sw, /showNotification\(visiblePushText\(payload\.title, 48\) \|\| '新消息'/);
+  assert.match(sw, /body: visiblePushText\(payload\.body, 120\) \|\| '发来一条新消息'/);
+  assert.match(sw, /function visiblePushText\(/);
+  assert.match(sw, /data: \{ kind: 'test' \}/);
+  assert.match(sw, /data: \{ kind: 'chat_message', roleId: roleId, accountId: accountId \}/);
+  assert.doesNotMatch(sw, /payload\.title \|\| '新消息'/);
+  assert.doesNotMatch(sw, /pushTargetUrl\(payload\.url\)/);
+  assert.doesNotMatch(sw, /showNotification\([^\n]*MAOMAO/i);
 });

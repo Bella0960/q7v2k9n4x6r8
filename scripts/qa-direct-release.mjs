@@ -28,7 +28,9 @@ const QA_DB = '4a24ce58079f468c87c2f75e107c4d1c';
 const CORE_DB = 'e1b78d3813ae4a819841e8c5c3e9e8ec';
 const QA_DO = '4a10d3dab4e16639445f4afdb0b7e5e2462cf06894cb4ae85f0ac3cd3cdba101';
 const CORE_DO = 'dba114c7b0abd8e53d1d78e579924852b8e40907e50213634aeeaeb41ab51a98';
-const BRANCH = 'integration/qa-v156-couple-growth-20261124';
+const BRANCH = 'integration/qa-mobile-push-private-on-v156-20261124';
+// Release ONLY on the verified existing v156 QA Worker; never replace a newer QA build.
+const MOBILE_QA_APPROVED_PREVIOUS_VERSION = 'ccccc66f-f154-4df8-971d-19af758c763d';
 const QA_SETUP_OPEN = 'isolated_authority';
 const QA_SETUP_CLOSED = 'disabled';
 const TESTS = [
@@ -77,6 +79,12 @@ const TESTS = [
   ['node', ['tests/admin-center-editorial.browser.mjs']],
   ['node', ['tests/desktop-wallpaper-hd.browser.mjs']],
   ['node', ['tests/desktop-personalization.browser.mjs']],
+  // Mandatory update/recovery gate: version fingerprint and stale executable rejection
+  // are checked by postbuild/test:pwa:navigation, and network recovery in real Chromium.
+  ['node', ['tests/desktop-app-navigation.browser.mjs']],
+  ['node', ['tests/pwa-route-cache-recovery.browser.mjs']],
+  ['node', ['tests/pwa-cross-release-upgrade.browser.mjs']],
+  ['node', ['tests/desktop-icon-geometry.browser.mjs']],
   ['npx', ['playwright', 'install', '--with-deps', 'webkit']],
   // WebKit iPhone emulation on Linux; distinct from physical iOS device acceptance.
   ['node', ['tests/admin-cloud-ios-webkit.mjs']],
@@ -90,6 +98,7 @@ const TESTS = [
   ['npm', ['run', 'test:role:avatars:browser']],
   // Music now-playing visual QA must pass before replacing static assets on the existing QA Worker.
   ['node', ['tests/music-mobile-browser.mjs']],
+  ['node', ['tests/reading-coreading-mobile.browser.mjs']],
   // Chat whitespace and iMessage layout must pass on real built pages at 375/390/430px.
   ['node', ['tests/chat-light-surfaces-browser.mjs']],
   // A full Node suite catches regressions outside the narrower account/chat scripts.
@@ -117,7 +126,8 @@ function run(command, args, quiet = false) {
 }
 
 function assertQaCandidate({ allowPinned = false } = {}) {
-  // Start of every release is strict: the checkout must be the current approved candidate HEAD.
+  // Start of every release is strict: this isolated mobile-push QA branch
+  // must be the exact tested head; no changes to Worker identity or production.
   // Only AFTER all real tests pass, QA-only may deploy its immutable tested
   // snapshot if other windows added new commits on top while tests were running.
   const localSha = run('git', ['rev-parse', 'HEAD'], true);
@@ -188,12 +198,12 @@ async function verifyOwnerQaOrigin(expectedCommit) {
   // Unlike workers.dev-only smoke tests, this validates the actual phone URL.
   // The query makes each release check cache-distinct without touching user data.
   const url = 'https://preview.mao520.com/qa-build-receipt.json?commit=' + expectedCommit;
-  const response = await fetch(url, {
+  const response = await readOnlyFetch(url, {
     method: 'GET',
     cache: 'no-store',
     redirect: 'manual',
     headers: { accept: 'application/json' },
-    signal: AbortSignal.timeout(15000)
+    timeoutMs: 15000
   });
   assert.equal(response.status, 200, 'The owner QA domain did not serve the build receipt');
   const receipt = await response.json().catch(() => null);
@@ -277,12 +287,40 @@ function preflightCheckout() {
   assert.equal(core.vars?.MAO_QA_FOUNDER_ID, FOUNDER);
 }
 
+// Only retry read-only checks. No deployment or mutation is ever retried here.
+async function readOnlyFetch(url, options = {}, consume = response => response) {
+  const {timeoutMs = 20000, ...init} = options;
+  const method = init.method || 'GET';
+  if (method !== 'GET' && !(method === 'POST' &&
+      /^https:\/\/api\.cloudflare\.com\/client\/v4\/accounts\/[0-9a-f]{32}\/workers\/durable_objects\/namespaces\/[0-9a-f]{32}\/query\/v2$/.test(url) &&
+      JSON.parse(init.body).queries.every(q => /^SELECT\s/i.test(q.sql) && !/[;]/.test(q.sql)))) {
+    throw new Error('Retry helper accepts read-only requests only');
+  }
+  for (let attempt = 1; ; attempt++) {
+    try {
+      const response = await fetch(url, {...init, signal: AbortSignal.timeout(timeoutMs)});
+      if ([429, 502, 503, 504].includes(response.status) && attempt < 3) {
+        await response.body?.cancel().catch(() => {});
+      } else {
+        return await consume(response);
+      }
+    } catch (error) {
+      const transient = error?.name === 'TimeoutError' || error?.name === 'AbortError' ||
+        /fetch failed|terminated|ETIMEDOUT|ECONNRESET|ENOTFOUND|EAI_AGAIN|UND_ERR_(CONNECT_TIMEOUT|SOCKET|BODY_TIMEOUT)/i.test(
+          String(error?.message) + ' ' + String(error?.cause?.code));
+      if (!transient || attempt >= 3) throw error;
+    }
+    console.log('QA read-only network retry ' + attempt + '/2');
+    await new Promise(resolve => setTimeout(resolve, attempt * 1200));
+  }
+}
+
 async function cloudflare(path, body) {
   const account = String(process.env.CLOUDFLARE_ACCOUNT_ID || '');
   const token = String(process.env.CLOUDFLARE_API_TOKEN || '');
   assert.match(account, /^[0-9a-f]{32}$/, 'Cloudflare account ID is required');
   assert.ok(token.length >= 20, 'Cloudflare API token is required');
-  const response = await fetch(
+  const { response, result } = await readOnlyFetch(
     'https://api.cloudflare.com/client/v4/accounts/' + account + path, {
       method: body ? 'POST' : 'GET',
       headers: {
@@ -290,8 +328,7 @@ async function cloudflare(path, body) {
         ...(body ? { 'content-type': 'application/json' } : {})
       },
       ...(body ? { body: JSON.stringify(body) } : {})
-    });
-  const result = await response.json();
+    }, async response => ({response, result: await response.json()}));
   if (!response.ok || result.success !== true) {
     throw new Error('Read-only Cloudflare preflight failed at ' + path +
       ' (HTTP ' + response.status + ')');
@@ -328,10 +365,10 @@ async function qaHttpSmoke(coreInitialized) {
     '/account/bootstrap.js?v=20261116-qa1'
   ];
   const responses = await Promise.all(paths.map((path, index) =>
-    fetch(origin + path, {
+    readOnlyFetch(origin + path, {
       method: 'GET', redirect: 'manual', cache: 'no-store',
       headers: { accept: index === 0 ? 'application/json' : '*/*' },
-      signal: AbortSignal.timeout(15000)
+      timeoutMs: 15000
     })
   ));
   const [statusResponse, loginResponse, loginJsResponse, loginCssResponse,
@@ -368,9 +405,9 @@ async function qaHttpSmoke(coreInitialized) {
     assert.equal(url.origin, origin, 'QA login stylesheet must be same-origin');
     assert.ok(url.pathname.toLowerCase().endsWith('.css'),
       'QA login stylesheet URL is not CSS');
-    const response = await fetch(url.href, {
+    const response = await readOnlyFetch(url.href, {
       method: 'GET', redirect: 'manual', cache: 'no-store',
-      signal: AbortSignal.timeout(15000)
+      timeoutMs: 15000
     });
     assert.equal(response.status, 200, 'QA linked stylesheet did not return HTTP 200');
     return response.text();
@@ -590,6 +627,10 @@ async function main() {
     [qaBaseline, coreBaseline] = await Promise.all([
       liveWorkerVersion(QA), liveWorkerVersion(CORE)
     ]);
+    if (qaOnly) {
+      assert.equal(qaBaseline.versionId, MOBILE_QA_APPROVED_PREVIOUS_VERSION,
+        'The isolated QA Worker no longer matches the approved v156 baseline; refusing to overwrite a newer release');
+    }
     console.log('Pinned existing QA Worker version before tests: ' + qaBaseline.versionId);
   }
   console.log('Validating original MAOMAO QA candidate; production is never targeted.');

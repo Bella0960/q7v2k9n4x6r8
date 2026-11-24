@@ -1004,3 +1004,15 @@ html[data-theme="liquid-glass"] body.maomao-home .ds-clock .cl-week,
 html[data-theme="liquid-glass"] body.maomao-home .ds-clock .cl-date {
   color: rgba(52,53,63,.70) !important;
 }
+
+
+/* Motion-specific override must be at least as specific as the glass theme's
+   !important backdrop rules. Keep the configured idle glass appearance. */
+html[data-theme="liquid-glass"] body.maomao-home:is(.home-paging,.home-dragging) :is(.desktop-grid,.dock-bar) .app-icon,
+html[data-theme="liquid-glass"] body.maomao-home:is(.home-paging,.home-dragging) :is(.desktop-grid,.dock-bar) .app-icon::before,
+html[data-theme="liquid-glass"] body.maomao-home:is(.home-paging,.home-dragging) :is(.desktop-grid,.dock-bar) .app-icon.maomao-liquid-glass-icon,
+html[data-theme="liquid-glass"] body.maomao-home:is(.home-paging,.home-dragging) :is(.desktop-grid,.dock-bar) .app-icon.maomao-liquid-glass-icon::before {
+  backdrop-filter: none !important;
+  -webkit-backdrop-filter: none !important;
+  transition: none !important;
+}

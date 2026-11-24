@@ -46,7 +46,7 @@ function harness({ server, cached } = {}) {
     return server(url, init);
   };
   vm.runInNewContext(code, {
-    self, caches, fetch, URL, Request, Response, Headers,
+    self, caches, fetch, URL, Request, Response, Headers, AbortController,
     setTimeout, clearTimeout, console
   });
   function navigate(path, mode = 'navigate') {
@@ -93,6 +93,7 @@ test('offline protected navigation stays on a no-store 503, never substitutes ca
   assert.equal(result.headers.get('cache-control'), 'no-store');
   assert.match(await result.text(), /连接暂时中断/);
   assert.equal(app.cacheLookups, 0, 'a private route must not even read public login cache');
+  assert.equal(app.fetched.length, 2, 'one bounded retry after a transport failure');
 });
 
 test('redirected private content is never stored as a public login page', async () => {
