@@ -2,6 +2,7 @@
 import { defineConfig } from 'vite';
 import { dirname, relative, resolve, sep } from 'path';
 import fs from 'fs';
+import { stampPwaRelease } from './scripts/stamp-pwa-release.mjs';
 import { fileURLToPath } from 'url';
 
 const __dirname = fileURLToPath(new URL('.', import.meta.url));
@@ -102,6 +103,15 @@ export default defineConfig({
         fileName: 'pwa-pages.json',
         source: JSON.stringify(pageList)
       });
+    }
+  }, {
+    name: 'stamp-pwa-release',
+    apply: 'build',
+    writeBundle: {
+      order: 'post',
+      handler(output) {
+        stampPwaRelease(resolve(__dirname, output.dir || 'dist'));
+      }
     }
   }],
   server: {

@@ -1,7 +1,9 @@
 /* 小手机 PWA Service Worker
  * 页面与静态资源均采用缓存优先+后台更新，断网/慢网时秒开。
  */
-const CACHE_NAME = 'phone-app-pwa-v308';
+const CACHE_NAME = 'phone-app-pwa-v311';
+const BUILD_RELEASE = '__MAOMAO_BUILD_RELEASE__';
+const BUILD_CORE_ASSETS = [];
 const FONT_ASSET_CACHE = 'maomao-font-assets-v1';
 function cacheablePublicResponse(response) {
   return !!(response && response.ok && !response.redirected &&
@@ -22,7 +24,10 @@ function cacheableStaticAsset(response, request) {
   if (/\.(?:png|jpe?g|webp|gif|svg|avif|ico)$/.test(path) || request.destination === 'image') {
     return /^image\//.test(type);
   }
-  return true;
+  if (/\.(?:woff2?|ttf|otf)$/.test(path)) {
+    return /^(?:font\/|application\/(?:font-|x-font-|vnd\.ms-fontobject|octet-stream))/.test(type);
+  }
+  return false;
 }
 function cacheablePublicNavigationHtml(response) {
   return cacheablePublicResponse(response) && /^\s*text\/html\s*(?:;|$)/i.test(
@@ -41,7 +46,7 @@ const APP_SHELL = [
   './account/settings-link.js?v=1',
   './account/manage.js',
   './account/manage.css',
-  './shared/js/mao-account-scope.js?v=3',
+  './shared/js/mao-account-scope.js?v=4',
   './tutorial/tutorial.html',
   './forum/forum.html',
   './forum/forum-detail.html',
@@ -198,9 +203,50 @@ const APP_SHELL = [
   './assets/avatar-cat-dark.svg'
 ];
 
+// Optional prefetch must never prevent the new Worker from becoming active.
+// A stalled connection can otherwise leave navigator.serviceWorker.ready
+// pending indefinitely, including after a mobile network change.
+async function boundedReleasePrefetch(task, budgetMs = 6000) {
+  const controller = new AbortController();
+  let timer;
+  try {
+    await Promise.race([
+      Promise.resolve().then(() => task(controller.signal)).catch(() => undefined),
+      new Promise(resolve => {
+        timer = setTimeout(() => { controller.abort(); resolve(); }, budgetMs);
+      })
+    ]);
+  } finally {
+    clearTimeout(timer);
+    controller.abort();
+  }
+}
+
 self.addEventListener('install', event => {
   event.waitUntil(
     caches.open(CACHE_NAME).then(async cache => {
+      if (/^[a-f0-9]{24}$/.test(BUILD_RELEASE)) {
+        await boundedReleasePrefetch(async signal => {
+          const core = [...new Set(BUILD_CORE_ASSETS.concat(
+            ['./account/index.html','./account/bootstrap.html']))];
+          for (let i=0; i<core.length && !signal.aborted; i+=4) {
+            await Promise.all(core.slice(i,i+4).map(async url => {
+              try {
+                if (signal.aborted) return;
+                const request = new Request(new URL(url, self.registration.scope), {cache:'no-store',signal});
+                const response = await fetch(request);
+                if (signal.aborted) return;
+                const served = response.headers.get('x-mao-release');
+                if (served && served !== BUILD_RELEASE) return;
+                if (/\.html$/.test(url) ? cacheablePublicNavigationHtml(response) : cacheableStaticAsset(response, request)) {
+                  await cache.put(request,response);
+                }
+              } catch (_) {}
+            }));
+          }
+        });
+        return;
+      }
       // Vite 在构建时生成全部 HTML 页面清单，避免手机端只缓存少数入口。
       let pageEntries = [];
       try {
@@ -228,7 +274,7 @@ self.addEventListener('install', event => {
         }
         return cache.add(url).catch(function () { return undefined; });
       }));
-    }).then(() => self.skipWaiting())
+    }).catch(() => undefined).then(() => self.skipWaiting())
   );
 });
 
@@ -251,6 +297,48 @@ self.addEventListener('message', event => {
   }
 });
 
+// Retry only idempotent, same-origin document GETs after a transport failure.
+// Never substitute private HTML or retry an authoritative authorization response.
+async function fetchProtectedNavigation(req) {
+  let lastError;
+  for (let attempt = 0; attempt < 2; attempt++) {
+    if (req.signal && req.signal.aborted) throw lastError || new Error('Navigation cancelled');
+    const controller = new AbortController();
+    const abort = () => controller.abort();
+    if (req.signal) req.signal.addEventListener('abort', abort, { once: true });
+    if (req.signal && req.signal.aborted) controller.abort();
+    const timeout = setTimeout(abort, 7000);
+    try {
+      return await fetch(req, { cache: 'no-store', signal: controller.signal });
+    } catch (error) {
+      lastError = error;
+    } finally {
+      clearTimeout(timeout);
+      if (req.signal) req.signal.removeEventListener('abort', abort);
+    }
+    if (attempt === 0 && !(req.signal && req.signal.aborted)) {
+      await new Promise(resolve => setTimeout(resolve, 300));
+    }
+  }
+  throw lastError;
+}
+
+// Bounded in-memory cooldown for public static assets. The versioned cache
+// still rotates on release; revalidation never serves account HTML or APIs.
+const staticRevalidations = new Map();
+const STATIC_REVALIDATE_MS = 60000;
+function isPublicStaticRequest(req) {
+  const path = new URL(req.url).pathname.toLowerCase();
+  return /\.(?:js|mjs|css|png|jpe?g|webp|gif|svg|avif|ico|woff2?|ttf|otf)$/.test(path);
+}
+function shouldRevalidateStatic(key, now) {
+  const previous = staticRevalidations.get(key);
+  if (previous !== undefined && now - previous < STATIC_REVALIDATE_MS) return false;
+  if (staticRevalidations.size >= 512) staticRevalidations.delete(staticRevalidations.keys().next().value);
+  staticRevalidations.set(key, now);
+  return true;
+}
+
 self.addEventListener('fetch', event => {
   const req = event.request;
   if (req.method !== 'GET') return;
@@ -262,6 +350,38 @@ self.addEventListener('fetch', event => {
   if (url.pathname.startsWith('/admin/')) return;
   // Authenticated API responses are account-private; never store them in the shared origin cache.
   if (url.pathname === '/api' || url.pathname.startsWith('/api/')) return;
+  // Release manifest must never come from a previous shell cache.
+  if (url.pathname === '/pwa-release.json') {
+    event.respondWith(fetch(req, { cache: 'no-store' }));
+    return;
+  }
+  // Build-stamped JS/CSS has an exact cache key. Do this before all legacy
+  // font/welcome aliases. A cache miss goes to the authoritative Worker.
+  const requestedRelease = url.searchParams.get('mao_rev');
+  if (requestedRelease && /\.(?:js|mjs|css)$/i.test(url.pathname)) {
+    const result = (async () => {
+      const cache = await caches.open(CACHE_NAME).catch(() => null);
+      // Only this release's cache may be used. A previous tab must not obtain
+      // current code under its old release's URL.
+      if (cache && requestedRelease === BUILD_RELEASE) {
+        const hit = await cache.match(req).catch(() => null);
+        if (cacheableStaticAsset(hit, req) && (!hit.headers.get('x-mao-release') ||
+            hit.headers.get('x-mao-release') === requestedRelease)) return { response: hit };
+      }
+      const response = await fetch(req, { cache: 'no-store' }).catch(() =>
+        new Response('', {status: 503, headers: {'Cache-Control':'no-store'}}));
+      const servedRelease = response.headers.get('x-mao-release');
+      if (servedRelease && servedRelease !== requestedRelease) {
+        return { response: new Response('', {status: 409, headers: {'Cache-Control':'no-store'}}) };
+      }
+      const write = cache && requestedRelease === BUILD_RELEASE && cacheableStaticAsset(response, req)
+        ? cache.put(req, response.clone()).catch(() => undefined) : Promise.resolve();
+      return { response, write };
+    })();
+    event.respondWith(result.then(value => value.response));
+    event.waitUntil(result.then(value => value.write).catch(() => undefined));
+    return;
+  }
 
   // User-imported fonts are cached once by font-loader.js and served as same-origin
   // font resources. Keep this cache separate from the versioned app-shell cache.
@@ -347,7 +467,7 @@ self.addEventListener('fetch', event => {
     event.respondWith((async function () {
       try {
         // Always reach the Worker account guard; never reuse a previous 302.
-        return await fetch(req, { cache: 'no-store' });
+        return await fetchProtectedNavigation(req);
       } catch {
         // No private HTML may be read from CacheStorage. Equally, do not inject
         // public sign-in HTML into a private route just because fetch failed.
@@ -359,7 +479,8 @@ self.addEventListener('fetch', event => {
           '<h1 style="font-size:19px;font-weight:500">连接暂时中断</h1>' +
           '<p>登录状态尚未确认，没有退出账号。请恢复网络后重新打开当前页面。</p>' +
           '<button onclick="location.reload()" style="padding:9px 20px;border:1px solid #bbb;' +
-          'border-radius:9px;background:#fff;color:#333">重新连接</button></body></html>',
+          'border-radius:9px;background:#fff;color:#333">重新连接</button>' +
+          '<script>window.addEventListener("online",function(){location.reload()},{once:true})</script></body></html>',
           { status: 503, headers: { 'Content-Type': 'text/html; charset=UTF-8',
             'Cache-Control': 'no-store', 'Retry-After': '5' } }
         );
@@ -416,7 +537,7 @@ self.addEventListener('fetch', event => {
   }
 
   // 所有历史版本参数的 font-loader 请求统一读取当前版本，避免旧 query URL 命中旧脚本。
-  if (url.pathname.endsWith('/shared/js/font-loader.js')) {
+  if (url.pathname.endsWith('/shared/js/font-loader.js') && !/^[a-f0-9]{24}$/.test(BUILD_RELEASE)) {
     event.respondWith(
       caches.open(CACHE_NAME).then(function (cache) {
         var currentLoaderUrl = new URL('shared/js/font-loader.js', self.registration.scope).href;
@@ -489,24 +610,47 @@ self.addEventListener('fetch', event => {
 
   // Read only this SW generation, not other CacheStorage namespaces: an older
   // image/CSS response must never hijack a newer asset URL.
-  event.respondWith(
-    caches.open(CACHE_NAME).then(async cache => {
-      let cached = await cache.match(req).catch(() => null);
-      if (cached && !cacheableStaticAsset(cached, req)) {
-        await cache.delete(req).catch(() => undefined);
-        cached = null;
+  // Unclassified requests (including non-navigation HTML) are not shared assets.
+  if (!isPublicStaticRequest(req)) return;
+  // Legacy/dynamically inserted executable URLs cannot prove release identity.
+  // Fetch fresh rather than allowing an old cache hit to override a new deploy.
+  // The imported-user-font route above retains its separate account guard.
+  if (/\.(?:js|mjs|css)$/i.test(url.pathname)) {
+    event.respondWith(fetch(req, { cache: 'no-store' }));
+    return;
+  }
+  const lookup = caches.open(CACHE_NAME).then(async cache => {
+    let cached = await cache.match(req).catch(() => null);
+    if (cached && !cacheableStaticAsset(cached, req)) {
+      await cache.delete(req).catch(() => undefined);
+      cached = null;
+    }
+    return { cache, cached };
+  }).catch(() => ({ cache: null, cached: null }));
+  const result = lookup.then(({ cache, cached }) => {
+    if (cached && !shouldRevalidateStatic(req.url, Date.now())) {
+      return { response: cached, update: Promise.resolve() };
+    }
+    if (!cached) shouldRevalidateStatic(req.url, Date.now());
+    let cacheWrite = Promise.resolve();
+    const fresh = fetch(req).then(response => {
+      if (cache && cacheableStaticAsset(response, req)) {
+        cacheWrite = cache.put(req, response.clone()).catch(() => undefined);
+      } else {
+        staticRevalidations.delete(req.url);
       }
-      const fresh = fetch(req).then(response => {
-        if (cacheableStaticAsset(response, req)) {
-          cache.put(req, response.clone()).catch(() => undefined);
-        }
-        return response;
-      }).catch(() => cached || new Response('', {
+      return response;
+    }).catch(() => {
+      // Allow a later online request to recover instead of suppressing it.
+      staticRevalidations.delete(req.url);
+      return cached || new Response('', {
         status: 503, headers: { 'Cache-Control': 'no-store' }
-      }));
-      return cached || fresh;
-    })
-  );
+      });
+    });
+    return { response: cached || fresh, update: fresh.then(() => cacheWrite) };
+  });
+  event.respondWith(result.then(value => value.response));
+  event.waitUntil(result.then(value => value.update).catch(() => undefined));
 });
 
 // Android/iOS Home Screen Web Push. No remote URL is trusted or stored in

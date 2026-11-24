@@ -19,6 +19,48 @@ import { createSchedulerGate } from './worker/lib/scheduler-gate.js';
 
 const INSTANCE_NAME = 'maomao-global';
 
+// Each immutable Worker deployment has its own assets binding. Never accept a
+// versioned executable request unless the deployed manifest matches its token.
+const releaseManifestByBinding = new WeakMap();
+async function getAssetRelease(env, origin) {
+  const assets = env?.ASSETS;
+  if (!assets) return null;
+  if (!releaseManifestByBinding.has(assets)) {
+    const read = Promise.resolve().then(async () => {
+      const response = await assets.fetch(new Request(new URL('/pwa-release.json', origin), {cache:'no-store'}));
+      if (!response.ok) return null;
+      const payload = await response.json();
+      return /^[a-f0-9]{24}$/.test(payload?.release || '') ? payload.release : null;
+    }).catch(() => null);
+    releaseManifestByBinding.set(assets, read);
+    read.then(value => { if (!value && releaseManifestByBinding.get(assets) === read) releaseManifestByBinding.delete(assets); });
+  }
+  return releaseManifestByBinding.get(assets);
+}
+
+async function serveVersionedAsset(request, env, url) {
+  const requested = url.searchParams.get('mao_rev');
+  const deployed = await getAssetRelease(env, url.origin);
+  const headers = {'cache-control':'no-store', 'content-type':'text/plain; charset=UTF-8'};
+  if (!deployed) return new Response('Build release unavailable', {status:503,headers});
+  if (requested !== deployed) return new Response('Build release changed', {status:409,headers});
+  const requestHeaders = new Headers(request.headers);
+  for (const name of ['if-none-match','if-modified-since','if-range','range']) requestHeaders.delete(name);
+  const response = await env.ASSETS.fetch(new Request(request,{headers:requestHeaders}));
+  const type = response.headers.get('content-type') || '';
+  const correctType = /\.css$/i.test(url.pathname) ? /^text\/css(?:;|\s|$)/i.test(type)
+    : /^(?:text|application)\/(?:javascript|ecmascript)(?:;|\s|$)/i.test(type);
+  if (!response.ok || response.redirected || !correctType) {
+    return new Response('Build asset unavailable', {status: response.status === 404 ? 404 : 503,headers});
+  }
+  const out = new Headers(response.headers);
+  out.set('x-mao-release', deployed);
+  if (!/(?:^|[,\s])(?:private|no-store)(?:[,\s]|$)/i.test(out.get('cache-control') || '')) {
+    out.set('cache-control', 'public, max-age=31536000, immutable');
+  }
+  return new Response(response.body,{status:response.status,headers:out});
+}
+
 // Redirect only when the account store or central authority explicitly confirms
 // a missing/revoked session. Never cache this redirect as an app route response.
 function redirectToVerifiedLogin(url, reason = '') {
@@ -82,7 +124,7 @@ async function injectAccountScope(response, account, env) {
   const tags =
     '<meta name="mao-account-id" content="' + accountId + '">' +
     '<meta name="mao-account-role" content="' + (isVerifiedFounderSession(account, env) ? 'super_admin' : 'user') + '">' +
-    '<script src="/shared/js/mao-account-scope.js?v=3" data-mao-account-scope></script>';
+    '<script src="/shared/js/mao-account-scope.js?v=4" data-mao-account-scope></script>';
   let injected = false;
   const html = source.replace(/<head\b[^>]*>/i, match => {
     injected = true;
@@ -237,6 +279,13 @@ export default {
       const stub = env.CLOUD_DB.get(env.CLOUD_DB.idFromName(INSTANCE_NAME));
       return stub.fetch(request);
     }
+    if (request.method === 'GET' && url.pathname === '/pwa-release.json' && env.ASSETS) {
+      const release = await getAssetRelease(env, url.origin);
+      return Response.json({release}, {status:release?200:503,headers:{'cache-control':'no-store'}});
+    }
+    if (request.method === 'GET' && url.searchParams.has('mao_rev') && /\.(?:js|mjs|css)$/i.test(url.pathname)) {
+      return serveVersionedAsset(request, env, url);
+    }
     // Every MAO app document is server-gated. Only the account entry is public;
     // static assets remain readable, but account-owned APIs still enforce identity.
     const isHtmlDocument = request.method === 'GET' &&
@@ -312,9 +361,19 @@ export default {
         assetRequest = new Request(request, { headers });
       }
       const response = await env.ASSETS.fetch(assetRequest);
-      return isHtmlDocument && authorizedAccount
-        ? await injectAccountScope(response, authorizedAccount, env)
-        : response;
+      if (isHtmlDocument && authorizedAccount) return await injectAccountScope(response, authorizedAccount, env);
+      if (/\.(?:js|mjs|css)$/i.test(url.pathname) || isPublicAccountDocument || url.pathname === '/sw.js') {
+        const headers = new Headers(response.headers);
+        // Public sign-in remains eligible for its existing offline fallback.
+        // All protected HTML remains private/no-store in injectAccountScope.
+        if (isPublicAccountDocument && !/(?:private|no-store)/i.test(headers.get('cache-control') || '')) {
+          headers.set('cache-control', 'no-cache, must-revalidate');
+        } else {
+          headers.set('cache-control', 'no-store');
+        }
+        return new Response(response.body,{status:response.status,statusText:response.statusText,headers});
+      }
+      return response;
     }
     return new Response('Not found', { status: 404 });
   },
