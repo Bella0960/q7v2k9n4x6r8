@@ -133,12 +133,27 @@
     });
   }
 
+  function isAppleMobile() {
+    var agent = String(navigator.userAgent || '');
+    return /iPad|iPhone|iPod/i.test(agent) ||
+      (/Macintosh/i.test(agent) && Number(navigator.maxTouchPoints || 0) > 1);
+  }
+
+  function isStandaloneApp() {
+    return navigator.standalone === true ||
+      (typeof global.matchMedia === 'function' &&
+        global.matchMedia('(display-mode: standalone)').matches);
+  }
+
   function isSupported() {
+    // iOS/iPadOS Web Push only works in installed Home Screen web apps.
+    // Keep the existing gesture-first permission and warmup code unchanged.
     return Boolean(
       global.isSecureContext !== false &&
       'serviceWorker' in navigator &&
       'PushManager' in global &&
-      'Notification' in global
+      'Notification' in global &&
+      (!isAppleMobile() || isStandaloneApp())
     );
   }
 
