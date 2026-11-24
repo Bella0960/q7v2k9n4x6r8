@@ -11,8 +11,21 @@ const later = 'b'.repeat(40);
 function requiredGateLoop(script) {
   const legacy = script.indexOf('for (const [command, args] of TESTS) run(command, args);');
   const diagnostic = script.indexOf('for (const [index, [command, args]] of TESTS.entries()) {');
-  assert.equal(Number(legacy >= 0) + Number(diagnostic >= 0), 1,
-    'the release script must have exactly one mandatory full test-gate loop');
+  const adaptive = script.indexOf('for (const [command, args] of selected) {');
+  assert.equal(Number(legacy >= 0) + Number(diagnostic >= 0) + Number(adaptive >= 0), 1,
+    'the release script must have exactly one mandatory release test-gate loop');
+  if (adaptive >= 0) {
+    const select = script.indexOf("const selected = releasePlan.mode === 'presentation'");
+    assert.ok(select >= 0 && select < adaptive);
+    const selection = script.slice(select, adaptive);
+    assert.match(selection, /\]\s*:\s*TESTS;/, 'standard or unknown risk must retain all TESTS');
+    assert.match(selection, /releasePlan\.tests\.map/);
+    assert.match(selection, /'npm',\s*\['run','build'\]/);
+    assert.match(selection, /'npm',\s*\['run','test:pwa:navigation'\]/);
+    assert.match(script.slice(adaptive), /for \(const \[command, args\] of selected\) \{\s*run\(command, args\);/);
+    assert.match(script, /getReleasePlan\(baselineSource, run\('git',\['rev-parse','HEAD'\],true\)\)/);
+    assert.ok(adaptive < script.indexOf('if (!deploy) {', adaptive), 'selected checks must execute before upload');
+  }
   if (diagnostic >= 0) {
     assert.match(script, /const collectTestFailures = !deploy && process\.env\.SEALED_VERIFY_COLLECT_GATES === '1'/);
     assert.match(script, /if \(!collectTestFailures \|\| index === 0\) throw error/);
@@ -20,7 +33,7 @@ function requiredGateLoop(script) {
     assert.ok(script.indexOf('if (failedTestGates.length) {') <
       script.indexOf('if (!deploy) {'), 'failed diagnostic gates must stop release before upload');
   }
-  return Math.max(legacy, diagnostic);
+  return Math.max(legacy, diagnostic, adaptive);
 }
 
 test('QA release uses the exact tested candidate when heads match', () => {
