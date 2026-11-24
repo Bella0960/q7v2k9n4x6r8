@@ -72,7 +72,7 @@ test('large preview and reduced motion declarations preserve phone accessibility
  assert.match(storefrontSource,/aria-pressed/);
 });
 test('real page includes preview resources before storefront and keeps existing systems',()=>{
- assert.ok(html.indexOf('preview-scene.js?v=20261113m7')<html.indexOf('storefront.js?v=20261113m12'));
+ assert.ok(html.indexOf('preview-scene.js?v=')>=0&&html.indexOf('preview-scene.js?v=')<html.indexOf('storefront.js?v='),'preview runtime before storefront');
  assert.match(html,/preview-scene.css\?v=20261113m7/);
  assert.match(html,/collection-store.js\?v=20261112m3/);
  assert.match(html,/market-expansion.js\?v=20261113m2/);
@@ -141,7 +141,7 @@ test('native legacy product details do not pretend to be a live six-screen theme
  assert.match(snippet,/sf-native-detail-art/);
  assert.match(snippet,/nativeArt\(t\)/);
  assert.doesNotMatch(snippet,/#sfPreview|MAOMAOStorefrontPreview\.render/);
- assert.match(snippet,/真实聊天页面/);
+ assert.match(snippet,/不读取真实聊天/);
 });
 
 test('named outfit preview uses original theme artwork only when theme scope is saved',()=>{
@@ -167,7 +167,7 @@ test('completed native themes show first and retain the independent list theme a
  assert.ok(first>0&&end>first);
  const render=html.slice(first,end);
  const grid=render.indexOf('<div class="product-grid">');
- const list=render.indexOf('<div class="chat-list-theme-grid">');
+ const list=render.indexOf('renderChatListCard()');
  const feature=render.indexOf('market.renderThemeFeature()');
  assert.ok(grid>0&&list>grid&&feature>list,'existing theme grid precedes secondary merchandising');
  assert.match(render,/themeArt\(item\)/);

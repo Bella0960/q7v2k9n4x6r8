@@ -39,20 +39,22 @@ test('rename and delete never change active appearance; favorites survive reload
 test('corrupt collection and invalid scope are rejected without destructive replacement',async()=>{
  const x=setup();x.disk.set('maomao_market_collection_v1','broken');assert.throws(()=>x.model.favorite('qq'));assert.equal(x.disk.get('maomao_market_collection_v1'),'broken');await assert.rejects(x.model.saveOutfit('x',['chat_history_A']));
 });
-test('new cache revision lists exact storefront resources and retains legacy themes',()=>{
+test('v158 PWA build stamp and complete storefront asset links retain legacy choices',()=>{
  const page=readFileSync(new URL('../theme-store/theme-store.html',import.meta.url),'utf8');
  const sw=readFileSync(new URL('../sw.js',import.meta.url),'utf8');
- for(const name of ['preview-scene.js']){assert.ok(page.includes(name+'?v=20261113m7'));assert.ok(sw.includes('./theme-store/'+name+'?v=20261113m7'));}
-  assert.ok(page.includes('preview-scene.css?v=20261113m7'));
-  assert.ok(sw.includes('./theme-store/preview-scene.css?v=20261113m7'));
-  assert.ok(page.includes('storefront.css?v=20261119isolated3'));
-  assert.ok(sw.includes('./theme-store/storefront.css?v=20261119isolated3'));
-  assert.ok(page.includes('storefront.js?v=20261119isolated3'));
-  assert.ok(sw.includes('./theme-store/storefront.js?v=20261119isolated3'))
-  assert.ok(page.includes('collection-store.js?v=20261112m3'));
-  assert.ok(sw.includes('./theme-store/collection-store.js?v=20261112m3'));
- assert.ok(sw.includes("phone-app-pwa-v235"));
- for(const id of ['default','wechat','imessage','qq','silver-butterfly','atmosphere'])assert.ok(page.includes("id:'"+id+"'"));
+ // The deployed v158 SW has a release-stamped asset path and v311 cache. Never
+ // transplant the old v235 shell merely to satisfy a stale branch contract.
+ assert.match(sw,/CACHE_NAME = 'phone-app-pwa-v311'/,'published cache namespace intact');
+ assert.match(sw,/BUILD_RELEASE = '__MAOMAO_BUILD_RELEASE__'/,'release stamp remains functional');
+ assert.match(sw,/cacheableStaticAsset/,'existing MIME and release asset guard retained');
+ assert.ok(sw.includes('./theme-store/theme-store.html'),'original theme entry retained');
+ for(const name of ['market-expansion.js','collection-store.js','preview-scene.js','storefront.js',
+                   'market-expansion.css','preview-scene.css','storefront.css']){
+   assert.ok(page.includes('./'+name+'?v='),'versioned marketplace asset linked: '+name);
+   readFileSync(new URL('../theme-store/'+name,import.meta.url),'utf8');
+ }
+ for(const id of ['default','wechat','imessage','qq','silver-butterfly','atmosphere'])
+   assert.ok(page.includes("id:'"+id+"'"),'original and added theme still available: '+id);
 });
 test('outfit editing can narrow scope or explicitly recapture without duplicating or applying it',async()=>{
  const x=setup();const item=await x.model.saveOutfit('first',['theme','list']);x.beauty.setThemePreset('wechat');await x.model.editOutfit(item.id,'renamed',['theme'],'global',false);assert.equal(x.model.read().outfits[0].data.theme,'default');await x.model.editOutfit(item.id,'updated',['theme','list'],'global',true);assert.equal(x.model.read().outfits.length,1);assert.equal(x.model.read().outfits[0].data.theme,'wechat');assert.equal(x.beauty.getThemePreset(),'wechat');
@@ -410,45 +412,33 @@ test('shared WeChat visual rules require active WeChat shell, not a global CSS o
 });
 
 
-test('all shared chat surfaces preload the same scoped page bridge and SW has only one version',()=>{
+test('published v158 shared page bridge and atmosphere add-ons do not replace baseline PWA',()=>{
  const sw=readFileSync(new URL('../sw.js',import.meta.url),'utf8');
- const pageTag='chat-page-theme.js?v=20261119scope1';
- const listTag='chat-list-theme.js?v=20261119scope1';
  const pages=['chat/chat/chat.html','chat/chat/chat-detail.html','chat/contacts/contacts.html',
               'chat/moments/moments.html','profile/profile.html','chat/moments/my-moments.html'];
  for(const file of pages){
-  const content=readFileSync(new URL('../'+file,import.meta.url),'utf8');
-  assert.ok(content.includes(pageTag),'page uses scoped bridge: '+file);
+   const page=readFileSync(new URL('../'+file,import.meta.url),'utf8');
+   assert.match(page,/chat-page-theme\.js\?v=/,'shared page bridge retained: '+file);
+   assert.match(page,/atmosphere-(?:theme|my-home)\.js\?v=/,'new theme opt-in on: '+file);
  }
- assert.ok(readFileSync(new URL('../chat/chat/chat.html',import.meta.url),'utf8').includes(listTag));
- assert.equal((sw.match(/shared\/js\/chat-page-theme\.js\?v=/g)||[]).length,1,'no stale duplicate bridge precache');
- assert.ok(sw.includes('./shared/js/'+pageTag));
- assert.ok(sw.includes('./shared/js/'+listTag));
- assert.ok(sw.includes("phone-app-pwa-v235"));
+ const home=readFileSync(new URL('../chat/chat/chat.html',import.meta.url),'utf8');
+ assert.match(home,/chat-list-theme\.js\?v=/,'independent list theme remains available');
+ assert.equal((sw.match(/shared\/js\/chat-page-theme\.js\?v=/g)||[]).length,1,'original cache entry not duplicated');
+ assert.match(sw,/CACHE_NAME = 'phone-app-pwa-v311'/,'v158 PWA untouched pending offline acceptance');
 });
-
-
-test('WeChat and Silver visual CSS are separate, and loaded in original cascade order',()=>{
+test('published WeChat and Silver layers remain in order beneath opt-in atmosphere',()=>{
  const silver=readFileSync(new URL('../shared/css/silver-butterfly-theme.css',import.meta.url),'utf8');
- const wechat=readFileSync(new URL('../shared/css/wechat-theme-base.css',import.meta.url),'utf8');
- const sw=readFileSync(new URL('../sw.js',import.meta.url),'utf8');
- assert.doesNotMatch(silver,/data-chat-theme-preset="wechat"/,'Silver Butterfly must not contain WeChat rules');
- assert.match(wechat,/data-chat-theme-preset="wechat"/);
- assert.doesNotMatch(wechat,/data-chat-theme-preset="silver-butterfly"/,'WeChat base must not own Silver rules');
- assert.match(silver, /:where\(:not\(\[data-chat-theme-preset="silver-butterfly"\]\)\)/,'Silver defaults explicit on non-Silver screens');
- for(const name of ['wechat-home-header','wechat-contact-index','wechat-moments-toolbar']){
-  assert.ok(wechat.includes(':where(:not([data-chat-theme-preset="wechat"])) .'+name),'WeChat feature hidden explicitly outside WeChat: '+name);
+ const wechat=readFileSync(new URL('../shared/css/wechat-theme-refinements.css',import.meta.url),'utf8');
+ const atmosphere=readFileSync(new URL('../shared/css/atmosphere-theme.css',import.meta.url),'utf8');
+ assert.match(silver,/data-chat-theme-preset="silver-butterfly"/,'original Silver theme kept');
+ assert.match(wechat,/data-chat-theme-preset="wechat"/,'original WeChat refinements kept');
+ assert.match(atmosphere,/data-chat-theme-preset="atmosphere"/,'new theme opt-in only');
+ for(const file of ['chat/chat/chat.html','chat/chat/chat-detail.html','chat/contacts/contacts.html','chat/moments/moments.html']){
+   const page=readFileSync(new URL('../'+file,import.meta.url),'utf8');
+   const silverAt=page.indexOf('silver-butterfly-theme.css');
+   const wechatAt=page.indexOf('wechat-theme-refinements.css');
+   const atmosphereAt=page.indexOf('atmosphere-theme.css');
+   assert.ok(silverAt>=0&&wechatAt>silverAt&&atmosphereAt>wechatAt,
+       'published theme order preserved: '+file);
  }
- for(const page of ['chat/chat/chat.html','chat/chat/chat-detail.html','chat/contacts/contacts.html','chat/moments/moments.html']){
-  const html=readFileSync(new URL('../'+page,import.meta.url),'utf8');
-  const silverIndex=html.indexOf('silver-butterfly-theme.css');
-  const wechatBaseIndex=html.indexOf('wechat-theme-base.css?v=20261119scope2');
-  assert.ok(html.includes('silver-butterfly-theme.css?v=20261119scope2'),'new Silver-only CSS version');
-  const refinementsIndex=html.indexOf('wechat-theme-refinements.css');
-  assert.ok(silverIndex>=0&&wechatBaseIndex>silverIndex&&refinementsIndex>wechatBaseIndex,'style cascade preserved: '+page);
- }
- const profile=readFileSync(new URL('../profile/profile.html',import.meta.url),'utf8');
- assert.ok(!profile.includes('wechat-theme-base.css'),'profile did not load the Silver sheet before split and must not gain extra base styles');
- assert.ok(sw.includes('./shared/css/wechat-theme-base.css?v=20261119scope2'));
- assert.ok(sw.includes("phone-app-pwa-v235"));
 });

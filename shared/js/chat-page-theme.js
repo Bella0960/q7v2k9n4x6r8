@@ -17,6 +17,12 @@
 
   function applyTheme() {
     var theme = getTheme();
+    // iMessage is scoped to chat detail; full-page presets keep their existing routes.
+    // Do not mutate the stored preference or any per-role bubble setting.
+    if (theme === 'imessage') {
+      var path = String((global.location && global.location.pathname) || '');
+      if (!/\/chat\/chat\/chat-detail\.html$/.test(path)) theme = 'default';
+    }
     var shells = document.querySelectorAll('.phone-mockup');
     for (var i = 0; i < shells.length; i++) {
       shells[i].setAttribute('data-chat-theme-preset', theme);
