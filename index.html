@@ -1266,6 +1266,13 @@
         if (!targetItem || isDragging) return;
         if (!editing) enterEdit();
 
+        // Capture source geometry before hiding/reparenting it. Detached
+        // ghosts must not fall back to the classic icon or widget dimensions.
+        var sourceWidth = targetItem.offsetWidth;
+        var sourceHeight = targetItem.offsetHeight;
+        var sourceIcon = targetItem.querySelector('.app-icon');
+        var iconWidth = sourceIcon ? sourceIcon.offsetWidth : 0;
+        var iconHeight = sourceIcon ? sourceIcon.offsetHeight : 0;
         var dragCols = getDraggedGridSpan(targetItem, 'column');
         var dragRows = getDraggedGridSpan(targetItem, 'row');
         var originalPageElement = targetItem.closest('.home-page');
@@ -1273,6 +1280,7 @@
         isDragging = true;
         dragEl = targetItem;
         document.body.classList.add('home-dragging');
+        document.addEventListener('touchmove', handleActiveDragTouch, { passive: false });
         var firstGrid = document.getElementById('gridPage0');
         if (firstGrid) firstGrid.classList.remove('is-default-layout');
 
@@ -1304,6 +1312,14 @@
         var delIcon = dragClone.querySelector('.ds-del');
         if (delIcon) delIcon.remove();
 
+        dragClone.style.setProperty('width', sourceWidth + 'px', 'important');
+        dragClone.style.setProperty('height', sourceHeight + 'px', 'important');
+        var ghostIcon = dragClone.querySelector('.app-icon');
+        if (ghostIcon && iconWidth && iconHeight) {
+          ghostIcon.style.setProperty('width', iconWidth + 'px', 'important');
+          ghostIcon.style.setProperty('height', iconHeight + 'px', 'important');
+          ghostIcon.style.setProperty('flex-shrink', '0', 'important');
+        }
         dragClone.style.left = '0px';
         dragClone.style.top = '0px';
         setDragAvatarPosition(cx, cy);
@@ -1345,6 +1361,7 @@
         lastEdgeSide = null;
         edgeCooldown = false;
         document.body.classList.remove('home-dragging');
+        document.removeEventListener('touchmove', handleActiveDragTouch);
       }
       function lockDragEdge() {
         edgeCooldown = true;
@@ -1639,6 +1656,11 @@
 
       // 1. Touch Events
       document.addEventListener('touchstart', function (e) {
+        if (e.touches.length !== 1) {
+          if (pressTimer) { clearTimeout(pressTimer); pressTimer = null; }
+          if (isDragging) cancelDrag();
+          return;
+        }
         var t = e.target.closest('[data-drag]');
         if (!t) return;
         if (e.target.classList.contains('ds-del')) return;
@@ -1677,11 +1699,15 @@
           }
         }
 
-        if (isDragging) {
-          if (e.cancelable) e.preventDefault();
-          queueDragMove(cx, cy);
-        }
-      }, { passive: false });
+      }, { passive: true });
+
+      // Only a confirmed long-press drag needs scroll cancellation. Ordinary
+      // swipes stay on the browser's passive/compositor scrolling path.
+      function handleActiveDragTouch(e) {
+        if (!isDragging || !e.touches || e.touches.length !== 1) return;
+        if (e.cancelable) e.preventDefault();
+        queueDragMove(e.touches[0].clientX, e.touches[0].clientY);
+      }
 
       document.addEventListener('touchend', function () {
         if (pressTimer) {
@@ -2681,10 +2707,14 @@
       var MONTHS = ['JANUARY', 'FEBRUARY', 'MARCH', 'APRIL', 'MAY', 'JUNE',
         'JULY', 'AUGUST', 'SEPTEMBER', 'OCTOBER', 'NOVEMBER', 'DECEMBER'];
 
+      var renderedDay = '';
       function render() {
         var now = new Date();
         var y = now.getFullYear(), m = now.getMonth();
-        monthEl.textContent = MONTHS[m];
+        var dayKey = y + '-' + m + '-' + now.getDate();
+        if (renderedDay === dayKey) return;
+        renderedDay = dayKey;
+        if (monthEl.textContent !== MONTHS[m]) monthEl.textContent = MONTHS[m];
         var firstDay = new Date(y, m, 1).getDay();
         var days = new Date(y, m + 1, 0).getDate();
         gridEl.innerHTML = '';
@@ -2715,13 +2745,15 @@
       if (!daysEl) return;
 
       function refresh() {
-        eventEl.textContent = data.event;
-        dateEl.textContent = data.target;
+        // Minute tick must never overwrite text during an in-progress edit.
+        if (!eventEl.isContentEditable && eventEl.textContent !== data.event) eventEl.textContent = data.event;
+        if (dateEl.textContent !== data.target) dateEl.textContent = data.target;
         var now = new Date();
         now.setHours(0, 0, 0, 0);
         var t = new Date(data.target + 'T00:00:00');
         var diff = Math.round((t - now) / 86400000);
-        daysEl.textContent = Math.abs(diff);
+        var remaining = String(Math.abs(diff));
+        if (daysEl.textContent !== remaining) daysEl.textContent = remaining;
       }
 
       eventEl.addEventListener('click', function (e) {

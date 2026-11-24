@@ -393,3 +393,16 @@ test('desktop icons cannot shrink into a rectangle; row height accounts for text
   assert.match(desktopCss,/--desktop-icon-row:\s*max\(72px,\s*calc\(var\(--desktop-icon-edge\) \+ 6px \+ \.86rem \+ 2px\)\)/);
   assert.match(mobileCss,/grid-auto-rows:\s*var\(--desktop-icon-row,\s*68px\) !important/);
 });
+
+test('normal touch movement remains passive; active drag alone installs and removes blocking listener',()=>{
+  assert.match(index,/document\.addEventListener\('touchmove', handleActiveDragTouch, \{ passive: false \}\)/);
+  assert.match(index,/document\.removeEventListener\('touchmove', handleActiveDragTouch\)/);
+  assert.match(index,/function handleActiveDragTouch\(e\)[\s\S]*?if \(e\.cancelable\) e\.preventDefault\(\)/);
+  assert.match(index,/document\.addEventListener\('touchmove', function \(e\) \{[\s\S]*?clearTimeout\(pressTimer\)[\s\S]*?\}, \{ passive: true \}\)/);
+});
+test('drag clones retain measured source dimensions; minute ticks avoid unnecessary widget updates',()=>{
+  assert.match(index,/var sourceWidth = targetItem\.offsetWidth/);
+  assert.match(index,/ghostIcon\.style\.setProperty\('height', iconHeight \+ 'px', 'important'\)/);
+  assert.match(index,/if \(renderedDay === dayKey\) return/);
+  assert.match(index,/if \(!eventEl\.isContentEditable && eventEl\.textContent !== data\.event\)/);
+});

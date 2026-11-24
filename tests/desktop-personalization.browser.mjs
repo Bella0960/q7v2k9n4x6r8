@@ -126,6 +126,18 @@ try{
     const x=box.x+box.width/2, y=box.y+box.height/2;
     await touch('touchStart',x,y);
     await page.waitForSelector('.drag-avatar',{timeout:3000});
+    const ghostGeometry=await page.evaluate(()=>{
+      const source=document.querySelector('.is-dragging-source');
+      const ghost=document.querySelector('.drag-avatar');
+      const icon=ghost?.querySelector('.app-icon');
+      return {sourceWidth:parseFloat(ghost?.style.width),ghostWidth:ghost?.offsetWidth,
+        sourceHeight:parseFloat(ghost?.style.height),ghostHeight:ghost?.offsetHeight,
+        iconWidth:icon?.offsetWidth,iconHeight:icon?.offsetHeight,sourceExists:!!source};
+    });
+    assert.ok(ghostGeometry.sourceExists);
+    assert.equal(ghostGeometry.ghostWidth,ghostGeometry.sourceWidth);
+    assert.equal(ghostGeometry.ghostHeight,ghostGeometry.sourceHeight);
+    assert.equal(ghostGeometry.iconWidth,ghostGeometry.iconHeight);
     await touch('touchMove',x+10,y+10);
     await page.waitForFunction(()=>document.body.classList.contains('home-dragging') &&
       !!document.querySelector('.drag-avatar')?.style.getPropertyValue('--drag-x'));
