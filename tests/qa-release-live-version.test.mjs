@@ -81,7 +81,52 @@ const smokeStart = source.indexOf('async function qaHttpSmoke(coreInitialized) {
 const smokeEnd = source.indexOf('\n\nasync function cloudflarePreflight()', smokeStart);
 assert.ok(smokeStart >= 0 && smokeEnd > smokeStart,
   'original QA URL HTTP smoke guard must exist');
-const smokeSource = source.slice(smokeStart, smokeEnd);
+const retryStart = source.indexOf('async function readOnlyFetch(');
+const retryEnd = source.indexOf('\n\nasync function cloudflare(', retryStart);
+assert.ok(retryStart >= 0 && retryEnd > retryStart, 'read-only retry helper must exist');
+const retrySource = source.slice(retryStart, retryEnd);
+const smokeSource = retrySource + '\n' + source.slice(smokeStart, smokeEnd);
+
+function mountRetry(fetch) {
+  return vm.runInNewContext(retrySource + '\nreadOnlyFetch;', {
+    fetch, AbortSignal: {timeout: () => ({})},
+    setTimeout: fn => fn(), console: {log() {}}
+  });
+}
+
+test('read-only release probe retries transient connection errors and 503', async () => {
+  let calls=0;
+  const read=mountRetry(async () => {
+    calls++;
+    if(calls===1) throw new TypeError('fetch failed');
+    if(calls===2) return {status:503};
+    return {status:200, json:async()=>({ok:true})};
+  });
+  const data=await read('https://example.test/health', {}, response=>response.json());
+  assert.equal(data.ok,true);
+  assert.equal(calls,3);
+});
+
+test('read-only probe fails closed after three network errors and never retries writes or authorization failures', async () => {
+  let calls=0;
+  const read=mountRetry(async()=>{calls++;throw new TypeError('fetch failed');});
+  await assert.rejects(read('https://example.test/health'), /fetch failed/);
+  assert.equal(calls,3);
+  await assert.rejects(read('https://example.test/health',{method:'POST',body:'{}'}), /read-only requests only/);
+  assert.equal(calls,3);
+  const denied=mountRetry(async()=>{calls++;return {status:403};});
+  assert.equal((await denied('https://example.test/health')).status,403);
+  assert.equal(calls,4);
+});
+
+test('read-only SQL evidence can retry but a write statement is rejected before network access', async () => {
+  const url='https://api.cloudflare.com/client/v4/accounts/'+'a'.repeat(32)+'/workers/durable_objects/namespaces/'+'b'.repeat(32)+'/query/v2';
+  let calls=0;
+  const read=mountRetry(async()=>{calls++;return {status:200};});
+  await read(url,{method:'POST',body:JSON.stringify({queries:[{sql:'SELECT COUNT(*) FROM accounts'}]})});
+  await assert.rejects(read(url,{method:'POST',body:JSON.stringify({queries:[{sql:'DELETE FROM accounts'}]})}),/read-only requests only/);
+  assert.equal(calls,1);
+});
 
 function runHttpSmoke(coreInitialized, {
   overrides = {},
@@ -105,6 +150,7 @@ function runHttpSmoke(coreInitialized, {
     assert,
     AbortSignal: { timeout: () => ({}) },
     URL,
+    setTimeout: fn => fn(),
     console: { log() {} },
     fetch: async (url, options) => {
       calls.push({ url, options });

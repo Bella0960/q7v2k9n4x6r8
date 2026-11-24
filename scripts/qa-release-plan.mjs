@@ -11,7 +11,7 @@ const MODULE_TESTS = Object.freeze({
   games: ['games-storage.browser.mjs']
 });
 const safeSha = /^[0-9a-f]{40}$/;
-const git = (...args) => execFileSync('git', args, { encoding: 'utf8', stdio: ['ignore','pipe','pipe'], timeout: 60000 }).trim();
+const git = (...args) => execFileSync('git', args, { encoding: 'utf8', stdio: ['ignore','pipe','pipe'], timeout: 60000 });
 
 // Compare HTML after masking only plain visible text in a simple element.
 // Raw-text elements, scripts, comments, attributes, nesting and event handlers
@@ -68,7 +68,11 @@ export function classifyPresentationChanges(changes) {
 export function getReleasePlan(base, head) {
   if (!safeSha.test(base) || !safeSha.test(head)) throw new Error('Invalid release baseline or candidate');
   // An unrelated or older candidate may not replace the current QA version.
-  try { git('merge-base', '--is-ancestor', base, head); }
+  try {
+    try { git('cat-file', '-e', base + '^{commit}'); }
+    catch { git('fetch', '--quiet', '--no-tags', 'origin', base); }
+    git('merge-base', '--is-ancestor', base, head);
+  }
   catch { throw new Error('Candidate must include the currently deployed QA source'); }
   const changes = git('diff','--name-status','--no-renames',base,head).split('\n').filter(Boolean).map(line => {
     const [status,path] = line.split('\t');
