@@ -35,6 +35,7 @@
             !opts.content.trim() || opts.content.length > 200) throw new Error('缺少或非法发布信息');
         var roleId = String(opts.roleId);
         var storage = opts.storage;
+        if (typeof opts.canPublish === 'function' && !opts.canPublish()) throw new Error('发布上下文已变化');
         var role = resolveRole(opts.getCharacters(), roleId);
         if (!role) throw new Error('角色已不存在');
         var source = opts.source === 'menu' ? 'menu' : (opts.source === 'auto' ? 'auto' : 'chat');
