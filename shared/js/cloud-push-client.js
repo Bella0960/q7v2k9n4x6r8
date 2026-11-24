@@ -173,12 +173,27 @@
     });
   }
 
+  function isAppleMobile() {
+    var ua = String(navigator.userAgent || '');
+    return /iPhone|iPad|iPod/i.test(ua) ||
+      (navigator.platform === 'MacIntel' && Number(navigator.maxTouchPoints || 0) > 1);
+  }
+
+  function isStandaloneApp() {
+    return navigator.standalone === true ||
+      (typeof global.matchMedia === 'function' &&
+        global.matchMedia('(display-mode: standalone)').matches);
+  }
+
   function isSupported() {
+    // Apple mobile Push is available to Home Screen-installed web apps, not
+    // ordinary Safari tabs. Reject before any device registration or request.
     return Boolean(
       global.isSecureContext !== false &&
       'serviceWorker' in navigator &&
       'PushManager' in global &&
-      'Notification' in global
+      'Notification' in global &&
+      (!isAppleMobile() || isStandaloneApp())
     );
   }
 
@@ -232,16 +247,23 @@
   }
 
   async function enablePush(userInitiated, enrollmentToken) {
-    if (!isSupported()) throw new Error('当前浏览器不支持 Web Push');
-    var device = await registerDeviceForCurrentAccount(enrollmentToken);
+    if (!isSupported()) {
+      if (isAppleMobile() && !isStandaloneApp()) {
+        throw new Error('iPhone/iPad 请先用 Safari 将小手机添加到主屏幕，再从桌面图标打开并开启通知');
+      }
+      throw new Error('当前浏览器或运行方式不支持 Web Push');
+    }
 
-    if (userInitiated && 'Notification' in global && Notification.permission === 'default') {
+    // iOS requires the permission prompt inside the originating user gesture.
+    // Do not await registration, device writes or network before this prompt.
+    if (userInitiated && Notification.permission === 'default') {
       await Notification.requestPermission();
     }
     if (Notification.permission !== 'granted') {
       throw new Error('通知权限未开启，请在系统或浏览器设置中允许通知');
     }
 
+    var device = await registerDeviceForCurrentAccount(enrollmentToken);
     var publicKey = await fetchPublicKey();
     var registration = await getRegistration();
     var existing = await registration.pushManager.getSubscription();
@@ -1201,13 +1223,9 @@
       message: ''
     };
     if (!status.supported) {
-      var onAppleMobile = /iPhone|iPad|iPod/i.test(String(navigator.userAgent || ''));
-      var standalone = navigator.standalone === true ||
-        (typeof global.matchMedia === 'function' &&
-          global.matchMedia('(display-mode: standalone)').matches);
-      status.message = onAppleMobile && !standalone
-        ? 'iPhone 请先在 Safari 中添加到主屏幕，再从桌面图标开启通知'
-        : '当前浏览器不支持 Web Push';
+      status.message = isAppleMobile() && !isStandaloneApp()
+        ? 'iPhone/iPad 请从 Safari 添加到主屏幕，再点击桌面图标开启通知'
+        : '当前浏览器或运行方式不支持 Web Push';
       return status;
     }
     try {
