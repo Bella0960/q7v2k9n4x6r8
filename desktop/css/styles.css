@@ -2082,3 +2082,51 @@ body.maomao-home.home-dragging .drag-placeholder {
     animation: none !important;
   }
 }
+
+
+/* A desktop tile is a fixed square plus a separate text row. Never allow the
+   flex algorithm to compress its block size to fit a fixed grid track. */
+body.maomao-home {
+  --desktop-icon-edge: 54px;
+  --desktop-dock-edge: 50px;
+  --desktop-icon-row: max(72px, calc(var(--desktop-icon-edge) + 6px + .86rem + 2px));
+}
+html[data-theme="liquid-glass"][data-icon-size="small"] body.maomao-home {
+  --desktop-icon-edge: 44px;
+  --desktop-dock-edge: 40px;
+}
+html[data-theme="liquid-glass"][data-icon-size="large"] body.maomao-home {
+  --desktop-icon-edge: 64px;
+  --desktop-dock-edge: 56px;
+}
+body.maomao-home .desktop-grid {
+  grid-auto-rows: var(--desktop-icon-row);
+}
+body.maomao-home #gridPage0.is-default-layout {
+  grid-template-rows: repeat(6, var(--desktop-icon-row));
+}
+body.maomao-home .desktop-grid .app-icon,
+body.maomao-home .dock-bar .app-icon {
+  flex: 0 0 auto !important;
+  aspect-ratio: 1 / 1 !important;
+  box-sizing: border-box !important;
+  /* The desktop owns touch gestures. Do not allow glass lens stretch to turn
+     an otherwise square icon into a wide or narrow rectangle. */
+  scale: none !important;
+}
+body.maomao-home .desktop-grid .app-icon {
+  min-width: var(--desktop-icon-edge) !important;
+  min-height: var(--desktop-icon-edge) !important;
+}
+body.maomao-home .dock-bar .app-icon {
+  min-width: var(--desktop-dock-edge) !important;
+  min-height: var(--desktop-dock-edge) !important;
+}
+body.maomao-home .desktop-grid .app-name {
+  flex: 0 0 auto;
+  line-height: .86rem !important;
+}
+/* Five large shortcuts still fit a narrow phone without squeezing icons. */
+body.maomao-home .dock-bar {
+  gap: clamp(4px, calc((100% - 306px) / 4), 12px);
+}

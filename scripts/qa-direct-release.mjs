@@ -84,6 +84,7 @@ const TESTS = [
   ['node', ['tests/desktop-app-navigation.browser.mjs']],
   ['node', ['tests/pwa-route-cache-recovery.browser.mjs']],
   ['node', ['tests/pwa-cross-release-upgrade.browser.mjs']],
+  ['node', ['tests/desktop-icon-geometry.browser.mjs']],
   ['npx', ['playwright', 'install', '--with-deps', 'webkit']],
   // WebKit iPhone emulation on Linux; distinct from physical iOS device acceptance.
   ['node', ['tests/admin-cloud-ios-webkit.mjs']],
