@@ -167,19 +167,28 @@ try {
         await page.locator('#momentsList').getByText('今天心情很好').waitFor();
         browserPhase = width + 4;
         const disabled = await send('刚刚看完一本书', '读完了。\n[自主朋友圈:关闭时不得出现]');
+        browserPhase = 390;
         assert.doesNotMatch(disabled[0].content, /可选朋友圈自主发布/);
         await page.evaluate(() => {
             const posts = JSON.parse(localStorage.moments);
             posts.forEach(post => { if (post.authorId === 'A') post.time -= 86400001; });
             localStorage.moments = JSON.stringify(posts);
         });
+        browserPhase = 391;
         await settings.goto(origin + '/chat/chat/chat-settings.html?roleId=A');
+        browserPhase = 392;
         await settings.locator('#actionAutoMoment').click();
+        browserPhase = 393;
+        await settings.waitForFunction(() => localStorage.chat_auto_moment_A === 'true');
         assert.equal(await settings.evaluate(() => localStorage.chat_auto_moment_A), 'true');
+        browserPhase = 394;
         const enabled = await send('窗边的花开了', '我也看见花开了。\n[自主朋友圈:窗边的第一朵花]');
+        browserPhase = 395;
         assert.match(enabled[0].content, /可选朋友圈自主发布/);
         await page.locator('#momentsList').getByText('窗边的第一朵花').waitFor();
+        browserPhase = 396;
         const cooled = await send('外面下雨了', '雨声很好听。\n[自主朋友圈:冷却时不得出现]');
+        browserPhase = 397;
         assert.doesNotMatch(cooled[0].content, /可选朋友圈自主发布/);
         const posts = await page.evaluate(() => JSON.parse(localStorage.moments));
         assert.deepEqual(posts.filter(post => post.authorId === 'A').map(post => post.content),
