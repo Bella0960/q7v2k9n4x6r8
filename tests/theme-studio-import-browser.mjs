@@ -53,7 +53,7 @@ let count = 0;
 let browser = null;
 try {
   await waitForServer();
-  browser = await chromium.launch({ headless: true, args: ['--no-sandbox', '--disable-dev-shm-usage'] });
+  browser = await chromium.launch({ headless: true, executablePath: process.env.CHROMIUM_PATH || undefined, args: ['--no-sandbox', '--disable-dev-shm-usage'] });
 
   for (const width of [375, 390, 430]) {
     const context = await browser.newContext({
