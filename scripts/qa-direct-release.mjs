@@ -28,7 +28,7 @@ const QA_DB = '4a24ce58079f468c87c2f75e107c4d1c';
 const CORE_DB = 'e1b78d3813ae4a819841e8c5c3e9e8ec';
 const QA_DO = '4a10d3dab4e16639445f4afdb0b7e5e2462cf06894cb4ae85f0ac3cd3cdba101';
 const CORE_DO = 'dba114c7b0abd8e53d1d78e579924852b8e40907e50213634aeeaeb41ab51a98';
-const BRANCH = 'integration/qa-v156-couple-growth-20261124';
+const BRANCH = 'integration/qa-mobile-push-private-on-v156-20261124';
 const QA_SETUP_OPEN = 'isolated_authority';
 const QA_SETUP_CLOSED = 'disabled';
 const TESTS = [
@@ -117,7 +117,8 @@ function run(command, args, quiet = false) {
 }
 
 function assertQaCandidate({ allowPinned = false } = {}) {
-  // Start of every release is strict: the checkout must be the current approved candidate HEAD.
+  // Start of every release is strict: this isolated mobile-push QA branch
+  // must be the exact tested head; no changes to Worker identity or production.
   // Only AFTER all real tests pass, QA-only may deploy its immutable tested
   // snapshot if other windows added new commits on top while tests were running.
   const localSha = run('git', ['rev-parse', 'HEAD'], true);
