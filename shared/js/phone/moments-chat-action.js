@@ -31,7 +31,8 @@
         return match ? match[1].trim() : '';
     }
     function publish(opts) {
-        if (!opts || !opts.roleId || !opts.requestId || !opts.content) throw new Error('缺少发布信息');
+        if (!opts || !opts.roleId || !opts.requestId || typeof opts.content !== 'string' ||
+            !opts.content.trim() || opts.content.length > 200) throw new Error('缺少或非法发布信息');
         var roleId = String(opts.roleId);
         var storage = opts.storage;
         var role = resolveRole(opts.getCharacters(), roleId);
@@ -45,6 +46,7 @@
             if (String(existing.authorId) !== roleId) throw new Error('发布者校验失败');
             return existing;
         }
+        if (source === 'auto' && !autoEligible(storage, roleId, Date.now())) throw new Error('自动发动态已关闭或仍在冷却中');
         var post = {
             id: id, authorId: roleId, author: role.name || '角色', avatar: role.avatar || '',
             content: opts.content, image: '', time: Date.now(), likes: 0, liked: false,
@@ -56,6 +58,15 @@
             return item && item.id === id && String(item.authorId) === roleId && item.content === post.content;
         })) throw new Error('动态保存校验失败');
         return post;
+    }
+    function publishLocked(opts) {
+        var locks = root.navigator && root.navigator.locks;
+        if (locks && typeof locks.request === 'function') {
+            return locks.request('maomao-moments-ai-publish-v1', function () { return publish(opts); });
+        }
+        // Automatic writes must not race across tabs on older browsers.
+        if (opts && opts.source === 'auto') return Promise.reject(new Error('当前浏览器不支持安全的自动发布'));
+        return Promise.resolve().then(function () { return publish(opts); });
     }
     // The opt-in can be revoked while the model is generating. Never pay
     // for a separate automatic post, and limit it to one per rolling 24 hours.
@@ -84,8 +95,8 @@
         return { text: stripAuto(text).trim(), content: content };
     }
     function stripAuto(value) {
-        return String(value || '').replace(/\[自主朋友圈[:：][^\]]*(?:\]|$)/g, '')
-            .replace(/\[(?:自(?:主(?:朋(?:友(?:圈)?)?)?)?)?$/g, '');
+        return String(value || '').replace(/\[(?:自主朋友圈|朋友圈动态|不发布朋友圈)[:：][^\]]*(?:\]|$)/g, '')
+            .replace(/\[(?:自(?:主(?:朋(?:友(?:圈)?)?)?)?|朋(?:友(?:圈(?:动(?:态)?)?)?)?|不(?:发(?:布(?:朋(?:友(?:圈)?)?)?)?)?)?$/g, '');
     }
-    root.MomentsChatAction = { requestsPost: requestsPost, resolveRole: resolveRole, postPrompt: postPrompt, parsePost: parsePost, parseNoPost: parseNoPost, autoEligible: autoEligible, autoPrompt: autoPrompt, extractAuto: extractAuto, stripAuto: stripAuto, publish: publish };
+    root.MomentsChatAction = { requestsPost: requestsPost, resolveRole: resolveRole, postPrompt: postPrompt, parsePost: parsePost, parseNoPost: parseNoPost, autoEligible: autoEligible, autoPrompt: autoPrompt, extractAuto: extractAuto, stripAuto: stripAuto, publish: publish, publishLocked: publishLocked };
 })(typeof window !== 'undefined' ? window : globalThis);
