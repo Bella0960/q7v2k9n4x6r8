@@ -155,7 +155,7 @@ test('notification click revalidates session before opening an installed or brow
 });
 
 test('cache version advances and private HTML is network-only', () => {
-  assert.match(source, /const CACHE_NAME = 'phone-app-pwa-v206'/);
+  assert.match(source, /const CACHE_NAME = 'phone-app-pwa-v207'/);
   assert.match(source, /APP_SHELL\.concat\(pageEntries\)/);
   assert.ok(source.includes("fetch(req, { cache: 'no-store' })"));
   assert.match(source, /self\.addEventListener\('push'/);
