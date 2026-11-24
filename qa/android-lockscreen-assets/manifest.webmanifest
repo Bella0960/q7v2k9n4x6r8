@@ -1,0 +1,18 @@
+{
+  "id": "/index.html",
+  "name": "小手机 - 安卓通知测试",
+  "short_name": "小手机测试",
+  "start_url": "/",
+  "scope": "/",
+  "display": "standalone",
+  "background_color": "#f7f7f8",
+  "theme_color": "#f7f7f8",
+  "icons": [
+    {
+      "src": "/icon.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any maskable"
+    }
+  ]
+}
