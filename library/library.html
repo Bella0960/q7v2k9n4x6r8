@@ -669,7 +669,13 @@ button{font:inherit;color:inherit;cursor:pointer;border:0;background:transparent
   var activeParagraph = null;
   var paragraphRequest = null;
   function readerAccountToken() {
-    return JSON.stringify([window.__MAO_ACCOUNT_SCOPE__ || null, localStorage.getItem('mao-account-id'), localStorage.getItem('mao-account-role')]);
+    var meta = document.querySelector('meta[name="mao-account-id"]');
+    var id = meta ? String(meta.getAttribute('content') || '') : '';
+    if (!id) {
+      if (!/^(localhost|127\.0\.0\.1|\[::1\])$/.test(location.hostname)) throw new Error('无法确认当前账号');
+      id = 'local-development';
+    }
+    return JSON.stringify([id, window.__MAO_ACCOUNT_SCOPE__ || null]);
   }
 
   function openReaderDb() {
