@@ -823,10 +823,14 @@ button{font:inherit;color:inherit;cursor:pointer;border:0;background:transparent
   }
   function persistLocalBook(book) {
     return idbPut('books', book).catch(function () {
-      var stored = readStoredBookFallback();
+      var raw = localStorage.getItem('maomao_reader_local_books_v1');
+      var stored = raw === null ? [] : JSON.parse(raw);
+      if (!Array.isArray(stored)) throw new Error('原书架数据无法读取');
       var index = stored.findIndex(function (b) { return b.id === book.id; });
       if (index >= 0) stored[index] = book; else stored.unshift(book);
-      localStorage.setItem('maomao_reader_local_books_v1', JSON.stringify(stored));
+      var payload = JSON.stringify(stored);
+      localStorage.setItem('maomao_reader_local_books_v1', payload);
+      if (localStorage.getItem('maomao_reader_local_books_v1') !== payload) throw new Error('书籍未能保存');
     });
   }
   function removeLocalBooks() {
@@ -1037,13 +1041,25 @@ button{font:inherit;color:inherit;cursor:pointer;border:0;background:transparent
   function fileBaseName(fileName) {
     return String(fileName || '').replace(/\.(txt|epub)$/i, '').trim();
   }
+  function validateBookText(text) {
+    text = String(text || '').replace(/^\uFEFF/, '');
+    if (/[\u0000-\u0008\u000b\u000c\u000e-\u001f\u007f-\u009f\ufffd]/.test(text)) throw new Error('文件包含乱码或非文本内容，请另存为 UTF-8 后重试');
+    if (!text.trim()) throw new Error('文件内容为空，无法导入');
+    return text;
+  }
   function decodeBookText(buffer) {
-    try {
-      return new TextDecoder('utf-8', { fatal: true }).decode(buffer).replace(/^\uFEFF/, '');
-    } catch (e) {
-      try { return new TextDecoder('gbk').decode(buffer).replace(/^\uFEFF/, ''); }
-      catch (e2) { return new TextDecoder('utf-8').decode(buffer).replace(/^\uFEFF/, ''); }
+    var bytes = new Uint8Array(buffer);
+    var encoding = bytes[0] === 0xff && bytes[1] === 0xfe ? 'utf-16le' :
+      bytes[0] === 0xfe && bytes[1] === 0xff ? 'utf-16be' : '';
+    if (encoding) return validateBookText(new TextDecoder(encoding, {fatal:true}).decode(buffer));
+    var decoded;
+    try { decoded = new TextDecoder('utf-8', {fatal:true}).decode(buffer); }
+    catch (e) {
+      if (bytes[0] === 0xef && bytes[1] === 0xbb && bytes[2] === 0xbf) throw new Error('UTF-8 文件编码损坏');
+      try { decoded = new TextDecoder('gb18030', {fatal:true}).decode(buffer); }
+      catch (e2) { throw new Error('无法识别书籍编码，请另存为 UTF-8 后重试'); }
     }
+    return validateBookText(decoded);
   }
   function detectTxtHeading(line) {
     var value = String(line || '').trim();
@@ -1051,7 +1067,7 @@ button{font:inherit;color:inherit;cursor:pointer;border:0;background:transparent
     var patterns = [
       /^(第[零〇一二三四五六七八九十百千万\d]+[章节回卷部篇集幕节])(?:[\s:：、.．·-]*(.*))?$/,
       /^(卷[零〇一二三四五六七八九十百千万\d]+)(?:[\s:：、.．·-]*(.*))$/,
-      /^(序章|序言|楔子|引子|前言|后记|尾声|正文|番外(?:篇|章)?(?:[零〇一二三四五六七八九十\d]+)?)(?:[\s:：、.．·-]*(.*))$/,
+      /^(序章|序言|楔子|引子|前言|后记|尾声|正文|番外(?:篇|章)?(?:[零〇一二三四五六七八九十\d]+)?)(?:[\s:：、.．·-]+(.*))?$/,
       /^(Chapter\s+\d+)(?:[\s:：、.．·-]*(.*))?$/i
     ];
     for (var i = 0; i < patterns.length; i++) {
@@ -1066,7 +1082,7 @@ button{font:inherit;color:inherit;cursor:pointer;border:0;background:transparent
     return null;
   }
   function parseTxtBook(text, fallbackTitle) {
-    var lines = String(text || '').replace(/\r\n?/g, '\n').split('\n');
+    var lines = validateBookText(text).replace(/\r\n?/g, '\n').split('\n');
     var chapters = [];
     var current = null;
     var hasHeading = false;
@@ -1074,7 +1090,9 @@ button{font:inherit;color:inherit;cursor:pointer;border:0;background:transparent
     var paragraphLines = [];
     function joinParagraph(linesInParagraph) {
       // 合并 TXT 中为了排版而产生的硬换行，不把一句话切成很多段。
-      return linesInParagraph.join('').trim();
+      return linesInParagraph.reduce(function (out, line) {
+        return out + (/[A-Za-z0-9]$/.test(out) && /^[A-Za-z0-9]/.test(line) ? ' ' : '') + line;
+      }, '').trim();
     }
     function flushParagraph() {
       if (!paragraphLines.length) return;
@@ -1102,6 +1120,7 @@ button{font:inherit;color:inherit;cursor:pointer;border:0;background:transparent
         current = { label: heading.label, title: heading.title, paras: [] };
         return;
       }
+      if (/^(?:\u3000{1,}|[ \t]{2,})\S/.test(raw)) flushParagraph();
       paragraphLines.push(line);
     });
     flushParagraph();
@@ -1145,8 +1164,20 @@ button{font:inherit;color:inherit;cursor:pointer;border:0;background:transparent
       throw new Error('当前浏览器暂不支持 EPUB 解压，请将书籍另存为 TXT 后导入');
     }
     try {
-      var stream = new Blob([bytes]).stream().pipeThrough(new DecompressionStream('deflate-raw'));
-      return new Uint8Array(await new Response(stream).arrayBuffer());
+      var reader = new Blob([bytes]).stream().pipeThrough(new DecompressionStream('deflate-raw')).getReader();
+      var chunks = [], size = 0;
+      try {
+        while (true) {
+          var part = await reader.read();
+          if (part.done) break;
+          size += part.value.length;
+          if (size > 16 * 1024 * 1024) throw new Error('EPUB 解压体积过大');
+          chunks.push(part.value);
+        }
+      } catch (error) { await reader.cancel().catch(function () {}); throw error; }
+      var output = new Uint8Array(size), offset = 0;
+      chunks.forEach(function (chunk) { output.set(chunk, offset); offset += chunk.length; });
+      return output;
     } catch (e) {
       throw new Error('EPUB 解压失败，请检查文件是否完整，或另存为 TXT 后导入');
     }
@@ -1157,7 +1188,9 @@ button{font:inherit;color:inherit;cursor:pointer;border:0;background:transparent
     var bytes = item.bytes;
     if (item.method === 8) bytes = await inflateZipEntry(bytes);
     else if (item.method !== 0) throw new Error('EPUB 使用了暂不支持的压缩方式');
-    return new TextDecoder('utf-8').decode(bytes);
+    if (bytes.length !== item.size) throw new Error('EPUB 文件长度不匹配');
+    if (bytes.length > 16 * 1024 * 1024) throw new Error('EPUB 单个章节过大');
+    return validateBookText(new TextDecoder('utf-8', {fatal:true}).decode(bytes));
   }
   async function readZipEntries(buffer) {
     var view = new DataView(buffer);
@@ -1170,12 +1203,17 @@ button{font:inherit;color:inherit;cursor:pointer;border:0;background:transparent
     if (eocd < 0) throw new Error('这不是有效的 EPUB/ZIP 文件');
     var count = view.getUint16(eocd + 10, true);
     var cursor = view.getUint32(eocd + 16, true);
-    var entries = Object.create(null);
+    var entries = Object.create(null), totalSize = 0;
+    if (count > 10000 || cursor > eocd) throw new Error('EPUB 目录异常或过大');
     for (var n = 0; n < count; n++) {
+      if (cursor + 46 > eocd) throw new Error('EPUB 目录不完整');
       if (view.getUint32(cursor, true) !== 0x02014b50) throw new Error('EPUB 目录结构损坏');
       var flags = view.getUint16(cursor + 8, true);
       var method = view.getUint16(cursor + 10, true);
       var compressedSize = view.getUint32(cursor + 20, true);
+      var uncompressedSize = view.getUint32(cursor + 24, true);
+      totalSize += uncompressedSize;
+      if (totalSize > 100 * 1024 * 1024) throw new Error('EPUB 解压体积超过 100 MB');
       var nameLength = view.getUint16(cursor + 28, true);
       var extraLength = view.getUint16(cursor + 30, true);
       var commentLength = view.getUint16(cursor + 32, true);
@@ -1184,12 +1222,14 @@ button{font:inherit;color:inherit;cursor:pointer;border:0;background:transparent
       cursor += 46 + nameLength + extraLength + commentLength;
       if (flags & 1) throw new Error('该 EPUB 有密码保护，无法读取');
       if (!name || name.charAt(name.length - 1) === '/') continue;
-      if (view.getUint32(localOffset, true) !== 0x04034b50) throw new Error('EPUB 文件数据损坏');
+      if (localOffset + 30 > bytes.length || view.getUint32(localOffset, true) !== 0x04034b50) throw new Error('EPUB 文件数据损坏');
       var localNameLength = view.getUint16(localOffset + 26, true);
       var localExtraLength = view.getUint16(localOffset + 28, true);
       var dataStart = localOffset + 30 + localNameLength + localExtraLength;
+      if (dataStart + compressedSize > bytes.length || entries[normalizeZipPath(name)]) throw new Error('EPUB 数据不完整或目录重复');
       entries[normalizeZipPath(name)] = {
         method: method,
+        size: uncompressedSize,
         bytes: bytes.slice(dataStart, dataStart + compressedSize)
       };
     }
@@ -1280,11 +1320,12 @@ button{font:inherit;color:inherit;cursor:pointer;border:0;background:transparent
       if (!href) continue;
       var chapterPath = resolveZipPath(opfPath, href);
       var chapterText;
-      try { chapterText = await readZipText(entries, chapterPath); } catch (e) { continue; }
+      chapterText = await readZipText(entries, chapterPath);
       var doc = new DOMParser().parseFromString(chapterText, 'application/xhtml+xml');
       if (xmlElements(doc, 'parsererror').length) {
         doc = new DOMParser().parseFromString(chapterText, 'text/html');
       }
+      Array.prototype.forEach.call(doc.querySelectorAll('script,style,nav,noscript,iframe,object,svg'), function (node) { node.remove(); });
       var heading = doc.querySelector('h1,h2,h3,h4,h5,h6');
       var chapterTitle = heading ? String(heading.textContent || '').trim() : '';
       var paraNodes = Array.prototype.slice.call(doc.getElementsByTagName('p'));
@@ -1325,8 +1366,10 @@ button{font:inherit;color:inherit;cursor:pointer;border:0;background:transparent
       sheetBackdrop.classList.remove('is-open');
     }
   }
+  var importReadSequence = 0;
+  var importSaving = false;
   async function confirmImportedBook() {
-    if (!pendingImportedBook) return;
+    if (!pendingImportedBook || importSaving) return;
     var name = String(importBookName.value || '').trim();
     if (!name) { showToast('请先填写书名'); importBookName.focus(); return; }
     var book = Object.assign({}, pendingImportedBook, {
@@ -1341,6 +1384,8 @@ button{font:inherit;color:inherit;cursor:pointer;border:0;background:transparent
     }) : [];
     if (!chapterCheck.length) { showToast('没有可导入的正文章节'); return; }
     book.chapters = chapterCheck;
+    importSaving = true;
+    document.getElementById('confirmBookImport').disabled = true;
     try {
       await persistLocalBook(book);
       books.unshift(book);
@@ -1350,10 +1395,16 @@ button{font:inherit;color:inherit;cursor:pointer;border:0;background:transparent
       showToast('已将《' + name + '》加入书架');
     } catch (e) {
       showToast('书籍保存失败：请检查设备存储空间');
+    } finally {
+      importSaving = false;
+      document.getElementById('confirmBookImport').disabled = false;
     }
   }
   async function importBookFile(file) {
-    if (!file) return;
+    if (!file || importSaving) return;
+    var request = ++importReadSequence;
+    closeImportDialog();
+    if (!file.size || file.size > 32 * 1024 * 1024) { showToast('请选择不超过 32 MB 的非空书籍'); return; }
     var extension = String(file.name || '').split('.').pop().toLowerCase();
     if (extension !== 'txt' && extension !== 'epub') {
       showToast('目前支持 TXT 和 EPUB，请先转换文件格式');
@@ -1367,9 +1418,9 @@ button{font:inherit;color:inherit;cursor:pointer;border:0;background:transparent
         ? await parseEpubBook(buffer, baseName)
         : parseTxtBook(decodeBookText(buffer), baseName);
       if (!book.chapters || !book.chapters.length) throw new Error('没有识别到可阅读章节');
-      openImportDialog(book, file.name);
+      if (request === importReadSequence) openImportDialog(book, file.name);
     } catch (error) {
-      showToast(error && error.message ? error.message : '书籍解析失败，请检查文件');
+      if (request === importReadSequence) showToast(error && error.message ? error.message : '书籍解析失败，请检查文件');
     }
   }
 
