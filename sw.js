@@ -1,7 +1,7 @@
 /* 小手机 PWA Service Worker
  * 页面与静态资源均采用缓存优先+后台更新，断网/慢网时秒开。
  */
-const CACHE_NAME = 'phone-app-pwa-v206';
+const CACHE_NAME = 'phone-app-pwa-v207';
 const FONT_ASSET_CACHE = 'maomao-font-assets-v1';
 // v196 release: sweep orphaned role-owned media refs during avatar cleanup.
 const APP_SHELL = [
@@ -252,83 +252,90 @@ self.addEventListener('fetch', event => {
 
 
 /* ------------------------------------------------------------------
- * Web Push（Milestone 1）
- * 上面的缓存与离线导航逻辑保持不变；这里只新增推送展示与点击路由。
- * 风险控制：通知里的跳转地址只接受本站 scope 内的相对路径，防止被外站劫持。
+ * Android / iOS installed-PWA Web Push.
+ * The encrypted push envelope carries only an account guard, an internal
+ * message kind and an opaque role ID. No site URL/deep link is accepted.
+ * The OS may independently display the browser's site attribution: the app
+ * cannot suppress browser/OS security labels.
  * ------------------------------------------------------------------ */
 
-function pushTargetUrl(value) {
+function pushTargetUrl(data) {
+  // Construct a fixed same-origin route only at click time. Never read a
+  // server-provided URL, even when an older queued notification contains one.
   var scopeUrl = new URL(self.registration.scope);
-  var fallback = new URL('./index.html', scopeUrl).href;
-  var raw = String(value || '').trim();
-  if (!raw) return fallback;
-  try {
-    var target = new URL(raw, scopeUrl);
-    // 既要同源，也必须留在当前 Service Worker scope 的路径内。
-    // 只检查 origin 会放行同域名下其他应用或站点目录的地址。
-    var scopePath = scopeUrl.pathname.endsWith('/')
-      ? scopeUrl.pathname
-      : scopeUrl.pathname + '/';
-    var insideScope = target.pathname === scopeUrl.pathname ||
-      target.pathname.startsWith(scopePath);
-    if (target.origin !== scopeUrl.origin ||
-        target.username || target.password ||
-        !insideScope) return fallback;
-    return target.href;
-  } catch (error) {
-    return fallback;
+  var kind = data && String(data.kind || '');
+  if (kind === 'chat_message') {
+    var roleId = String(data.roleId || '');
+    if (roleId && roleId.length <= 96 &&
+        !/[\u0000-\u001f\u007f]/.test(roleId)) {
+      return new URL('./chat/chat/chat-detail.html?id=' +
+        encodeURIComponent(roleId), scopeUrl).href;
+    }
   }
+  if (kind === 'test') {
+    return new URL('./settings/cloud-push.html', scopeUrl).href;
+  }
+  return new URL('./index.html', scopeUrl).href;
+}
+
+async function authorizedPushAccount(accountId) {
+  if (!/^MAO-[A-Z0-9]{12,24}$/.test(accountId)) return false;
+  var response;
+  try {
+    response = await fetch('/api/accounts/me', {
+      method: 'GET',
+      credentials: 'same-origin',
+      cache: 'no-store',
+      headers: {
+        'accept': 'application/json',
+        'x-mao-account-context': accountId
+      }
+    });
+  } catch (error) { return false; }
+  if (!response || !response.ok) return false;
+  var payload;
+  try { payload = await response.json(); }
+  catch (error) { return false; }
+  var account = payload && payload.account;
+  return !!account && account.id === accountId &&
+    account.status === 'active';
 }
 
 self.addEventListener('push', event => {
-  let payload = {};
-  try {
-    payload = event.data ? event.data.json() : {};
-  } catch (error) {
-    payload = {};
-  }
+  var payload = {};
+  try { payload = event.data ? event.data.json() : {}; }
+  catch (error) { payload = {}; }
 
   event.waitUntil((async function () {
-    // Notifications are private to the MAO account that owns the target device.
-    // Re-check the HttpOnly session at display time so a logged-out or switched
-    // browser cannot show another account's previously queued push.
-    const accountId = String(payload.accountId || '');
-    if (!/^MAO-[A-Z0-9]{12,24}$/.test(accountId)) return;
-    let authResponse;
-    try {
-      authResponse = await fetch('/api/accounts/me', {
-        method: 'GET',
-        credentials: 'same-origin',
-        cache: 'no-store',
-        headers: {
-          'accept': 'application/json',
-          'x-mao-account-context': accountId
-        }
-      });
-    } catch (error) {
-      return;
-    }
-    if (!authResponse || !authResponse.ok) return;
-    let authPayload = {};
-    try { authPayload = await authResponse.json(); } catch (error) { return; }
-    const currentAccount = authPayload && authPayload.account;
-    if (!currentAccount ||
-        currentAccount.id !== accountId ||
-        currentAccount.status !== 'active') return;
+    if (!payload || typeof payload !== 'object' || Array.isArray(payload)) return;
+    var accountId = String(payload.accountId || '');
+    var kind = String(payload.type || '');
+    if (kind !== 'chat_message' && kind !== 'test') return;
+    // Do not render an unvalidated envelope or leak chat content to lock screen.
+    if (!await authorizedPushAccount(accountId)) return;
+    var roleId = kind === 'chat_message' ? String(payload.roleId || '') : '';
+    if (kind === 'chat_message' && (!roleId || roleId.length > 96 ||
+        /[\u0000-\u001f\u007f]/.test(roleId))) return;
 
-    const title = String(payload.title || '新消息');
-    const body = String(payload.body || '你有一条新消息。');
-    const targetUrl = pushTargetUrl(payload.url);
-    // 相同 tag 的通知会在系统里合并，避免多端/重试造成重复提醒。
-    const tag = String(payload.tag || payload.dedupeKey || 'maomao-cloud').slice(0, 64);
+    // Never let remote content supply notification text or external links.
+    // Generic text protects role names, user names, chat bodies and URLs.
+    var title = kind === 'test' ? '推送测试' : '新消息';
+    var body = kind === 'test'
+      ? '测试通知已送达，打开小手机查看。'
+      : '你有一条新消息，打开小手机查看。';
+    var tagValue = String(payload.tag || '');
+    var tag = /^[A-Za-z0-9_-]{1,64}$/.test(tagValue)
+      ? tagValue : (kind === 'test' ? 'maomao-test' : 'maomao-message');
+
     await self.registration.showNotification(title, {
-      body,
-      tag,
+      body: body,
+      tag: tag,
+      // Only opaque route metadata is stored; no URL, API endpoint,
+      // user profile, chat excerpt, or site origin is attached by the app.
       data: {
-        url: targetUrl,
-        accountId,
-        dedupeKey: String(payload.dedupeKey || '').slice(0, 96),
-        type: String(payload.type || 'message').slice(0, 32)
+        accountId: accountId,
+        kind: kind,
+        roleId: roleId
       },
       icon: './assets/mao-bunny-192.png',
       badge: './assets/icon-192.png',
@@ -340,54 +347,38 @@ self.addEventListener('push', event => {
 
 self.addEventListener('notificationclick', event => {
   event.notification.close();
-  const notificationData = event.notification.data || {};
-  const targetUrl = pushTargetUrl(notificationData.url);
-  const accountId = String(notificationData.accountId || '');
+  var notice = event.notification.data || {};
+  var accountId = String(notice.accountId || '');
 
   event.waitUntil((async function () {
-    // A notification may remain in the OS tray after logout or account switch.
-    // Re-validate the account when clicked; old unbound notifications fail closed.
-    if (!/^MAO-[A-Z0-9]{12,24}$/.test(accountId)) return;
-    let authResponse;
-    try {
-      authResponse = await fetch('/api/accounts/me', {
-        method: 'GET',
-        credentials: 'same-origin',
-        cache: 'no-store',
-        headers: {
-          'accept': 'application/json',
-          'x-mao-account-context': accountId
-        }
-      });
-    } catch (error) {
-      return;
-    }
-    if (!authResponse || !authResponse.ok) return;
-    let authPayload = {};
-    try { authPayload = await authResponse.json(); } catch (error) { return; }
-    const currentAccount = authPayload && authPayload.account;
-    if (!currentAccount ||
-        currentAccount.id !== accountId ||
-        currentAccount.status !== 'active') return;
+    // Lock-screen notifications can outlive a login. Never switch a stale
+    // notification into another account's chat after a session change.
+    if (!await authorizedPushAccount(accountId)) return;
+    var targetUrl = pushTargetUrl(notice);
 
-    const windowClients = await self.clients.matchAll({ type: 'window', includeUncontrolled: true });
-    for (const client of windowClients) {
-      if (client.url === targetUrl && 'focus' in client) return client.focus();
+    var windowClients = await self.clients.matchAll({
+      type: 'window', includeUncontrolled: true
+    });
+    for (var i = 0; i < windowClients.length; i += 1) {
+      var same = windowClients[i];
+      if (same.url === targetUrl && 'focus' in same) return same.focus();
     }
-    for (const client of windowClients) {
-      // 已有本站窗口时，直接在该窗口内跳到目标聊天页，避免重复开窗。
-      if (client.url.indexOf(self.registration.scope) === 0 && 'navigate' in client) {
+    for (var j = 0; j < windowClients.length; j += 1) {
+      var client = windowClients[j];
+      // Reuse the installed PWA's existing window when possible.
+      // Always navigate to a fixed same-origin URL computed above.
+      if (client.url.indexOf(self.registration.scope) === 0 &&
+          'navigate' in client) {
         try {
           await client.navigate(targetUrl);
           return client.focus ? client.focus() : undefined;
         } catch (error) {
-          // navigate 失败（例如页面正在卸载）时退回 openWindow。
+          // Navigating a suspended iOS/Android page can fail. Open a PWA
+          // window as a safe fallback; do not expose remote deep links.
         }
       }
     }
     if (self.clients.openWindow) return self.clients.openWindow(targetUrl);
     return undefined;
   })());
-
 });
-
