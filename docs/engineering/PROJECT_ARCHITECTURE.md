@@ -9,7 +9,7 @@ MAOMAO (“小手机”, repository package name phone-simulator) is a simulated
 - Shared modules: classic scripts/IIFEs exposing global namespaces such as PhoneStorage, PhoneAPI, PhoneStream, PhoneContext, PhoneEngine, and PhoneUI.
 - Build: Vite scans HTML files recursively (excluding hidden folders, node_modules, dist, and .wrangler) and emits separate page entries.
 - Static assets: Vite's copy-static-web-resources plugin copies allow-listed static extensions while excluding hidden directories, build folders, HTML files, and selected root configuration files.
-- Deployment: Cloudflare Wrangler action builds dist and deploys the configured Worker static assets.
+- Deployment: the manual GitHub Wrangler workflow currently targets Worker `mao`, **not** the paid official app domain's `curly-dream-324c` Worker; Cloudflare Builds triggers must be reviewed separately. See [RELEASE_PLAYBOOK.md](RELEASE_PLAYBOOK.md) for verified actual environment binding and release gates.
 - Mobile layout: shared mobile-fit.css adapts narrow screens; the project is primarily designed around a phone viewport while desktop may show a phone shell.
 
 Keep this shape. The goal is stronger module boundaries, not adopting a new framework.
@@ -22,7 +22,7 @@ Phone desktop / launcher
 → shared Phone infrastructure for API, AI context, memory, and storage
 → browser persistence (localStorage + multiple IndexedDB databases).
 
-The app is not currently backed by a server-side user database. Cloudflare deployment serves static files. User data is local to the browser origin/device unless explicitly exported or separately synced by a future approved feature.
+**Updated 2026-11-15:** The historical statement that MAOMAO has no server-side user database is no longer accurate. Existing Cloudflare Workers use a `CloudDatabase` Durable Object for account and related server-side functionality; the live account worker, `mao` Worker and isolated QA Worker have distinct namespace bindings. Not every browser feature is migrated into the cloud: localStorage and IndexedDB still hold local chat/media settings and require reliable backup and migration controls. The official paid app domain currently points to a separate Worker and must not be assumed to expose the full account/chat backend. See [RELEASE_PLAYBOOK.md](RELEASE_PLAYBOOK.md); always verify current Cloudflare bindings before deployment.
 
 ## 3. Top-level directory map
 

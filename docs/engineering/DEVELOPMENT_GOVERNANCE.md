@@ -1,5 +1,7 @@
 # MAOMAO Development Governance and Multi-AI Workflow
 
+> **2026-11-15 update:** [RELEASE_PLAYBOOK.md](RELEASE_PLAYBOOK.md) is the single authoritative release workflow and verified production/QA environment ledger. This document supplies additional coding collaboration and security practices; where historical workflow details conflict, follow the newer verified playbook.
+
 ## 1. GitHub repository model
 
 Keep Bella0960/MAOMAO as the canonical monorepo and main as the stable integration branch.
@@ -19,7 +21,7 @@ Do not force-push main. Never overwrite a newer main commit. Rebase/merge agains
 
 | Workflow | Current trigger | Purpose | Policy |
 |---|---|---|---|
-| deploy-cloudflare-worker.yml | Push to main with matching app/source paths; manual | Vite build and Cloudflare Worker static-asset deployment | Keep automatic website deployment |
+| deploy-cloudflare-worker.yml | **Manual workflow_dispatch only** (verified 2026-11-15) | Vite build, release checks and deploy to **Worker `mao`**, not directly to the official `app.mao520.com` Worker | **Do not enable automatic official release** without live trigger, account continuity, backup and explicit approval |
 | chat-regression-contract.yml | Push/PR for chat-related paths; manual | npm run test:chat:contract | Keep and expand |
 | perf-gate.yml | Push/PR for chat/shared phone/perf paths; manual | Playwright performance budget gate | Keep; inspect runtime/cost and maintain |
 | build-android-apk.yml | Manual workflow_dispatch only | Build debug APK | Do not restore push trigger; output retained 3 days |
@@ -136,7 +138,7 @@ Rules:
 
 ## 9. Release policy
 
-Website deploy is the normal release channel.
+Website deploy is the normal release channel. **A merge to main is not a production release**; follow RELEASE_PLAYBOOK.md for manual release, separate Cloudflare Builds triggers, exact domain/Worker mapping and post-release verification.
 APK build is manual and exceptional.
 Do not create GitHub releases or publish packages until npm-publish-github-packages.yml and package.json scripts have been reviewed and approved.
 Before a significant migration release: full backup test, migration canary, regression checks, production deploy check, and rollback instructions.

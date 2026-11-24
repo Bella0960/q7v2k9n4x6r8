@@ -8,6 +8,14 @@
 **Default branch:** main  
 **Architecture decision:** Keep the existing native HTML/CSS/JavaScript multi-page application. Improve its boundaries and reliability incrementally; do not rewrite it.
 
+## Current release authority (updated 2026-11-15)
+
+- **[RELEASE_PLAYBOOK.md](RELEASE_PLAYBOOK.md)** — the one authoritative development → QA → integration → production workflow, live environment mapping and status vocabulary. All assistants and workflows must refer here.
+- **[OPEN_PR_INVENTORY_20261115.md](OPEN_PR_INVENTORY_20261115.md)** — point-in-time inventory of 59 open PRs, known stacked dependencies, and no-bulk-merge rules.
+- **[GLOBAL_BUG_AUDIT_20261115.md](GLOBAL_BUG_AUDIT_20261115.md)** — evidence-labeled global bug registry; NAV-001 cross-folder path stacking is registered with required real-browser/phone acceptance. Do not turn a historical finding into a new defect without current verification. This section supersedes older deployment assumptions elsewhere in this November 3/11 snapshot.
+- Production is **not** auto-deployed merely by pushing to main: the current GitHub deployment workflow is manual; Cloudflare Builds triggers must be checked separately. `wrangler.jsonc` currently targets Worker `mao` but the paid app domain maps to `curly-dream-324c`.
+- Existing CloudDatabase account/QA bindings were confirmed in Cloudflare on 2026-11-15; claims below about an absent cloud backend are historical, **not current**.
+
 ## Start here
 
 - **AGENTS.md** — mandatory rules for every contributor.
@@ -41,7 +49,7 @@ The recursive Git tree for main was complete (not truncated) at this baseline:
 | Main application shape | Native multi-page web app |
 | Runtime/framework | Native HTML/CSS/JS; Vite is the build tool |
 | Current delivery | Static web assets deployed through Cloudflare Workers |
-| User-data cloud backend | Not configured in wrangler.jsonc |
+| User-data cloud backend | **Historical 2026-11-11 assumption**; as of 2026-11-15 existing Workers have CloudDatabase DO bindings (see RELEASE_PLAYBOOK.md) |
 
 The tree snapshot is a point-in-time measurement for the main SHA listed above. The recursive GitHub tree response was complete (not truncated). Re-run the inventory when making a release or asset optimization decision.
 
@@ -53,7 +61,7 @@ The tree snapshot is a point-in-time measurement for the main SHA listed above. 
 4. Chat history is still primarily stored as one serialized array per role/group in localStorage using chat_history_<id>. It is not yet a true IndexedDB-backed paginated conversation store.
 5. Several areas already use IndexedDB (wallpaper/media, local audio, diary photos, reading library, fonts), and a new maomao-assets media repository exists. The fact that a repository module exists does not mean every feature uses it.
 6. settings/js/backup.js now includes maomao-assets v2 (assets/blobs/refs/image_records), with Blob size limits, atomic whole-database exclusion on skipped media, and clear-on-restore behavior. tests/media-backup.test.mjs covers round-trip and overflow scenarios, but execution is still NOT VERIFIED. The separate maomao-media-store audio store still excludes its blob field; track local music backup semantics under DATA-003.
-7. Cloudflare deployment builds the website and deploys dist as static assets. wrangler.jsonc currently specifies the Worker name, compatibility date, and assets directory; it does not configure D1, R2, user authentication, or account sync.
+7. **Updated 2026-11-15:** `wrangler.jsonc` now explicitly includes `CLOUD_DB` Durable Object binding and migration; `mao` and `mao-auth-preview` are existing separate CloudDatabase Workers. `app.mao520.com` maps to a different Worker, so deploying `mao` does not in itself update the official app entry. Use RELEASE_PLAYBOOK.md for the verified environment ledger.
 8. APK workflow is manual-only now. Old APK cleanup has a separate manual workflow which deletes only artifacts named MAOMAO-Android-APK. The cleanup workflow must still be manually run by a repository maintainer. A repository-scoped cleanup cannot clear artifacts owned by other repositories in the same account/organization.
 9. package.json lint currently prints “Lint passed”; it is not a real lint check. package.json does not define a generic npm test script, while npm-publish-github-packages.yml invokes npm test on release. Treat that release workflow as unverified and do not create a release until it is reviewed.
 10. Existing chat tests are largely static-contract and pure-policy tests. They do not replace real browser/mobile acceptance.
@@ -76,11 +84,12 @@ Do not delete or recompress images in bulk. First identify usage, actual rendere
 When documents disagree, use this order:
 
 1. The user's latest explicit product requirement.
-2. Current source code and verified runtime behavior.
-3. This engineering handbook's verified baseline and approved decisions.
-4. Current feature contracts and visual design constitution.
-5. Historical audit/refactor reports.
-6. Old assistant/agent notes and assumptions.
+2. The verified live environment ledger and release gates in RELEASE_PLAYBOOK.md for deployment decisions.
+3. Current source code and verified runtime behavior.
+4. This engineering handbook's verified baseline and approved decisions.
+5. Current feature contracts and visual design constitution.
+6. Historical audit/refactor reports.
+7. Old assistant/agent notes and assumptions.
 
 A historic report records what was observed at its date. Before implementing it, verify whether the issue still exists on main.
 
