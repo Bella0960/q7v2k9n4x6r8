@@ -13,6 +13,10 @@ test('android smoke is a separate synthetic-only Worker with isolated Preview st
   assert.equal(cfg.previews.vars.MAO_ANDROID_SMOKE, 'true');
   assert.equal(cfg.previews.durable_objects.bindings[0].name, 'PUSH_RATE_GATE');
   assert.equal(cfg.assets.directory, './qa/android-lockscreen-assets');
+  assert.equal(cfg.workers_dev, false);
+  assert.equal(cfg.preview_urls, true);
+  assert.deepEqual(cfg.routes, [{ pattern: 'notify.mao520.com', custom_domain: true,
+    previews_enabled: true, enabled: false }]);
   assert.ok(!JSON.stringify(cfg).includes('maomao-identity-core'));
   assert.ok(!JSON.stringify(cfg).includes('preview.mao520.com'));
   assert.ok(!JSON.stringify(cfg).includes('AUTONOMY_MODEL_BACKEND'));
