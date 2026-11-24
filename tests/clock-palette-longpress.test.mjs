@@ -468,10 +468,31 @@ async function runEditModeDrag(browser, origin) {
   if (before) {
     await page.mouse.move(before.x + before.w / 2, before.y + before.h / 2);
     await page.mouse.down();
-    await delay(60);
-    await page.mouse.move(before.x + before.w / 2 + 40, before.y + before.h / 2 + 50, { steps: 6 });
-    await delay(60);
+    await page.waitForSelector('.drag-avatar',{timeout:3000});
+    // A 40x50px movement can remain entirely within a two-row clock slot.
+    // Resolve a real destination outside the current placeholder after the
+    // drag engine has laid out the grid; do not treat an in-slot drag as a move.
+    const target = await page.evaluate(() => {
+      const slot=document.querySelector('.desktop-grid > .drag-placeholder');
+      if(!slot)return null;
+      const bounds=slot.getBoundingClientRect();
+      const screen=document.getElementById('homeScreen').getBoundingClientRect();
+      const items=[...slot.parentElement.children].filter(el=>el.matches('.app-tile[data-drag]')&&!el.classList.contains('is-dragging-source'));
+      for(const item of items.reverse()){
+        const rect=item.getBoundingClientRect();
+        const x=rect.left+rect.width*.75,y=rect.top+rect.height*.5;
+        if(rect.width>0&&rect.height>0&&x>screen.left+45&&x<screen.right-45&&y>screen.top&&y<screen.bottom&&y>bounds.bottom+2)return {x,y};
+      }
+      return null;
+    });
+    if(!target)throw new Error('No visible clock drop target beyond its original slot');
+    await page.mouse.move(target.x,target.y,{steps:8});
+    await page.waitForFunction(()=>{
+      const slot=document.querySelector('.desktop-grid > .drag-placeholder');
+      return !!slot&&slot.previousElementSibling!==null;
+    },null,{timeout:3000});
     await page.mouse.up();
+    await page.waitForFunction(()=>!document.querySelector('.drag-avatar'),null,{timeout:3000});
     await delay(500);
   }
   const after = await readRect(page, 'clock-lg');
