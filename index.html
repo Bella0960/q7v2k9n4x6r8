@@ -3077,7 +3077,7 @@
   </script>
     <script>
       // 注册并主动检查 Service Worker 更新。sw.js 使用版本化缓存，部署后可替换旧的 app shell。
-      // 检测到新 SW 已 waiting 时自动刷新一次，让用户立刻拿到新版，不用手动清缓存。
+      // 版本切换只发生于正常页面导航；不在用户编辑或输入期间强制刷新。
       (function () {
         if (!('serviceWorker' in navigator) || location.protocol === 'file:') return;
         // Netlify Deploy Preview is a temporary review environment, not an installed PWA.
@@ -3116,6 +3116,18 @@
           if (!hadController) { hadController = true; return; }
           document.documentElement.setAttribute('data-maomao-sw-updated', '1');
         });
+        // Returning to a desktop tab checks for updates without forcing a reload.
+        // A normal navigation receives fresh server-verified HTML and exact build URLs.
+        var lastUpdateCheck = 0;
+        function checkUpdateOnReturn() {
+          if (document.hidden || Date.now() - lastUpdateCheck < 60000) return;
+          lastUpdateCheck = Date.now();
+          navigator.serviceWorker.getRegistration().then(function (registration) {
+            if (registration) return registration.update();
+          }).catch(function () {});
+        }
+        window.addEventListener('pageshow', checkUpdateOnReturn);
+        window.addEventListener('online', checkUpdateOnReturn);
       })();
     </script>
 <script>

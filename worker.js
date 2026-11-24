@@ -19,6 +19,44 @@ import { createSchedulerGate } from './worker/lib/scheduler-gate.js';
 
 const INSTANCE_NAME = 'maomao-global';
 
+// Each immutable Worker deployment has its own assets binding. Never accept a
+// versioned executable request unless the deployed manifest matches its token.
+const releaseManifestByBinding = new WeakMap();
+async function getAssetRelease(env, origin) {
+  const assets = env?.ASSETS;
+  if (!assets) return null;
+  if (!releaseManifestByBinding.has(assets)) {
+    const read = Promise.resolve().then(async () => {
+      const response = await assets.fetch(new Request(new URL('/pwa-release.json', origin), {cache:'no-store'}));
+      if (!response.ok) return null;
+      const payload = await response.json();
+      return /^[a-f0-9]{24}$/.test(payload?.release || '') ? payload.release : null;
+    }).catch(() => null);
+    releaseManifestByBinding.set(assets, read);
+    read.then(value => { if (!value && releaseManifestByBinding.get(assets) === read) releaseManifestByBinding.delete(assets); });
+  }
+  return releaseManifestByBinding.get(assets);
+}
+
+async function serveVersionedAsset(request, env, url) {
+  const requested = url.searchParams.get('mao_rev');
+  const deployed = await getAssetRelease(env, url.origin);
+  const headers = {'cache-control':'no-store', 'content-type':'text/plain; charset=UTF-8'};
+  if (!deployed) return new Response('Build release unavailable', {status:503,headers});
+  if (requested !== deployed) return new Response('Build release changed', {status:409,headers});
+  const response = await env.ASSETS.fetch(request);
+  const type = response.headers.get('content-type') || '';
+  const correctType = /\.css$/i.test(url.pathname) ? /^text\/css(?:;|\s|$)/i.test(type)
+    : /^(?:text|application)\/(?:javascript|ecmascript)(?:;|\s|$)/i.test(type);
+  if (!response.ok || response.redirected || !correctType) {
+    return new Response('Build asset unavailable', {status: response.status === 404 ? 404 : 503,headers});
+  }
+  const out = new Headers(response.headers);
+  out.set('x-mao-release', deployed);
+  out.set('cache-control', 'public, max-age=31536000, immutable');
+  return new Response(response.body,{status:response.status,headers:out});
+}
+
 // Redirect only when the account store or central authority explicitly confirms
 // a missing/revoked session. Never cache this redirect as an app route response.
 function redirectToVerifiedLogin(url, reason = '') {
@@ -237,6 +275,13 @@ export default {
       const stub = env.CLOUD_DB.get(env.CLOUD_DB.idFromName(INSTANCE_NAME));
       return stub.fetch(request);
     }
+    if (request.method === 'GET' && url.pathname === '/pwa-release.json' && env.ASSETS) {
+      const release = await getAssetRelease(env, url.origin);
+      return Response.json({release}, {status:release?200:503,headers:{'cache-control':'no-store'}});
+    }
+    if (request.method === 'GET' && url.searchParams.has('mao_rev') && /\.(?:js|mjs|css)$/i.test(url.pathname)) {
+      return serveVersionedAsset(request, env, url);
+    }
     // Every MAO app document is server-gated. Only the account entry is public;
     // static assets remain readable, but account-owned APIs still enforce identity.
     const isHtmlDocument = request.method === 'GET' &&
@@ -312,9 +357,13 @@ export default {
         assetRequest = new Request(request, { headers });
       }
       const response = await env.ASSETS.fetch(assetRequest);
-      return isHtmlDocument && authorizedAccount
-        ? await injectAccountScope(response, authorizedAccount, env)
-        : response;
+      if (isHtmlDocument && authorizedAccount) return await injectAccountScope(response, authorizedAccount, env);
+      if (/\.(?:js|mjs|css)$/i.test(url.pathname) || isPublicAccountDocument || url.pathname === '/sw.js') {
+        const headers = new Headers(response.headers);
+        headers.set('cache-control', 'no-store');
+        return new Response(response.body,{status:response.status,statusText:response.statusText,headers});
+      }
+      return response;
     }
     return new Response('Not found', { status: 404 });
   },

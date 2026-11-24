@@ -274,3 +274,26 @@ test('delegated QA fails closed when the trusted founder ID configuration is mis
   assert.equal(desktop.status, 200);
   assert.match(await desktop.text(), /meta name="mao-account-role" content="user"/);
 });
+
+test('release-stamped assets reject stale version and preserve private page authorization', async () => {
+  const release='a'.repeat(24);
+  const calls=[];
+  const env={ASSETS:{async fetch(req) {
+    const url=new URL(req.url);
+    calls.push(url.pathname);
+    if(url.pathname==='/pwa-release.json')return Response.json({release});
+    return new Response('const current = true;', {headers:{'content-type':'application/javascript'}});
+  }}};
+  const ok=await worker.fetch(req('/shared/app.js?mao_rev='+release),env);
+  assert.equal(ok.status,200);
+  assert.equal(ok.headers.get('x-mao-release'),release);
+  const old=await worker.fetch(req('/shared/app.js?mao_rev='+'b'.repeat(24)),env);
+  assert.equal(old.status,409);
+  assert.equal(old.headers.get('cache-control'),'no-store');
+  assert.deepEqual(calls,['/pwa-release.json','/shared/app.js']);
+  const manifest=await worker.fetch(req('/pwa-release.json'),env);
+  assert.equal(manifest.headers.get('cache-control'),'no-store');
+  assert.equal((await manifest.json()).release,release);
+  const blocked=await worker.fetch(req('/index.html?mao_rev='+release),env);
+  assert.equal(blocked.status,503);
+});

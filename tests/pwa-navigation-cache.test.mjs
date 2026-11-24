@@ -75,3 +75,17 @@ test('failed app navigation never falls back to the desktop index page', () => {
   assert.doesNotMatch(serviceWorker, /cached \|\| caches\.match\('\.\/index\.html'\)/);
   assert.match(serviceWorker, /status: 503/);
 });
+
+test('built HTML and service worker share one deterministic release identity', () => {
+  const manifest = JSON.parse(read('dist/pwa-release.json'));
+  assert.match(manifest.release,/^[a-f0-9]{24}$/);
+  const sw = read('dist/sw.js');
+  assert.ok(sw.includes("const BUILD_RELEASE = '"+manifest.release+"';"));
+  assert.match(sw,new RegExp("const CACHE_NAME = 'phone-app-pwa-v\\d+-"+manifest.release+"'"));
+  for (const file of ['index.html','account/index.html','chat/chat/chat-detail.html','settings/settings.html']) {
+    const html = read('dist/'+file);
+    assert.ok(html.includes('name="mao-build-release" content="'+manifest.release+'"'));
+    assert.ok(html.includes('mao_rev='+manifest.release),file+' has no stamped resource');
+  }
+  assert.match(read('dist/index.html'),new RegExp('font-loader\\.mao-'+manifest.release+'\\.js'));
+});

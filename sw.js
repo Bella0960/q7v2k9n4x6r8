@@ -1,7 +1,8 @@
 /* 小手机 PWA Service Worker
  * 页面与静态资源均采用缓存优先+后台更新，断网/慢网时秒开。
  */
-const CACHE_NAME = 'phone-app-pwa-v310';
+const CACHE_NAME = 'phone-app-pwa-v311';
+const BUILD_RELEASE = '__MAOMAO_BUILD_RELEASE__';
 const FONT_ASSET_CACHE = 'maomao-font-assets-v1';
 function cacheablePublicResponse(response) {
   return !!(response && response.ok && !response.redirected &&
@@ -307,6 +308,38 @@ self.addEventListener('fetch', event => {
   if (url.pathname.startsWith('/admin/')) return;
   // Authenticated API responses are account-private; never store them in the shared origin cache.
   if (url.pathname === '/api' || url.pathname.startsWith('/api/')) return;
+  // Release manifest must never come from a previous shell cache.
+  if (url.pathname === '/pwa-release.json') {
+    event.respondWith(fetch(req, { cache: 'no-store' }));
+    return;
+  }
+  // Build-stamped JS/CSS has an exact cache key. Do this before all legacy
+  // font/welcome aliases. A cache miss goes to the authoritative Worker.
+  const requestedRelease = url.searchParams.get('mao_rev');
+  if (requestedRelease && /\.(?:js|mjs|css)$/i.test(url.pathname)) {
+    const result = (async () => {
+      const cache = await caches.open(CACHE_NAME).catch(() => null);
+      // Only this release's cache may be used. A previous tab must not obtain
+      // current code under its old release's URL.
+      if (cache && requestedRelease === BUILD_RELEASE) {
+        const hit = await cache.match(req).catch(() => null);
+        if (cacheableStaticAsset(hit, req) && (!hit.headers.get('x-mao-release') ||
+            hit.headers.get('x-mao-release') === requestedRelease)) return { response: hit };
+      }
+      const response = await fetch(req, { cache: 'no-store' }).catch(() =>
+        new Response('', {status: 503, headers: {'Cache-Control':'no-store'}}));
+      const servedRelease = response.headers.get('x-mao-release');
+      if (servedRelease && servedRelease !== requestedRelease) {
+        return { response: new Response('', {status: 409, headers: {'Cache-Control':'no-store'}}) };
+      }
+      const write = cache && requestedRelease === BUILD_RELEASE && cacheableStaticAsset(response, req)
+        ? cache.put(req, response.clone()).catch(() => undefined) : Promise.resolve();
+      return { response, write };
+    })();
+    event.respondWith(result.then(value => value.response));
+    event.waitUntil(result.then(value => value.write).catch(() => undefined));
+    return;
+  }
 
   // User-imported fonts are cached once by font-loader.js and served as same-origin
   // font resources. Keep this cache separate from the versioned app-shell cache.
@@ -537,6 +570,13 @@ self.addEventListener('fetch', event => {
   // image/CSS response must never hijack a newer asset URL.
   // Unclassified requests (including non-navigation HTML) are not shared assets.
   if (!isPublicStaticRequest(req)) return;
+  // Legacy/dynamically inserted executable URLs cannot prove release identity.
+  // Fetch fresh rather than allowing an old cache hit to override a new deploy.
+  // The imported-user-font route above retains its separate account guard.
+  if (/\.(?:js|mjs|css)$/i.test(url.pathname)) {
+    event.respondWith(fetch(req, { cache: 'no-store' }));
+    return;
+  }
   const lookup = caches.open(CACHE_NAME).then(async cache => {
     let cached = await cache.match(req).catch(() => null);
     if (cached && !cacheableStaticAsset(cached, req)) {
