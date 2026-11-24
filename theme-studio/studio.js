@@ -89,7 +89,18 @@
   var previewRaf = 0;
   var lastPreviewVars = Object.create(null);
   var thumbLeases = Object.create(null);
+  // PERF-006-R1: single-flight pending map, a generation token that invalidates in-flight
+  // callbacks after page hide / BFCache restore, and a WeakSet so every lease URL is
+  // revoked exactly once.
+  var thumbPending = Object.create(null);
+  var thumbRevoked = new WeakSet();
+  var thumbGeneration = 0;
   var $ = function (id) { return document.getElementById(id); };
+  function releaseAsset(asset) {
+    if (!asset || thumbRevoked.has(asset)) return;
+    thumbRevoked.add(asset);
+    try { asset.revoke(); } catch (e) {}
+  }
   function previewRefs() {
     if (previewNodes) return previewNodes;
     var stage = $('previewSurface');
@@ -237,12 +248,12 @@
   function applyPhotoPreview(slot,cssName,id){
     var stage=$('previewSurface'),old=photoLeases[slot];
     if(old && old.id===id)return;
-    if(old && old.asset)old.asset.revoke();
+    if(old && old.asset)releaseAsset(old.asset);
     var current={id:id||''};photoLeases[slot]=current;
     stage.style.removeProperty(cssName);
     if(!id || !window.MAOMAOThemeStudioAssets)return;
     window.MAOMAOThemeStudioAssets.resolve(id).then(function(asset){
-      if(photoLeases[slot]!==current){if(asset)asset.revoke();return;}
+      if(photoLeases[slot]!==current){if(asset)releaseAsset(asset);return;}
       if(!asset)return;
       current.asset=asset;
       stage.style.setProperty(cssName,'url("'+asset.url.replace(/["\\]/g,'')+'")');
@@ -290,15 +301,27 @@
     });
   }
   // Session-local lease cache: the same uploaded assetId is resolved from IDB once and
-  // reused when the slot list rebuilds on tab switches. Leases are released on page hide;
-  // the underlying blob repository and its schema are untouched.
+  // reused when the slot list rebuilds on tab switches. In-flight requests share one
+  // pending promise (single-flight); a generation token invalidates callbacks that finish
+  // after page hide / BFCache restore. Leases are released on page hide; the underlying
+  // blob repository and its schema are untouched.
   function resolveThumb(id){
     if(thumbLeases[id]) return Promise.resolve(thumbLeases[id]);
+    if(thumbPending[id]) return thumbPending[id];
     if(!window.MAOMAOThemeStudioAssets) return Promise.resolve(null);
-    return window.MAOMAOThemeStudioAssets.resolve(id).then(function(asset){
-      if(asset) thumbLeases[id]=asset;
+    var gen = thumbGeneration;
+    var pending = window.MAOMAOThemeStudioAssets.resolve(id).then(function(asset){
+      thumbPending[id] = null;
+      if(!asset) return null;
+      if(thumbGeneration !== gen){ releaseAsset(asset); return null; }
+      thumbLeases[id] = asset;
       return asset;
+    }).catch(function(){
+      thumbPending[id] = null;
+      return null;
     });
+    thumbPending[id] = pending;
+    return pending;
   }
   function renderImageSlots(){
     var panel=$('imagePanel'),box=$('imageSlots');
@@ -310,8 +333,11 @@
       var wrap=document.createElement('div');wrap.className='image-slot';
       var thumb=document.createElement('div');thumb.className='image-thumb';thumb.textContent=id?'素材':'空';
       if(id){
-        resolveThumb(id).then(function(asset){
+        var thumbId = id;
+        resolveThumb(thumbId).then(function(asset){
           if(!asset)return;
+          if(!thumb.isConnected)return;
+          if(drafts[tab][key] !== thumbId)return;
           thumb._asset=asset;
           thumb.style.backgroundImage='url("'+asset.url.replace(/["\\]/g,'')+'")';
           thumb.textContent='';
@@ -788,10 +814,30 @@
     });
   });
   window.addEventListener('pagehide',function(){
+    thumbGeneration++;
     if(previewRaf){cancelAnimationFrame(previewRaf);previewRaf=0;}
-    Object.keys(photoLeases).forEach(function(key){if(photoLeases[key].asset)photoLeases[key].asset.revoke();});
-    Object.keys(thumbLeases).forEach(function(id){if(thumbLeases[id])thumbLeases[id].revoke();});
+    Object.keys(photoLeases).forEach(function(key){
+      var entry=photoLeases[key];
+      if(entry && entry.asset)releaseAsset(entry.asset);
+      delete photoLeases[key];
+    });
+    Object.keys(thumbLeases).forEach(function(id){if(thumbLeases[id])releaseAsset(thumbLeases[id]);});
     thumbLeases=Object.create(null);
+    thumbPending=Object.create(null);
+  });
+  // BFCache restore: page hide already revoked the visible URLs, so when the page comes
+  // back from the back-forward cache the thumbnails and main preview are re-resolved from
+  // the current drafts. Drafts, undo/redo stacks and presets are untouched.
+  window.addEventListener('pageshow',function(event){
+    if(!event.persisted)return;
+    thumbGeneration++;
+    Object.keys(photoLeases).forEach(function(key){
+      var entry=photoLeases[key];
+      if(entry && entry.asset)releaseAsset(entry.asset);
+      delete photoLeases[key];
+    });
+    renderImageSlots();
+    drawPreview();
   });
   // Read-only QA inspection hook; never persists user data.
   api._draftSnapshot=function(){
