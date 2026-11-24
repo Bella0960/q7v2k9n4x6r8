@@ -387,3 +387,9 @@ test('desktop motion avoids left/top writes and live glass sampling during gestu
   assert.match(desktopCss,/translate3d\(var\(--drag-x/);
   assert.match(desktopCss,/home-dragging \.app-icon::before[\s\S]*?backdrop-filter: none/);
 });
+
+test('desktop icons cannot shrink into a rectangle; row height accounts for text',()=>{
+  assert.match(desktopCss,/flex:\s*0 0 auto !important;[\s\S]*?aspect-ratio:\s*1 \/ 1 !important/);
+  assert.match(desktopCss,/--desktop-icon-row:\s*max\(72px,\s*calc\(var\(--desktop-icon-edge\) \+ 6px \+ \.86rem \+ 2px\)\)/);
+  assert.match(mobileCss,/grid-auto-rows:\s*var\(--desktop-icon-row,\s*68px\) !important/);
+});

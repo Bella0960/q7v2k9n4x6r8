@@ -132,7 +132,10 @@
 
       if (!icon.classList.contains('maomao-liquid-glass-icon')) addedGlass = true;
       icon.classList.add('glass', 'maomao-liquid-glass-icon');
-      icon.setAttribute('data-glass-interactive', '');
+      // Desktop touch/long-press is handled by the home drag engine. A second
+      // glass press/stretch spring makes icons look flattened and competes
+      // with native paging. Keep optical glass, not duplicate interaction.
+      icon.removeAttribute('data-glass-interactive');
       icon.style.setProperty('--glass-highlight', '0.22');
       icon.style.setProperty('--glass-edge-dark', '0.10');
       icon.style.setProperty('--glass-bezel', '2px');
