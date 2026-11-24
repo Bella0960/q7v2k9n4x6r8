@@ -58,7 +58,7 @@ try {
   await drawer.getByRole('button',{name:'关闭侧栏'}).click();
   assert.equal(await page.locator('.main-stage').evaluate(n=>n.inert),false);
   await page.locator('.chat-slim-card[data-id="at_test_a"]').click();
-  await page.waitForURL('**/chat-detail.html?id=at_test_a');
+  await page.waitForURL(url=>url.pathname.endsWith('/chat/chat/chat-detail.html')&&url.searchParams.get('id')==='at_test_a');
   await page.locator('.msg-bubble').first().waitFor();
   assert.equal(await shell.getAttribute('data-at-tone'),'dark');
   // The late legacy detail-page script used to add a second floating button

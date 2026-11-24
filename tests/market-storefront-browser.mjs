@@ -109,7 +109,8 @@ for(const width of [320,375,390,430,1280]){
  await page.locator('[name="scope"][value="icons"]').check();
  await page.locator('[data-sf="confirm-save"]').click();
  await page.locator('[data-sf="record-preview"]').last().click();
- assert.equal(await page.locator('.sf-icon-tile img').count(),1,'real preset image thumbnail');
+ await page.locator('.sf-icon-tile img').waitFor({state:'visible',timeout:10000});
+ assert.equal(await page.locator('.sf-icon-tile img').count(),1,'real preset image thumbnail loaded from IndexedDB');
  await page.locator('[data-sf="record-apply"]').click();
  assert.equal(await page.evaluate(()=>ChatBeauty.getThemePreset()),originalTheme,'icon scope must not change theme');
  assert.equal(await page.evaluate(()=>localStorage.getItem('home_icon_active_preset_v1')),'browser_pack');
