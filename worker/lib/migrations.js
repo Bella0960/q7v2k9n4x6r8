@@ -64,7 +64,7 @@ export function splitSql(sql) {
   return statements;
 }
 
-export function applyMigrations(exec, now = Date.now(), transaction = null) {
+export function applyMigrations(exec, now = Date.now(), transaction = null, migrations = MIGRATIONS) {
   exec('CREATE TABLE IF NOT EXISTS schema_migrations (version TEXT PRIMARY KEY, applied_at INTEGER NOT NULL)');
   const rows = exec('SELECT version FROM schema_migrations');
   const applied = new Set(rows.map(row => String(row.version)));
@@ -83,7 +83,7 @@ export function applyMigrations(exec, now = Date.now(), transaction = null) {
         }
       };
 
-  for (const migration of MIGRATIONS) {
+  for (const migration of migrations) {
     if (applied.has(migration.version)) continue;
     // Use Durable Object transactionSync in production; the local SQLite test
     // adapter uses explicit BEGIN/COMMIT. The DDL and version marker commit as one.
@@ -94,4 +94,10 @@ export function applyMigrations(exec, now = Date.now(), transaction = null) {
     results.push(migration.version);
   }
   return results;
+}
+
+// Gateway and non-opt-in runtime must never initialize the social schema.
+export function runtimeMigrations(env = {}) {
+  const social = env.MAO_IDENTITY_MODE !== 'delegated_preview' && env.MAO_SOCIAL_ENABLED === 'true';
+  return social ? MIGRATIONS : MIGRATIONS.filter(m => !/^001[789]_mao_social/.test(m.version));
 }

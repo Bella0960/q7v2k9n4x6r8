@@ -654,3 +654,9 @@ On the next turn/session, read this file and the current `AGENTS.md` first. Cont
 - Source reference: 32ce400d; v161 base 2e60e5e8. Restore QR, approved E2EE conversations, text/media/voice source and synthetic regression files; merge only social rows/actions into the current chat home, preserve group invitations and current roles.
 - Register original additive migrations 0017-0019 in this **unpublished** candidate for disposable SQLite tests. Do not deploy this candidate or migrate any live database. Current QA is delegated identity; peer status is not authoritatively available from the current mirror, so routes refuse delegated mode before data access. Preserve account core and old database bindings; no historical account/message/key copying. Requires separate reviewed authority contract and migration approval before release.
 - Verification pending; old results not attributed to new candidate.
+
+
+## 2026-11-24 | REAL-FRIEND-001 authority integration (verify only)
+
+- Confirmed live QA v161, isolated identity core v8. Implemented strict social/E2EE gateway routing with scoped user session and exact isolated founder proof; no plaintext/transaction routes, no forwarded cookies, no local peer mirror fallback.
+- Runtime migrations omit 0017–0019 on delegated QA and non-opt-in runtime. No live flags, databases or deployment changed. Before core update: verify source/namespace, backup, prior social data/key continuity and separate approval for additive schema. Core flags MAO_SOCIAL_ENABLED=true, MAO_SOCIAL_E2EE_ENABLED=true, MAO_SOCIAL_CHAT_ENABLED=false and gateway MAO_DELEGATED_SOCIAL_ENABLED=true require separately verified core readiness. Never use QA-only to change core or migrate data. Verification pending.

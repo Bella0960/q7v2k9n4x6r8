@@ -112,7 +112,7 @@ function normalizedEmail(value) {
   return email;
 }
 
-function cookieValue(request) {
+export function cookieValue(request) {
   const raw = String(request.headers.get('cookie') || '');
   for (const item of raw.split(';')) {
     const point = item.indexOf('=');

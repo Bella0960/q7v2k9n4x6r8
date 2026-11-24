@@ -1,6 +1,8 @@
 import { ApiError, ok, readJsonBody } from './http.js';
 import { randomToken, sha256Hex } from './crypto.js';
 import { createMaoSocialE2EE } from './mao-social-e2ee.js';
+import { proxySocialAuthority } from './social-authority-proxy.js';
+import { isolatedQaAuthorityFounderId } from './qa-identity-bootstrap.js';
 
 const ID = /^MAO-[A-Z0-9]{12,24}$/;
 const REQUEST_ID = /^[A-Za-z0-9_-]{8,96}$/;
@@ -30,7 +32,9 @@ export function createMaoSocial({ store, accountAuth, env = {}, now = () => Date
     }
   }
   function assertAdmin(actor, time) {
+    const qaFounder = isolatedQaAuthorityFounderId(env);
     if (actor.role !== 'super_admin' ||
+        (env.MAO_QA_ISOLATED_IDENTITY_CORE === 'true' && (!qaFounder || actor.account_id !== qaFounder)) ||
         !store.isActiveMaoSuperAdminSession(actor.account_id, actor.session_id, time)) {
       throw new ApiError(403, 'SOCIAL_ADMIN_ONLY', '仅 001 管理员有审批权限');
     }
@@ -325,10 +329,9 @@ export function createMaoSocial({ store, accountAuth, env = {}, now = () => Date
     if (env.MAO_SOCIAL_ENABLED !== 'true') {
       throw new ApiError(503, 'SOCIAL_NOT_ENABLED', '真人好友服务尚未通过完整验收');
     }
-    // Delegated identity has no authoritative peer-status API yet. Never rely on stale mirrored peer rows.
-    // Restore the local implementation for isolated rehearsal only; no proxying to the old database.
+    // Never authorize peers from the gateway's stale account mirror.
     if (env.MAO_IDENTITY_MODE === 'delegated_preview') {
-      throw new ApiError(503, 'SOCIAL_AUTHORITY_NOT_READY', '真人好友的统一账号校验尚未完成');
+      return proxySocialAuthority({request,path,method,env,accountAuth});
     }
     const actor = await actorOf(request);
     if (path.startsWith('/api/social/e2ee/')) return secureChat.handle(request,path,method,actor);
