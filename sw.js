@@ -22,7 +22,10 @@ function cacheableStaticAsset(response, request) {
   if (/\.(?:png|jpe?g|webp|gif|svg|avif|ico)$/.test(path) || request.destination === 'image') {
     return /^image\//.test(type);
   }
-  return true;
+  if (/\.(?:woff2?|ttf|otf)$/.test(path)) {
+    return /^(?:font\/|application\/(?:font-|x-font-|vnd\.ms-fontobject|octet-stream))/.test(type);
+  }
+  return false;
 }
 function cacheablePublicNavigationHtml(response) {
   return cacheablePublicResponse(response) && /^\s*text\/html\s*(?:;|$)/i.test(
@@ -547,9 +550,12 @@ self.addEventListener('fetch', event => {
       return { response: cached, update: Promise.resolve() };
     }
     if (!cached) shouldRevalidateStatic(req.url, Date.now());
+    let cacheWrite = Promise.resolve();
     const fresh = fetch(req).then(response => {
       if (cache && cacheableStaticAsset(response, req)) {
-        return cache.put(req, response.clone()).catch(() => undefined).then(() => response);
+        cacheWrite = cache.put(req, response.clone()).catch(() => undefined);
+      } else {
+        staticRevalidations.delete(req.url);
       }
       return response;
     }).catch(() => {
@@ -559,7 +565,7 @@ self.addEventListener('fetch', event => {
         status: 503, headers: { 'Cache-Control': 'no-store' }
       });
     });
-    return { response: cached || fresh, update: fresh.then(() => undefined) };
+    return { response: cached || fresh, update: fresh.then(() => cacheWrite) };
   });
   event.respondWith(result.then(value => value.response));
   event.waitUntil(result.then(value => value.update).catch(() => undefined));
