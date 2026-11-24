@@ -174,6 +174,8 @@
         selector: '.maomao-liquid-glass-icon',
         preset: 'ios26',
         refraction: 'auto',
+        maxRefractive: 2,
+        maxRefractiveAreaRatio: 0.12,
         observe: true,
         debug: false
       });

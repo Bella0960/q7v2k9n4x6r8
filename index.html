@@ -41,7 +41,7 @@
     <link rel="stylesheet" href="desktop/css/styles.css?v=20261106-home-layout2">
   <link rel="stylesheet" href="shared/css/mobile-fit.css?v=20261106-home-layout2">
     <link rel="stylesheet" href="shared/vendor/liquid-glass/liquid-glass.css?v=1.2.0">
-    <script>window.LiquidGlassConfig = { selector: '.maomao-liquid-glass-icon', preset: 'ios26', refraction: 'auto', observe: true, debug: false };</script>
+    <script>window.LiquidGlassConfig = { selector: '.maomao-liquid-glass-icon', preset: 'ios26', refraction: 'auto', maxRefractive: 2, maxRefractiveAreaRatio: 0.12, observe: true, debug: false };</script>
     <script defer src="shared/vendor/liquid-glass/liquid-glass.js?v=1.2.0"></script>
   <style>
     /* ===== 添加挂件：跳转独立挂件管理页（desktop/widgets.html） ===== */
@@ -2321,9 +2321,10 @@
       function tick() {
         var d = new Date();
         var time = pad(d.getHours()) + ':' + pad(d.getMinutes());
-        if (smallTime) smallTime.textContent = time;
-        if (largeTime) largeTime.textContent = time;
-        if (dateEl) dateEl.textContent = (d.getMonth() + 1) + '月' + d.getDate() + '日 周' + week[d.getDay()];
+        if (smallTime && smallTime.textContent !== time) smallTime.textContent = time;
+        if (largeTime && largeTime.textContent !== time) largeTime.textContent = time;
+        var dateText = (d.getMonth() + 1) + '月' + d.getDate() + '日 周' + week[d.getDay()];
+        if (dateEl && dateEl.textContent !== dateText) dateEl.textContent = dateText;
       }
 
       applyClockColor(savedColor, false);
@@ -2931,9 +2932,15 @@
       var store = window.MAOMAOWallpaperStore;
       if (!store || !store.getByKey) return;
       var KEY_PREFIX = 'home_icon_img_';
+      var appliedIcons = new WeakMap();
+      var iconRefreshRevision = 0;
+      var iconRefreshTimer = null;
 
-      function applyIcon(appId, iconEl) {
-        store.getByKey(KEY_PREFIX + appId).then(function (dataUrl) {
+      function applyIcon(source, iconEl, revision) {
+        return source.then(function (dataUrl) {
+          if (revision !== iconRefreshRevision || !iconEl.isConnected) return;
+          dataUrl = dataUrl || '';
+          if (appliedIcons.get(iconEl) === dataUrl) return;
           var svg = iconEl.querySelector('svg');
           if (!dataUrl) {
             // 预设切换或单个恢复为默认图标时，清除上一次自定义图标留下的内联样式。
@@ -2943,6 +2950,7 @@
             iconEl.style.removeProperty('background-color');
             iconEl.style.removeProperty('border-radius');
             if (svg) svg.style.removeProperty('display');
+            appliedIcons.set(iconEl, dataUrl);
             return;
           }
           /* CSS 里 .app-icon 有 background: var(--icon-bg) !important，必须用 !important 内联样式才能覆盖 */
@@ -2952,24 +2960,37 @@
           iconEl.style.setProperty('background-color', 'transparent', 'important');
           iconEl.style.borderRadius = '22%';
           if (svg) svg.style.display = 'none';
+          appliedIcons.set(iconEl, dataUrl);
         }).catch(function () {});
       }
 
       function refreshAll() {
+        if (iconRefreshTimer !== null) clearTimeout(iconRefreshTimer);
+        iconRefreshTimer = null;
+        var revision = ++iconRefreshRevision;
+        var reads = new Map();
+        var work = [];
         document.querySelectorAll('.app-tile[data-drag]').forEach(function (btn) {
           var appId = btn.dataset.drag;
           if (!appId || appId.indexOf('app_') !== 0) return;
           var iconEl = btn.querySelector('.app-icon');
-          if (iconEl) applyIcon(appId, iconEl);
+          if (!iconEl) return;
+          if (!reads.has(appId)) reads.set(appId, store.getByKey(KEY_PREFIX + appId));
+          work.push(applyIcon(reads.get(appId), iconEl, revision));
         });
+        return Promise.all(work);
+      }
+      function scheduleIconRefresh() {
+        if (iconRefreshTimer !== null) return;
+        iconRefreshTimer = setTimeout(refreshAll, 100);
       }
       refreshAll();
       window.MAOMAORefreshCustomIcons = refreshAll;
 
-      // 从设置页上传图标后切回本页时，自动重新加载
-      window.addEventListener('focus', refreshAll);
+      // Focus and visibility normally arrive together. Do not start two full reads.
+      window.addEventListener('focus', scheduleIconRefresh);
       document.addEventListener('visibilitychange', function () {
-        if (!document.hidden) refreshAll();
+        if (!document.hidden) scheduleIconRefresh();
       });
     })();
   </script>
@@ -3021,9 +3042,12 @@
   'use strict';
   var store = window.MAOMAOWallpaperStore;
   var root = document.documentElement;
-  var lastApplied = '';
+  var lastApplied = null;
+  var wallpaperRevision = 0;
+  var wallpaperTimer = null;
 
   function setDesktopWallpaper(dataUrl) {
+    if (lastApplied === dataUrl) return;
     if (dataUrl) {
       root.style.setProperty('--desktop-bg-img', 'url("' + dataUrl + '")');
       root.setAttribute('data-home-wallpaper', 'custom');
@@ -3039,8 +3063,11 @@
 
   function applyDesktopWallpaper() {
     if (!store || typeof store.get !== 'function') return Promise.resolve('');
+    if (wallpaperTimer !== null) clearTimeout(wallpaperTimer);
+    wallpaperTimer = null;
+    var revision = ++wallpaperRevision;
     return store.get().then(function (dataUrl) {
-      setDesktopWallpaper(dataUrl || '');
+      if (revision === wallpaperRevision) setDesktopWallpaper(dataUrl || '');
       return dataUrl || '';
     }).catch(function (error) {
       console.warn('[MAOMAO wallpaper] Unable to read saved wallpaper', error);
@@ -3048,16 +3075,20 @@
     });
   }
 
-  /* Initial load, return from Settings, and tab/app refocus all re-read the saved image. */
-  if (document.readyState === 'loading') {
-    document.addEventListener('DOMContentLoaded', applyDesktopWallpaper, { once: true });
-  } else {
-    applyDesktopWallpaper();
+  function scheduleWallpaperRefresh() {
+    if (wallpaperTimer !== null) return;
+    wallpaperTimer = setTimeout(applyDesktopWallpaper, 100);
   }
-  window.addEventListener('pageshow', applyDesktopWallpaper);
-  window.addEventListener('focus', applyDesktopWallpaper);
+  /* Coalesce the startup/pageshow/focus burst. Explicit settings refresh stays immediate. */
+  if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', scheduleWallpaperRefresh, { once: true });
+  } else {
+    scheduleWallpaperRefresh();
+  }
+  window.addEventListener('pageshow', scheduleWallpaperRefresh);
+  window.addEventListener('focus', scheduleWallpaperRefresh);
   window.addEventListener('storage', function (event) {
-    if (!event.key || event.key === 'home_custom_wallpaper') applyDesktopWallpaper();
+    if (!event.key || event.key === 'home_custom_wallpaper') scheduleWallpaperRefresh();
   });
 
   window.MAOMAOApplyDesktopWallpaper = applyDesktopWallpaper;

@@ -82,7 +82,7 @@ async function injectAccountScope(response, account, env) {
   const tags =
     '<meta name="mao-account-id" content="' + accountId + '">' +
     '<meta name="mao-account-role" content="' + (isVerifiedFounderSession(account, env) ? 'super_admin' : 'user') + '">' +
-    '<script src="/shared/js/mao-account-scope.js?v=3" data-mao-account-scope></script>';
+    '<script src="/shared/js/mao-account-scope.js?v=4" data-mao-account-scope></script>';
   let injected = false;
   const html = source.replace(/<head\b[^>]*>/i, match => {
     injected = true;

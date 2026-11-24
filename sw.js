@@ -1,7 +1,7 @@
 /* 小手机 PWA Service Worker
  * 页面与静态资源均采用缓存优先+后台更新，断网/慢网时秒开。
  */
-const CACHE_NAME = 'phone-app-pwa-v308';
+const CACHE_NAME = 'phone-app-pwa-v309';
 const FONT_ASSET_CACHE = 'maomao-font-assets-v1';
 function cacheablePublicResponse(response) {
   return !!(response && response.ok && !response.redirected &&
@@ -41,7 +41,7 @@ const APP_SHELL = [
   './account/settings-link.js?v=1',
   './account/manage.js',
   './account/manage.css',
-  './shared/js/mao-account-scope.js?v=3',
+  './shared/js/mao-account-scope.js?v=4',
   './tutorial/tutorial.html',
   './forum/forum.html',
   './forum/forum-detail.html',
@@ -251,6 +251,48 @@ self.addEventListener('message', event => {
   }
 });
 
+// Retry only idempotent, same-origin document GETs after a transport failure.
+// Never substitute private HTML or retry an authoritative authorization response.
+async function fetchProtectedNavigation(req) {
+  let lastError;
+  for (let attempt = 0; attempt < 2; attempt++) {
+    if (req.signal && req.signal.aborted) throw lastError || new Error('Navigation cancelled');
+    const controller = new AbortController();
+    const abort = () => controller.abort();
+    if (req.signal) req.signal.addEventListener('abort', abort, { once: true });
+    if (req.signal && req.signal.aborted) controller.abort();
+    const timeout = setTimeout(abort, 7000);
+    try {
+      return await fetch(req, { cache: 'no-store', signal: controller.signal });
+    } catch (error) {
+      lastError = error;
+    } finally {
+      clearTimeout(timeout);
+      if (req.signal) req.signal.removeEventListener('abort', abort);
+    }
+    if (attempt === 0 && !(req.signal && req.signal.aborted)) {
+      await new Promise(resolve => setTimeout(resolve, 300));
+    }
+  }
+  throw lastError;
+}
+
+// Bounded in-memory cooldown for public static assets. The versioned cache
+// still rotates on release; revalidation never serves account HTML or APIs.
+const staticRevalidations = new Map();
+const STATIC_REVALIDATE_MS = 60000;
+function isPublicStaticRequest(req) {
+  const path = new URL(req.url).pathname.toLowerCase();
+  return /\.(?:js|mjs|css|png|jpe?g|webp|gif|svg|avif|ico|woff2?|ttf|otf)$/.test(path);
+}
+function shouldRevalidateStatic(key, now) {
+  const previous = staticRevalidations.get(key);
+  if (previous !== undefined && now - previous < STATIC_REVALIDATE_MS) return false;
+  if (staticRevalidations.size >= 512) staticRevalidations.delete(staticRevalidations.keys().next().value);
+  staticRevalidations.set(key, now);
+  return true;
+}
+
 self.addEventListener('fetch', event => {
   const req = event.request;
   if (req.method !== 'GET') return;
@@ -347,7 +389,7 @@ self.addEventListener('fetch', event => {
     event.respondWith((async function () {
       try {
         // Always reach the Worker account guard; never reuse a previous 302.
-        return await fetch(req, { cache: 'no-store' });
+        return await fetchProtectedNavigation(req);
       } catch {
         // No private HTML may be read from CacheStorage. Equally, do not inject
         // public sign-in HTML into a private route just because fetch failed.
@@ -359,7 +401,8 @@ self.addEventListener('fetch', event => {
           '<h1 style="font-size:19px;font-weight:500">连接暂时中断</h1>' +
           '<p>登录状态尚未确认，没有退出账号。请恢复网络后重新打开当前页面。</p>' +
           '<button onclick="location.reload()" style="padding:9px 20px;border:1px solid #bbb;' +
-          'border-radius:9px;background:#fff;color:#333">重新连接</button></body></html>',
+          'border-radius:9px;background:#fff;color:#333">重新连接</button>' +
+          '<script>window.addEventListener("online",function(){location.reload()},{once:true})</script></body></html>',
           { status: 503, headers: { 'Content-Type': 'text/html; charset=UTF-8',
             'Cache-Control': 'no-store', 'Retry-After': '5' } }
         );
@@ -489,24 +532,37 @@ self.addEventListener('fetch', event => {
 
   // Read only this SW generation, not other CacheStorage namespaces: an older
   // image/CSS response must never hijack a newer asset URL.
-  event.respondWith(
-    caches.open(CACHE_NAME).then(async cache => {
-      let cached = await cache.match(req).catch(() => null);
-      if (cached && !cacheableStaticAsset(cached, req)) {
-        await cache.delete(req).catch(() => undefined);
-        cached = null;
+  // Unclassified requests (including non-navigation HTML) are not shared assets.
+  if (!isPublicStaticRequest(req)) return;
+  const lookup = caches.open(CACHE_NAME).then(async cache => {
+    let cached = await cache.match(req).catch(() => null);
+    if (cached && !cacheableStaticAsset(cached, req)) {
+      await cache.delete(req).catch(() => undefined);
+      cached = null;
+    }
+    return { cache, cached };
+  }).catch(() => ({ cache: null, cached: null }));
+  const result = lookup.then(({ cache, cached }) => {
+    if (cached && !shouldRevalidateStatic(req.url, Date.now())) {
+      return { response: cached, update: Promise.resolve() };
+    }
+    if (!cached) shouldRevalidateStatic(req.url, Date.now());
+    const fresh = fetch(req).then(response => {
+      if (cache && cacheableStaticAsset(response, req)) {
+        return cache.put(req, response.clone()).catch(() => undefined).then(() => response);
       }
-      const fresh = fetch(req).then(response => {
-        if (cacheableStaticAsset(response, req)) {
-          cache.put(req, response.clone()).catch(() => undefined);
-        }
-        return response;
-      }).catch(() => cached || new Response('', {
+      return response;
+    }).catch(() => {
+      // Allow a later online request to recover instead of suppressing it.
+      staticRevalidations.delete(req.url);
+      return cached || new Response('', {
         status: 503, headers: { 'Cache-Control': 'no-store' }
-      }));
-      return cached || fresh;
-    })
-  );
+      });
+    });
+    return { response: cached || fresh, update: fresh.then(() => undefined) };
+  });
+  event.respondWith(result.then(value => value.response));
+  event.waitUntil(result.then(value => value.update).catch(() => undefined));
 });
 
 // Android/iOS Home Screen Web Push. No remote URL is trusted or stored in

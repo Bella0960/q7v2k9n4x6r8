@@ -120,6 +120,8 @@
   // Focus/visibility/heartbeat probes can overlap. Ignore an older reply
   // after a newer session check has started, even if it arrives last.
   var latestSessionProbe = 0;
+  var sessionProbeInFlight = null;
+  var lastSessionProbeAt = 0;
 
   function redirectToAccountEntry(query) {
     if (redirectingToAccountEntry) return;
@@ -132,12 +134,22 @@
 
   function verifyAccountSession() {
     if (typeof global.fetch !== 'function' || redirectingToAccountEntry) return;
+    if (sessionProbeInFlight) return sessionProbeInFlight;
+    var now = Date.now();
+    if (lastSessionProbeAt && now - lastSessionProbeAt < 1000) return;
+    lastSessionProbeAt = now;
     var probe = ++latestSessionProbe;
-    global.fetch('/api/accounts/me', {
+    var controller = typeof global.AbortController === 'function' ? new global.AbortController() : null;
+    var options = {
       method: 'GET',
       credentials: 'same-origin',
       cache: 'no-store',
       headers: { 'accept': 'application/json' }
+    };
+    if (controller) options.signal = controller.signal;
+    var timer = controller ? global.setTimeout(function () { controller.abort(); }, 8000) : null;
+    sessionProbeInFlight = Promise.resolve().then(function () {
+      return global.fetch('/api/accounts/me', options);
     }).then(function (response) {
       return response.json().catch(function () { return {}; }).then(function (payload) {
         if (probe !== latestSessionProbe || redirectingToAccountEntry) return null;
@@ -155,7 +167,8 @@
         } else if (errorCode === 'ACCOUNT_DISABLED' ||
                    (response.ok && current && (current.status === 'disabled' || current.status === 'revoked'))) {
           redirectToAccountEntry('disabled=1');
-        } else if (response.status === 401) {
+        } else if (response.status === 401 &&
+                   (errorCode === 'ACCOUNT_SESSION_REQUIRED' || errorCode === 'LOGIN_REQUIRED')) {
           redirectToAccountEntry('');
         } else if (errorCode === 'IDENTITY_AUTHORITY_CHANGED' ||
                    (response.status === 409 && errorCode === 'ACCOUNT_CONTEXT_CHANGED')) {
@@ -173,14 +186,21 @@
     }).catch(function () {
       // A transient network error does not erase local data. Cloud APIs remain
       // individually session-checked and the next focus/heartbeat retries.
+    }).then(function () {
+      if (timer !== null) global.clearTimeout(timer);
+      sessionProbeInFlight = null;
     });
+    return sessionProbeInFlight;
   }
 
   verifyAccountSession();
   if (typeof global.setInterval === 'function') {
     global.setInterval(verifyAccountSession, 30000);
   }
-  if (global.addEventListener) global.addEventListener('focus', verifyAccountSession);
+  if (global.addEventListener) {
+    global.addEventListener('focus', verifyAccountSession);
+    global.addEventListener('online', verifyAccountSession);
+  }
   if (document.addEventListener) {
     document.addEventListener('visibilitychange', function () {
       if (!document.hidden) verifyAccountSession();

@@ -187,14 +187,16 @@
   }
 
   /* 把判定结果写到 <html data-wallpaper-tone="light|dark">，样式表据此切换文字颜色。 */
+  var toneRevision = 0;
   function applyTone(source) {
     var root = document.documentElement;
+    var revision = ++toneRevision;
     if (!source) {
       root.removeAttribute('data-wallpaper-tone');
       return Promise.resolve('light');
     }
     return detectTone(source).then(function (tone) {
-      root.setAttribute('data-wallpaper-tone', tone);
+      if (revision === toneRevision) root.setAttribute('data-wallpaper-tone', tone);
       return tone;
     });
   }
