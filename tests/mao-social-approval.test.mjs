@@ -248,10 +248,13 @@ test('integration keeps MAO account identity, origin checks and AI chat isolated
   assert.match(migrations, /0017_mao_social/);
   const chatHome = fs.readFileSync(path.join(root, 'chat/chat/chat.html'), 'utf8');
   assert.doesNotMatch(contacts, /id="goRealFriends"/, 'real-friends must not clutter the contact list');
-  const actionRegistry = fs.readFileSync(path.join(root, 'shared/js/chat-action-menu.js'), 'utf8');
-  assert.match(chatHome, /MAOMAOChatActions\.mount\(menu,/, 'the original heart owns the registered action menu');
-  assert.match(actionRegistry, /id: 'friend'/, 'real-friend action stays registered');
-  assert.match(actionRegistry, /\.\.\/contacts\/real-friends\.html/, 'registered friend action routes to the existing social page');
+  const provider = fs.readFileSync(path.join(root, 'shared/js/social-chat-list.js'), 'utf8');
+  assert.match(chatHome, /id="menuRealFriends" style="display:none;"/);
+  assert.match(chatHome, /id="menuRealScan" style="display:none;"/);
+  assert.match(chatHome, /MAOMAORealChatList\.owner\(\)/);
+  assert.match(chatHome, /\.\.\/contacts\/real-friends\.html/);
+  assert.match(provider, /\/api\/social\/e2ee\/conversations/);
+  assert.match(provider, /payload\.ownerAccountId !== owner/);
   assert.match(mobile, /\/api\/accounts\/me/);
   assert.match(mobile, /if\(authContext\)headers\['X-MAO-Account-Context'\]=authContext;/);
   assert.match(mobile, /var session=await api\('\/api\/accounts\/me'\)/);
@@ -408,17 +411,19 @@ test('admin audit write failure rolls back friend approval atomically', async ()
   } finally { ctx.close(); }
 });
 
-test('release build retains the original whole-app gate before social acceptance', () => {
+test('current fixed QA release retains full regression including social acceptance', () => {
   const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
   const pkg = JSON.parse(fs.readFileSync(path.join(root, 'package.json'), 'utf8'));
-  assert.equal(pkg.scripts.prebuild, 'npm run test:release:gate && npm run test:social:approval');
-  for (const suite of ['accounts', 'features', 'regressions', 'extended']) {
-    assert.ok(pkg.scripts['test:release:gate'].includes('test:release:' + suite));
+  const release = fs.readFileSync(path.join(root, 'scripts/qa-direct-release.mjs'), 'utf8');
+  assert.equal(pkg.scripts.build, 'vite build');
+  assert.match(release, /\['npm', \['run', 'test:account:ui-candidate'\]\]/);
+  assert.match(release, /\['npm', \['run', 'build'\]\]/);
+  assert.match(release, /\['node', \['--test', '--test-concurrency=1'\]\]/);
+  for (const file of ['mao-social-approval.test.mjs','mao-social-e2ee.test.mjs','social-authority-proxy.test.mjs']) {
+    assert.ok(fs.existsSync(path.join(root,'tests',file)), file+' must be discovered by the full Node gate');
   }
-  assert.match(pkg.scripts['test:social:approval'], /tests\/mao-social-approval\.test\.mjs/);
-  assert.match(pkg.scripts['test:social:approval'], /tests\/mao-social-e2ee\.test\.mjs/);
 });
-
+ 
 test('social chat remains unavailable without a separate E2EE QA opt-in', async () => {
   const ctx = setup({ chatEnabled: false });
   try {

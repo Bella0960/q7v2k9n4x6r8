@@ -5,7 +5,9 @@
   "workers_dev": true,
   "preview_urls": false,
   "compatibility_date": "2026-10-27",
-  "compatibility_flags": ["nodejs_compat"],
+  "compatibility_flags": [
+    "nodejs_compat"
+  ],
   "keep_vars": true,
   "assets": {
     "directory": "./dist",
@@ -13,17 +15,30 @@
     "html_handling": "none",
     "run_worker_first": true
   },
-  "ai": { "binding": "AI" },
+  "ai": {
+    "binding": "AI"
+  },
   "durable_objects": {
     "bindings": [
-      { "name": "CLOUD_DB", "class_name": "CloudDatabase" }
+      {
+        "name": "CLOUD_DB",
+        "class_name": "CloudDatabase"
+      }
     ]
   },
   "migrations": [
-    { "tag": "v1", "new_sqlite_classes": ["CloudDatabase"] }
+    {
+      "tag": "v1",
+      "new_sqlite_classes": [
+        "CloudDatabase"
+      ]
+    }
   ],
   "services": [
-    { "binding": "MAO_IDENTITY_AUTHORITY", "service": "maomao-identity-core" }
+    {
+      "binding": "MAO_IDENTITY_AUTHORITY",
+      "service": "maomao-identity-core"
+    }
   ],
   "vars": {
     "MAO_IDENTITY_MODE": "delegated_preview",
@@ -44,6 +59,7 @@
     "AUTONOMY_PREVIEW_ALARM_ENABLED": "true",
     "AUTONOMY_RETRY_BACKOFF_MS": "60000,300000,900000",
     "AUTONOMY_TICK_LIMIT": "10",
-    "DEVICE_PAIRING_TOKEN_TTL_MS": "300000"
+    "DEVICE_PAIRING_TOKEN_TTL_MS": "300000",
+    "MAO_DELEGATED_SOCIAL_ENABLED": "true"
   }
 }
