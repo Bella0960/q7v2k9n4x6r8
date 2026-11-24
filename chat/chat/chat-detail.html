@@ -2370,6 +2370,8 @@
     </div>
     <script src="../../shared/js/memory.js"></script>
     <script src="../../shared/js/sound-system.js"></script>
+    <script src="../../shared/js/cloud-push-client.js?v=20261124qa-mobile"></script>
+    <script src="../../shared/js/cloud-push-atomic-inbox.js?v=20261124qa-mobile"></script>
     <script>
         // ===== 加载壁纸到手机背景（iMessage 透明主题，支持 IndexedDB + 明暗自动切换） =====
         (function loadWallpaper() {
@@ -9103,6 +9105,60 @@
             }
         }
         highlightMessageFromUrl();
+
+        // Cloud outbox restoration uses the installed atomic chat appender, not
+        // a full-history replacement. Missing account scope/pairing fails closed.
+        (function installCloudInboxForActiveSingleChat() {
+            var cloud = window.MaomaoCloud;
+            var bridge = window.MaomaoCloudAtomicInbox;
+            var meta = document.querySelector('meta[name="mao-account-id"]');
+            var accountId = String(meta && meta.content || '');
+            if (isGroupChat || !currentRoleId || !cloud || !bridge ||
+                !/^MAO-[A-Z0-9]{12,24}$/.test(accountId)) return;
+
+            var deferredPaint = false;
+            function repaintIfAtBottom() {
+                if (!chatMessages || !isNearBottom(120)) {
+                    deferredPaint = true;
+                    return;
+                }
+                deferredPaint = false;
+                renderAllMessages();
+            }
+            chatMessages.addEventListener('scroll', function () {
+                if (deferredPaint && isNearBottom(120)) repaintIfAtBottom();
+            }, { passive: true });
+
+            var receiver = bridge.create({
+                roleId: String(currentCharacter.id || currentRoleId),
+                accountId: accountId,
+                cloud: cloud,
+                onSaved: repaintIfAtBottom,
+                verifySession: async function (expectedAccount) {
+                    try {
+                        var response = await fetch('/api/accounts/me', {
+                            method: 'GET',
+                            credentials: 'same-origin',
+                            cache: 'no-store',
+                            headers: { 'x-mao-account-context': expectedAccount }
+                        });
+                        if (!response.ok) return false;
+                        var body = await response.json();
+                        return !!(body && body.account &&
+                            body.account.id === expectedAccount &&
+                            body.account.status === 'active');
+                    } catch (error) { return false; }
+                }
+            });
+            if (!receiver) return;
+            receiver.start();
+            window.addEventListener('pagehide', function (event) {
+                if (!event.persisted) receiver.stop();
+            });
+            window.addEventListener('pageshow', function (event) {
+                if (event.persisted) repaintIfAtBottom();
+            });
+        })();
 
         // 美化中心保存后，页面从返回缓存恢复时重新读取最新配置。
         function refreshChatBeautyConfig() {
