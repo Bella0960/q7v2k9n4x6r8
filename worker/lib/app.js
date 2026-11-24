@@ -1619,13 +1619,22 @@ export function createApp({ store, env = {}, now = () => Date.now(), fetchImpl =
     const device = await authenticate(request);
     const body = await readJsonBody(request);
     if (!body || typeof body !== 'object' || Array.isArray(body) ||
-        Object.keys(body).some(key => !['attemptCount', 'text'].includes(key)) ||
+        Object.keys(body).some(key => !['attemptCount', 'text', 'characterName'].includes(key)) ||
         !Object.prototype.hasOwnProperty.call(body, 'attemptCount') ||
         !Object.prototype.hasOwnProperty.call(body, 'text')) {
       throw new ApiError(400, 'INVALID_ACTIVITY_RESULT', '完成请求只允许包含 attemptCount 和 text');
     }
     const attemptCount = Number(body.attemptCount);
     const messageText = String(body.text || '').trim();
+    const hasCharacterName = Object.prototype.hasOwnProperty.call(body, 'characterName');
+    const rawCharacterName = hasCharacterName ? body.characterName : '';
+    if (hasCharacterName && (typeof rawCharacterName !== 'string' ||
+        Array.from(rawCharacterName.trim()).length > 48 ||
+        /[<>\u0000-\u001F\u007F\u2028\u2029]/.test(rawCharacterName) ||
+        /(?:https?:\/\/|www\.|\b(?:[a-z0-9-]+\.)+(?:com|net|org|io|app|dev|cn|me|xyz)\b)/i.test(rawCharacterName))) {
+      throw new ApiError(400, 'INVALID_CHARACTER_NAME', '角色名称不是安全的通知文本');
+    }
+    const characterName = rawCharacterName.trim();
     if (!Number.isSafeInteger(attemptCount) || attemptCount < 1 ||
         messageText.length < 2 || Array.from(messageText).length > 220 ||
         /[<>\u0000-\u0008\u000B\u000C\u000E-\u001F]/.test(messageText) ||
@@ -1637,12 +1646,19 @@ export function createApp({ store, env = {}, now = () => Date.now(), fetchImpl =
     const activity = await store.getActivity(activityId);
     const serverMessageId = 'autonomy_' + activityId + '_' + attemptCount;
     const outboundDedupeKey = 'autonomy:' + activityId + ':' + attemptCount;
-    const outboundPayload = { type: 'text', text: messageText };
+    const outboundPayload = {
+      type: 'text', text: messageText,
+      ...(characterName ? { characterName } : {})
+    };
 
     // A retry after a lost HTTP response is accepted only when it is byte-for-byte
     // the same completed message; different text cannot replace the first result.
     if (activity && activity.device_id === device.id && activity.status === 'completed' &&
         Number(activity.attempt_count) === attemptCount) {
+      let existingResult = null;
+      try { existingResult = JSON.parse(activity.result_json); } catch {}
+      const repeatPayload = existingResult && existingResult.type === 'text' &&
+        existingResult.text === messageText ? existingResult : outboundPayload;
       const repeated = await store.completeActivityWithOutbound({
         id: activityId,
         owner: device.id,
@@ -1650,7 +1666,7 @@ export function createApp({ store, env = {}, now = () => Date.now(), fetchImpl =
         now: timestamp,
         serverMessageId,
         dedupeKey: outboundDedupeKey,
-        payload: outboundPayload
+        payload: repeatPayload
       });
       if (repeated) {
         let pushDispatch = null;
