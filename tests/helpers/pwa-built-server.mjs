@@ -4,11 +4,15 @@ import path from 'node:path';
 
 // Local-only fixture emulates the deployed versioned public static asset
 // contract. It deliberately does not simulate login or authorize private APIs.
-export async function startPwaBuiltServer() {
-  const root=path.resolve('dist');
-  const release=JSON.parse(fs.readFileSync(path.join(root,'pwa-release.json'),'utf8')).release;
+export async function startPwaBuiltServer({root='dist'}={}) {
+  function readSnapshot(dir) {
+    const absolute=path.resolve(dir);
+    return {root:absolute,release:JSON.parse(fs.readFileSync(path.join(absolute,'pwa-release.json'),'utf8')).release};
+  }
+  let snapshot=readSnapshot(root);
   const types={'.html':'text/html; charset=utf-8','.js':'text/javascript; charset=utf-8','.mjs':'text/javascript; charset=utf-8','.css':'text/css; charset=utf-8','.json':'application/json; charset=utf-8','.svg':'image/svg+xml','.png':'image/png','.webp':'image/webp','.jpg':'image/jpeg','.woff2':'font/woff2','.woff':'font/woff'};
   const server=http.createServer((req,res)=>{
+    const {root,release}=snapshot;
     let url,pathname;
     try {url=new URL(req.url||'/','http://127.0.0.1');pathname=decodeURIComponent(url.pathname);}
     catch {res.writeHead(400).end();return;}
@@ -32,7 +36,10 @@ export async function startPwaBuiltServer() {
     });
   });
   await new Promise((resolve,reject)=>{server.once('error',reject);server.listen(0,'127.0.0.1',resolve);});
-  return {origin:'http://127.0.0.1:'+server.address().port,release,close:()=>new Promise(resolve=>{
+  return {origin:'http://127.0.0.1:'+server.address().port,
+    get release(){return snapshot.release;},
+    switchRoot(dir){snapshot=readSnapshot(dir);return snapshot.release;},
+    close:()=>new Promise(resolve=>{
     server.close(resolve);server.closeAllConnections?.();
   })};
 }

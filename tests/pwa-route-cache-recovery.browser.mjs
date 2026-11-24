@@ -38,14 +38,28 @@ try {
       const body=await page.locator('body').innerText();
       assert.match(body,/连接暂时中断/);
       assert.doesNotMatch(body,/欢迎回来|WELCOME BACK|登录账号/);
+      // The SW's offline document automatically retries its own URL on the
+      // online event. Observe that navigation BEFORE requesting the desktop;
+      // a concurrent page.goto would race and cancel the automatic recovery.
       console.log('PWA_RECOVERY_STAGE:online_'+width);
+      const autoRecovery=page.waitForNavigation({waitUntil:'domcontentloaded',timeout:30000});
       await context.setOffline(false);
+      const automatic=await autoRecovery;
+      assert.equal(automatic?.status(),200,'automatic reconnect must recover the original protected route');
+      assert.equal(new URL(page.url()).pathname,'/chat/chat/chat-detail.html',
+        'automatic reconnect must neither redirect to login nor switch routes');
+      console.log('PWA_RECOVERY_STAGE:auto_recovered_'+width);
+      // Allow the recovered page to finish loading its own assets before
+      // navigating away, so the test does not inject aborted script loads.
+      await page.waitForLoadState('load',{timeout:30000});
       const recovered=await page.goto(origin+'/index.html',{
-        waitUntil:'domcontentloaded',timeout:30000
+        waitUntil:'load',timeout:30000
       });
       assert.equal(recovered?.status(),200,'recovered connection must reopen desktop');
-      assert.ok(!new URL(page.url()).pathname.startsWith('/account/'),
+      assert.equal(new URL(page.url()).pathname,'/index.html',
         'recovery must not invent a login redirect');
+      console.log('PWA_RECOVERY_STAGE:desktop_recovered_'+width);
+      if(errors.length) console.log('PWA_RECOVERY_STAGE:page_error_'+width);
       assert.deepEqual(errors,[],'browser console errors at width '+width);
     }finally{
       await context.close();
