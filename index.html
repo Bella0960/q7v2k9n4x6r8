@@ -38,7 +38,7 @@
     <script src="shared/js/wallpaper-store.js?v=20261026v2"></script>
 <script src="shared/js/native-feel.js?v=20261118statusbar1"></script>
 <script src="shared/js/haptics.js"></script>
-    <link rel="stylesheet" href="desktop/css/styles.css?v=20261106-home-layout2">
+    <link rel="stylesheet" href="desktop/css/styles.css?v=20261124-motion1">
   <link rel="stylesheet" href="shared/css/mobile-fit.css?v=20261106-home-layout2">
     <link rel="stylesheet" href="shared/vendor/liquid-glass/liquid-glass.css?v=1.2.0">
     <script>window.LiquidGlassConfig = { selector: '.maomao-liquid-glass-icon', preset: 'ios26', refraction: 'auto', maxRefractive: 2, maxRefractiveAreaRatio: 0.12, observe: true, debug: false };</script>
@@ -659,6 +659,9 @@
       var dragClone = null;
       var placeholder = null;
       var dragOriginPage = null;
+      var dragFrame = null;
+      var pendingDragPoint = null;
+      var edgeCooldownTimer = null;
 
       var activePageIndex = 0;
       var edgeTimer = null;
@@ -1260,7 +1263,7 @@
 
       // ===== 拖拽系统核心实现 =====
       function startDrag(targetItem, cx, cy) {
-        if (!targetItem) return;
+        if (!targetItem || isDragging) return;
         if (!editing) enterEdit();
 
         var dragCols = getDraggedGridSpan(targetItem, 'column');
@@ -1269,6 +1272,7 @@
         dragOriginPage = originalPageElement ? getPages().indexOf(originalPageElement) : null;
         isDragging = true;
         dragEl = targetItem;
+        document.body.classList.add('home-dragging');
         var firstGrid = document.getElementById('gridPage0');
         if (firstGrid) firstGrid.classList.remove('is-default-layout');
 
@@ -1300,19 +1304,62 @@
         var delIcon = dragClone.querySelector('.ds-del');
         if (delIcon) delIcon.remove();
 
-        dragClone.style.left = cx + 'px';
-        dragClone.style.top = cy + 'px';
+        dragClone.style.left = '0px';
+        dragClone.style.top = '0px';
+        setDragAvatarPosition(cx, cy);
         document.body.appendChild(dragClone);
 
         vibrate(18);
       }
 
+      function setDragAvatarPosition(cx, cy) {
+        if (!dragClone) return;
+        dragClone.style.setProperty('--drag-x', cx + 'px');
+        dragClone.style.setProperty('--drag-y', cy + 'px');
+      }
+
+      // High-frequency input may deliver several events before one paint.
+      // Keep the newest coordinate and do at most one layout/collision pass per frame.
+      function queueDragMove(cx, cy) {
+        if (!isDragging) return;
+        pendingDragPoint = { x: cx, y: cy };
+        if (dragFrame !== null) return;
+        dragFrame = requestAnimationFrame(function () {
+          dragFrame = null;
+          flushDragMove();
+        });
+      }
+      function flushDragMove() {
+        if (dragFrame !== null) cancelAnimationFrame(dragFrame);
+        dragFrame = null;
+        var point = pendingDragPoint;
+        pendingDragPoint = null;
+        if (point && isDragging) moveDrag(point.x, point.y);
+      }
+      function resetDragMotion() {
+        if (dragFrame !== null) cancelAnimationFrame(dragFrame);
+        dragFrame = null;
+        pendingDragPoint = null;
+        if (edgeCooldownTimer !== null) clearTimeout(edgeCooldownTimer);
+        edgeCooldownTimer = null;
+        lastEdgeSide = null;
+        edgeCooldown = false;
+        document.body.classList.remove('home-dragging');
+      }
+      function lockDragEdge() {
+        edgeCooldown = true;
+        if (edgeCooldownTimer !== null) clearTimeout(edgeCooldownTimer);
+        edgeCooldownTimer = setTimeout(function () {
+          edgeCooldownTimer = null;
+          edgeCooldown = false;
+        }, 480);
+      }
+
       function moveDrag(cx, cy) {
         if (!isDragging || !dragClone || !placeholder) return;
 
-        // 1. 跟随手指
-        dragClone.style.left = cx + 'px';
-        dragClone.style.top = cy + 'px';
+        // Compositor transform, not left/top writes on every touch event.
+        setDragAvatarPosition(cx, cy);
 
         // 2. 跨页边缘触发检测（拖拽至左右边缘停留时滑向上一页/下一页）
         var cRect = homeScreen.getBoundingClientRect();
@@ -1335,8 +1382,7 @@
                   newGrid.appendChild(placeholder);
                 }
                 vibrate(15);
-                edgeCooldown = true;
-                setTimeout(function () { edgeCooldown = false; }, 480);
+                lockDragEdge();
               }, 320);
             }
           }
@@ -1368,8 +1414,7 @@
                   }
                   vibrate(15);
                 }
-                edgeCooldown = true;
-                setTimeout(function () { edgeCooldown = false; }, 480);
+                lockDragEdge();
               }, 320);
             }
           }
@@ -1420,13 +1465,17 @@
             }
           }
 
-          if (placeholder.parentNode !== dockBar || placeholder.nextSibling !== targetDockSibling) {
+          if (placeholder.parentNode !== dockBar || nextPlaceableSibling(placeholder) !== targetDockSibling) {
             dockBar.insertBefore(placeholder, targetDockSibling);
           }
 
         } else {
           // 悬停在桌面网格区
           pages = getPages();
+          // During smooth edge paging, the destination is not yet under the
+          // finger. Preserve its placeholder until the target page has settled.
+          var pageWidth = homeScreen.clientWidth || 360;
+          if (Math.abs(homeScreen.scrollLeft - activePageIndex * pageWidth) > 4) return;
           var curPage = pages[activePageIndex] || pages[0];
           if (!curPage) return;
           var curGrid = curPage.querySelector('.desktop-grid');
@@ -1443,7 +1492,14 @@
             return;
           }
 
+          // A finger over its existing slot must not oscillate between
+          // neighbours as the grid reflows.
+          if (placeholder.parentNode === curGrid) {
+            var slot = placeholder.getBoundingClientRect();
+            if (cx >= slot.left && cx <= slot.right && cy >= slot.top && cy <= slot.bottom) return;
+          }
           // 寻找最佳插入网格槽位并进行动态插队让位
+          var directHit = false;
           var hitSibling = null;
           var closestSibling = null;
           var minDistance = Infinity;
@@ -1456,7 +1512,8 @@
 
             // 1. 直接命中当前元素边界：即刻确定在其前或在其后
             if (cx >= r.left && cx <= r.right && cy >= r.top && cy <= r.bottom) {
-              hitSibling = (cx < itemCenterX) ? el : el.nextSibling;
+              directHit = true;
+              hitSibling = (cx < itemCenterX) ? el : nextPlaceableSibling(el);
               break;
             }
 
@@ -1467,22 +1524,29 @@
               if (cy < itemCenterY - 14 || (Math.abs(cy - itemCenterY) <= 32 && cx < itemCenterX)) {
                 closestSibling = el;
               } else {
-                closestSibling = el.nextSibling;
+                closestSibling = nextPlaceableSibling(el);
               }
             }
           }
 
-          var targetSibling = hitSibling || closestSibling;
-          if (placeholder.parentNode !== curGrid || placeholder.nextSibling !== targetSibling) {
+          var targetSibling = directHit ? hitSibling : closestSibling;
+          if (placeholder.parentNode !== curGrid || nextPlaceableSibling(placeholder) !== targetSibling) {
             curGrid.insertBefore(placeholder, targetSibling);
           }
         }
+      }
+
+      function nextPlaceableSibling(el) {
+        var next = el.nextElementSibling;
+        while (next && (next === placeholder || next === dragEl)) next = next.nextElementSibling;
+        return next;
       }
 
       // A system-interrupted touch is not a completed drop.
       // The original DOM element stays in its original parent until endDrag().
       function cancelDrag() {
         if (!isDragging) return;
+        resetDragMotion();
         isDragging = false;
         if (edgeTimer) {
           clearTimeout(edgeTimer);
@@ -1515,6 +1579,9 @@
 
       function endDrag() {
         if (!isDragging) return;
+        // The final touch may arrive before the scheduled paint.
+        flushDragMove();
+        resetDragMotion();
         isDragging = false;
 
         if (edgeTimer) {
@@ -1612,7 +1679,7 @@
 
         if (isDragging) {
           if (e.cancelable) e.preventDefault();
-          moveDrag(cx, cy);
+          queueDragMove(cx, cy);
         }
       }, { passive: false });
 
@@ -1678,7 +1745,7 @@
         }
         if (isDragging) {
           e.preventDefault();
-          moveDrag(e.clientX, e.clientY);
+          queueDragMove(e.clientX, e.clientY);
         }
       });
 
@@ -1811,7 +1878,12 @@
         homeScreen.addEventListener('touchstart', function () {
           lastTouchSwipeAt = Date.now();
         }, { passive: true });
-        homeScreen.addEventListener('scroll', function () {
+        var scrollFrame = null;
+        var scrollIdle = null;
+        function updateScrolledPage() {
+          scrollFrame = null;
+          // A programmatic drag-edge flip has already selected the target.
+          if (isDragging) return;
           var cur = getCurrentPageFromScroll();
           if (cur !== activePageIndex) {
             if (!editing && Date.now() - lastTouchSwipeAt < 1200 &&
@@ -1822,6 +1894,15 @@
               d.classList.toggle('active', i === cur);
             });
           }
+        }
+        homeScreen.addEventListener('scroll', function () {
+          document.body.classList.add('home-paging');
+          if (scrollIdle !== null) clearTimeout(scrollIdle);
+          scrollIdle = setTimeout(function () {
+            scrollIdle = null;
+            document.body.classList.remove('home-paging');
+          }, 140);
+          if (scrollFrame === null) scrollFrame = requestAnimationFrame(updateScrolledPage);
         }, { passive: true });
       }
 

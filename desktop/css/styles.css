@@ -884,11 +884,13 @@ button { color: inherit; font: inherit; }
   position: fixed !important;
   z-index: 999999 !important;
   pointer-events: none !important;
-  transform: translate(-50%, -50%) scale(1.1) !important;
+  transform: translate3d(var(--drag-x, 0px), var(--drag-y, 0px), 0) translate(-50%, -50%) scale(1.1) !important;
   box-shadow: 0 16px 36px rgba(0, 0, 0, 0.28) !important;
   opacity: 0.92 !important;
   margin: 0 !important;
-  transition: transform 0.06s ease !important;
+  transition: none !important;
+  animation: none !important;
+  will-change: transform;
 }
 .drag-avatar .ds-del {
   display: none !important;
@@ -2053,3 +2055,30 @@ html[data-wallpaper-tone="dark"] body.maomao-home .gesture-bar {
 .maomao-home #gridPage0.is-default-layout > [data-drag]:nth-child(9) { grid-column: 4 !important; grid-row: 5 !important; }
 .maomao-home #gridPage0.is-default-layout > [data-drag]:nth-child(10) { grid-column: 3 !important; grid-row: 6 !important; }
 .maomao-home #gridPage0.is-default-layout > [data-drag]:nth-child(11) { grid-column: 4 !important; grid-row: 6 !important; }
+
+/* Desktop motion budget: preserve the configured glass appearance at rest.
+   Disable only live backdrop sampling during page motion/active drag.
+   Avoid dozens of independent edit-mode animation layers during a gesture. */
+body.maomao-home.home-paging .app-icon,
+body.maomao-home.home-paging .app-icon::before,
+body.maomao-home.home-dragging .app-icon,
+body.maomao-home.home-dragging .app-icon::before {
+  backdrop-filter: none !important;
+  -webkit-backdrop-filter: none !important;
+}
+body.maomao-home.home-editing.home-paging .app-tile,
+body.maomao-home.home-editing.home-paging .dock-item,
+body.maomao-home.home-editing.home-paging .ds-widget,
+body.maomao-home.home-editing.home-dragging .app-tile,
+body.maomao-home.home-editing.home-dragging .dock-item,
+body.maomao-home.home-editing.home-dragging .ds-widget,
+body.maomao-home.home-dragging .drag-placeholder {
+  animation: none !important;
+}
+@media (prefers-reduced-motion: reduce) {
+  body.maomao-home.home-editing .app-tile,
+  body.maomao-home.home-editing .dock-item,
+  body.maomao-home.home-editing .ds-widget {
+    animation: none !important;
+  }
+}
