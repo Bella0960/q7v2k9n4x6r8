@@ -238,9 +238,8 @@ export function buildOutboundPushPayload({ characterId, serverMessageId, timesta
   return {
     type: 'chat_message',
     accountId: maoAccountId,
-    title: '新消息',
-    body: '有一位角色刚刚联系你，打开聊天查看。',
-    url: './chat/chat/chat-detail.html?id=' + encodeURIComponent(roleId),
+    // Only opaque routing metadata; no site links, role names or chat text.
+    roleId,
     tag: 'maomao-chat-' + messageId,
     dedupeKey: ('outbound:' + messageId).slice(0, 96),
     timestamp: Number(timestamp)
@@ -846,9 +845,7 @@ export function createApp({ store, env = {}, now = () => Date.now(), fetchImpl =
     const payload = JSON.stringify({
       type: 'test',
       accountId: String(device.user_id || OWNER_USER_ID),
-      title: 'MAOMAO 云端连接测试',
-      body: '如果你看到这条通知，说明推送链路已经打通。',
-      url: './settings/settings.html',
+      // Test notices use a fixed route created by the Service Worker.
       tag: 'cloud-test',
       dedupeKey,
       timestamp
