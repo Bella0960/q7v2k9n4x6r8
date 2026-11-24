@@ -94,7 +94,12 @@ try {
   const saved=await page.evaluate(()=>({list:localStorage.getItem('chat_list_cover_v1'),home:localStorage.getItem('my_home_cover_v1'),editorial:localStorage.getItem('maomao_chat_list_theme_preset_v1')}));
   assert.deepEqual(saved,{list:'list-cover-sentinel',home:'home-cover-sentinel',editorial:'editorial'});
   await page.goto(base+'/theme-store/theme-store.html');
-  await page.locator('[data-action="theme-apply"][data-id="wechat"]').click();
+  // New storefront renders the original themes as preview-first products, with a
+  // second explicit confirmation rather than the retired direct apply button.
+  await page.locator('[data-category="themes"]').click();
+  await page.locator('.sf-theme-cover[data-sf="detail"][data-id="wechat"]').click();
+  await page.locator('.sf-dialog [data-sf="apply-theme"]').click();
+  await page.locator('.sf-dialog [data-sf="confirm-apply-theme"]').click();
   await page.goto(base+'/chat/chat/chat.html');
   assert.equal(await shell.getAttribute('data-chat-theme-preset'),'wechat');
   assert.equal(await shell.getAttribute('data-chat-list-theme'),null,'full WeChat theme suppresses the separate editorial overlay');
