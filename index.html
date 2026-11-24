@@ -1834,6 +1834,13 @@
 
       // 3. 点击事件处理：删除组件/退出编辑
       document.addEventListener('click', function (e) {
+        // Mouse/touch release after a drop may synthesize a click on the
+        // old slot or blank grid. It is not a separate exit/edit action.
+        if (document.body.classList.contains('just-dragged')) {
+          e.preventDefault();
+          e.stopImmediatePropagation();
+          return;
+        }
         if (swallowEmptyPressClick) {
           swallowEmptyPressClick = false;
           /* Do not swallow a real tap on the edit toolbar, action menu, or customize sheet. */

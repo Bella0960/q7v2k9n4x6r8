@@ -114,3 +114,38 @@ test('new SW is adopted without forcing a second protected-page navigation',()=>
     assert.match(section,/data-maomao-sw-updated/);
   }
 });
+
+
+test('transport failure page automatically probes the original route, preserving account data',async()=>{
+  const h=harness();
+  const event=await h.dispatch(h.request('/chat/chat/chat-detail.html','navigate'));
+  const html=await (await event.response).text();
+  assert.match(html,/id="retryConnection"/);
+  const script=html.match(/<script>([\s\S]+)<\/script>/)[1];
+  const scheduled=new Map(),events={},buttonEvents={};
+  const status={textContent:''},button={disabled:false,addEventListener(type,cb){buttonEvents[type]=cb;}};
+  let serial=0,reloads=0,fetches=0;
+  const context=createContext({
+    document:{getElementById(id){return id==='retryConnection'?button:status;}},
+    window:{addEventListener(type,cb){events[type]=cb;}},
+    navigator:{onLine:true},location:{href:origin+'/chat/chat/chat-detail.html',reload(){reloads++;}},
+    AbortController,Response,
+    setTimeout(fn,ms){const id=++serial;scheduled.set(id,{fn,ms});return id;},
+    clearTimeout(id){scheduled.delete(id);},
+    async fetch(url,options){
+      fetches++;assert.equal(url,origin+'/chat/chat/chat-detail.html');
+      assert.equal(options.cache,'no-store');assert.equal(options.credentials,'same-origin');
+      assert.equal(options.redirect,'manual');
+      return fetches===1?new Response('',{status:503}):new Response('<html></html>',{headers:{'content-type':'text/html'}});
+    }
+  });
+  runInContext(script,context);
+  async function nextProbe(){
+    const [id,task]=[...scheduled].find(([,task])=>task.ms!==8000);
+    scheduled.delete(id);task.fn();
+    await Promise.resolve();await Promise.resolve();await Promise.resolve();
+  }
+  await nextProbe();assert.equal(reloads,0);assert.equal(fetches,1);
+  await nextProbe();assert.equal(reloads,1);assert.equal(fetches,2);
+  assert.equal(scheduled.size,0);
+});

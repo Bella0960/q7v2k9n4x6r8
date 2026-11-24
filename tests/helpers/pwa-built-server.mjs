@@ -10,6 +10,7 @@ export async function startPwaBuiltServer({root='dist'}={}) {
     return {root:absolute,release:JSON.parse(fs.readFileSync(path.join(absolute,'pwa-release.json'),'utf8')).release};
   }
   let snapshot=readSnapshot(root);
+  const unavailableRoutes=new Set();
   const types={'.html':'text/html; charset=utf-8','.js':'text/javascript; charset=utf-8','.mjs':'text/javascript; charset=utf-8','.css':'text/css; charset=utf-8','.json':'application/json; charset=utf-8','.svg':'image/svg+xml','.png':'image/png','.webp':'image/webp','.jpg':'image/jpeg','.woff2':'font/woff2','.woff':'font/woff'};
   const server=http.createServer((req,res)=>{
     const {root,release}=snapshot;
@@ -17,6 +18,7 @@ export async function startPwaBuiltServer({root='dist'}={}) {
     try {url=new URL(req.url||'/','http://127.0.0.1');pathname=decodeURIComponent(url.pathname);}
     catch {res.writeHead(400).end();return;}
     if (pathname==='/')pathname='/index.html';
+    if (unavailableRoutes.has(pathname)) {res.destroy();return;}
     const file=path.resolve(root,'.'+pathname);
     if (!file.startsWith(root+path.sep)) {res.writeHead(403).end();return;}
     const ext=path.extname(file).toLowerCase();
@@ -39,6 +41,9 @@ export async function startPwaBuiltServer({root='dist'}={}) {
   return {origin:'http://127.0.0.1:'+server.address().port,
     get release(){return snapshot.release;},
     switchRoot(dir){snapshot=readSnapshot(dir);return snapshot.release;},
+    setRouteUnavailable(pathname,unavailable){
+      if(unavailable)unavailableRoutes.add(pathname);else unavailableRoutes.delete(pathname);
+    },
     close:()=>new Promise(resolve=>{
     server.close(resolve);server.closeAllConnections?.();
   })};

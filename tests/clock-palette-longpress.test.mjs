@@ -480,6 +480,9 @@ async function runEditModeDrag(browser, origin) {
   const layoutHasClock = !!savedLayout && reasoningLayout(savedLayout);
   const stillEditing = await page.evaluate(() => document.body.classList.contains('home-editing'));
   const paletteOpen = await page.evaluate(() => !!document.querySelector('.clock-palette'));
+  if (!(moved(before, after) && stillEditing && !paletteOpen)) {
+    console.log('CLOCK_DRAG_FLAGS:' + Number(moved(before, after)) + ':' + Number(stillEditing) + ':' + Number(paletteOpen));
+  }
   check('edit mode drag large clock',
     moved(before, after) && stillEditing && !paletteOpen,
     { before, after, editing: stillEditing, palette: paletteOpen });
