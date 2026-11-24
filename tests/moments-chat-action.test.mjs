@@ -58,8 +58,31 @@ test('menu and chat use one author-validated publisher with separate IDs', () =>
   const storage = {getItem:k=>values[k]??null,setItem:(k,v)=>values[k]=v};
   const getCharacters=()=>[{id:'A',name:'同名'},{id:'B',name:'同名'}];
   const opts={roleId:'B',requestId:'r1',content:'阅读',storage,getCharacters};
-  for(const source of ['menu','chat','auto']) { action.publish({...opts,source}); action.publish({...opts,source}); }
+  for(const source of ['menu','chat']) { action.publish({...opts,source}); action.publish({...opts,source}); }
   const posts=JSON.parse(values.moments);
-  assert.equal(posts.length,3);
+  assert.equal(posts.length,2);
   assert.ok(posts.every(x=>x.authorId==='B'));
+});
+
+test('write-time opt-in and context validation stop stale actions', () => {
+  const values = {chat_auto_moment_A:'true'};
+  const storage = {getItem:k=>values[k]??null,setItem:(k,v)=>values[k]=v};
+  const getCharacters=()=>[{id:'A',name:'A'}];
+  const opts={roleId:'A',requestId:'a1',content:'阅读',source:'auto',storage,getCharacters};
+  action.publish(opts);
+  action.publish(opts);
+  assert.throws(()=>action.publish({...opts,requestId:'a2'}));
+  values.chat_auto_moment_A='false';
+  assert.throws(()=>action.publish({...opts,requestId:'a3'}));
+  assert.throws(()=>action.publish({...opts,source:'chat',canPublish:()=>false}));
+  assert.equal(JSON.parse(values.moments).length,1);
+});
+test('no Web Locks cannot silently run automatic publication', async () => {
+  let failed=false;
+  try { await action.publishLocked({source:'auto'}); } catch { failed=true; }
+  assert.ok(failed);
+});
+test('explicit and partial action markers are stripped from unrelated replies', () => {
+  assert.equal(action.stripAuto('回复[朋友圈动态:正文]'),'回复');
+  assert.equal(action.stripAuto('回复[朋友圈动'),'回复');
 });
