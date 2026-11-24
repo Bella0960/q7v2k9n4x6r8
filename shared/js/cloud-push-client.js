@@ -615,8 +615,8 @@
         if (role) {
           var rawName = String(role.nickname || role.name || '').trim();
           if (Array.from(rawName).length <= 48 &&
-              !/[<>\\u0000-\\u001F\\u007F]/.test(rawName) &&
-              !/(?:https?:\\/\\/|www\\.|\\b(?:[a-z0-9-]+\\.)+(?:com|net|org|io|app|dev|cn|me|xyz)\\b)/i.test(rawName)) {
+              !/[<>\u0000-\u001F\u007F]/.test(rawName) &&
+              !/(?:https?:\/\/|www\.|\b(?:[a-z0-9-]+\.)+(?:com|net|org|io|app|dev|cn|me|xyz)\b)/i.test(rawName)) {
             characterName = rawName;
           }
         }
