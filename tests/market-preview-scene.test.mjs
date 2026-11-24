@@ -116,7 +116,7 @@ test('opening preview does not apply a theme; applying requires a second explici
 
 
 test('expanded theme tab renders native original catalogue instead of replacing it',()=>{
- assert.match(storefrontSource,/nativeThemes\(\)/);
+ assert.match(storefrontSource,/gallery\(api\.themes\)/,'all original theme options remain in actual storefront');
  assert.match(storefrontSource,/nativeArt\(t\)/);
  assert.match(storefrontSource,/function themes\(\)/);
  assert.match(html,/nativeThemes:renderThemes,\s*nativeArt:themeArt/);

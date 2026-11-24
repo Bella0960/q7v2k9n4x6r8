@@ -2,8 +2,26 @@
 import {chromium} from 'playwright';
 import assert from 'node:assert/strict';
 import {mkdir} from 'node:fs/promises';
-const base=process.env.BASE_URL||'http://127.0.0.1:3000';
-const browser=await chromium.launch();
+import {createServer} from 'node:http';
+import {readFileSync} from 'node:fs';
+import {resolve,dirname,extname,sep} from 'node:path';
+import {fileURLToPath} from 'node:url';
+const root=resolve(dirname(fileURLToPath(import.meta.url)),'..');
+let localServer=null;
+let base=process.env.BASE_URL||'';
+if(!base){
+ localServer=createServer((req,res)=>{
+  try{
+   const path=resolve(root,'.'+decodeURIComponent(req.url.split('?')[0]));
+   if(!path.startsWith(root+sep))throw Error('outside test root');
+   res.setHeader('Content-Type',({'.html':'text/html','.js':'text/javascript','.css':'text/css','.webp':'image/webp','.png':'image/png','.svg':'image/svg+xml','.json':'application/json'})[extname(path)]||'application/octet-stream');
+   res.end(readFileSync(path));
+  }catch{res.statusCode=404;res.end();}
+ });
+ await new Promise(resolve=>localServer.listen(0,'127.0.0.1',resolve));
+ base='http://127.0.0.1:'+localServer.address().port;
+}
+const browser=await chromium.launch({headless:true,args:['--no-sandbox','--disable-dev-shm-usage']});
 await mkdir('test-results/atmosphere',{recursive:true});
 try {
  for(const width of [375,390,430,1280]){
@@ -79,9 +97,10 @@ try {
   await page.locator('[data-action="theme-apply"][data-id="wechat"]').click();
   await page.goto(base+'/chat/chat/chat.html');
   assert.equal(await shell.getAttribute('data-chat-theme-preset'),'wechat');
-  assert.equal(await shell.getAttribute('data-chat-list-theme'),'editorial');
+  assert.equal(await shell.getAttribute('data-chat-list-theme'),null,'full WeChat theme suppresses the separate editorial overlay');
+  assert.equal(await page.evaluate(()=>localStorage.getItem('maomao_chat_list_theme_preset_v1')),'editorial','preference survives whole-theme switch');
   assert.equal(await page.getByRole('button',{name:'打开会话侧栏'}).count(),0);
   await context.close();
  }
  console.log('Atmosphere mobile/desktop acceptance passed at 375, 390, 430 and 1280px.');
-}finally{await browser.close();}
+}finally{await browser.close();if(localServer)await new Promise(resolve=>localServer.close(resolve));}

@@ -96,7 +96,10 @@ for(const width of [320,375,390,430]){
 
  await page.goto(base+'/theme-store/theme-store.html');
  // Wait for the real storefront homepage to mount its preview entry.
- await assertEntryButton(page);
+ const entry=await assertEntryButton(page);
+ // Align the expected scroll position with a real user's already visible entry.
+ // Playwright's click auto-scroll is not an application-level scroll jump.
+ await entry.scrollIntoViewIfNeeded();
  await installIdbCounter(page);
  const entryButtonCount=await page.locator('[data-action="market-preview"]').count();
 

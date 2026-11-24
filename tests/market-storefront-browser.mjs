@@ -65,7 +65,11 @@ for(const width of [320,375,390,430,1280]){
  assert.ok(artBox.width>=themeBox.width*.84,'individual art is not squeezed into a narrow half-column');
  assert.equal(await page.locator('.chat-list-theme-grid .product-card').count(),1,'existing independent Messages list theme stays available');
  for(const id of ['wechat','imessage','qq','silver-butterfly','atmosphere','default']){
-  await page.locator('.sf-theme-cover[data-sf="detail"][data-id="'+id+'"]').click();await page.locator('[data-sf="apply-theme"]').click();await page.locator('[data-sf="confirm-apply-theme"]').click();
+  await page.locator('.sf-theme-cover[data-sf="detail"][data-id="'+id+'"]').click();
+  assert.equal(await page.locator('.sf-dialog [data-sf="apply-theme"]').count(),1,'detail offers apply for '+id);
+  await page.locator('.sf-dialog [data-sf="apply-theme"]').click();
+  assert.equal(await page.locator('.sf-dialog [data-sf="confirm-apply-theme"]').count(),1,'confirmation offered for '+id);
+  await page.locator('.sf-dialog [data-sf="confirm-apply-theme"]').click();
   assert.equal(await page.evaluate(()=>ChatBeauty.getThemePreset()),id);
   assert.equal(await page.locator('.sf-theme-item[data-theme-id="'+id+'"] .sf-theme-current').count(),1,'applied status must be visible');
   assert.equal(await page.evaluate(()=>document.activeElement?.getAttribute('data-id')),id,'dialog focus returns to original theme after rerender');
