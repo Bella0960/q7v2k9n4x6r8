@@ -189,10 +189,11 @@ test('已绑定的页面 meta / 作用域不一致时拒绝抽卡、收藏与付
 });
 
 test('Worker 与客户端作用域接口保持相同的注入版本和请求账号绑定',()=>{
-  assert.match(workerSource,/mao-account-scope\.js\?v=3/);
-  assert.doesNotMatch(workerSource,/mao-account-scope\.js\?v=2/);
-  assert.match(serviceWorkerSource,/mao-account-scope\.js\?v=3/);
-  assert.doesNotMatch(serviceWorkerSource,/mao-account-scope\.js\?v=2/);
+  const workerVersions = [...new Set([...workerSource.matchAll(/mao-account-scope\.js\?v=(\d+)/g)].map(m => Number(m[1])))];
+  const shellVersions = [...new Set([...serviceWorkerSource.matchAll(/mao-account-scope\.js\?v=(\d+)/g)].map(m => Number(m[1])))];
+  assert.equal(workerVersions.length,1,'Worker must inject exactly one account-scope generation');
+  assert.ok(workerVersions[0]>=4,'must retain the current account-session safety baseline');
+  assert.deepEqual(shellVersions,workerVersions,'Worker and Service Worker must reference the same account-scope generation');
   assert.match(appSource,/ACCOUNT_CONTEXT_CHANGED/);
   assert.match(scopeSource,/headers\.set\('x-mao-account-context', accountId\)/);
   assert.match(fontLoaderSource,/fontAssetPath \+= encodeURIComponent\(maoScope\.accountId\)/);
