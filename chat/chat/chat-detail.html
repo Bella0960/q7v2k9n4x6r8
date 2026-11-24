@@ -27,7 +27,7 @@
     <script src="../../shared/js/phone/chat-context-policy.js?v=20261107vision1"></script>
     <script src="../../shared/js/phone/chat-presence-policy.js?v=20261102v17"></script>
     <script src="../../shared/js/phone/role-public-timeline.js?v=20261102v1"></script>
-    <script src="../../shared/js/phone/moments-chat-action.js?v=20261124v3"></script>
+    <script src="../../shared/js/phone/moments-chat-action.js?v=20261124v4"></script>
     <script src="../../shared/js/phone/group-chat-policy.js?v=20261102v5"></script>
     <script src="../../shared/js/chat-notifier.js?v=20261102v3"></script>
     <style>
@@ -6664,7 +6664,7 @@
                             try {
                                 if (!singleChatTurnIsCurrent(historyList) ||
                                     String(currentCharacter.id) !== momentsAction.roleId) throw new Error('角色已切换');
-                                window.MomentsChatAction.publish({
+                                await window.MomentsChatAction.publishLocked({
                                     roleId: momentsAction.roleId,
                                     requestId: momentsAction.requestId,
                                     content: momentContent,
@@ -6814,7 +6814,7 @@
                             window.MomentsChatAction.autoEligible(localStorage, autoMomentsRoleId, Date.now())) {
                             try {
                                 var autoMomentRequestId = String(failureTarget.mid);
-                                window.MomentsChatAction.publish({
+                                await window.MomentsChatAction.publishLocked({
                                     roleId: autoMomentsRoleId, requestId: autoMomentRequestId, source: 'auto',
                                     content: autoMomentContent, storage: localStorage,
                                     getCharacters: function () { return window.PhoneStorage.getCharacters(); }
