@@ -81,8 +81,12 @@ function startServer() {
         res.writeHead(403).end('Forbidden');
         return;
       }
-      const data = await readFile(filePath);
-      res.writeHead(200, { 'Content-Type': MIME[path.extname(filePath).toLowerCase()] || 'application/octet-stream' });
+      const ext = path.extname(filePath).toLowerCase();
+      let data = await readFile(filePath);
+      // Match the real Vite build substitution in HTML fixtures; do not alter
+      // JS assets, credentials, source UI, or the production cache strategy.
+      if (ext === '.html') data = Buffer.from(data.toString('utf8').replaceAll('%BASE_URL%', '/'));
+      res.writeHead(200, { 'Content-Type': MIME[ext] || 'application/octet-stream' });
       res.end(data);
     } catch {
       res.writeHead(404, { 'Content-Type': 'text/plain; charset=utf-8' }).end('Not found');
