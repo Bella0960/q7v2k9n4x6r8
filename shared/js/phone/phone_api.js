@@ -70,7 +70,6 @@
             signal: controller.signal,
             body: JSON.stringify(body)
         }).then(function (response) {
-            clearTimeout(timer);
             if (!response.ok) {
                 return response.text().then(function (txt) {
                     var e = new Error('HTTP ' + response.status + ' ' + txt.slice(0, 200));
@@ -85,12 +84,13 @@
             log('success', model, start);
             return text;
         }).catch(function (err) {
-            clearTimeout(timer);
             if (err && err.name === 'AbortError') {
                 err = new Error('请求超时（' + timeoutMs + 'ms）');
             }
             log('error', model, start, err && err.message ? err.message : String(err));
             throw err;
+        }).finally(function () {
+            clearTimeout(timer);
         });
     };
 

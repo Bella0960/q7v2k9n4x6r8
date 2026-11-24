@@ -86,3 +86,24 @@ test('explicit and partial action markers are stripped from unrelated replies', 
   assert.equal(action.stripAuto('回复[朋友圈动态:正文]'),'回复');
   assert.equal(action.stripAuto('回复[朋友圈动'),'回复');
 });
+
+test('Moments completion times out while reading a stalled response and does not retry', async () => {
+  let calls = 0;
+  const window = {
+    PhoneStorage: { getApiConfig: () => ({ apiKey: 'mock-only' }), pushApiLog() {} }
+  };
+  vm.runInNewContext(fs.readFileSync(new URL('../shared/js/phone/phone_api.js', import.meta.url), 'utf8'), {
+    window, AbortController, DOMException, setTimeout, clearTimeout,
+    async fetch(_url, { signal }) {
+      calls++;
+      return {
+        ok: true,
+        json: () => new Promise((_, reject) => {
+          signal.addEventListener('abort', () => reject(signal.reason), { once: true });
+        })
+      };
+    }
+  });
+  await assert.rejects(window.PhoneAPI.complete({ user: '生成一条动态', timeoutMs: 20 }), /请求超时/);
+  assert.equal(calls, 1);
+});
