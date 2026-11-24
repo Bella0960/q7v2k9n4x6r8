@@ -6270,15 +6270,19 @@
 
             // Explicit Moments requests reuse this chat turn's model call.
             // Capture the actual role and persisted user message, never use the global selected role.
-            var momentsAction = (!isGroupChat && !isRegen && !contextOnly && !silent &&
+            var momentRetrySource = retryTarget && contextOnly && historyList.find(function (item) {
+                return item && item.role === 'user' && String(item.mid || '') === String(retryTarget.mid || '');
+            });
+            var momentRequestText = momentRetrySource ? momentRetrySource.text : text;
+            var momentsAction = (!isGroupChat && !isRegen && (!contextOnly || momentRetrySource) && !silent &&
                 presenceMode === 'online' && window.MomentsChatAction &&
                 currentCharacter && currentCharacter.id != null && failureTarget &&
-                window.MomentsChatAction.requestsPost(text)) ? {
+                window.MomentsChatAction.requestsPost(momentRequestText)) ? {
                     roleId: String(currentCharacter.id),
                     requestId: String((retryTarget && retryTarget.mid) || failureTarget.mid || '')
                 } : null;
             if (momentsAction && momentsAction.requestId) {
-                systemPrompt += '\n\n【本轮朋友圈发布动作，覆盖普通回复格式】用户明确要求当前虚构角色发动态。只输出一条 [朋友圈动态:动态正文]，正文为角色自己的日常、最多120字。不得包含用户私人资料、私聊原文、真实地址、联系方式、密钥、图片链接或其他动作标记。不要在正文之外说已经发布；系统会在实际保存后展示结果。';
+                systemPrompt += '\n\n' + window.MomentsChatAction.postPrompt();
             } else momentsAction = null;
 
             // 构造 OpenAI 兼容格式 messages 数组 (system + 历史记录)
@@ -6665,7 +6669,7 @@
                                 if (typeof showToast === 'function') showToast('朋友圈发布失败');
                             }
                         } else {
-                            fullText = '这次未生成可发布的朋友圈，请重试。';
+                            fullText = (streamResult.ok && window.MomentsChatAction.parseNoPost(stripInternalReasoning(fullText))) || '这次未生成可发布的朋友圈，请重试。';
                         }
                     }
                     // ---- 标记剥离 → 清洗 → 落库 → 重渲染（成功与中断保文共用同一套收尾） ----
