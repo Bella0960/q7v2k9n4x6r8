@@ -512,6 +512,7 @@ self.addEventListener('fetch', event => {
 // Android/iOS Home Screen Web Push. No remote URL is trusted or stored in
 // a notification: the app constructs a fixed same-origin route only on click.
 // Note: Android/iOS may independently display a browser/site attribution label.
+// 只允许点击时在 Service Worker 内生成固定的本站同源路由。
 function pushTargetUrl(data) {
   var scopeUrl = new URL(self.registration.scope);
   var kind = String(data && data.kind || '');
@@ -537,11 +538,12 @@ async function pushAccountActive(accountId) {
     });
   } catch (error) { return false; }
   if (!response || !response.ok) return false;
-  var payload;
-  try { payload = await response.json(); }
+  var authPayload;
+  try { authPayload = await response.json(); }
   catch (error) { return false; }
-  return !!payload && !!payload.account &&
-    payload.account.id === accountId && payload.account.status === 'active';
+  var currentAccount = authPayload && authPayload.account;
+  return !!currentAccount && currentAccount.id === accountId &&
+    currentAccount.status === 'active';
 }
 
 async function showUnlinkedTestNotification() {
