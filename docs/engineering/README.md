@@ -4,11 +4,15 @@
 
 **Original baseline date:** 2026-11-03  
 **Latest repository-tree inventory:** 2026-11-11 (main SHA `f0cf6c74f0272219ebe4aa9e5a8c21fea7e49273`)  
-**Repository:** Bella0960/MAOMAO  
+**Repository:** Bella0960/q7v2k9n4x6r8 (public; verified 2026-11-24)  
 **Default branch:** main  
 **Architecture decision:** Keep the existing native HTML/CSS/JavaScript multi-page application. Improve its boundaries and reliability incrementally; do not rewrite it.
 
 ## Start here
+
+> 当前发布流程以 [2026-11-24 发布规范](RELEASE_POLICY.md) 为准；旧日期的版本、部署方式和测试范围不得当成现行指令。
+
+- **RELEASE_POLICY.md** — current authoritative release and QA migration policy.
 
 - **AGENTS.md** — mandatory rules for every contributor.
 - **PROJECT_ARCHITECTURE.md** — project map, current architecture, app inventory, deployment facts.
@@ -41,7 +45,7 @@ The recursive Git tree for main was complete (not truncated) at this baseline:
 | Main application shape | Native multi-page web app |
 | Runtime/framework | Native HTML/CSS/JS; Vite is the build tool |
 | Current delivery | Static web assets deployed through Cloudflare Workers |
-| User-data cloud backend | Not configured in wrangler.jsonc |
+| User-data cloud backend (historical snapshot) | Not configured at the 2026-11-11 baseline; current main has CLOUD_DB binding |
 
 The tree snapshot is a point-in-time measurement for the main SHA listed above. The recursive GitHub tree response was complete (not truncated). Re-run the inventory when making a release or asset optimization decision.
 
@@ -53,9 +57,9 @@ The tree snapshot is a point-in-time measurement for the main SHA listed above. 
 4. Chat history is still primarily stored as one serialized array per role/group in localStorage using chat_history_<id>. It is not yet a true IndexedDB-backed paginated conversation store.
 5. Several areas already use IndexedDB (wallpaper/media, local audio, diary photos, reading library, fonts), and a new maomao-assets media repository exists. The fact that a repository module exists does not mean every feature uses it.
 6. settings/js/backup.js now includes maomao-assets v2 (assets/blobs/refs/image_records), with Blob size limits, atomic whole-database exclusion on skipped media, and clear-on-restore behavior. tests/media-backup.test.mjs covers round-trip and overflow scenarios, but execution is still NOT VERIFIED. The separate maomao-media-store audio store still excludes its blob field; track local music backup semantics under DATA-003.
-7. Cloudflare deployment builds the website and deploys dist as static assets. wrangler.jsonc currently specifies the Worker name, compatibility date, and assets directory; it does not configure D1, R2, user authentication, or account sync.
+7. Current main `wrangler.jsonc` defines Worker `mao`, `ASSETS`, and the `CLOUD_DB` Durable Object binding. The prior static-only description is obsolete; verify current runtime and identity bindings before release. See RELEASE_POLICY.md.
 8. APK workflow is manual-only now. Old APK cleanup has a separate manual workflow which deletes only artifacts named MAOMAO-Android-APK. The cleanup workflow must still be manually run by a repository maintainer. A repository-scoped cleanup cannot clear artifacts owned by other repositories in the same account/organization.
-9. package.json lint currently prints “Lint passed”; it is not a real lint check. package.json does not define a generic npm test script, while npm-publish-github-packages.yml invokes npm test on release. Treat that release workflow as unverified and do not create a release until it is reviewed.
+9. The project is private as an npm package (`package.json` private=true), not an npm distribution. Do not publish packages. The obsolete package-publish workflow is retired by this cleanup.
 10. Existing chat tests are largely static-contract and pure-policy tests. They do not replace real browser/mobile acceptance.
 
 ## Repository size is not Actions Artifact storage

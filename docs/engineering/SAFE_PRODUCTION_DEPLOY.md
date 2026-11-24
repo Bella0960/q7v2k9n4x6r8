@@ -6,7 +6,7 @@ wallet and push. The previous \`main/worker.js\` contained only static
 deploying that configuration would have silently destroyed live API routing.
 
 This change restores **exactly** the 29 currently deployed source modules to the
-private repository without fetching or committing any runtime secrets, accounts,
+source repository (now public; this paragraph describes a historical restoration) without fetching or committing any runtime secrets, accounts,
 passwords or database rows. 26 modules were independently checked against the
 existing integration branch. 3 changed modules were recovered from the *currently
 running* production script version and checked against the live code fingerprint.
