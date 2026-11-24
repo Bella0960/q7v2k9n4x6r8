@@ -35,6 +35,13 @@ try{
    if(!localStorage.getItem('maomao_reader_settings_v1'))localStorage.setItem('maomao_reader_settings_v1',JSON.stringify({comments:true,commentRoleId:'r1',mode:'scroll'}));
   });
   await page.goto(base+'/library/library.html#shelf');
+  await page.locator('.tab-item[data-route="home"]').click();
+  assert.doesNotMatch(await page.locator('#homeView').innerText(),/\bMAOMAO\b|MM[—–-]\d+/i);
+  await page.locator('.tab-item[data-route="settings"]').click();
+  assert.doesNotMatch(await page.locator('#settingsView').innerText(),/\bMAOMAO\b|MM[—–-]\d+/i);
+  const fonts=await page.locator('#settingsView .set-label').evaluateAll(els=>els.map(e=>{const c=getComputedStyle(e);return [c.fontFamily,c.fontSize,c.fontWeight].join('|')}));
+  assert.equal(new Set(fonts).size,1);
+  await page.locator('.tab-item[data-route="shelf"]').click();
   await page.locator('#shelfGrid .book-card').first().waitFor();
   await page.locator('#importFile').setInputFiles({name:'QA fixture.txt',mimeType:'text/plain',buffer:Buffer.from('第一章 起点\n　　第一段测试。\n　　第二段测试。\n第二章 后续\n　　未读内容测试。')});
   await page.locator('#importDialog.is-open').waitFor();
@@ -43,6 +50,34 @@ try{
   const book=page.locator('#shelfGrid .book-card').filter({hasText:'QA fixture'});
   await book.waitFor();await book.click();
   await page.locator('#readerView[aria-hidden=false]').waitFor();
+  const openPrefs=async()=>{
+   if(!await page.locator('#readerControls').evaluate(el=>el.classList.contains('is-open'))){
+    await page.locator('#readerBody').click({position:{x:120,y:100}});
+   }
+   await page.locator('#ctrlSet').click();
+   await page.locator('#readSettings.is-open').waitFor();
+  };
+  await openPrefs();
+  const prefs=page.locator('#coReadPreferences');
+  assert.equal(await prefs.evaluate(e=>e.open),false);
+  assert.equal(await page.locator('#coReadInterval').isVisible(),false);
+  assert.equal(await page.locator('#coReadLimit').isVisible(),false);
+  await prefs.locator('summary').click();
+  await page.locator('#coReadLimit').selectOption('10');
+  await page.locator('#coReadInterval').selectOption('300');
+  assert.match(await page.locator('#coReadBudgetLabel').innerText(),/0\s*\/\s*10/);
+  const alignment=await page.locator('#coReadLimit').evaluate(e=>{const a=e.getBoundingClientRect(),r=e.closest('.rs-row').getBoundingClientRect();return {right:r.right-a.right,scroll:e.closest('.rs-scroll').scrollWidth,client:e.closest('.rs-scroll').clientWidth};});
+  assert.ok(Math.abs(alignment.right)<3);
+  assert.ok(alignment.scroll<=alignment.client+1);
+  await page.locator('#sheetBackdrop').click({position:{x:10,y:10}});
+  await openPrefs();
+  assert.equal(await prefs.evaluate(e=>e.open),false);
+  await prefs.locator('summary').click();
+  assert.equal(await page.locator('#coReadLimit').inputValue(),'10');
+  assert.equal(await page.locator('#coReadInterval').inputValue(),'300');
+  await page.locator('#sheetBackdrop').click({position:{x:10,y:10}});
+  assert.equal(await page.evaluate(()=>window.mockRequests.length),0);
+
   const first=page.locator('.chapter-page[data-ch="0"] [data-paragraph-comment="0"]');
   const second=page.locator('.chapter-page[data-ch="0"] [data-paragraph-comment="1"]');
   await first.click();await page.locator('#generateParagraphComment').click();

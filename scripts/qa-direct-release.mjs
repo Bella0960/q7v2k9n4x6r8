@@ -30,7 +30,7 @@ const QA_DO = '4a10d3dab4e16639445f4afdb0b7e5e2462cf06894cb4ae85f0ac3cd3cdba101'
 const CORE_DO = 'dba114c7b0abd8e53d1d78e579924852b8e40907e50213634aeeaeb41ab51a98';
 const BRANCH = 'integration/qa-mobile-push-private-on-v156-20261124';
 // Release ONLY on the verified existing v156 QA Worker; never replace a newer QA build.
-const MOBILE_QA_APPROVED_PREVIOUS_VERSION = 'cb0634fb-3ea8-4831-8066-0cc8d4ee568c';
+const MOBILE_QA_APPROVED_PREVIOUS_VERSION = '67b7b338-5e22-4c5e-86e0-316b987713b7';
 const QA_SETUP_OPEN = 'isolated_authority';
 const QA_SETUP_CLOSED = 'disabled';
 const TESTS = [
