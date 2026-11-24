@@ -116,6 +116,13 @@ try {
       new PerformanceObserver(list => {
         for (const e of list.getEntries()) window.__longtasks.push(+e.duration.toFixed(2));
       }).observe({ entryTypes: ['longtask'] });
+      // Count rAF preview frames so a burst of synchronous inputs can be asserted to
+      // coalesce into one refresh instead of one frame per input. The unwrapped original
+      // is kept for the test's own wait-for-frame hops so they are not counted.
+      window.__rafCount = 0;
+      const origRaf = window.requestAnimationFrame.bind(window);
+      window.__origRaf = origRaf;
+      window.requestAnimationFrame = (cb) => origRaf((t) => { window.__rafCount++; cb(t); });
     });
 
     await page.goto(origin + '/theme-studio/theme-studio.html', { waitUntil: 'domcontentloaded' });
@@ -175,6 +182,24 @@ try {
       getComputedStyle(document.getElementById('previewSurface')).getPropertyValue('--p-list-item-radius').trim());
     assert.equal(radiusVar, '22px', width + 'px preview variable lands: ' + radiusVar);
 
+    // 3b. Coalescing: a synchronous burst of slider inputs schedules a single preview frame.
+    const rafBefore = await page.evaluate(() => window.__rafCount);
+    await page.evaluate(() => {
+      const input = document.querySelector('#edit-itemRadius');
+      input.focus();
+      for (let v = 23; v <= 27; v++) {
+        input.value = String(v);
+        input.dispatchEvent(new Event('input', { bubbles: true }));
+      }
+      input.dispatchEvent(new Event('change', { bubbles: true }));
+      input.dispatchEvent(new Event('blur', { bubbles: true }));
+    });
+    await page.evaluate(() => new Promise(r => window.__origRaf(() => window.__origRaf(r))));
+    const rafAfter = await page.evaluate(() => window.__rafCount);
+    assert.ok(rafAfter - rafBefore <= 1, width + 'px input burst coalesces to one preview frame, frames=' + (rafAfter - rafBefore));
+    snap = await snapshot(page);
+    assert.equal(snap.list.itemRadius, 27, width + 'px burst final draft value lands');
+
     // 4. First synthetic upload; record the asset id (draft only, not applied).
     await uploadCover(page, '#777777');
     await page.waitForFunction(() =>
@@ -207,17 +232,26 @@ try {
     await editRange(page, '#edit-itemRadius', '30');
     await page.evaluate(async () => {
       const assets = window.MAOMAOThemeStudioAssets;
-      const c = document.createElement('canvas'); c.width = 16; c.height = 12;
-      const x = c.getContext('2d'); x.fillStyle = '#333333'; x.fillRect(0, 0, 16, 12);
-      const blob = await new Promise(r => c.toBlob(r, 'image/png'));
-      const blobUrl = URL.createObjectURL(blob);
-      window.__thumbMock = { calls: 0, revokes: 0, assets: [], delay: 120, failOnce: false, deferred: null, blobUrl };
+      const makeUrl = async () => {
+        const c = document.createElement('canvas'); c.width = 16; c.height = 12;
+        const x = c.getContext('2d'); x.fillStyle = '#333333'; x.fillRect(0, 0, 16, 12);
+        const blob = await new Promise(r => c.toBlob(r, 'image/png'));
+        return URL.createObjectURL(blob);
+      };
+      const urlA = await makeUrl();
+      const urlB = await makeUrl();
+      window.__thumbMock = { calls: 0, revoked: Object.create(null), urls: [urlA, urlB], next: 0, assets: [], delay: 120, failOnce: false };
       assets.resolve = (id) => {
         window.__thumbMock.calls++;
         return new Promise((resolve) => {
           setTimeout(() => {
             if (window.__thumbMock.failOnce) { window.__thumbMock.failOnce = false; resolve(null); return; }
-            const asset = { url: blobUrl, revoke() { window.__thumbMock.revokes++; } };
+            const url = window.__thumbMock.urls[window.__thumbMock.next++ % window.__thumbMock.urls.length];
+            const asset = { url, revoke() {
+              if (window.__thumbMock.revoked[url]) return;
+              window.__thumbMock.revoked[url] = (window.__thumbMock.revoked[url] || 0) + 1;
+              URL.revokeObjectURL(url);
+            } };
             window.__thumbMock.assets.push(asset);
             resolve(asset);
           }, window.__thumbMock.delay);
@@ -249,13 +283,14 @@ try {
       return t ? t.style.backgroundImage : '';
     });
     assert.ok(thumbBg.includes('blob:'), width + 'px thumbnail shows a decoded blob URL: ' + thumbBg);
+    const thumbUrl = (thumbBg.match(/blob:[^")]+/) || [])[0];
     const decoded = await page.evaluate((url) => new Promise(res => {
       const img = new Image();
       img.onload = () => res(img.naturalWidth > 0);
       img.onerror = () => res(false);
       img.src = url;
-    }), await page.evaluate(() => window.__thumbMock.blobUrl));
-    assert.equal(decoded, true, width + 'px thumbnail blob URL decodes to an image');
+    }), thumbUrl);
+    assert.equal(decoded, true, width + 'px thumbnail blob URL decodes to an image: ' + thumbUrl);
 
     // 6b. Upload-in-flight style isolation: undoing the second upload restores the first
     //    image only; the unrelated radius edit survives; the second id does not leak.
@@ -283,6 +318,19 @@ try {
     await delay(100);
     roleSnap = await snapshot(page);
     assert.equal(roleSnap.bubble.myBubbleBg, '#bbbbbb', width + 'px role A draft still staged on return');
+    await page.selectOption('#bubbleScope', 'role-b');
+    await delay(100);
+    await editColor(page, '#edit-myBubbleBg', '#cccccc');
+    let roleBSnap = await snapshot(page);
+    assert.equal(roleBSnap.bubble.myBubbleBg, '#cccccc', width + 'px role B draft staged');
+    await page.selectOption('#bubbleScope', 'role-a');
+    await delay(100);
+    roleSnap = await snapshot(page);
+    assert.equal(roleSnap.bubble.myBubbleBg, '#bbbbbb', width + 'px role A draft isolated from role B');
+    await page.selectOption('#bubbleScope', 'role-b');
+    await delay(100);
+    roleBSnap = await snapshot(page);
+    assert.equal(roleBSnap.bubble.myBubbleBg, '#cccccc', width + 'px role B draft still staged on return');
     assert.deepEqual(await beautyKeys(page), [], width + 'px unsaved bubble draft writes no beauty scope');
 
     // 8. Back guard: cancelling stays on the workbench.
@@ -304,9 +352,12 @@ try {
 
     const longtasks = await page.evaluate(() => window.__longtasks);
     assert.deepEqual(pageErrors, [], width + 'px no runtime errors: ' + pageErrors.join('; '));
-    // Long tasks here are measured, not required to be zero: image decode / IDB writes
-    // happen in the shared repository (out of scope). Guard only against a frozen main
-    // thread (single task over 300 ms) and report the collected durations.
+    // Long tasks are measured, not certified as zero-thread-blocking: image decode / IDB
+    // writes happen in the shared repository (out of scope). The <=300 ms guard only
+    // rules out a frozen main thread; reported 203-217 ms tasks are decode/IDB batches
+    // and are NOT proof of a performance pass. Same-condition before/after baseline
+    // comparison against fixed PR #478 was not executed in this isolated context
+    // (NOT VERIFIED). Switch-batch responsiveness is tracked separately via switchTimes.
     assert.ok(longtasks.every(d => d <= 300), width + 'px long task over 300 ms: ' + JSON.stringify(longtasks));
     console.log('  longtasks@' + width + ':', JSON.stringify(longtasks));
     const medianSwitch = switchTimes.slice().sort((a, b) => a - b)[Math.floor(switchTimes.length / 2)];
@@ -341,9 +392,12 @@ try {
     await reopen.close();
   }
 
-  // R1 lease lifecycle (390px; the lease logic is viewport-agnostic): late completion
-  // after page hide is revoked and not cached; a failed resolve is retried; BFCache
-  // restore repaints the visible thumbnail; each lease URL is revoked at most once.
+  // R2 lease lifecycle (390px; viewport-agnostic): a stale late promise must not wipe a
+  // newer in-flight pending; post-hide URLs are really revoked and stop decoding; the
+  // current thumbnail + main-preview URLs still decode; null and rejection are both
+  // retried by call delta; drafts survive; BFCache restore uses a real
+  // PageTransitionEvent(persisted). A true back-forward navigation round-trip is NOT
+  // VERIFIED in this headless context.
   {
     const lc = await browser.newContext({ viewport: { width: 390, height: 844 }, isMobile: true, hasTouch: true });
     const lp = await lc.newPage();
@@ -358,71 +412,140 @@ try {
 
     await lp.evaluate(async () => {
       const assets = window.MAOMAOThemeStudioAssets;
-      const c = document.createElement('canvas'); c.width = 16; c.height = 12;
-      const x = c.getContext('2d'); x.fillStyle = '#444444'; x.fillRect(0, 0, 16, 12);
-      const blob = await new Promise(r => c.toBlob(r, 'image/png'));
-      const blobUrl = URL.createObjectURL(blob);
-      window.__lmock = { calls: 0, revokes: 0, assets: [], deferreds: [], failNext: false, blobUrl };
+      const makeUrl = async () => {
+        const c = document.createElement('canvas'); c.width = 16; c.height = 12;
+        const x = c.getContext('2d'); x.fillStyle = '#444444'; x.fillRect(0, 0, 16, 12);
+        const blob = await new Promise(r => c.toBlob(r, 'image/png'));
+        return URL.createObjectURL(blob);
+      };
+      const pool = []; for (let i = 0; i < 12; i++) pool.push(await makeUrl());
+      window.__lmock = {
+        calls: 0, revoked: Object.create(null), pool, next: 0, deferreds: [],
+        failNext: false, rejectNext: false, assets: []
+      };
       assets.resolve = () => {
         window.__lmock.calls++;
         if (window.__lmock.failNext) { window.__lmock.failNext = false; return Promise.resolve(null); }
-        let res;
-        const p = new Promise(r => { res = r; });
+        if (window.__lmock.rejectNext) { window.__lmock.rejectNext = false; return Promise.reject(new Error('mock reject')); }
+        let res; const p = new Promise(r => { res = r; });
         window.__lmock.deferreds.push(res);
         return p;
       };
+      window.__lmock.settle = (res) => {
+        const url = window.__lmock.pool[window.__lmock.next++ % window.__lmock.pool.length];
+        const state = { revoked: false };
+        const asset = { url, revoke() {
+          if (state.revoked) return;
+          state.revoked = true;
+          URL.revokeObjectURL(url);
+          window.__lmock.revoked[url] = (window.__lmock.revoked[url] || 0) + 1;
+        } };
+        window.__lmock.assets.push(asset);
+        res(asset);
+      };
     });
 
-    // Real synthetic upload; the thumbnail + main-preview resolves go through the mock.
+    const decodes = (url) => lp.evaluate((u) => new Promise(res => {
+      const img = new Image();
+      img.onload = () => res(img.naturalWidth > 0);
+      img.onerror = () => res(false);
+      img.src = u;
+    }), url);
+
+    // A1. Real synthetic upload; thumbnail + main-preview resolves hang in the mock.
     await uploadCover(lp, '#444444');
     await lp.waitForFunction(() =>
       /^as_[A-Z2-7]{32}$/.test(window.MAOMAOThemeStudio._draftSnapshot().list.coverImage),
       null, { timeout: 15000 });
     await delay(60);
+    const oldPending = await lp.evaluate(() => window.__lmock.deferreds.length);
+    assert.ok(oldPending >= 1, 'upload produced at least one pending resolve');
 
-    // Late completion after page hide: dispatch pagehide, then settle every pending
-    // resolve. Each late asset must be revoked once; none populates the cache.
-    const pendingBefore = await lp.evaluate(() => window.__lmock.deferreds.length);
+    // A2. Hide, then restore from BFCache: a fresh generation rebuilds while the old
+    // deferreds are still unresolved.
     await lp.evaluate(() => window.dispatchEvent(new Event('pagehide')));
-    await lp.evaluate(() => {
-      window.__lmock.deferreds.forEach(res => {
-        const asset = { url: window.__lmock.blobUrl, revoke() { window.__lmock.revokes++; } };
-        window.__lmock.assets.push(asset);
-        res(asset);
-      });
-      window.__lmock.deferreds = [];
-    });
-    await delay(80);
-    const lateRevokes = await lp.evaluate(() => window.__lmock.revokes);
-    assert.equal(lateRevokes, pendingBefore, 'each post-hide late lease is revoked once, revokes=' + lateRevokes + ' pending=' + pendingBefore);
+    await lp.evaluate(() => window.dispatchEvent(new PageTransitionEvent('pageshow', { persisted: true })));
+    await delay(60);
+    const callsAfterRestore = await lp.evaluate(() => window.__lmock.calls);
 
-    // Failure then retry: first resolve returns null (no cache entry), a later rebuild
-    // resolves successfully and the thumbnail repaints.
-    await lp.evaluate(() => { window.__lmock.failNext = true; });
-    await lp.click('[data-tab="detail"]');
-    await lp.click('[data-tab="list"]');
-    await delay(80);
+    // A3. Settle the stale old batch first. The stale callbacks must not trigger another
+    // resolve (no third resolve) and must not wipe the newer pending map.
+    await lp.evaluate((n) => {
+      const old = window.__lmock.deferreds.slice(0, n);
+      old.forEach(res => window.__lmock.settle(res));
+    }, oldPending);
+    await delay(60);
+    const callsAfterStale = await lp.evaluate(() => window.__lmock.calls);
+    assert.equal(callsAfterStale, callsAfterRestore, 'stale late resolve does not trigger a third resolve');
+
+    // A4. Stale post-hide URLs were really revoked and must no longer decode.
+    const staleUrls = await lp.evaluate((n) => window.__lmock.assets.slice(0, n).map(a => a.url), oldPending);
+    for (const url of staleUrls) {
+      assert.equal(await decodes(url), false, 'stale post-hide URL does not decode: ' + url);
+    }
+    const revokedCount = await lp.evaluate(() => Object.keys(window.__lmock.revoked).length);
+    assert.equal(revokedCount, staleUrls.length, 'each stale URL revoked exactly once');
+
+    // A5. Settle the fresh batch; current thumbnail and main-preview URLs decode.
     await lp.evaluate(() => {
-      window.__lmock.deferreds.forEach(res => res({ url: window.__lmock.blobUrl, revoke() { window.__lmock.revokes++; } }));
+      window.__lmock.deferreds.forEach(res => window.__lmock.settle(res));
       window.__lmock.deferreds = [];
     });
     await delay(120);
-    const retryCalls = await lp.evaluate(() => window.__lmock.calls);
-    assert.ok(retryCalls >= 2, 'failed resolve is retried, calls=' + retryCalls);
-
-    // BFCache restore: pageshow.persisted re-resolves the visible thumbnail from drafts.
-    await lp.evaluate(() => window.dispatchEvent(new Event('pageshow', { persisted: true })));
-    await delay(80);
-    await lp.evaluate(() => {
-      window.__lmock.deferreds.forEach(res => res({ url: window.__lmock.blobUrl, revoke() { window.__lmock.revokes++; } }));
-      window.__lmock.deferreds = [];
-    });
-    await delay(120);
-    const bfBg = await lp.evaluate(() => {
+    const thumbBg = await lp.evaluate(() => {
       const t = document.querySelector('#imageSlots .image-thumb');
       return t ? t.style.backgroundImage : '';
     });
-    assert.ok(bfBg.includes('blob:'), 'BFCache restore repaints thumbnail: ' + bfBg);
+    const thumbUrl = (thumbBg.match(/blob:[^")]+/) || [])[0];
+    assert.ok(thumbUrl, 'fresh thumbnail paints a blob URL: ' + thumbBg);
+    assert.equal(await decodes(thumbUrl), true, 'current thumbnail URL decodes: ' + thumbUrl);
+    const coverVar = await lp.evaluate(() =>
+      getComputedStyle(document.getElementById('previewSurface')).getPropertyValue('--p-list-cover-image').trim());
+    const mainUrl = (coverVar.match(/blob:[^")]+/) || [])[0];
+    assert.ok(mainUrl, 'main preview holds a blob URL: ' + coverVar);
+    assert.equal(await decodes(mainUrl), true, 'current main-preview URL decodes: ' + mainUrl);
+
+    // B1. Null resolve then retry, measured by call delta (not a cumulative >=2 guess).
+    // pagehide first drops the session lease cache so the failure path is actually hit.
+    const callsBeforeNull = await lp.evaluate(() => window.__lmock.calls);
+    await lp.evaluate(() => window.dispatchEvent(new Event('pagehide')));
+    await lp.evaluate(() => { window.__lmock.failNext = true; });
+    await lp.click('[data-tab="detail"]');
+    await lp.click('[data-tab="list"]');
+    await delay(60);
+    await lp.click('[data-tab="detail"]');
+    await lp.click('[data-tab="list"]');
+    await delay(60);
+    await lp.evaluate(() => {
+      window.__lmock.deferreds.forEach(res => window.__lmock.settle(res));
+      window.__lmock.deferreds = [];
+    });
+    await delay(120);
+    const nullDelta = await lp.evaluate((base) => window.__lmock.calls - base, callsBeforeNull);
+    assert.ok(nullDelta >= 2, 'null failure is retried, delta=' + nullDelta);
+    let draft = await lp.evaluate(() => window.MAOMAOThemeStudio._draftSnapshot().list.coverImage);
+    assert.ok(/^as_[A-Z2-7]{32}$/.test(draft), 'cover draft survives a null resolve');
+
+    // B2. Rejection then retry; a rejected resolve must leave the draft intact.
+    const callsBeforeRej = await lp.evaluate(() => window.__lmock.calls);
+    await lp.evaluate(() => window.dispatchEvent(new Event('pagehide')));
+    await lp.evaluate(() => { window.__lmock.rejectNext = true; });
+    await lp.click('[data-tab="detail"]');
+    await lp.click('[data-tab="list"]');
+    await delay(60);
+    await lp.click('[data-tab="detail"]');
+    await lp.click('[data-tab="list"]');
+    await delay(60);
+    await lp.evaluate(() => {
+      window.__lmock.deferreds.forEach(res => window.__lmock.settle(res));
+      window.__lmock.deferreds = [];
+    });
+    await delay(120);
+    const rejDelta = await lp.evaluate((base) => window.__lmock.calls - base, callsBeforeRej);
+    assert.ok(rejDelta >= 2, 'rejection is retried, delta=' + rejDelta);
+    draft = await lp.evaluate(() => window.MAOMAOThemeStudio._draftSnapshot().list.coverImage);
+    assert.ok(/^as_[A-Z2-7]{32}$/.test(draft), 'cover draft survives a rejection');
+
     assert.deepEqual(lerr, [], 'lease lifecycle context has no runtime errors: ' + lerr.join('; '));
     await lc.close();
   }
