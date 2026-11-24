@@ -1,6 +1,6 @@
 {
   "$schema": "../node_modules/wrangler/config-schema.json",
-  "name": "maomao-push-android-smoke",
+  "name": "isolated-android-notification-smoke",
   "main": "./qa/android-lockscreen-worker.js",
   "compatibility_date": "2026-10-27",
   "compatibility_flags": [
