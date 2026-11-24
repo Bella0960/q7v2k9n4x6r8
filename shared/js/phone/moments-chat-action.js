@@ -96,8 +96,15 @@
         return { text: stripAuto(text).trim(), content: content };
     }
     function stripAuto(value) {
-        return String(value || '').replace(/\[(?:自主朋友圈|朋友圈动态|不发布朋友圈)[:：][^\]]*(?:\]|$)/g, '')
-            .replace(/\[(?:自(?:主(?:朋(?:友(?:圈)?)?)?)?|朋(?:友(?:圈(?:动(?:态)?)?)?)?|不(?:发(?:布(?:朋(?:友(?:圈)?)?)?)?)?)?$/g, '');
+        var text = String(value || '').replace(/\[(?:自主朋友圈|朋友圈动态|不发布朋友圈)[:：][^\]]*(?:\]|$)/g, '');
+        var tail = text.lastIndexOf('[');
+        if (tail >= 0) {
+            var prefix = text.slice(tail + 1);
+            if (['自主朋友圈','朋友圈动态','不发布朋友圈'].some(function (marker) {
+                return marker.indexOf(prefix) === 0;
+            })) text = text.slice(0, tail);
+        }
+        return text;
     }
     root.MomentsChatAction = { requestsPost: requestsPost, resolveRole: resolveRole, postPrompt: postPrompt, parsePost: parsePost, parseNoPost: parseNoPost, autoEligible: autoEligible, autoPrompt: autoPrompt, extractAuto: extractAuto, stripAuto: stripAuto, publish: publish, publishLocked: publishLocked };
 })(typeof window !== 'undefined' ? window : globalThis);
