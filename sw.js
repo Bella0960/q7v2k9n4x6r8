@@ -299,6 +299,73 @@ self.addEventListener('message', event => {
 
 // Retry only idempotent, same-origin document GETs after a transport failure.
 // Never substitute private HTML or retry an authoritative authorization response.
+// The recovery document contains no private data. Probe the exact original
+// URL even when the OS still reports online (e.g. a transient Wi-Fi failure).
+// Only the Worker can authorize the next navigation; never render a cached shell.
+function recoverProtectedPage() {
+  const button = document.getElementById('retryConnection');
+  const status = document.getElementById('connectionStatus');
+  const delays = [1500, 3500, 7000, 12000];
+  let attempts = 0, timer = null, active = null, leaving = false;
+  function schedule() {
+    if (leaving || active || timer !== null || navigator.onLine === false) return;
+    if (attempts >= delays.length) {
+      status.textContent = '暂时无法连接，原有账号和数据已保留。可点击重新连接。';
+      return;
+    }
+    timer = setTimeout(() => { timer = null; probe(); }, delays[attempts]);
+  }
+  async function probe() {
+    if (leaving || active || navigator.onLine === false) return;
+    if (timer !== null) { clearTimeout(timer); timer = null; }
+    attempts++;
+    const controller = new AbortController();
+    active = controller;
+    button.disabled = true;
+    status.textContent = '正在确认连接…';
+    const deadline = setTimeout(() => controller.abort(), 8000);
+    try {
+      const response = await fetch(location.href, {
+        cache: 'no-store', credentials: 'same-origin', redirect: 'manual', signal: controller.signal
+      });
+      if (!leaving && (response.type === 'opaqueredirect' ||
+          (response.ok && /text\/html/i.test(response.headers.get('content-type') || '')))) {
+        leaving = true;
+        location.reload();
+        return;
+      }
+    } catch (_) {
+      // No logout or data/cache mutation on transport failure.
+    } finally {
+      clearTimeout(deadline);
+      active = null;
+      if (!leaving) {
+        button.disabled = false;
+        status.textContent = '正在自动恢复连接，原有账号和数据已保留。';
+        schedule();
+      }
+    }
+  }
+  function retryNow() {
+    if (leaving || active) return;
+    attempts = 0;
+    if (timer !== null) { clearTimeout(timer); timer = null; }
+    if (navigator.onLine === false) {
+      status.textContent = '当前网络暂不可用，恢复后将自动重新连接。';
+      return;
+    }
+    probe();
+  }
+  button.addEventListener('click', retryNow);
+  window.addEventListener('online', retryNow);
+  window.addEventListener('pagehide', () => {
+    leaving = true;
+    if (timer !== null) clearTimeout(timer);
+    if (active) active.abort();
+  }, { once: true });
+  schedule();
+}
+
 async function fetchProtectedNavigation(req) {
   let lastError;
   for (let attempt = 0; attempt < 2; attempt++) {
@@ -480,10 +547,10 @@ self.addEventListener('fetch', event => {
           '<title>暂时无法连接</title><body style="margin:0;padding:12vh 8vw;background:#fafafa;color:#333;' +
           'font:15px/1.8 -apple-system,BlinkMacSystemFont,sans-serif">' +
           '<h1 style="font-size:19px;font-weight:500">连接暂时中断</h1>' +
-          '<p>登录状态尚未确认，没有退出账号。请恢复网络后重新打开当前页面。</p>' +
-          '<button onclick="location.reload()" style="padding:9px 20px;border:1px solid #bbb;' +
+          '<p id="connectionStatus" role="status">登录状态尚未确认，没有退出账号。正在自动恢复连接。</p>' +
+          '<button id="retryConnection" type="button" style="padding:9px 20px;border:1px solid #bbb;' +
           'border-radius:9px;background:#fff;color:#333">重新连接</button>' +
-          '<script>window.addEventListener("online",function(){location.reload()},{once:true})</script></body></html>',
+          '<script>(' + recoverProtectedPage.toString() + ')()</script></body></html>',
           { status: 503, headers: { 'Content-Type': 'text/html; charset=UTF-8',
             'Cache-Control': 'no-store', 'Retry-After': '5' } }
         );

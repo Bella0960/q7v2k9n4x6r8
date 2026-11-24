@@ -61,6 +61,27 @@ try {
       console.log('PWA_RECOVERY_STAGE:desktop_recovered_'+width);
       if(errors.length) console.log('PWA_RECOVERY_STAGE:page_error_'+width);
       assert.deepEqual(errors,[],'browser console errors at width '+width);
+      // The network interface stays online while the route transport fails:
+      // no online event is available to rescue the page. Recovery is automatic.
+      if (fixture && width===390) {
+        const route='/chat/chat/chat-detail.html';
+        fixture.setRouteUnavailable(route,true);
+        try {
+          const failure=await page.goto(origin+route,{waitUntil:'domcontentloaded',timeout:30000});
+          assert.equal(failure?.status(),503);
+          assert.equal(await page.evaluate(()=>navigator.onLine),true);
+          assert.match(await page.locator('body').innerText(),/连接暂时中断/);
+          const retry=page.waitForNavigation({waitUntil:'load',timeout:30000});
+          fixture.setRouteUnavailable(route,false);
+          const response=await retry;
+          assert.equal(response?.status(),200);
+          assert.equal(new URL(page.url()).pathname,route);
+          assert.deepEqual(errors,[],'online transport recovery must not cause script errors');
+          console.log('PWA_RECOVERY_STAGE:online_transport_recovered_390');
+        } finally {
+          fixture.setRouteUnavailable(route,false);
+        }
+      }
     }finally{
       await context.close();
     }
