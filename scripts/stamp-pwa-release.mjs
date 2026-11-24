@@ -29,6 +29,7 @@ export function stampPwaRelease(outputDir) {
     hash.update(content);
   }
   const release = hash.digest('hex').slice(0, 24);
+  const coreAssets = new Set();
   // Scope to actual opening script/link elements in HTML, never alter inline
   // scripts, user content, remote libraries, data/blob URLs or app navigation.
   function stampUrl(url, htmlPath) {
@@ -61,7 +62,13 @@ export function stampPwaRelease(outputDir) {
             requested = url.replace(/font-loader\.js(?=[?#]|$)/,'font-loader.mao-'+release+'.js');
           }
         }
-        return match.replace(quote+url+quote,quote+stampUrl(requested,file)+quote);
+        const stamped = stampUrl(requested,file);
+        if (stamped.includes('mao_rev='+release) &&
+            ['index.html','account/index.html','account/bootstrap.html'].includes(rel(file))) {
+          const asset = new URL(stamped, 'https://local.invalid/'+rel(file));
+          coreAssets.add('.'+asset.pathname+asset.search);
+        }
+        return match.replace(quote+url+quote,quote+stamped+quote);
       });
       return updated + block.slice(close+1);
     });
@@ -69,6 +76,7 @@ export function stampPwaRelease(outputDir) {
     fs.writeFileSync(file,html);
   }
   fs.writeFileSync(swPath,sw
+    .replace('const BUILD_CORE_ASSETS = [];','const BUILD_CORE_ASSETS = '+JSON.stringify([...coreAssets].sort())+';')
     .replace("const BUILD_RELEASE = '__MAOMAO_BUILD_RELEASE__';","const BUILD_RELEASE = '"+release+"';")
     .replace(/const CACHE_NAME = '(phone-app-pwa-v\d+)';/,"const CACHE_NAME = '$1-"+release+"';"));
   fs.writeFileSync(path.join(outputDir,'pwa-release.json'),JSON.stringify({release, schema:1}));

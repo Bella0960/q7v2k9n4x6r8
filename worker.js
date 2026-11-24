@@ -44,7 +44,9 @@ async function serveVersionedAsset(request, env, url) {
   const headers = {'cache-control':'no-store', 'content-type':'text/plain; charset=UTF-8'};
   if (!deployed) return new Response('Build release unavailable', {status:503,headers});
   if (requested !== deployed) return new Response('Build release changed', {status:409,headers});
-  const response = await env.ASSETS.fetch(request);
+  const requestHeaders = new Headers(request.headers);
+  for (const name of ['if-none-match','if-modified-since','if-range','range']) requestHeaders.delete(name);
+  const response = await env.ASSETS.fetch(new Request(request,{headers:requestHeaders}));
   const type = response.headers.get('content-type') || '';
   const correctType = /\.css$/i.test(url.pathname) ? /^text\/css(?:;|\s|$)/i.test(type)
     : /^(?:text|application)\/(?:javascript|ecmascript)(?:;|\s|$)/i.test(type);
@@ -53,7 +55,9 @@ async function serveVersionedAsset(request, env, url) {
   }
   const out = new Headers(response.headers);
   out.set('x-mao-release', deployed);
-  out.set('cache-control', 'public, max-age=31536000, immutable');
+  if (!/(?:^|[,\s])(?:private|no-store)(?:[,\s]|$)/i.test(out.get('cache-control') || '')) {
+    out.set('cache-control', 'public, max-age=31536000, immutable');
+  }
   return new Response(response.body,{status:response.status,headers:out});
 }
 
@@ -360,7 +364,13 @@ export default {
       if (isHtmlDocument && authorizedAccount) return await injectAccountScope(response, authorizedAccount, env);
       if (/\.(?:js|mjs|css)$/i.test(url.pathname) || isPublicAccountDocument || url.pathname === '/sw.js') {
         const headers = new Headers(response.headers);
-        headers.set('cache-control', 'no-store');
+        // Public sign-in remains eligible for its existing offline fallback.
+        // All protected HTML remains private/no-store in injectAccountScope.
+        if (isPublicAccountDocument && !/(?:private|no-store)/i.test(headers.get('cache-control') || '')) {
+          headers.set('cache-control', 'no-cache, must-revalidate');
+        } else {
+          headers.set('cache-control', 'no-store');
+        }
         return new Response(response.body,{status:response.status,statusText:response.statusText,headers});
       }
       return response;

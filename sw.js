@@ -3,6 +3,7 @@
  */
 const CACHE_NAME = 'phone-app-pwa-v311';
 const BUILD_RELEASE = '__MAOMAO_BUILD_RELEASE__';
+const BUILD_CORE_ASSETS = [];
 const FONT_ASSET_CACHE = 'maomao-font-assets-v1';
 function cacheablePublicResponse(response) {
   return !!(response && response.ok && !response.redirected &&
@@ -224,6 +225,28 @@ self.addEventListener('install', event => {
       const resources = Array.from(new Set(APP_SHELL.concat(pageEntries)))
         .filter(url => url === './account/index.html' || url === './account/bootstrap.html' ||
           (url !== './' && url !== '/' && !/\.html(?:\?|$)/i.test(url)));
+      const stamped = /^[a-f0-9]{24}$/.test(BUILD_RELEASE);
+      if (stamped) {
+        // Precache just current core resources and small public shell images.
+        // Avoid a burst of 100+ old classic script downloads during startup.
+        const core = [...new Set(BUILD_CORE_ASSETS.concat(resources.filter(url =>
+          url === './account/index.html' || url === './account/bootstrap.html' ||
+          /\.(?:png|svg|ico)$/i.test(url))))];
+        for (let i=0; i<core.length; i+=4) {
+          await Promise.all(core.slice(i,i+4).map(async url => {
+            try {
+              const request = new Request(new URL(url, self.registration.scope), {cache:'no-store'});
+              const response = await fetch(request);
+              const served = response.headers.get('x-mao-release');
+              if (served && served !== BUILD_RELEASE) return;
+              if (/\.html$/.test(url) ? cacheablePublicNavigationHtml(response) : cacheableStaticAsset(response, request)) {
+                await cache.put(request,response);
+              }
+            } catch (_) {}
+          }));
+        }
+        return;
+      }
       await Promise.all(resources.map(function (url) {
         if (url === './account/index.html' || url === './account/bootstrap.html') {
           return fetch(url, { cache: 'no-store' }).then(function (response) {
@@ -495,7 +518,7 @@ self.addEventListener('fetch', event => {
   }
 
   // 所有历史版本参数的 font-loader 请求统一读取当前版本，避免旧 query URL 命中旧脚本。
-  if (url.pathname.endsWith('/shared/js/font-loader.js')) {
+  if (url.pathname.endsWith('/shared/js/font-loader.js') && !/^[a-f0-9]{24}$/.test(BUILD_RELEASE)) {
     event.respondWith(
       caches.open(CACHE_NAME).then(function (cache) {
         var currentLoaderUrl = new URL('shared/js/font-loader.js', self.registration.scope).href;
