@@ -115,12 +115,24 @@ try {
         assert.ok(backup.toString().includes(beforeBackup));
         await page.evaluate(() => MomentsCoverStore.save('data:image/png;base64,AAAA'));
         settings.on('dialog', dialog => dialog.accept());
-        await settings.locator('#importModuleFileInput').setInputFiles({
-            name: 'moments.json', mimeType: 'application/json', buffer: backup
-        });
+        // backup.js commits data before its delayed 700 ms reload. A restored
+        // cover alone does not prove that navigation has finished. Register the
+        // reload listener BEFORE import; never reuse this page for role settings.
+        const importUrl = settings.url();
+        await Promise.all([
+            settings.waitForEvent('framenavigated', {
+                predicate: frame => frame === settings.mainFrame() && frame.url() === importUrl,
+                timeout: 60000
+            }),
+            settings.locator('#importModuleFileInput').setInputFiles({
+                name: 'moments.json', mimeType: 'application/json', buffer: backup
+            })
+        ]);
+        await settings.waitForLoadState('domcontentloaded');
         await page.waitForFunction(async expected => await MomentsCoverStore.get() === expected, beforeBackup);
         await page.reload();
         await page.waitForFunction(() => document.querySelector('.cover-block').style.backgroundSize === 'cover');
+        await settings.close();
 
         browserPhase = width + 3;
         const chat = await context.newPage();
@@ -175,12 +187,18 @@ try {
             localStorage.moments = JSON.stringify(posts);
         });
         browserPhase = 391;
-        await settings.goto(origin + '/chat/chat/chat-settings.html?roleId=A');
+        const roleSettings = await context.newPage();
+        roleSettings.on('pageerror', e => errors.push(e.message));
+        const roleSettingsUrl = origin + '/chat/chat/chat-settings.html?roleId=A';
+        const roleSettingsResponse = await roleSettings.goto(roleSettingsUrl);
+        assert.ok(roleSettingsResponse?.ok(), 'Role settings must return HTTP success');
+        assert.equal(roleSettings.url(), roleSettingsUrl, 'Role settings must not be redirected');
         browserPhase = 392;
-        await settings.locator('#actionAutoMoment').click();
+        await roleSettings.locator('#actionAutoMoment').click();
         browserPhase = 393;
-        await settings.waitForFunction(() => localStorage.chat_auto_moment_A === 'true');
-        assert.equal(await settings.evaluate(() => localStorage.chat_auto_moment_A), 'true');
+        await roleSettings.waitForFunction(() => localStorage.chat_auto_moment_A === 'true');
+        assert.equal(await roleSettings.evaluate(() => localStorage.chat_auto_moment_A), 'true');
+        await roleSettings.close();
         browserPhase = 394;
         const enabled = await send('窗边的花开了', '我也看见花开了。\n[自主朋友圈:窗边的第一朵花]');
         browserPhase = 395;
