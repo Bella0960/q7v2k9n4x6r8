@@ -27,7 +27,7 @@
     <script src="../../shared/js/phone/chat-context-policy.js?v=20261107vision1"></script>
     <script src="../../shared/js/phone/chat-presence-policy.js?v=20261102v17"></script>
     <script src="../../shared/js/phone/role-public-timeline.js?v=20261102v1"></script>
-    <script src="../../shared/js/phone/moments-chat-action.js?v=20261124v1"></script>
+    <script src="../../shared/js/phone/moments-chat-action.js?v=20261124v3"></script>
     <script src="../../shared/js/phone/group-chat-policy.js?v=20261102v5"></script>
     <script src="../../shared/js/chat-notifier.js?v=20261102v3"></script>
     <style>
@@ -6284,6 +6284,13 @@
             if (momentsAction && momentsAction.requestId) {
                 systemPrompt += '\n\n' + window.MomentsChatAction.postPrompt();
             } else momentsAction = null;
+            var autoMomentsRoleId = (!momentsAction && !isGroupChat && !isRegen && !contextOnly && !silent &&
+                presenceMode === 'online' && currentCharacter && currentCharacter.id != null &&
+                failureTarget && failureTarget.mid && window.MomentsChatAction)
+                ? String(currentCharacter.id) : '';
+            if (autoMomentsRoleId && window.MomentsChatAction.autoEligible(localStorage, autoMomentsRoleId, Date.now())) {
+                systemPrompt += '\n\n' + window.MomentsChatAction.autoPrompt();
+            } else autoMomentsRoleId = '';
 
             // 构造 OpenAI 兼容格式 messages 数组 (system + 历史记录)
             const apiMessages = [
@@ -6484,6 +6491,7 @@
                 inflightSnapshot = !isGroupChat && isRegen ? null : {
                     text: (function () {
                         var snapshotText = lastPaintedStreamText;
+                        if (window.MomentsChatAction) snapshotText = window.MomentsChatAction.stripAuto(snapshotText);
                         if (window.RoleStickerLibrary && typeof window.RoleStickerLibrary.stripStreamMarker === 'function') {
                             snapshotText = window.RoleStickerLibrary.stripStreamMarker(snapshotText);
                         }
@@ -6512,6 +6520,7 @@
                 if (window.ChatImageVision && typeof window.ChatImageVision.stripAvatarCandidateMarker === 'function') {
                     tmpText = window.ChatImageVision.stripAvatarCandidateMarker(tmpText);
                 }
+                if (window.MomentsChatAction) tmpText = window.MomentsChatAction.stripAuto(tmpText).trim();
                 if (!tmpText) return;
 
                 if (!streamBubble) {
@@ -6672,6 +6681,12 @@
                             fullText = (streamResult.ok && window.MomentsChatAction.parseNoPost(stripInternalReasoning(fullText))) || '这次未生成可发布的朋友圈，请重试。';
                         }
                     }
+                    var autoMomentContent = '';
+                    if (window.MomentsChatAction) {
+                        var parsedAutoMoment = window.MomentsChatAction.extractAuto(stripInternalReasoning(fullText));
+                        fullText = parsedAutoMoment.text;
+                        if (autoMomentsRoleId && streamResult.ok && fullText) autoMomentContent = parsedAutoMoment.content;
+                    }
                     // ---- 标记剥离 → 清洗 → 落库 → 重渲染（成功与中断保文共用同一套收尾） ----
                     // 群投票/接龙/群管理标记先落到当前历史与群资料，再清理展示文本
                     fullText = processGroupInteractionMarkers(fullText, groupReplyPick, historyList, isRegen, isGroupFollowup);
@@ -6794,6 +6809,21 @@
                         transferDecisionSnapshots = applyTransferDecisionMarkers(historyList, parsedTransferDecision.amounts);
                         var replySaved = saveMessages(historyList);
                         var replySaveFailed = !replySaved;
+                        if (replySaved && autoMomentContent && singleChatTurnIsCurrent(historyList) &&
+                            String(currentCharacter.id) === autoMomentsRoleId &&
+                            window.MomentsChatAction.autoEligible(localStorage, autoMomentsRoleId, Date.now())) {
+                            try {
+                                var autoMomentRequestId = String(failureTarget.mid);
+                                window.MomentsChatAction.publish({
+                                    roleId: autoMomentsRoleId, requestId: autoMomentRequestId, source: 'auto',
+                                    content: autoMomentContent, storage: localStorage,
+                                    getCharacters: function () { return window.PhoneStorage.getCharacters(); }
+                                });
+                                if (typeof showToast === 'function') showToast('角色发布了新动态');
+                            } catch (autoMomentError) {
+                                if (typeof showToast === 'function') showToast('自动动态未能保存');
+                            }
+                        }
                         var avatarRoleId = aliasRoleId || currentCharacter.id;
                         if (replySaved && !isGroupChat && window.RoleAvatarLibrary &&
                             typeof window.RoleAvatarLibrary.addAsset === 'function') {
