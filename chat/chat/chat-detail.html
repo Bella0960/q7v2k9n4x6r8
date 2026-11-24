@@ -27,6 +27,7 @@
     <script src="../../shared/js/phone/chat-context-policy.js?v=20261107vision1"></script>
     <script src="../../shared/js/phone/chat-presence-policy.js?v=20261102v17"></script>
     <script src="../../shared/js/phone/role-public-timeline.js?v=20261102v1"></script>
+    <script src="../../shared/js/phone/moments-chat-action.js?v=20261124v1"></script>
     <script src="../../shared/js/phone/group-chat-policy.js?v=20261102v5"></script>
     <script src="../../shared/js/chat-notifier.js?v=20261102v3"></script>
     <style>
@@ -6267,6 +6268,19 @@
                 }
             }
 
+            // Explicit Moments requests reuse this chat turn's model call.
+            // Capture the actual role and persisted user message, never use the global selected role.
+            var momentsAction = (!isGroupChat && !isRegen && !contextOnly && !silent &&
+                presenceMode === 'online' && window.MomentsChatAction &&
+                currentCharacter && currentCharacter.id != null && failureTarget &&
+                window.MomentsChatAction.requestsPost(text)) ? {
+                    roleId: String(currentCharacter.id),
+                    requestId: String((retryTarget && retryTarget.mid) || failureTarget.mid || '')
+                } : null;
+            if (momentsAction && momentsAction.requestId) {
+                systemPrompt += '\n\n【本轮朋友圈发布动作，覆盖普通回复格式】用户明确要求当前虚构角色发动态。只输出一条 [朋友圈动态:动态正文]，正文为角色自己的日常、最多120字。不得包含用户私人资料、私聊原文、真实地址、联系方式、密钥、图片链接或其他动作标记。不要在正文之外说已经发布；系统会在实际保存后展示结果。';
+            } else momentsAction = null;
+
             // 构造 OpenAI 兼容格式 messages 数组 (system + 历史记录)
             const apiMessages = [
                 { role: 'system', content: systemPrompt }
@@ -6455,6 +6469,11 @@
             // R4 渲染回调：交给 PhoneStream 每帧节流调用（正则清洗 + DOM 写入 + 滚动）
             // 引擎已抽离至 shared/js/phone/phone_stream.js（三段式超时/SSE 解析/残留收尾）
             function paintStreamLive(text) {
+                // Do not display a draft post or an unverified success claim during streaming.
+                if (momentsAction) {
+                    lastPaintedStreamText = typeof text === 'string' ? text : '';
+                    return;
+                }
                 // 保留原始累计文本：若流引擎意外抛错，收尾仍可走既有清洗与落库流程。
                 lastPaintedStreamText = typeof text === 'string' ? text : '';
                 // 同步快照，供 pagehide 时把半截消息落库
@@ -6625,6 +6644,30 @@
 
             try {
                 if (fullText) {
+                    if (momentsAction) {
+                        var momentContent = streamResult.ok
+                            ? window.MomentsChatAction.parsePost(stripInternalReasoning(fullText)) : '';
+                        if (momentContent) {
+                            try {
+                                if (!singleChatTurnIsCurrent(historyList) ||
+                                    String(currentCharacter.id) !== momentsAction.roleId) throw new Error('角色已切换');
+                                window.MomentsChatAction.publish({
+                                    roleId: momentsAction.roleId,
+                                    requestId: momentsAction.requestId,
+                                    content: momentContent,
+                                    storage: localStorage,
+                                    getCharacters: function () { return window.PhoneStorage.getCharacters(); }
+                                });
+                                fullText = '朋友圈已发布。';
+                                if (typeof showToast === 'function') showToast('朋友圈已发布');
+                            } catch (momentError) {
+                                fullText = '朋友圈未能保存，请检查存储后重试。';
+                                if (typeof showToast === 'function') showToast('朋友圈发布失败');
+                            }
+                        } else {
+                            fullText = '这次未生成可发布的朋友圈，请重试。';
+                        }
+                    }
                     // ---- 标记剥离 → 清洗 → 落库 → 重渲染（成功与中断保文共用同一套收尾） ----
                     // 群投票/接龙/群管理标记先落到当前历史与群资料，再清理展示文本
                     fullText = processGroupInteractionMarkers(fullText, groupReplyPick, historyList, isRegen, isGroupFollowup);
