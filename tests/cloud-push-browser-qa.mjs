@@ -70,15 +70,18 @@ try {
     pageA.on('pageerror', err => jsErrors.push('a:' + err.name));
     pageB.on('pageerror', err => jsErrors.push('b:' + err.name));
 
+    console.log('CLOUD_BROWSER_QA_STAGE:' + width + ':1');
     await pageA.goto(base + '/qa?account=' + A);
     await pageB.goto(base + '/qa?account=' + B);
     assert.equal(await pageA.evaluate(() => window.__MAO_ACCOUNT_SCOPE__?.ready), true);
     assert.equal(await pageB.evaluate(() => window.__MAO_ACCOUNT_SCOPE__?.ready), true);
+    console.log('CLOUD_BROWSER_QA_STAGE:' + width + ':2');
     await pageA.evaluate(() => localStorage.setItem('chat_history_common', 'account-A'));
     await pageB.evaluate(() => localStorage.setItem('chat_history_common', 'account-B'));
     assert.equal(await pageA.evaluate(() => localStorage.getItem('chat_history_common')), 'account-A');
     assert.equal(await pageB.evaluate(() => localStorage.getItem('chat_history_common')), 'account-B');
 
+    console.log('CLOUD_BROWSER_QA_STAGE:' + width + ':3');
     const saved = await pageA.evaluate(async account => {
       const roleId = 'role-synthetic';
       const key = 'chat_history_' + roleId;
@@ -121,12 +124,14 @@ try {
       return { count: rows.length, writes, successfulACK,
         id: rows[1]?.serverMessageId, prior: rows[0]?.mid };
     }, A);
+    console.log('CLOUD_BROWSER_QA_STAGE:' + width + ':4');
     assert.deepEqual(saved, {
       count: 2, writes: 1, successfulACK: 2,
       id: 'synthetic_cloud_0000001', prior: 'local-user'
     });
     assert.equal(await pageB.evaluate(() => localStorage.getItem('chat_history_role-synthetic')), null);
 
+    console.log('CLOUD_BROWSER_QA_STAGE:' + width + ':5');
     const unscoped = await context.newPage();
     unscoped.on('pageerror', err => jsErrors.push('unscoped:' + err.name));
     await unscoped.goto(base + '/plain?account=' + A);
@@ -140,7 +145,9 @@ try {
       });
       return inbox.isAccountReady() === false && await inbox.sync() === null;
     }, A);
+    console.log('CLOUD_BROWSER_QA_STAGE:' + width + ':6');
     assert.equal(blocked, true);
+    console.log('CLOUD_BROWSER_QA_STAGE:' + width + ':7');
     assert.deepEqual(jsErrors, []);
     await context.close();
     console.log('CLOUD_BROWSER_QA:PASS:' + width);
