@@ -1,5 +1,7 @@
 # app.mao520.com 安全发布
 
+> Release instructions: always read the latest main [RELEASE_POLICY.md](RELEASE_POLICY.md). Historical workflow names, versions, and checkpoints are not active instructions.
+
 Cloudflare 自定义域名 `app.mao520.com` 绑定的是已有 Worker `curly-dream-324c`，不是 `mao`。
 
 - `wrangler.app.jsonc` 只部署这个已有静态 Worker 的 ASSETS，保留原来的 HTML 路由和资源。

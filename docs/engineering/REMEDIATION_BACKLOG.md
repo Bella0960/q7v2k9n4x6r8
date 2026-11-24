@@ -1,5 +1,7 @@
 # MAOMAO Engineering Remediation Backlog
 
+> Release instructions: always read the latest main [RELEASE_POLICY.md](RELEASE_POLICY.md). Historical workflow names, versions, and checkpoints are not active instructions.
+
 This backlog divides the full cleanup into independent, reviewable tasks. Agents must claim a Task ID and must not expand scope silently.
 
 Status vocabulary: OPEN, IN PROGRESS, FIXED, DEFERRED, NOT VERIFIED.
@@ -92,7 +94,7 @@ Acceptance:
 ### CI-003 — Resolve npm package publish template
 **Priority:** P1 · **Status:** OPEN
 
-Evidence: npm-publish-github-packages.yml runs npm test and npm publish on release; package.json at baseline defines no generic test script and package is not evidently intended as a published library.
+Historical evidence: the obsolete npm publish workflow was removed by release hygiene PR #511. Package publication is not an active delivery channel. Follow RELEASE_POLICY.md.
 
 Acceptance:
 - Confirm whether publishing is a real product requirement.
