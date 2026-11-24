@@ -161,6 +161,14 @@
  var overlay=null,lastFocus=null,lastScreen=0,lockedBodyScroll='';
  var gesture=null;
  var SWIPE_MIN_X=45,SWIPE_RATIO=1.3,SWIPE_EDGE=12;
+ // Resolve a finished gesture from its final pointer position; an earlier
+ // over-threshold move does not count. Returns 1 / -1 / 0 (no turn).
+ function swipeDirection(g,endX,endY){
+  var dx=endX-g.startX,dy=endY-g.startY;
+  if(Math.abs(dx)<SWIPE_MIN_X)return 0;
+  if(Math.abs(dx)<SWIPE_RATIO*Math.abs(dy))return 0;
+  return dx<0?1:-1;
+ }
  function previewScreen(i){
   if(!overlay)return;
   lastScreen=(i+screens.length)%screens.length;
@@ -183,26 +191,26 @@
    var box=visual.getBoundingClientRect();
    var x=event.clientX-box.left;
    if(box.width>0&&(x<SWIPE_EDGE||x>box.width-SWIPE_EDGE))return;
-   gesture={pointerId:event.pointerId,startX:event.clientX,startY:event.clientY,decided:false,dir:0};
+   gesture={pointerId:event.pointerId,startX:event.clientX,startY:event.clientY};
    try{visual.setPointerCapture(event.pointerId);}catch(e){}
   });
   visual.addEventListener('pointermove',function(event){
    if(!gesture||event.pointerId!==gesture.pointerId)return;
    var dx=event.clientX-gesture.startX,dy=event.clientY-gesture.startY;
-   if(!gesture.decided){
-    if(Math.abs(dx)>=SWIPE_MIN_X&&Math.abs(dx)>=SWIPE_RATIO*Math.abs(dy)){
-     gesture.decided=true;gesture.dir=dx<0?1:-1;
-    }else return;
-   }
-   event.preventDefault();
+   if(Math.abs(dx)>=SWIPE_MIN_X&&Math.abs(dx)>=SWIPE_RATIO*Math.abs(dy))event.preventDefault();
   });
-  function endGesture(event){
-   if(!gesture||(event&&event.pointerId!=null&&event.pointerId!==gesture.pointerId))return;
-   var dir=gesture.dir;clearGesture();
+  visual.addEventListener('pointerup',function(event){
+   if(!gesture||event.pointerId!==gesture.pointerId)return;
+   var dir=swipeDirection(gesture,event.clientX,event.clientY);
+   clearGesture();
    if(dir)previewScreen(lastScreen+dir);
-  }
-  visual.addEventListener('pointerup',endGesture);
-  visual.addEventListener('pointercancel',endGesture);
+  });
+  // A cancelled gesture (browser takes over scroll, system/device cancel, lost
+  // contact) never turns a page; it only releases the in-progress state.
+  visual.addEventListener('pointercancel',function(event){
+   if(!gesture||event.pointerId!==gesture.pointerId)return;
+   clearGesture();
+  });
   visual.addEventListener('lostpointercapture',function(event){
    if(gesture&&event.pointerId===gesture.pointerId)clearGesture();
   });
