@@ -30,6 +30,8 @@
     "perf:fixab:mobile": "THROTTLE=4 node perf/fixab-regression.mjs",
     "perf:gate": "node perf/gate.mjs",
     "test:desktop:layout": "node --test tests/default-desktop-layout.test.mjs",
+    "test:cloud:mobile:qa": "node --test tests/cloud-push-mobile-qa-integration.test.mjs",
+    "test:cloud:mobile:qa:browser": "node tests/cloud-push-mobile-qa.browser.mjs",
     "test:pwa:navigation": "node --test tests/pwa-navigation-cache.test.mjs tests/icon-presets-contract.test.mjs tests/account-fanwai-pwa-runtime.test.mjs tests/release-account-assets-gate.test.mjs tests/sw-navigation-cache-lifecycle.test.mjs",
     "test:font:runtime": "node --test tests/font-runtime-performance.test.mjs",
     "test:chat:call": "node --test tests/chat-call-experience.test.mjs",
