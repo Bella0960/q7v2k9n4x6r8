@@ -32,8 +32,8 @@
       var scope = global.__MAO_ACCOUNT_SCOPE__;
       // An account meta tag alone is not storage isolation. Never use unscoped
       // localStorage for cloud writes if the injected account script is missing.
-      return actualId === accountId && scope && scope.ready === true &&
-        scope.accountId === accountId;
+      return Boolean(actualId === accountId && scope && scope.ready === true &&
+        scope.accountId === accountId);
     }
 
     function active() {
