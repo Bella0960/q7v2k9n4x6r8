@@ -1,6 +1,9 @@
 /* PREVIEW-004 专项回归：五页手机预览的手势翻页、弹层生命周期与只读隔离。
  * 裸 http server（跨平台路径校验），headless Chromium，视口 320/375/390/430。
- * 预览始终为虚构示例；打开 / 滑动 / 关闭不得写入 ChatBeauty、localStorage 或 IndexedDB。 */
+ * 预览始终为虚构示例；打开 / 滑动 / 关闭不得写入 ChatBeauty、localStorage 或 IndexedDB。
+ *
+ * 入口约定：主回归从商城公开渲染产物里的真实 [data-action="market-preview"]
+ * 按钮点击打开预览；直接调用模块 preview() 仅在末尾标注的 API 级用例中使用。 */
 import {createServer} from 'node:http';
 import {readFileSync} from 'node:fs';
 import {resolve,dirname,extname} from 'node:path';
@@ -24,18 +27,22 @@ const browser=await pw.chromium.launch({headless:true,...(process.env.CHROMIUM_P
 const SCREENS=['聊天首页','聊天详情','动态','我的','我的主页'];
 let count=0;
 
-async function swipe(ctx,page,locator,dx,dy){
+// Multi-segment track: points are [dx,dy] steps from the visual center; end as
+// touchEnd or touchCancel. Drives the real PointerEvent gesture on the DOM.
+async function gestureTrack(ctx,page,locator,points,endType='touchEnd'){
  const box=await locator.boundingBox();
  assert.ok(box&&box.width>0,'visual box measurable');
  const touch=await ctx.newCDPSession(page);
  const x=box.x+box.width*.5,y=box.y+box.height*.5;
  await touch.send('Input.dispatchTouchEvent',{type:'touchStart',touchPoints:[{x,y}]});
- const steps=6;
- for(let i=1;i<=steps;i++){
-  await touch.send('Input.dispatchTouchEvent',{type:'touchMove',touchPoints:[{x:x+dx*i/steps,y:y+dy*i/steps}]});
+ for(const [dx,dy] of points){
+  await touch.send('Input.dispatchTouchEvent',{type:'touchMove',touchPoints:[{x:x+dx,y:y+dy}]});
  }
- await touch.send('Input.dispatchTouchEvent',{type:'touchEnd',touchPoints:[]});
+ await touch.send('Input.dispatchTouchEvent',{type:endType,touchPoints:[]});
  await touch.detach();
+}
+async function swipe(ctx,page,locator,dx,dy){
+ await gestureTrack(ctx,page,locator,[[dx,dy]],'touchEnd');
 }
 async function tapHold(ctx,page,locator){
  const box=await locator.boundingBox();
@@ -48,13 +55,33 @@ async function tapHold(ctx,page,locator){
 const currentName=page=>page.locator('.market-preview-current').innerText();
 const selectedTab=page=>page.locator('.market-preview-tabs button[aria-selected="true"]').innerText();
 const previewState=page=>page.evaluate(()=>window.MAOMAOMarketExpansion._previewState());
-// The featured entry button may or may not be mounted by the current storefront shell;
-// the public preview() API is the same entry either way. Prefer a real click when present.
-async function openPreview(page){
+
+// Render the public discover fragment into the live shell, then assert the real
+// preview entry button exists, is visible and enabled before clicking it.
+async function mountDiscover(page){
+ await page.evaluate(()=>{document.getElementById('storeContent').innerHTML=window.MAOMAOMarketExpansion.renderDiscover();});
  const btn=page.locator('[data-action="market-preview"]');
- if(await btn.count())await btn.first().click();
- else await page.evaluate(()=>window.MAOMAOMarketExpansion.preview('atmosphere'));
+ assert.equal(await btn.count(),1,'real preview entry button rendered once');
+ const box=await btn.boundingBox();
+ assert.ok(box&&box.width>0&&box.height>0,'entry button visible');
+ assert.equal(await btn.isDisabled(),false,'entry button enabled');
+}
+async function openPreview(page){
+ // Dispatch the click on the real entry button directly, so the programmatic
+ // open does not trigger a browser focus scroll-into-view on the main list.
+ await page.locator('[data-action="market-preview"]').first().evaluate(b=>b.click());
  await page.waitForSelector('.market-preview-overlay');
+}
+// Install a counter for indexedDB.open after page load; counts only open calls,
+// not per-transaction writes. Read-only check complements localStorage/theme assertions.
+async function installIdbCounter(page){
+ await page.evaluate(()=>{
+  if(!window.__idbOpenCount){
+   window.__idbOpenCount=0;
+   const open=indexedDB.open.bind(indexedDB);
+   indexedDB.open=function(...args){window.__idbOpenCount++;return open(...args);};
+  }
+ });
 }
 
 try{
@@ -66,6 +93,10 @@ for(const width of [320,375,390,430]){
 
  await page.goto(base+'/theme-store/theme-store.html');
  await page.waitForSelector('.sf-product, .sf-theme-item');
+ await installIdbCounter(page);
+
+ // 真实入口：注入公开 discover 片段后，从真实按钮打开预览。
+ await mountDiscover(page);
  const entryButtonCount=await page.locator('[data-action="market-preview"]').count();
 
  // 主页面先滚到中部，验证关闭后滚动偏移保持。
@@ -73,6 +104,7 @@ for(const width of [320,375,390,430]){
  const rememberedTop=await page.locator('#storeContent').evaluate(el=>el.scrollTop);
  const storageBefore=await page.evaluate(()=>JSON.stringify({...localStorage}));
  const themeBefore=await page.evaluate(()=>window.ChatBeauty&&ChatBeauty.getThemePreset&&ChatBeauty.getThemePreset());
+ const idbBefore=await page.evaluate(()=>window.__idbOpenCount);
 
  // 1. 打开预览：初始第 0 页，文案 / aria-selected 同步。
  await openPreview(page);
@@ -106,14 +138,29 @@ for(const width of [320,375,390,430]){
  await tapHold(ctx,page,visual);
  assert.equal(await selectedTab(page),beforeVertical,'short tap does not turn page');
 
- // 5. 手势与键盘同时可用：tab 聚焦后方向键继续翻页。
+ // 5. 取消手势：滑过阈值后被取消，不翻页、手势状态清空，下一次横滑仍生效。
+ await gestureTrack(ctx,page,visual,[[-70,0]],'touchCancel');
+ assert.equal(await selectedTab(page),SCREENS[4],'cancelled gesture does not turn page');
+ assert.equal((await previewState(page)).gestureActive,false,'cancelled gesture clears state');
+ await swipe(ctx,page,visual,-120,0);
+ assert.equal(await selectedTab(page),SCREENS[0],'next swipe still works after cancel');
+
+ // 6. 回拉：先滑过阈值再退回起点附近，结束不翻页。
+ await gestureTrack(ctx,page,visual,[[-70,0],[0,0]],'touchEnd');
+ assert.equal(await selectedTab(page),SCREENS[0],'pull-back to start does not turn page');
+
+ // 7. 反向变化：先右滑再 settle 到左侧，按最终位置方向翻一页。
+ await gestureTrack(ctx,page,visual,[[70,0],[-70,0]],'touchEnd');
+ assert.equal(await selectedTab(page),SCREENS[1],'reverse settle follows final position');
+
+ // 8. 手势与键盘同时可用：tab 聚焦后方向键继续翻页。
  await page.locator('.market-preview-tabs button').first().click();
  await page.keyboard.press('ArrowRight');
  assert.equal(await selectedTab(page),SCREENS[1],'arrow right works after gesture session');
  await page.keyboard.press('ArrowLeft');
  assert.equal(await selectedTab(page),SCREENS[0],'arrow left works after gesture session');
 
- // 6. Tab / Shift+Tab 焦点约束循环：backdrop 为首个可聚焦按钮，apply 为末个。
+ // 9. Tab / Shift+Tab 焦点约束循环：backdrop 为首个可聚焦按钮，apply 为末个。
  const all=await page.locator('.market-preview-overlay button').all();
  const visible=[];
  for(const b of all){if(await b.boundingBox())visible.push(b);}
@@ -124,7 +171,7 @@ for(const width of [320,375,390,430]){
  await page.keyboard.press('Shift+Tab');
  assert.equal(await page.evaluate(()=>document.activeElement.textContent.trim()),'应用这个主题','Shift+Tab wraps from backdrop to apply');
 
- // 7. Esc 关闭：清理 overlay / 滚动锁 / 焦点，滚动位置与存储保持。
+ // 10. Esc 关闭：清理 overlay / 滚动锁 / 焦点，滚动位置与存储保持。
  await page.keyboard.press('Escape');
  assert.equal(await page.locator('.market-preview-overlay').count(),0,'overlay removed on Esc');
  assert.equal(await page.evaluate(()=>document.body.style.overflow),'','body scroll lock released');
@@ -133,13 +180,13 @@ for(const width of [320,375,390,430]){
  assert.ok(await page.evaluate(()=>document.activeElement&&document.activeElement.isConnected),'focus returns to a live element after close');
  assert.ok(Math.abs(await page.locator('#storeContent').evaluate(el=>el.scrollTop)-rememberedTop)<5,'main scroll offset preserved after close');
 
- // 8. 遮罩点击关闭同样清理。
+ // 11. 遮罩点击关闭同样清理。
  await openPreview(page);
  await page.locator('.market-preview-backdrop').evaluate(b=>b.click());
  assert.equal(await page.locator('.market-preview-overlay').count(),0,'backdrop click closes overlay');
  assert.equal(await page.evaluate(()=>document.body.style.overflow),'','scroll lock released after backdrop close');
 
- // 9. 反复开关 50 次：不残留 overlay / 滚动锁 / 手势状态，无报错。
+ // 12. 反复开关 50 次：不残留 overlay / 滚动锁 / 手势状态，无报错。
  for(let round=0;round<50;round++){
   await openPreview(page);
   await page.keyboard.press('Escape');
@@ -150,20 +197,35 @@ for(const width of [320,375,390,430]){
   assert.equal(st.gestureActive,false,'round '+round+' gesture cleared');
  }
 
- // 10. 50 次开关后手势仍生效，监听器未失效。
+ // 13. 50 次开关后手势仍生效，监听器未失效。
  await openPreview(page);
  await swipe(ctx,page,visual,-120,0);
  assert.equal(await selectedTab(page),SCREENS[1],'gesture still works after 50 open/close cycles');
  await page.keyboard.press('Escape');
 
- // 11. 全程只读：localStorage 与当前主题预设未被预览改动。
+ // 14. 全程只读：localStorage、当前主题预设、IDB open 计数均未被预览改动。
  assert.equal(await page.evaluate(()=>JSON.stringify({...localStorage})),storageBefore,'preview writes no localStorage');
  assert.equal(await page.evaluate(()=>window.ChatBeauty&&ChatBeauty.getThemePreset&&ChatBeauty.getThemePreset()),themeBefore,'preview does not change applied theme');
+ assert.equal(await page.evaluate(()=>window.__idbOpenCount),idbBefore,'preview opens no new IndexedDB database');
  assert.deepEqual(errors,[],'no page errors');
  count++;
- console.log('PASS preview-gesture width '+width+' (mounted entry buttons: '+entryButtonCount+'): five-screen order, swipe thresholds, lifecycle cleanup, focus loop, read-only');
+ console.log('PASS preview-gesture width '+width+' (entry buttons: '+entryButtonCount+'): real entry click, swipe thresholds, cancel/pull-back/reverse, lifecycle cleanup, focus loop, read-only');
  await ctx.close();
 }
+
+// API 级 sanity（非页面入口路径）：直接调用公开 preview() 模块入口可用且可清理。
+const apiCtx=await browser.newContext({viewport:{width:390,height:844},hasTouch:true});
+const apiPage=await apiCtx.newPage();
+await apiPage.goto(base+'/theme-store/theme-store.html');
+await apiPage.waitForSelector('.sf-product, .sf-theme-item');
+await apiPage.evaluate(()=>window.MAOMAOMarketExpansion.preview('atmosphere'));
+await apiPage.waitForSelector('.market-preview-overlay');
+assert.equal((await apiPage.evaluate(()=>window.MAOMAOMarketExpansion._previewState())).open,true,'direct API preview opens');
+await apiPage.keyboard.press('Escape');
+assert.equal(await apiPage.locator('.market-preview-overlay').count(),0,'direct API preview closes');
+assert.equal((await apiPage.evaluate(()=>window.MAOMAOMarketExpansion._previewState())).gestureActive,false,'direct API preview clears gesture');
+await apiCtx.close();
+console.log('PASS direct API entry sanity: preview() opens and cleans up');
 }finally{
  await browser.close();
  await new Promise(r=>server.close(r));
