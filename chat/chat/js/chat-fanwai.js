@@ -1449,6 +1449,11 @@
     grid.appendChild(item);
     var style = document.createElement('link'); style.rel = 'stylesheet';
     style.href = 'js/chat-fanwai.css?v=20261116softcore6';
+    var styleReleaseMeta = document.querySelector('meta[name="mao-build-release"]');
+    var styleRelease = styleReleaseMeta && styleReleaseMeta.content;
+    if (/^[a-f0-9]{24}$/.test(styleRelease || '')) {
+      style.href += '&mao_rev=' + styleRelease;
+    }
     document.head.appendChild(style);
     var root = document.createElement('div');
     root.id = 'fanwaiLayer'; root.className = 'fw-layer'; root.hidden = true;

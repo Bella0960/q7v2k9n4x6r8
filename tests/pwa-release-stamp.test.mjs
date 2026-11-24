@@ -106,3 +106,13 @@ test('optional precache has a bounded deadline even when a request never settles
   await context.boundedReleasePrefetch(signal=>new Promise(()=>{signal.addEventListener('abort',()=>{aborted=true;});}),10);
   assert.equal(aborted,true);
 });
+
+test('known dynamic desktop and chat assets inherit the page release rather than manual version alone',()=>{
+  const native=fs.readFileSync('shared/js/native-feel.js','utf8');
+  const extras=fs.readFileSync('chat/chat/js/chat-extras.js','utf8');
+  const fanwai=fs.readFileSync('chat/chat/js/chat-fanwai.js','utf8');
+  assert.match(native,/themeCssUrl\.searchParams\.set\('mao_rev', themeRelease\)/);
+  assert.match(native,/helperUrl\.searchParams\.set\('mao_rev', helperRelease\)/);
+  assert.match(extras,/fanwaiScript\.src \+= '&mao_rev=' \+ fanwaiRelease/);
+  assert.match(fanwai,/style\.href \+= '&mao_rev=' \+ styleRelease/);
+});

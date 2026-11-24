@@ -125,10 +125,17 @@ async function injectAccountScope(response, account, env) {
     '<meta name="mao-account-id" content="' + accountId + '">' +
     '<meta name="mao-account-role" content="' + (isVerifiedFounderSession(account, env) ? 'super_admin' : 'user') + '">' +
     '<script src="/shared/js/mao-account-scope.js?v=4" data-mao-account-scope></script>';
+  // The account runtime is injected after Vite's HTML stamp, so bind it
+  // explicitly to the document's exact release while retaining the legacy
+  // scope generation for unbuilt fixtures.
+  const pageRelease = source.match(/<meta name="mao-build-release" content="([a-f0-9]{24})">/)?.[1];
+  const scopedTags = pageRelease
+    ? tags.replace(/(mao-account-scope\.js\?v=\d+)"/, '$1&mao_rev=' + pageRelease + '"')
+    : tags;
   let injected = false;
   const html = source.replace(/<head\b[^>]*>/i, match => {
     injected = true;
-    return match + tags;
+    return match + scopedTags;
   });
   if (!injected) return blockedPage;
   const headers = new Headers(response.headers);

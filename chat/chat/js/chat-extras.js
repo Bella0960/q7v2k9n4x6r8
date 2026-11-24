@@ -158,6 +158,11 @@
   // 只加载现有模块，不增设第二套聊天页面或事件系统。
   var fanwaiScript = document.createElement('script');
   fanwaiScript.src = 'js/chat-fanwai.js?v=20261116v23';
+  var fanwaiReleaseMeta = document.querySelector('meta[name="mao-build-release"]');
+  var fanwaiRelease = fanwaiReleaseMeta && fanwaiReleaseMeta.content;
+  if (/^[a-f0-9]{24}$/.test(fanwaiRelease || '')) {
+    fanwaiScript.src += '&mao_rev=' + fanwaiRelease;
+  }
   fanwaiScript.onerror = function () { console.warn('[Fanwai] 扩展模块加载失败'); };
   document.body.appendChild(fanwaiScript);
 
