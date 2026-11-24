@@ -79,6 +79,10 @@ const TESTS = [
   ['node', ['tests/admin-center-editorial.browser.mjs']],
   ['node', ['tests/desktop-wallpaper-hd.browser.mjs']],
   ['node', ['tests/desktop-personalization.browser.mjs']],
+  // Mandatory update/recovery gate: version fingerprint and stale executable rejection
+  // are checked by postbuild/test:pwa:navigation, and network recovery in real Chromium.
+  ['node', ['tests/desktop-app-navigation.browser.mjs']],
+  ['node', ['tests/pwa-route-cache-recovery.browser.mjs']],
   ['npx', ['playwright', 'install', '--with-deps', 'webkit']],
   // WebKit iPhone emulation on Linux; distinct from physical iOS device acceptance.
   ['node', ['tests/admin-cloud-ios-webkit.mjs']],
