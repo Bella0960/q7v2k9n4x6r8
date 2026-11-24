@@ -57,6 +57,45 @@ try{
           assert.ok(Math.abs(icon.visualW-icon.visualH)<1,'Dock icon must remain square');
         }
         assert.equal(geometry.layout,original,'theme/font/size may not rewrite layout');
+        // Check all direct grid children rather than icons alone: a square
+        // widget can extend into an otherwise correct icon's cell.
+        async function assertNoOverlap(){
+          const overlaps=await page.evaluate(()=>{
+            const hits=[];
+            for(const grid of document.querySelectorAll('.desktop-grid')){
+              const items=[...grid.children].filter(el=>el.matches('[data-drag]')&&el.offsetWidth>0&&el.offsetHeight>0);
+              for(let i=0;i<items.length;i++)for(let j=i+1;j<items.length;j++){
+                const a=items[i].getBoundingClientRect(),b=items[j].getBoundingClientRect();
+                if(Math.min(a.right,b.right)-Math.max(a.left,b.left)>1&&Math.min(a.bottom,b.bottom)-Math.max(a.top,b.top)>1)
+                  hits.push([items[i].dataset.drag,items[j].dataset.drag]);
+              }
+              for(const wall of grid.querySelectorAll('.ds-photowall')){
+                const rect=wall.getBoundingClientRect();
+                if(Math.abs(rect.width-rect.height)>1) hits.push(['photowall','not-square']);
+                for(const image of wall.querySelectorAll('.pw-item')){
+                  const r=image.getBoundingClientRect();
+                  if(r.left<rect.left-1||r.right>rect.right+1||r.top<rect.top-1||r.bottom>rect.bottom+1)
+                    hits.push(['photowall','image-outside']);
+                }
+              }
+            }
+            return hits;
+          });
+          assert.deepEqual(overlaps,[],'grid widgets and applications must not overlap');
+        }
+        await assertNoOverlap();
+        // Reproduce the reported arrangement: clock, four apps, duo/photo
+        // wall side by side, then four apps directly below the widgets.
+        const custom=JSON.parse(original);
+        custom.pages[0]=['clock-lg','app_inspect','app_worldbook','app_memory','app_forum','duo','photowall','app_music','app_wallet','app_beauty','app_theme_store'];
+        await page.evaluate(layout=>localStorage.setItem('ds_layout_v14',JSON.stringify(layout)),custom);
+        await page.reload({waitUntil:'load',timeout:30000});
+        await page.waitForFunction(()=>document.querySelector('#gridPage0 > [data-drag="photowall"]')&&!document.getElementById('gridPage0').classList.contains('is-default-layout'));
+        await assertNoOverlap();
+        assert.deepEqual(await page.evaluate(()=>JSON.parse(localStorage.getItem('ds_layout_v14'))),custom);
+        await page.evaluate(layout=>localStorage.setItem('ds_layout_v14',layout),original);
+        await page.reload({waitUntil:'load',timeout:30000});
+
         if(theme==='liquid-glass'){
           const filters=await page.evaluate(()=>{
             const icon=document.querySelector('.desktop-grid .app-icon');
