@@ -28,7 +28,7 @@
         });
     }
     function save(dataUrl) {
-        if (typeof dataUrl !== 'string' || !/^data:image\\/(?:jpeg|png|webp);base64,/i.test(dataUrl))
+        if (typeof dataUrl !== 'string' || !/^data:image\/(?:jpeg|png|webp);base64,/i.test(dataUrl))
             return Promise.reject(new Error('封面格式无效'));
         return transact('readwrite', function (store) {
             return store.put({dataUrl:dataUrl,updatedAt:Date.now()}, KEY);
