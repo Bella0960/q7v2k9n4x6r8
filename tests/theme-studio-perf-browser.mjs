@@ -392,6 +392,46 @@ try {
     await reopen.close();
   }
 
+  // E2E apply/disable (390px): applying a list config persists the enabled flag and
+  // value and dispatches the chat-theme-change event; disabling clears the enabled
+  // flag without a runtime error. Real chat-page CSS application is only applied on a
+  // chat route (NOT VERIFIED here); this covers the workbench write + event path.
+  {
+    const e2e = await browser.newContext({ viewport: { width: 390, height: 844 }, isMobile: true, hasTouch: true });
+    const ep = await e2e.newPage();
+    const eerr = [];
+    ep.on('pageerror', e => eerr.push(e.message));
+    await ep.goto(origin + '/theme-studio/theme-studio.html', { waitUntil: 'domcontentloaded' });
+    await ep.waitForSelector('#previewSurface', { timeout: 15000 });
+    await ep.evaluate(() => localStorage.clear());
+    await ep.evaluate(() => localStorage.setItem('ai_custom_characters', JSON.stringify([{ id: 'role-a', name: 'A' }])));
+    await ep.reload({ waitUntil: 'domcontentloaded' });
+    await ep.waitForSelector('#editorFields input', { timeout: 15000 });
+    await delay(150);
+    await ep.evaluate(() => {
+      window.__themeEvents = [];
+      window.addEventListener('maomao:chat-theme-change', (e) => window.__themeEvents.push(e.detail || {}));
+    });
+
+    await ep.click('[data-tab="list"]');
+    await editRange(ep, '#edit-itemRadius', '25');
+    await ep.click('#applyButton');
+    await delay(120);
+    const applied = await ep.evaluate((key) => JSON.parse(localStorage.getItem(key)), STUDIO_KEY);
+    assert.equal(applied.enabled.list, true, 'apply enables list config');
+    assert.equal(applied.list.itemRadius, 25, 'apply persists list radius');
+    const appliedEvents = await ep.evaluate(() => window.__themeEvents);
+    assert.ok(appliedEvents.length >= 1, 'apply dispatches chat-theme-change event');
+    assert.equal(appliedEvents[appliedEvents.length - 1].tab, 'list', 'event detail names the list tab');
+
+    await ep.click('#disableButton');
+    await delay(120);
+    const disabled = await ep.evaluate((key) => JSON.parse(localStorage.getItem(key)), STUDIO_KEY);
+    assert.equal(disabled.enabled.list, false, 'disable clears the list enabled flag');
+    assert.deepEqual(eerr, [], 'apply/disable has no runtime errors: ' + eerr.join('; '));
+    await e2e.close();
+  }
+
   // R2 lease lifecycle (390px; viewport-agnostic): a stale late promise must not wipe a
   // newer in-flight pending; post-hide URLs are really revoked and stop decoding; the
   // current thumbnail + main-preview URLs still decode; null and rejection are both
@@ -452,6 +492,24 @@ try {
       img.src = u;
     }), url);
 
+    // Resolve the current thumbnail + main-preview blob URLs and decode each, so
+    // a failure/retry path can be checked on both surfaces (not just the draft id).
+    const currentPreview = () => lp.evaluate(() => new Promise(res => {
+      const thumb = document.querySelector('#imageSlots .image-thumb');
+      const tb = thumb ? thumb.style.backgroundImage : '';
+      const tu = (tb.match(/blob:[^")]+/) || [])[0];
+      const cv = getComputedStyle(document.getElementById('previewSurface')).getPropertyValue('--p-list-cover-image').trim();
+      const mu = (cv.match(/blob:[^")]+/) || [])[0];
+      const dec = u => new Promise(r => {
+        if (!u) return r({ hasUrl: false, ok: false });
+        const img = new Image();
+        img.onload = () => r({ hasUrl: true, ok: img.naturalWidth > 0 });
+        img.onerror = () => r({ hasUrl: true, ok: false });
+        img.src = u;
+      });
+      Promise.all([dec(tu), dec(mu)]).then(([thumb, main]) => res({ thumb, main }));
+    }));
+
     // A1. Real synthetic upload; thumbnail + main-preview resolves hang in the mock.
     await uploadCover(lp, '#444444');
     await lp.waitForFunction(() =>
@@ -478,13 +536,26 @@ try {
     const callsAfterStale = await lp.evaluate(() => window.__lmock.calls);
     assert.equal(callsAfterStale, callsAfterRestore, 'stale late resolve does not trigger a third resolve');
 
-    // A4. Stale post-hide URLs were really revoked and must no longer decode.
+    // A4. Stale post-hide URLs were really revoked and must no longer decode; each
+    // stale URL is revoked exactly once (per-URL count, not just a key count).
     const staleUrls = await lp.evaluate((n) => window.__lmock.assets.slice(0, n).map(a => a.url), oldPending);
     for (const url of staleUrls) {
       assert.equal(await decodes(url), false, 'stale post-hide URL does not decode: ' + url);
+      const times = await lp.evaluate((u) => window.__lmock.revoked[u] || 0, url);
+      assert.equal(times, 1, 'stale URL revoked exactly once: ' + url + ' (' + times + ')');
     }
     const revokedCount = await lp.evaluate(() => Object.keys(window.__lmock.revoked).length);
     assert.equal(revokedCount, staleUrls.length, 'each stale URL revoked exactly once');
+
+    // A4b. While the fresh batch is still pending, tab switches must not open a new
+    // resolve: the in-flight pending is shared (single-flight), so the repository
+    // call count stays flat until the fresh request settles.
+    const callsBeforeIdleSwitch = await lp.evaluate(() => window.__lmock.calls);
+    await lp.click('[data-tab="detail"]');
+    await lp.click('[data-tab="list"]');
+    await delay(60);
+    const callsAfterIdleSwitch = await lp.evaluate(() => window.__lmock.calls);
+    assert.equal(callsAfterIdleSwitch, callsBeforeIdleSwitch, 'fresh pending stays shared; idle tab switches add no resolve');
 
     // A5. Settle the fresh batch; current thumbnail and main-preview URLs decode.
     await lp.evaluate(() => {
@@ -507,6 +578,7 @@ try {
 
     // B1. Null resolve then retry, measured by call delta (not a cumulative >=2 guess).
     // pagehide first drops the session lease cache so the failure path is actually hit.
+    const coverBeforeNull = await lp.evaluate(() => window.MAOMAOThemeStudio._draftSnapshot().list.coverImage);
     const callsBeforeNull = await lp.evaluate(() => window.__lmock.calls);
     await lp.evaluate(() => window.dispatchEvent(new Event('pagehide')));
     await lp.evaluate(() => { window.__lmock.failNext = true; });
@@ -525,8 +597,15 @@ try {
     assert.ok(nullDelta >= 2, 'null failure is retried, delta=' + nullDelta);
     let draft = await lp.evaluate(() => window.MAOMAOThemeStudio._draftSnapshot().list.coverImage);
     assert.ok(/^as_[A-Z2-7]{32}$/.test(draft), 'cover draft survives a null resolve');
+    const nullPreview = await currentPreview();
+    assert.equal(nullPreview.thumb.hasUrl, true, 'null retry thumbnail paints a URL');
+    assert.equal(nullPreview.thumb.ok, true, 'null retry thumbnail decodes');
+    assert.equal(nullPreview.main.hasUrl, true, 'null retry main preview paints a URL');
+    assert.equal(nullPreview.main.ok, true, 'null retry main preview decodes');
+    assert.equal(draft, coverBeforeNull, 'cover id unchanged after null resolve');
 
     // B2. Rejection then retry; a rejected resolve must leave the draft intact.
+    const coverBeforeRej = await lp.evaluate(() => window.MAOMAOThemeStudio._draftSnapshot().list.coverImage);
     const callsBeforeRej = await lp.evaluate(() => window.__lmock.calls);
     await lp.evaluate(() => window.dispatchEvent(new Event('pagehide')));
     await lp.evaluate(() => { window.__lmock.rejectNext = true; });
@@ -545,6 +624,12 @@ try {
     assert.ok(rejDelta >= 2, 'rejection is retried, delta=' + rejDelta);
     draft = await lp.evaluate(() => window.MAOMAOThemeStudio._draftSnapshot().list.coverImage);
     assert.ok(/^as_[A-Z2-7]{32}$/.test(draft), 'cover draft survives a rejection');
+    const rejPreview = await currentPreview();
+    assert.equal(rejPreview.thumb.hasUrl, true, 'rejection retry thumbnail paints a URL');
+    assert.equal(rejPreview.thumb.ok, true, 'rejection retry thumbnail decodes');
+    assert.equal(rejPreview.main.hasUrl, true, 'rejection retry main preview paints a URL');
+    assert.equal(rejPreview.main.ok, true, 'rejection retry main preview decodes');
+    assert.equal(draft, coverBeforeRej, 'cover id unchanged after rejection');
 
     assert.deepEqual(lerr, [], 'lease lifecycle context has no runtime errors: ' + lerr.join('; '));
     await lc.close();
