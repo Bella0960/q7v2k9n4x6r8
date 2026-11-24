@@ -682,3 +682,20 @@ On the next turn/session, read this file and the current `AGENTS.md` first. Cont
 
 - #513 public verify 45462579329 succeeded for 23dc0286; actual live core still v8 and web v161. MCP release failed twice before tests at read-only Cloudflare preflight. Official endpoint permission schema confirms DO query/v2 requires Workers Scripts Write (dashboard Edit) even for SELECT. GitHub QA workflow reads CANDIDATE_DEPLOY_TOKEN/CANDIDATE_ACCOUNT_ID. User owns secret rotation; no credential accessed or changed.
 - Correct the old one-account ceiling in core release preflight, retaining exact founder and sole active administrator + closed setup. Add read-only fail-closed readiness guard for delegated social: require local isolated core, social/E2EE enabled, plaintext disabled, 3 exact migration versions, 7 expected tables, exactly one total super_admin, zero rows written. Add synthetic tests for legitimate second user, wrong founder, second admin, missing migration/table/config, write evidence. This prevents publishing a social UI before the actual core is ready. No live core update or data migration. Private verified backup, separate authorized core-only release and invitation enrollment remain prerequisites; current QA-only channel cannot perform them. Submit verification after serialized MCP request/credential recovery is coordinated; do not rerun previous verified SHA.
+
+
+
+## 2026-11-24 | MCP-001 restore on v161
+
+- Restore original connection center, scoped client/permissions/AI adapter and existing tests from #202 / 6db64c36; add settings link and adapter scripts without any changes to the live chat request loop. No old workflows, SW, package or API credentials copied.
+- Fix token read ordering, pending connection cancellation, stale responses, corrupt saved metadata, checked writes and bounded disconnect. No automatic tool invocation, no real endpoint used. Synthetic QA and phone verification pending. This independent branch does not include the blocked social schema candidate.
+
+
+## 2026-11-25 | MCP-001 restore QA failure repair
+
+- Actual public release run 45415570102 failed at gate 49/51: mcp-client.test.mjs:553, mcp-role-permissions.test.mjs:114 and :126. Corrected invalid catalog fixture (40 x 5 x 1200 Chinese characters did not exceed 768 KiB; 45 does, with explicit per-schema/response budget checks), synchronous listForRole error assertion, and exact grant-cap error assertion. Added post-cap retained permission and denied-new-tool checks. No runtime security limits weakened. Carried the same already-submitted narrow Moments browser navigation race fix from #513 into this independently based v161 candidate to avoid known shared test failure. Wait for serialized #513 verification, then test current exact MCP candidate or its updated integration on the actually deployed baseline. No deployment or live data changes.
+
+
+## 2026-11-25 | REAL-FRIEND-001 — preserve deployed MCP v162
+
+- Actual QA release 45464094512 attempt 3 succeeded after user rotated the deployment credential. v162 source 83bf8fd5003167a77052a66d9562876647158210 and active Worker version 0c366cb5-c5da-4af1-9ac4-81a77221f1df verified; independent identity core v8 unchanged. Integrate v162 as second parent of #513, copying only changed MCP blobs, preserving the identical Moments fix and both execution histories. No changes to either live deployment. Revalidate combined candidate before release; core readiness, private backup/rollback, authorized separate release and enrollment remain required. Never deploy old v161 candidate over v162.
