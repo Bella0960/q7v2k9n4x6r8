@@ -732,7 +732,13 @@ test('群通话：锁不可用时保留原聊天并明确提示', async () => {
 
 test('情侣绑定：邀请消息持久化结果与资料保存提示保持区分', () => {
   assert.match(couplePageSource, /let invitationSaved = true/);
-  assert.match(couplePageSource, /storage\.saveChatHistory\(profile\.partnerId, next\) === true/);
+  // v156 prefers the result-bearing storage API; the legacy boolean API
+  // is still a strict fallback. Both require acknowledged writes and a
+  // subsequent full history readback, not merely a successful UI action.
+  assert.match(couplePageSource, /storage\.result\.saveChatHistory\(profile\.partnerId,\s*next\)/);
+  assert.match(couplePageSource, /saved\s*=\s*!!\(result\s*&&\s*result\.ok\)/);
+  assert.match(couplePageSource, /saved\s*=\s*storage\.saveChatHistory\(profile\.partnerId,\s*next\)\s*===\s*true/);
+  assert.match(couplePageSource, /JSON\.stringify\(verified\)\s*!==\s*JSON\.stringify\(next\)/);
   assert.match(couplePageSource, /聊天记录写入后校验失败/);
   assert.match(couplePageSource, /资料已保存，但邀请消息没有写入聊天记录/);
 });
