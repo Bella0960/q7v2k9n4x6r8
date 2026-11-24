@@ -396,6 +396,7 @@
       if (qaEnrollmentReady) {
         const identifier = String(form.get('qaIdentifier') || '').trim();
         const password = String(form.get('qaPassword') || '');
+        byId('qaEnrollmentPassword').value = '';
         if (!identifier || !password) throw new Error('请输入待授权账号和密码。');
         const result = await api('/api/accounts/enrollment/activate','POST',{
           identifier,password,inviteCode:String(form.get('inviteCode') || '').trim()

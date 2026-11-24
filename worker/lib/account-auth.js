@@ -415,9 +415,13 @@ export function createAccountAuth({ store, env = {}, now = () => Date.now() }) {
   // Enrollment is separate from the active-account session path. A pending
   // registrant receives no browser session and cannot use any protected app API.
   function qaCoreEnrollmentReady() {
-    return env.MAO_QA_ENROLLMENT_ENABLED === 'true' &&
-      env.MAO_IDENTITY_MODE === 'local' && !!isolatedQaAuthorityFounderId(env) &&
-      store.hasMaoSuperAdminAccount();
+    if (env.MAO_QA_ENROLLMENT_ENABLED !== 'true' || env.MAO_IDENTITY_MODE !== 'local') return false;
+    const founderId = isolatedQaAuthorityFounderId(env);
+    if (!founderId) return false;
+    const founder = store.getMaoAccountById(founderId);
+    return founder?.role === 'super_admin' && founder.status === 'active' &&
+      String(env.MAO_SUPER_ADMIN_BOOTSTRAP_SECRET || '').length >= 32 &&
+      String(env.DEVICE_SECRET_PEPPER || '').length >= 32;
   }
 
   async function qaEnrollment(request, path, method) {
