@@ -2130,3 +2130,50 @@ body.maomao-home .desktop-grid .app-name {
 body.maomao-home .dock-bar {
   gap: clamp(4px, calc((100% - 306px) / 4), 12px);
 }
+
+
+/* Keep square 2×2 widgets inside their actual grid allocation. On wide
+   phones the width of two columns can exceed two icon rows plus the gap.
+   Give those grids a width-aware row budget, with a square fit fallback
+   for browsers without container query units. Do not change saved order. */
+body.maomao-home .desktop-grid {
+  --desktop-track-row: var(--desktop-icon-row);
+  flex: 0 0 auto;
+}
+@supports (container-type: inline-size) and (width: 1cqi) {
+  body.maomao-home .home-page {
+    container-type: inline-size;
+  }
+  body.maomao-home .desktop-grid:has(> :is(.po-wrapper,.ds-dialog,.ds-duo,.ds-photowall,.ds-music,.ds-todo,.ds-cal,.ds-count,.ds-note,.ds-clock)) {
+    /* Page content width minus 4px grid padding, 8px column gap,
+       and 20px for the two-row gap budget, divided across four columns. */
+    --desktop-track-row: max(var(--desktop-icon-row), calc((100cqi - 32px) / 4));
+  }
+}
+body.maomao-home .desktop-grid {
+  grid-auto-rows: var(--desktop-track-row) !important;
+}
+body.maomao-home #gridPage0.is-default-layout {
+  grid-template-rows: repeat(6, var(--desktop-track-row)) !important;
+  grid-auto-rows: var(--desktop-track-row) !important;
+}
+body.maomao-home .desktop-grid > :is(.po-wrapper,.ds-dialog,.ds-duo,.ds-photowall,.ds-music,.ds-todo,.ds-cal,.ds-count,.ds-note,.ds-clock) {
+  box-sizing: border-box;
+  min-width: 0;
+  min-height: 0;
+  width: min(100%, calc(2 * var(--desktop-track-row) + 10px));
+  height: auto;
+  max-width: 100%;
+  max-height: 100%;
+  aspect-ratio: 1 / 1;
+  justify-self: center;
+  align-self: center;
+}
+body.maomao-home .desktop-grid > .ds-photowall {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  grid-template-rows: repeat(2, minmax(0, 1fr));
+}
+body.maomao-home .ds-photowall > .pw-item {
+  min-width: 0;
+  min-height: 0;
+}
