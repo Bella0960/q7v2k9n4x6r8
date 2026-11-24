@@ -645,6 +645,7 @@ a:active, button:active, [role="button"]:active { transform: scale(0.97); }</sty
     </div>
 
     <script src="../../shared/js/phone/role-public-timeline.js?v=20261102v1"></script>
+    <script src="../../shared/js/phone/moments-chat-action.js?v=20261124v2"></script>
         <script src="../../shared/js/nav.js"></script>
     <script>
         /* ================= 数据层 ================= */
@@ -1216,113 +1217,46 @@ a:active, button:active, [role="button"]:active { transform: scale(0.97); }</sty
         }
 
         if (aiBtn) aiBtn.addEventListener('click', function () {
-            var characters = getCharacterList();
-            if (!characters.length) {
-                showToast('还没有角色，先去联系人添加一个吧');
-                return;
-            }
-            var config = getApiConfig();
-            var apiKey = (config.apiKey || '').trim();
-            if (!apiKey) {
-                showToast('请先到设置页配置 API Key');
-                return;
-            }
-            var baseUrl = (config.baseUrl || 'https://api.openai.com/v1').trim().replace(/\/+$/, '');
-            var model = (config.model || 'gpt-3.5-turbo').trim();
-
+            if (aiBtn.disabled) return;
             var selected = document.getElementById('roleSelect');
             var selectedId = selected ? String(selected.value || '') : '';
-            var role = characters.find(function (c) {
-                return c && c.id != null && String(c.id) === selectedId;
-            });
-            if (!role || !selectedId) {
-                showToast('请先选择要发动态的角色');
-                return;
-            }
-            var persona = (role.persona || role.prompt || '一个善解人意的AI角色').trim();
-            var tone = (role.tone || '').trim();
+            var action = window.MomentsChatAction;
+            if (!action || !window.PhoneAPI) { showToast('发布模块暂不可用'); return; }
+            var role = action.resolveRole(getCharacterList(), selectedId);
+            if (!role) { showToast('请先选择要发动态的角色'); return; }
+            var config = getApiConfig();
+            if (!String(config.apiKey || '').trim()) { showToast('请先到设置页配置 API Key'); return; }
 
-            var systemPrompt = '你是' + (role.name || '一个角色') + '。角色设定：' + persona +
-                (tone ? '。说话语气：' + tone : '') +
-                '。现在要以第一人称发布一条社交空间动态。';
+            var systemPrompt = '你是虚构角色' + (role.name || '角色') +
+                '。人设：' + String(role.persona || role.prompt || '').slice(0, 4000) +
+                '。语气：' + String(role.tone || '').slice(0, 500) +
+                '。结合自己的生活设定写一条自然的朋友圈，避免重复已有动态。不得复制私聊、真实个人资料、联系方式、地址、密钥；不得代表其他角色或用户发帖。只输出 [朋友圈动态:正文]，正文不超过120字。';
             if (window.RolePublicTimeline && typeof window.RolePublicTimeline.buildRolePrompt === 'function') {
-                var postTimelinePrompt = window.RolePublicTimeline.buildRolePrompt(role.id, loadMoments(), { maxEntries: 3 });
-                if (postTimelinePrompt) systemPrompt += '\n\n' + postTimelinePrompt;
+                var timeline = window.RolePublicTimeline.buildRolePrompt(selectedId, loadMoments(), { maxEntries: 3 });
+                if (timeline) systemPrompt += '\n\n' + timeline;
             }
-            var userPrompt = '请结合你的人设，写一条此刻想发的生活动态（朋友圈风格）。' +
-                '要求：只输出动态正文本身，50个字以内，一句话，口语化、自然真实；' +
-                '不要使用任何表情符号，不要加引号或括号，不要解释，不要出现“动态：”之类的前缀。' +
-                '如果你想发一张图片，请直接在正文里用文字描述这张图片（比如：今天阳光很好，桌上摆着一杯热气腾腾的咖啡），不要输出图片代码。';
-
+            var requestId = (window.crypto && typeof window.crypto.randomUUID === 'function')
+                ? window.crypto.randomUUID() : Date.now() + '_' + Math.random().toString(36).slice(2);
             aiBtn.disabled = true;
             showToast((role.name || 'TA') + ' 正在构思…');
-
-            var momentApiStart = Date.now();
-            var controller = new AbortController();
-            var timeoutId = setTimeout(function () { controller.abort(); }, 15000);
-
-            fetch(baseUrl + '/chat/completions', {
-                method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json',
-                    'Authorization': 'Bearer ' + apiKey
-                },
-                signal: controller.signal,
-                body: JSON.stringify({
-                    model: model,
-                    messages: [
-                        { role: 'system', content: systemPrompt },
-                        { role: 'user', content: userPrompt }
-                    ],
-                    temperature: config.temperature != null ? config.temperature : 0.8,
-                    stream: false
-                })
-            }).then(function (response) {
-                if (!response.ok) {
-                    return response.text().then(function (t) {
-                        var detail = t;
-                        try { detail = (JSON.parse(t).error || {}).message || t; } catch (e) {}
-                        throw new Error('HTTP ' + response.status + '：' + (detail || response.statusText));
-                    });
-                }
-                return response.json();
-            }).then(function (data) {
-                var text = (((data || {}).choices || [])[0] || {}).message
-                    ? data.choices[0].message.content : '';
-                text = String(text || '').replace(/^["“”]+|["“”]+$/g, '').replace(/^动态[:：]\s*/, '').trim();
-                if (!text) throw new Error('返回内容为空');
-                if (text.length > 200) text = text.slice(0, 200);
-
-                var post = {
-                    id: 'm_' + Date.now() + '_' + Math.floor(Math.random() * 1000),
-                    authorId: role.id || '',
-                    author: role.name || '匿名用户',
-                    avatar: role.avatar || '',
-                    content: text,
-                    image: '',
-                    time: Date.now(),
-                    likes: 0,
-                    liked: false,
-                    comments: 0,
-                    commentList: [],
-                    byAI: true
-                };
-                var list = loadMoments();
-                list.unshift(post);
-                localStorage.setItem(MOMENTS_KEY, JSON.stringify(list));
-                var persisted = JSON.parse(localStorage.getItem(MOMENTS_KEY) || '[]');
-                if (!Array.isArray(persisted) || !persisted.some(function (p) {
-                    return p.id === post.id && String(p.authorId) === selectedId;
-                })) throw new Error('动态保存失败');
+            Promise.resolve().then(function () {
+                return window.PhoneAPI.complete({
+                    system: systemPrompt,
+                    user: '以你自己的身份发布此刻的日常动态。',
+                    timeoutMs: 30000
+                });
+            }).then(function (result) {
+                var content = action.parsePost(result);
+                if (!content) throw new Error('模型没有返回可发布正文');
+                var post = action.publish({
+                    roleId: selectedId, requestId: requestId, content: content,
+                    source: 'menu', storage: localStorage, getCharacters: getCharacterList
+                });
                 renderMoments();
-                logApiCall(model, 'success', momentApiStart);
-                showToast((role.name || 'TA') + ' 发布了新动态');
-            }).catch(function (err) {
-                var msg = (err && err.name === 'AbortError') ? '请求超时，请稍后再试' : ('生成失败：' + (err && err.message ? err.message : '未知错误'));
-                showToast(msg);
-                logApiCall(model, 'error', momentApiStart, (err && err.message) ? err.message : '未知错误');
+                showToast((post.author || 'TA') + ' 发布了新动态');
+            }).catch(function () {
+                showToast('动态发布失败，请检查连接或存储后重试');
             }).finally(function () {
-                clearTimeout(timeoutId);
                 aiBtn.disabled = false;
             });
         });
@@ -1710,6 +1644,13 @@ a:active, button:active, [role="button"]:active { transform: scale(0.97); }</sty
         })();
 
         renderMoments();
+        // Same-origin chat tabs publish into the same store; refresh when returning.
+        window.addEventListener('storage', function (event) {
+            if (event.key === MOMENTS_KEY) renderMoments();
+        });
+        window.addEventListener('pageshow', function (event) {
+            if (event.persisted) renderMoments();
+        });
 
         (function processPublishedPostReplies() {
             try {
