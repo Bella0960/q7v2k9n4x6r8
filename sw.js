@@ -1,7 +1,7 @@
 /* 小手机 PWA Service Worker
  * 页面与静态资源均采用缓存优先+后台更新，断网/慢网时秒开。
  */
-const CACHE_NAME = 'phone-app-pwa-v308';
+const CACHE_NAME = 'phone-app-pwa-v309';
 const FONT_ASSET_CACHE = 'maomao-font-assets-v1';
 function cacheablePublicResponse(response) {
   return !!(response && response.ok && !response.redirected &&
@@ -561,6 +561,17 @@ async function showUnlinkedTestNotification() {
   });
 }
 
+function visiblePushText(value, limit) {
+  if (typeof value !== 'string') return '';
+  var cleaned = value
+    .replace(/(?:https?:\/\/|www\.)[^\s<>]+/gi, ' ')
+    .replace(/\b(?:[a-z0-9-]+\.)+(?:com|net|org|io|app|dev|cn|me|xyz)(?:\/[^\s]*)?/gi, ' ')
+    .replace(/\bMAO-[A-Z0-9]{12,24}\b/g, ' ')
+    .replace(/[\u0000-\u001F\u007F-\u009F<>\u2028\u2029]+/g, ' ')
+    .replace(/\s+/g, ' ').trim();
+  return Array.from(cleaned).slice(0, limit).join('');
+}
+
 self.addEventListener('push', event => {
   var payload = {};
   try { payload = event.data ? event.data.json() : {}; }
@@ -582,10 +593,10 @@ self.addEventListener('push', event => {
         /[\u0000-\u001f\u007f]/.test(roleId)) return;
     if (!await pushAccountActive(accountId)) return;
     var incomingTag = String(payload.tag || '');
-    var tag = /^[A-Za-z0-9_-]{1,64}$/.test(incomingTag)
+    var tag = /^[A-Za-z0-9_-]{1,160}$/.test(incomingTag)
       ? incomingTag : 'maomao-message';
-    await self.registration.showNotification('新消息', {
-      body: '你有一条新消息，打开小手机查看。',
+    await self.registration.showNotification(visiblePushText(payload.title, 48) || '新消息', {
+      body: visiblePushText(payload.body, 120) || '发来一条新消息',
       tag: tag,
       data: { kind: 'chat_message', roleId: roleId, accountId: accountId },
       icon: './assets/mao-bunny-192.png',
@@ -610,8 +621,8 @@ self.addEventListener('notificationclick', event => {
       var client = clients[j];
       if (client.url.indexOf(self.registration.scope) === 0 && 'navigate' in client) {
         try {
-          await client.navigate(target);
-          return client.focus ? client.focus() : undefined;
+          const navigated = await client.navigate(target);
+          if (navigated) return navigated.focus ? navigated.focus() : undefined;
         } catch (error) {}
       }
     }

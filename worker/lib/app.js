@@ -222,11 +222,22 @@ function validateScheduleInput(body) {
 /**
  * 创建 API 处理器。不依赖 Workerd 专有 API，便于用 node:sqlite 直接跑契约测试。
  */
-/**
- * Build a privacy-safe notification for an already-persisted chat outbox row.
- * Message text is intentionally omitted so lock-screen previews reveal no chat content.
- */
-export function buildOutboundPushPayload({ characterId, serverMessageId, timestamp, accountId = OWNER_USER_ID }) {
+/** Account-scoped OS lock-screen text; routes stay in notification data. */
+export function safePushPreview(value, limit = 100) {
+  if (typeof value !== 'string') return '';
+  const clean = value
+    .replace(/(?:https?:\/\/|www\.)[^\s<>]+/gi, ' ')
+    .replace(/\b(?:[a-z0-9-]+\.)+(?:com|net|org|io|app|dev|cn|me|xyz)(?:\/[^\s]*)?/gi, ' ')
+    .replace(/\bMAO-[A-Z0-9]{12,24}\b/g, ' ')
+    .replace(/[\u0000-\u001F\u007F-\u009F<>\u2028\u2029]+/g, ' ')
+    .replace(/\s+/g, ' ').trim();
+  return Array.from(clean).slice(0, limit).join('');
+}
+
+export function buildOutboundPushPayload({
+  characterId, serverMessageId, timestamp, accountId = OWNER_USER_ID,
+  characterName = '', messageText = ''
+}) {
   const roleId = String(characterId || '');
   const messageId = String(serverMessageId || '');
   const maoAccountId = String(accountId || OWNER_USER_ID);
@@ -238,7 +249,8 @@ export function buildOutboundPushPayload({ characterId, serverMessageId, timesta
   return {
     type: 'chat_message',
     accountId: maoAccountId,
-    // Only opaque routing metadata; no site links, role names or chat text.
+    title: safePushPreview(characterName, 48) || '新消息',
+    body: safePushPreview(messageText, 120) || '发来一条新消息',
     roleId,
     tag: 'maomao-chat-' + messageId,
     dedupeKey: ('outbound:' + messageId).slice(0, 96),
@@ -322,11 +334,18 @@ export async function dispatchPendingOutboundPushes({
     summary.attempted += 1;
     let outcome;
     try {
+      // The immutable outbox is the only source of visible notification text.
+      let persisted = null;
+      try { persisted = JSON.parse(candidate.payload_json); } catch {}
+      const validText = persisted && persisted.type === 'text' &&
+        typeof persisted.text === 'string';
       const payload = buildOutboundPushPayload({
         accountId: candidate.target_account_id || OWNER_USER_ID,
         characterId: candidate.character_id,
         serverMessageId: candidate.server_message_id,
-        timestamp: Number(candidate.created_at || timestamp)
+        timestamp: Number(candidate.created_at || timestamp),
+        characterName: validText ? persisted.characterName : '',
+        messageText: validText ? persisted.text : ''
       });
       outcome = await sendWebPush(
         {
@@ -1600,13 +1619,22 @@ export function createApp({ store, env = {}, now = () => Date.now(), fetchImpl =
     const device = await authenticate(request);
     const body = await readJsonBody(request);
     if (!body || typeof body !== 'object' || Array.isArray(body) ||
-        Object.keys(body).some(key => !['attemptCount', 'text'].includes(key)) ||
+        Object.keys(body).some(key => !['attemptCount', 'text', 'characterName'].includes(key)) ||
         !Object.prototype.hasOwnProperty.call(body, 'attemptCount') ||
         !Object.prototype.hasOwnProperty.call(body, 'text')) {
       throw new ApiError(400, 'INVALID_ACTIVITY_RESULT', '完成请求只允许包含 attemptCount 和 text');
     }
     const attemptCount = Number(body.attemptCount);
     const messageText = String(body.text || '').trim();
+    const hasCharacterName = Object.prototype.hasOwnProperty.call(body, 'characterName');
+    const rawCharacterName = hasCharacterName ? body.characterName : '';
+    if (hasCharacterName && (typeof rawCharacterName !== 'string' ||
+        Array.from(rawCharacterName.trim()).length > 48 ||
+        /[<>\u0000-\u001F\u007F\u2028\u2029]/.test(rawCharacterName) ||
+        /(?:https?:\/\/|www\.|\b(?:[a-z0-9-]+\.)+(?:com|net|org|io|app|dev|cn|me|xyz)\b)/i.test(rawCharacterName))) {
+      throw new ApiError(400, 'INVALID_CHARACTER_NAME', '角色名称不是安全的通知文本');
+    }
+    const characterName = rawCharacterName.trim();
     if (!Number.isSafeInteger(attemptCount) || attemptCount < 1 ||
         messageText.length < 2 || Array.from(messageText).length > 220 ||
         /[<>\u0000-\u0008\u000B\u000C\u000E-\u001F]/.test(messageText) ||
@@ -1618,12 +1646,19 @@ export function createApp({ store, env = {}, now = () => Date.now(), fetchImpl =
     const activity = await store.getActivity(activityId);
     const serverMessageId = 'autonomy_' + activityId + '_' + attemptCount;
     const outboundDedupeKey = 'autonomy:' + activityId + ':' + attemptCount;
-    const outboundPayload = { type: 'text', text: messageText };
+    const outboundPayload = {
+      type: 'text', text: messageText,
+      ...(characterName ? { characterName } : {})
+    };
 
     // A retry after a lost HTTP response is accepted only when it is byte-for-byte
     // the same completed message; different text cannot replace the first result.
     if (activity && activity.device_id === device.id && activity.status === 'completed' &&
         Number(activity.attempt_count) === attemptCount) {
+      let existingResult = null;
+      try { existingResult = JSON.parse(activity.result_json); } catch {}
+      const repeatPayload = existingResult && existingResult.type === 'text' &&
+        existingResult.text === messageText ? existingResult : outboundPayload;
       const repeated = await store.completeActivityWithOutbound({
         id: activityId,
         owner: device.id,
@@ -1631,7 +1666,7 @@ export function createApp({ store, env = {}, now = () => Date.now(), fetchImpl =
         now: timestamp,
         serverMessageId,
         dedupeKey: outboundDedupeKey,
-        payload: outboundPayload
+        payload: repeatPayload
       });
       if (repeated) {
         let pushDispatch = null;

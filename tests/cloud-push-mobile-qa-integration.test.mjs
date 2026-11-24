@@ -60,18 +60,19 @@ function swHarness({ session = ACCOUNT, online = true } = {}) {
   };
 }
 
-test('v156 remote notification ignores injected URLs, title, body, profile; opens safe in-app chat', async () => {
+test('v157 shows sender and message but strips visible origin and ignores unsafe click routes', async () => {
   const h = swHarness();
   await h.push({ type: 'chat_message', accountId: ACCOUNT, roleId: ROLE,
     url: 'https://secret.example.com/credentials',
-    title: 'secret', body: 'secret conversation',
+    title: '小狐狸 https://preview.mao520.com',
+    body: '我到家啦 https://secret.example.com/credentials 你呢？',
     tag: 'safe_test_01' });
   assert.equal(h.notices.length, 1);
-  assert.equal(h.notices[0].title, '新消息');
-  assert.equal(h.notices[0].options.body, '你有一条新消息，打开小手机查看。');
+  assert.equal(h.notices[0].title, '小狐狸');
+  assert.equal(h.notices[0].options.body, '我到家啦 你呢？');
   assert.deepEqual(Object.keys(h.notices[0].options.data).sort(),
     ['accountId', 'kind', 'roleId']);
-  assert.doesNotMatch(JSON.stringify(h.notices[0]), /https?:\/\/|secret|credentials|conversation/);
+  assert.doesNotMatch(JSON.stringify(h.notices[0]), /https?:\/\/|secret|credentials|mao520/);
   await h.click({ ...h.notices[0].options.data, url: 'https://external.invalid/hijack' });
   assert.deepEqual(h.opened, [
     'https://preview.mao520.com/chat/chat/chat-detail.html?id=role-synthetic'
@@ -220,21 +221,25 @@ test('role mismatch and serverMessageId conflict never append or ACK', async () 
   assert.equal(JSON.parse(dup.storage.getItem('chat_history_' + ROLE)).length, 1);
 });
 
-test('actual v156 server builder never exports website URL or lock-screen chat text', () => {
-  const start = appSource.indexOf('export function buildOutboundPushPayload(');
+test('actual v157 builder includes sanitized sender/text and never adds clickable URLs', () => {
+  const start = appSource.indexOf('export function safePushPreview(');
   const end = appSource.indexOf('\n}\n\n/**\n * Send due notifications', start);
   assert.ok(start !== -1 && end > start);
-  const isolated = appSource.slice(start, end + 2).replace(/^export /, '');
+  const isolated = appSource.slice(start, end + 2).replace(/^export /gm, '');
   const builder = new Function('OWNER_USER_ID', isolated +
     '\nreturn buildOutboundPushPayload;')(ACCOUNT);
   const payload = builder({
     characterId: ROLE, serverMessageId: MESSAGE_ID, timestamp: 1732400000000,
-    accountId: ACCOUNT
+    accountId: ACCOUNT, characterName: '小狐狸',
+    messageText: '今天在下雨，别忘了带伞。 https://preview.mao520.com/'
   });
   assert.equal(payload.roleId, ROLE);
-  for (const key of ['url', 'href', 'link', 'title', 'body', 'text']) {
+  assert.equal(payload.title, '小狐狸');
+  assert.equal(payload.body, '今天在下雨，别忘了带伞。');
+  for (const key of ['url', 'href', 'link', 'text']) {
     assert.equal(Object.prototype.hasOwnProperty.call(payload, key), false, key);
   }
+  assert.doesNotMatch(payload.title + payload.body, /https?:\/\/|mao520|MAO-/i);
   assert.doesNotMatch(JSON.stringify(payload), /https?:\/\/|\.html|[?&]id=/i);
 });
 
