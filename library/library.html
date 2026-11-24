@@ -667,6 +667,10 @@ button{font:inherit;color:inherit;cursor:pointer;border:0;background:transparent
   var readerRoles = [];
   var pendingImportedBook = null;
   var activeParagraph = null;
+  var paragraphRequest = null;
+  function readerAccountToken() {
+    return JSON.stringify([window.__MAO_ACCOUNT_SCOPE__ || null, localStorage.getItem('mao-account-id'), localStorage.getItem('mao-account-role')]);
+  }
 
   function openReaderDb() {
     if (readerDbPromise) return readerDbPromise;
@@ -1322,7 +1326,6 @@ button{font:inherit;color:inherit;cursor:pointer;border:0;background:transparent
     }) : [];
     if (!chapterCheck.length) { showToast('没有可导入的正文章节'); return; }
     book.chapters = chapterCheck;
-    generateParagraphCommentBtn.disabled = false;
     try {
       await persistLocalBook(book);
       books.unshift(book);
@@ -1446,22 +1449,26 @@ button{font:inherit;color:inherit;cursor:pointer;border:0;background:transparent
       generateParagraphCommentBtn.textContent = '暂无可用角色';
       return;
     }
-    generateParagraphCommentBtn.disabled = false;
+    generateParagraphCommentBtn.disabled = !!paragraphRequest;
+    if (paragraphRequest) {
+      generateParagraphCommentBtn.textContent = '正在生成段评…';
+    }
     var comment = getParagraphComment(activeParagraph.bookId, activeParagraph.chapterIndex,
       activeParagraph.paragraphIndex, roleId);
     if (comment) {
       paragraphCommentThread.innerHTML = '<div class="paragraph-comment-author">' + esc(comment.roleName || role.name) +
         ' · ' + (comment.createdAt ? new Date(comment.createdAt).toLocaleString() : '已保存') +
         '</div><div class="paragraph-comment-content">' + esc(comment.text || '') + '</div>';
-      generateParagraphCommentBtn.textContent = '重新生成段评';
+      if (!paragraphRequest) generateParagraphCommentBtn.textContent = '重新生成段评';
     } else {
       paragraphCommentThread.innerHTML = '<div class="paragraph-comment-empty">还没有这位角色的段评。让 TA 读读这一段，再说说自己的感受。</div>';
-      generateParagraphCommentBtn.textContent = '请 TA 评论这段';
+      if (!paragraphRequest) generateParagraphCommentBtn.textContent = '请 TA 评论这段';
     }
   }
 
   async function generateParagraphComment() {
-    if (!activeParagraph) return;
+    if (!activeParagraph || paragraphRequest) return;
+    var target = Object.freeze(Object.assign({}, activeParagraph));
     var roleId = String(paragraphRoleSelect.value || settings.commentRoleId || '');
     var role = readerRoleById(roleId);
     if (!role) { showToast('先选择一位 AI 角色'); return; }
@@ -1495,13 +1502,15 @@ button{font:inherit;color:inherit;cursor:pointer;border:0;background:transparent
     var userPrompt = '角色：' + role.name + '\n角色设定：' + (rolePersona || '保持自然、克制的日常表达') +
       '\n近期聊天：\n' + (recentChat.join('\n') || '无') +
       '\n角色记忆：\n' + (memories.join('\n') || '无') +
-      '\n\n书名：《' + activeParagraph.bookName + '》' +
-      '\n章节：' + activeParagraph.chapterTitle +
-      '\n上一段：' + (activeParagraph.previous || '（这是本章开头）') +
-      '\n【请评论的段落】\n' + activeParagraph.paragraph +
-      '\n下一段：' + (activeParagraph.next || '（这是本章结尾）') +
+      '\n\n书名：《' + target.bookName + '》' +
+      '\n章节：' + target.chapterTitle +
+      '\n上一段：' + (target.previous || '（这是本章开头）') +
+      '\n【请评论的段落】\n' + target.paragraph +
+      '\n下一段：' + (target.next || '（这是本章结尾）') +
       '\n\n请像你本人读到这里时顺手留下的一条评论，不要复述全文，也不要替作者续写。';
-    var oldText = generateParagraphCommentBtn.textContent;
+    var accountToken;
+    try { accountToken = readerAccountToken(); } catch (e) { showToast('无法确认账号状态'); return; }
+    paragraphRequest = { target: target, roleId: roleId, accountToken: accountToken };
     generateParagraphCommentBtn.disabled = true;
     generateParagraphCommentBtn.textContent = 'TA 正在读这一段…';
     try {
@@ -1513,24 +1522,32 @@ button{font:inherit;color:inherit;cursor:pointer;border:0;background:transparent
       });
       var commentText = String(response || '').trim().replace(/^["“”]+|["“”]+$/g, '');
       if (!commentText) throw new Error('角色没有返回评论');
+      if (readerAccountToken() !== accountToken || !findBook(target.bookId) || !readerRoleById(roleId)) {
+        throw new Error('账号、书籍或角色已改变，本次段评未保存');
+      }
       var comment = {
-        id: commentKey(activeParagraph.bookId, activeParagraph.chapterIndex, activeParagraph.paragraphIndex, roleId),
-        bookId: activeParagraph.bookId,
-        chapterIndex: activeParagraph.chapterIndex,
-        paragraphIndex: activeParagraph.paragraphIndex,
+        id: commentKey(target.bookId, target.chapterIndex, target.paragraphIndex, roleId),
+        bookId: target.bookId,
+        chapterIndex: target.chapterIndex,
+        paragraphIndex: target.paragraphIndex,
         roleId: roleId,
         roleName: role.name,
         text: commentText.slice(0, 900),
         createdAt: Date.now()
       };
       await saveReaderComment(comment);
-      renderParagraphCommentThread();
-      refreshReaderParagraphs();
+      if (state.book && state.book.id === target.bookId && state.ch === target.chapterIndex &&
+          paragraphSheet.classList.contains('is-open') && activeParagraph &&
+          activeParagraph.bookId === target.bookId && activeParagraph.chapterIndex === target.chapterIndex &&
+          activeParagraph.paragraphIndex === target.paragraphIndex && settings.commentRoleId === roleId) {
+        refreshReaderParagraphs();
+      }
       showToast('已保存 ' + role.name + ' 的段评');
     } catch (error) {
       showToast(error && error.message ? error.message.slice(0, 70) : '段评生成失败，请重试');
-      generateParagraphCommentBtn.disabled = false;
-      generateParagraphCommentBtn.textContent = oldText;
+    } finally {
+      paragraphRequest = null;
+      renderParagraphCommentThread();
     }
   }
 
@@ -1951,6 +1968,7 @@ button{font:inherit;color:inherit;cursor:pointer;border:0;background:transparent
     if (settings.fs < 22) { settings.fs += 1; applySettings(); }
   });
   document.getElementById('clearRow').addEventListener('click', function () {
+    if (paragraphRequest) { showToast('请等待本次段评结束再清空书籍'); return; }
     var hasLocal = books.some(function (b) { return b.isLocal; });
     if (!hasLocal) { showToast('没有本地书籍'); return; }
     if (!confirm('清空后会移除所有导入的书籍和对应段评，示例书籍不会受影响。继续吗？')) return;
