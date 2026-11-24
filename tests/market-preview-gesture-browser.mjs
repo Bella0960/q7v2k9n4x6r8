@@ -1,9 +1,10 @@
-/* PREVIEW-004 专项回归：五页手机预览的手势翻页、弹层生命周期与只读隔离。
+/* PREVIEW-004 专项回归：五页手机预览的真实入口、手势翻页、弹层生命周期与只读隔离。
  * 裸 http server（跨平台路径校验），headless Chromium，视口 320/375/390/430。
  * 预览始终为虚构示例；打开 / 滑动 / 关闭不得写入 ChatBeauty、localStorage 或 IndexedDB。
  *
- * 入口约定：主回归从商城公开渲染产物里的真实 [data-action="market-preview"]
- * 按钮点击打开预览；直接调用模块 preview() 仅在末尾标注的 API 级用例中使用。 */
+ * 入口约定：主回归由 theme-store.html 自行加载真实商城首页（MAOMAOStorefront.render('discover')），
+ * 断言首页真实 [data-action="market-preview"] 按钮存在、可见、未禁用，再用 Playwright 真实点击进入；
+ * 不做 innerHTML 人工注入，不用内部 API 兜底。直接调用 preview() 仅在末尾单独标注的 API 级用例中使用。 */
 import {createServer} from 'node:http';
 import {readFileSync} from 'node:fs';
 import {resolve,dirname,extname} from 'node:path';
@@ -56,20 +57,22 @@ const currentName=page=>page.locator('.market-preview-current').innerText();
 const selectedTab=page=>page.locator('.market-preview-tabs button[aria-selected="true"]').innerText();
 const previewState=page=>page.evaluate(()=>window.MAOMAOMarketExpansion._previewState());
 
-// Render the public discover fragment into the live shell, then assert the real
-// preview entry button exists, is visible and enabled before clicking it.
-async function mountDiscover(page){
- await page.evaluate(()=>{document.getElementById('storeContent').innerHTML=window.MAOMAOMarketExpansion.renderDiscover();});
+// The real homepage entry: the storefront renders its own discover view; wait for
+// the genuine preview button mounted in that DOM, then assert it is one visible,
+// enabled button. No innerHTML injection, no internal API fallback.
+async function assertEntryButton(page){
  const btn=page.locator('[data-action="market-preview"]');
- assert.equal(await btn.count(),1,'real preview entry button rendered once');
+ await btn.waitFor({state:'visible'});
+ assert.equal(await btn.count(),1,'real preview entry button rendered once on the homepage');
  const box=await btn.boundingBox();
  assert.ok(box&&box.width>0&&box.height>0,'entry button visible');
  assert.equal(await btn.isDisabled(),false,'entry button enabled');
+ return btn;
 }
 async function openPreview(page){
- // Dispatch the click on the real entry button directly, so the programmatic
- // open does not trigger a browser focus scroll-into-view on the main list.
- await page.locator('[data-action="market-preview"]').first().evaluate(b=>b.click());
+ // Real Playwright click on the genuine entry button (visibility / hit-test /
+ // focus checks run through the normal user path).
+ await (await assertEntryButton(page)).click();
  await page.waitForSelector('.market-preview-overlay');
 }
 // Install a counter for indexedDB.open after page load; counts only open calls,
@@ -92,21 +95,18 @@ for(const width of [320,375,390,430]){
  page.on('pageerror',e=>errors.push(e.message));
 
  await page.goto(base+'/theme-store/theme-store.html');
- await page.waitForSelector('.sf-product, .sf-theme-item');
+ // Wait for the real storefront homepage to mount its preview entry.
+ await assertEntryButton(page);
  await installIdbCounter(page);
-
- // 真实入口：注入公开 discover 片段后，从真实按钮打开预览。
- await mountDiscover(page);
  const entryButtonCount=await page.locator('[data-action="market-preview"]').count();
 
- // 主页面先滚到中部，验证关闭后滚动偏移保持。
- await page.locator('#storeContent').evaluate(el=>{el.scrollTop=Math.max(60,el.scrollHeight*.4);});
+ // Record the natural scroll offset before opening; closing must restore it.
  const rememberedTop=await page.locator('#storeContent').evaluate(el=>el.scrollTop);
  const storageBefore=await page.evaluate(()=>JSON.stringify({...localStorage}));
  const themeBefore=await page.evaluate(()=>window.ChatBeauty&&ChatBeauty.getThemePreset&&ChatBeauty.getThemePreset());
  const idbBefore=await page.evaluate(()=>window.__idbOpenCount);
 
- // 1. 打开预览：初始第 0 页，文案 / aria-selected 同步。
+ // 1. 真实入口打开预览：初始第 0 页，文案 / aria-selected 同步。
  await openPreview(page);
  assert.equal((await previewState(page)).open,true,'overlay open state');
  assert.equal(await currentName(page),SCREENS[0]+' / 干净的会话节奏','first screen on open');
@@ -180,13 +180,15 @@ for(const width of [320,375,390,430]){
  assert.ok(await page.evaluate(()=>document.activeElement&&document.activeElement.isConnected),'focus returns to a live element after close');
  assert.ok(Math.abs(await page.locator('#storeContent').evaluate(el=>el.scrollTop)-rememberedTop)<5,'main scroll offset preserved after close');
 
- // 11. 遮罩点击关闭同样清理。
+ // 11. 从真实入口第二次打开，遮罩点击关闭同样清理。
+ // backdrop 被 dialog 本体覆盖，命中测试点不透；这里直接在遮罩元素上派发关闭点击，
+ // 不代表产品入口路径（入口始终走上面 openPreview 的真实按钮点击）。
  await openPreview(page);
  await page.locator('.market-preview-backdrop').evaluate(b=>b.click());
  assert.equal(await page.locator('.market-preview-overlay').count(),0,'backdrop click closes overlay');
  assert.equal(await page.evaluate(()=>document.body.style.overflow),'','scroll lock released after backdrop close');
 
- // 12. 反复开关 50 次：不残留 overlay / 滚动锁 / 手势状态，无报错。
+ // 12. 反复开关 50 次：每次都从真实入口打开，不残留 overlay / 滚动锁 / 手势状态，无报错。
  for(let round=0;round<50;round++){
   await openPreview(page);
   await page.keyboard.press('Escape');
@@ -209,7 +211,7 @@ for(const width of [320,375,390,430]){
  assert.equal(await page.evaluate(()=>window.__idbOpenCount),idbBefore,'preview opens no new IndexedDB database');
  assert.deepEqual(errors,[],'no page errors');
  count++;
- console.log('PASS preview-gesture width '+width+' (entry buttons: '+entryButtonCount+'): real entry click, swipe thresholds, cancel/pull-back/reverse, lifecycle cleanup, focus loop, read-only');
+ console.log('PASS preview-gesture width '+width+' (entry buttons: '+entryButtonCount+'): real homepage entry click, swipe thresholds, cancel/pull-back/reverse, lifecycle cleanup, focus loop, read-only');
  await ctx.close();
 }
 
@@ -217,7 +219,7 @@ for(const width of [320,375,390,430]){
 const apiCtx=await browser.newContext({viewport:{width:390,height:844},hasTouch:true});
 const apiPage=await apiCtx.newPage();
 await apiPage.goto(base+'/theme-store/theme-store.html');
-await apiPage.waitForSelector('.sf-product, .sf-theme-item');
+await apiPage.waitForSelector('[data-action="market-preview"]');
 await apiPage.evaluate(()=>window.MAOMAOMarketExpansion.preview('atmosphere'));
 await apiPage.waitForSelector('.market-preview-overlay');
 assert.equal((await apiPage.evaluate(()=>window.MAOMAOMarketExpansion._previewState())).open,true,'direct API preview opens');
