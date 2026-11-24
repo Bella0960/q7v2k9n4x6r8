@@ -92,13 +92,17 @@
       if (!await verifySession()) return false;
 
       var changedMessage = null;
+      // Share the *exact* lock name used by ChatHistoryAtomic.appendManyIf.
+      // That module intentionally leaves the role key unescaped; encoding it
+      // here split the lock domain for IDs containing ":" or "/".
       var lockName = 'maomao:chat-history:' + encodeURIComponent(accountId) +
-        ':' + encodeURIComponent(roleId);
+        ':' + roleId;
       var saved = false;
       try {
         saved = await global.navigator.locks.request(lockName, { mode: 'exclusive' },
           async function () {
-            if (!active()) return false;
+            // Session may have switched while queued for a cross-tab lock.
+            if (!await verifySession()) return false;
             var latest = opts.readHistory();
             if (!Array.isArray(latest)) return false;
             var found = inspect(latest, parsed.id, parsed.text);
