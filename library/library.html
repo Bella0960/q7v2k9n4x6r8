@@ -162,7 +162,6 @@ button{font:inherit;color:inherit;cursor:pointer;border:0;background:transparent
 .chapter-no{font-size:8px;letter-spacing:.28em;color:var(--reader-ink,#8c8c8c);opacity:.5}
 .chapter-title{font-family:var(--serif);font-weight:400;font-size:30px;line-height:1.08;letter-spacing:-.04em;margin:9px 0 0}
 .reader-content p{font-family:var(--reader-font,var(--serif));font-size:var(--reader-fs,16px);line-height:var(--reader-lh,1.8);color:var(--reader-ink,#2c2c2c);margin:0 0 var(--reader-para,1.5em);text-indent:2em;text-align:justify}
-.reader-divider{width:26px;height:1px;background:var(--reader-ink,#171717);opacity:.5;margin:34px auto}
 .reader-foot{display:flex;justify-content:space-between;align-items:flex-end;margin-top:30px;padding-top:13px;border-top:1px solid var(--reader-line,#d8d8d8)}
 .reader-foot .foot-num{font-size:18px}
 
@@ -256,11 +255,12 @@ button{font:inherit;color:inherit;cursor:pointer;border:0;background:transparent
 .import-actions .primary{font-weight:600;border-bottom:1px solid #171717}
 .paragraph-block{position:relative;margin:0 0 var(--reader-para,1.5em)}
 .reader-content .paragraph-block p{margin:0}
-.paragraph-tools{display:flex;justify-content:flex-end;min-height:22px;margin-top:3px}
-.paragraph-comment-trigger{padding:2px 0 3px;color:#999;border-bottom:1px solid #d8d8d8;font-size:9px;letter-spacing:.08em;opacity:.72}
-.paragraph-comment-trigger:active{color:#171717;opacity:1}
-.paragraph-comment-preview{display:flex;gap:8px;margin-top:8px;padding:9px 10px;border-left:1px solid #999;background:rgba(0,0,0,.025);font-size:10px;line-height:1.8;color:#555}
-.paragraph-comment-preview strong{flex:0 0 auto;font-weight:600;color:#333}
+.paragraph-tools{display:flex;justify-content:flex-end;margin-top:2px}
+.paragraph-comment-trigger{display:inline-flex;align-items:center;justify-content:center;gap:4px;min-width:36px;min-height:34px;padding:7px 9px;color:var(--reader-ink,#555);opacity:.72;font:400 10px/1 var(--sans)}
+.paragraph-comment-trigger svg{width:16px;height:16px;fill:none;stroke:currentColor;stroke-width:1.25;stroke-linecap:round;stroke-linejoin:round}
+.paragraph-comment-trigger:active,.paragraph-comment-trigger:focus-visible{opacity:1}
+.reader-paragraph:focus-visible{outline:1px solid var(--reader-line,#aaa);outline-offset:3px}
+
 .paragraph-sheet{position:absolute;left:0;right:0;bottom:0;z-index:50;display:flex;flex-direction:column;max-height:78%;padding:0 22px calc(18px + env(safe-area-inset-bottom));background:#fff;border-top:1px solid #171717;transform:translateY(101%);visibility:hidden;transition:transform .34s cubic-bezier(.32,.72,0,1),visibility .34s}
 .paragraph-sheet.is-open{transform:translateY(0);visibility:visible}
 .paragraph-sheet-head{display:flex;justify-content:space-between;align-items:center;padding:17px 0 13px;border-bottom:1px solid #ddd;font-size:9px;letter-spacing:.2em;color:#777}
@@ -272,7 +272,16 @@ button{font:inherit;color:inherit;cursor:pointer;border:0;background:transparent
 .paragraph-comment-thread{flex:1;min-height:72px;overflow:auto;padding:12px 0;font-size:12px;line-height:1.9;color:#444;white-space:pre-wrap}
 .paragraph-comment-empty{font-size:10px;color:#999;line-height:1.8}
 .paragraph-comment-author{font-size:9px;letter-spacing:.08em;color:#888;margin-bottom:6px}
-.paragraph-comment-content{font-family:var(--serif);font-size:14px;line-height:1.9;color:#252525}
+.paragraph-comment-content{max-width:90%;margin:0 0 10px;padding:10px 12px;border-radius:12px;background:#f5f5f5;font-family:var(--serif);font-size:13px;line-height:1.7;color:#252525;overflow-wrap:anywhere}
+.paragraph-comment-content.is-mine{margin-left:auto;background:#fff;border:1px solid #e5e5e5}
+.paragraph-comment-content strong{display:block;margin-bottom:3px;font:400 10px/1.4 var(--sans);color:#777}
+.paragraph-compose{display:flex;flex-direction:column;gap:8px;padding:10px 0}
+.paragraph-compose textarea{box-sizing:border-box;width:100%;min-height:46px;max-height:100px;resize:vertical;font:13px/1.6 var(--sans);color:#333;background:#fafafa;border:1px solid #e5e5e5;border-radius:10px;padding:9px 11px}
+.paragraph-compose-actions{display:flex;align-items:center;justify-content:flex-end;gap:16px}
+.paragraph-compose-actions .paragraph-generate{width:auto;padding:10px 16px;border-radius:16px}
+.paragraph-reply-action{align-self:flex-end;width:auto;background:transparent;color:#555;border:1px solid #e1e1e1;border-radius:16px;padding:9px 15px}
+.paragraph-sheet{border-radius:18px 18px 0 0;border-top:0}
+.paragraph-context,.paragraph-role-row,.paragraph-sheet-head{flex-shrink:0}
 .paragraph-generate{flex:0 0 auto;width:100%;padding:13px 12px;background:#171717;color:#fff;font-size:11px;letter-spacing:.08em}
 .paragraph-generate:disabled{opacity:.45}
 .rs-role-select{max-width:190px;min-width:0;height:32px;border:1px solid #dedede;background:#fff;padding:0 8px;font-size:12px;font-family:var(--sans);font-weight:400;color:#333}
@@ -607,11 +616,13 @@ button{font:inherit;color:inherit;cursor:pointer;border:0;background:transparent
     <div class="paragraph-comment-thread" id="paragraphCommentThread">
       <div class="paragraph-comment-empty">选择一个角色，让 TA 说说读到这一段时的想法。</div>
     </div>
-    <div id="coReadReply" hidden>
-      <textarea id="coReadReplyInput" rows="2" maxlength="800" aria-label="回复段评" placeholder="说说你的想法…" style="box-sizing:border-box;width:100%;resize:vertical;font:inherit;color:inherit;background:transparent;border:1px solid #aaa;border-radius:8px;padding:8px"></textarea>
-      <button class="paragraph-generate" type="button" id="coReadReplySend">回复 TA</button>
+    <div id="coReadReply" class="paragraph-compose">
+      <textarea id="coReadReplyInput" rows="2" maxlength="800" aria-label="写段评" placeholder="写下这一段的想法…"></textarea>
+      <div class="paragraph-compose-actions">
+        <button class="paragraph-generate" type="button" id="coReadReplySend">发表段评</button>
+      </div>
     </div>
-    <button class="paragraph-generate" type="button" id="generateParagraphComment">请 TA 评论这段</button>
+    <button class="paragraph-generate paragraph-reply-action" type="button" id="generateParagraphComment">请 TA 评论这段</button>
   </div>
   <div class="toast" id="toast" role="status" aria-live="polite"></div>
 
@@ -687,6 +698,7 @@ button{font:inherit;color:inherit;cursor:pointer;border:0;background:transparent
   var pendingImportedBook = null;
   var activeParagraph = null;
   var paragraphRequest = null;
+  var readerPublishing = false;
   function readerAccountToken() {
     var meta = document.querySelector('meta[name="mao-account-id"]');
     var id = meta ? String(meta.getAttribute('content') || '') : '';
@@ -1462,20 +1474,25 @@ button{font:inherit;color:inherit;cursor:pointer;border:0;background:transparent
   }
 
   /* ===== 阅读器：段落与角色段评 ===== */
+  function ownReadingKey(target,token) {
+    return commentKey(target.bookId,target.chapterIndex,target.paragraphIndex,'@reader:'+encodeURIComponent(token));
+  }
+  function ownReadingRecord(target) {
+    try {return commentCache[ownReadingKey(target,readerAccountToken())]||null;} catch(e){return null;}
+  }
+  function mergedReadingThread(target,roleId) {
+    var mine=readingThread(ownReadingRecord(target));
+    var other=roleId?readingThread(getParagraphComment(target.bookId,target.chapterIndex,target.paragraphIndex,roleId)):[];
+    return mine.concat(other).sort(function(a,b){return (a.createdAt||0)-(b.createdAt||0);});
+  }
+  function paragraphBubbleHtml(index,count) {
+    if(!count)return '';
+    return '<div class="paragraph-tools"><button class="paragraph-comment-trigger" type="button" data-paragraph-comment="'+index+'" aria-label="查看 '+count+' 条段评"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 4.5h14a2.5 2.5 0 0 1 2.5 2.5v8a2.5 2.5 0 0 1-2.5 2.5h-6l-4.5 3v-3H5A2.5 2.5 0 0 1 2.5 15V7A2.5 2.5 0 0 1 5 4.5Z"/></svg><span>'+count+'</span></button></div>';
+  }
   function paragraphHtml(book, chapter, chapterIndex, paragraph, paragraphIndex) {
-    var html = '<div class="paragraph-block" data-reader-paragraph="' + paragraphIndex + '"><p class="reader-paragraph">' + esc(paragraph) + '</p>';
-    if (settings.comments) {
-      html += '<div class="paragraph-tools"><button class="paragraph-comment-trigger" type="button" data-paragraph-comment="' +
-        paragraphIndex + '" aria-label="让 AI 角色评论这一段">段评</button></div>';
-      var roleId = settings.commentRoleId || '';
-      var comment = roleId ? getParagraphComment(book.id, chapterIndex, paragraphIndex, roleId) : null;
-      if (comment) {
-        html += '<div class="paragraph-comment-preview"><strong>' + esc(comment.roleName || '角色') + '</strong><span>' +
-          esc(comment.text || '') + '</span></div>';
-      }
-    }
-    html += '</div>';
-    return html;
+    var target={bookId:book.id,chapterIndex:chapterIndex,paragraphIndex:paragraphIndex};
+    var count=settings.comments?mergedReadingThread(target,settings.commentRoleId||'').length:0;
+    return '<div class="paragraph-block" data-reader-paragraph="'+paragraphIndex+'"><p class="reader-paragraph" tabindex="0" aria-label="长按或按 Enter 写段评">'+esc(paragraph)+'</p>'+paragraphBubbleHtml(paragraphIndex,count)+'</div>';
   }
 
   function refreshReaderParagraphs() {
@@ -1522,35 +1539,43 @@ button{font:inherit;color:inherit;cursor:pointer;border:0;background:transparent
 
   function renderParagraphCommentThread() {
     if (!activeParagraph) return;
-    var replyPanel = document.getElementById('coReadReply');
-    replyPanel.hidden = true;
-    document.getElementById('coReadReplySend').disabled = !!paragraphRequest;
-    var roleId = String(settings.commentRoleId || paragraphRoleSelect.value || '');
-    var role = readerRoleById(roleId);
-    if (!role) {
-      paragraphCommentThread.innerHTML = '<div class="paragraph-no-role">还没有可用的 AI 角色。请先创建角色，再回来为这段文字生成评论。</div>';
-      generateParagraphCommentBtn.disabled = true;
-      generateParagraphCommentBtn.textContent = '暂无可用角色';
-      return;
-    }
-    generateParagraphCommentBtn.disabled = !!paragraphRequest;
-    if (paragraphRequest) {
-      generateParagraphCommentBtn.textContent = '正在生成段评…';
-    }
-    var comment = getParagraphComment(activeParagraph.bookId, activeParagraph.chapterIndex,
-      activeParagraph.paragraphIndex, roleId);
-    if (comment) {
-      paragraphCommentThread.innerHTML = '<div class="paragraph-comment-author">' + esc(comment.roleName || role.name) +
-        ' · ' + (comment.createdAt ? new Date(comment.createdAt).toLocaleString() : '已保存') +
-        '</div>' + readingThread(comment).map(function (m) {
-          return '<div class="paragraph-comment-content"><strong>' + esc(m.role === 'user' ? '我' : role.name) + '： </strong>' + esc(m.text) + '</div>';
-        }).join('');
-      replyPanel.hidden = false;
-      if (!paragraphRequest) generateParagraphCommentBtn.textContent = '再请 TA 评论';
-    } else {
-      paragraphCommentThread.innerHTML = '<div class="paragraph-comment-empty">还没有这位角色的段评。让 TA 读读这一段，再说说自己的感受。</div>';
-      if (!paragraphRequest) generateParagraphCommentBtn.textContent = '请 TA 评论这段';
-    }
+    var roleId=String(settings.commentRoleId||paragraphRoleSelect.value||'');
+    var role=readerRoleById(roleId);
+    var thread=mergedReadingThread(activeParagraph,roleId);
+    document.getElementById('coReadReply').hidden=false;
+    document.getElementById('coReadReplySend').disabled=readerPublishing||!!paragraphRequest;
+    generateParagraphCommentBtn.disabled=readerPublishing||!!paragraphRequest||!role;
+    generateParagraphCommentBtn.textContent=paragraphRequest?'正在回复…':!role?'暂无可用角色':thread.length?'请 TA 回复':'请 TA 评论这段';
+    paragraphCommentThread.innerHTML=thread.length?thread.map(function(m){
+      return '<div class="paragraph-comment-content'+(m.role==='user'?' is-mine':'')+'"><strong>'+esc(m.role==='user'?'我':(role?role.name:'角色'))+'</strong>'+esc(m.text)+'</div>';
+    }).join(''):'<div class="paragraph-comment-empty">还没有评论，写下你的想法吧。</div>';
+  }
+
+  async function publishOwnParagraphComment() {
+    var input=document.getElementById('coReadReplyInput'),value=String(input.value||'').trim().slice(0,800);
+    if(!value||!activeParagraph||readerPublishing||paragraphRequest)return;
+    var target=Object.freeze(Object.assign({},activeParagraph)),token;
+    try{token=readerAccountToken();}catch(e){showToast('无法确认账号状态');return;}
+    if(!navigator.locks||typeof navigator.locks.request!=='function'){showToast('当前浏览器无法安全保存段评');return;}
+    var key=ownReadingKey(target,token);
+    readerPublishing=true;renderParagraphCommentThread();
+    try {
+      await navigator.locks.request(coReadKey('request',token),{ifAvailable:true},async function(lock){
+        if(!lock)throw new Error('另一页面正在共读，请稍后再试');
+        if(readerAccountToken()!==token||!findBook(target.bookId))throw new Error('账号或书籍已改变');
+        var old=await loadCurrentReadingComment(key),thread=readingThread(old);
+        if(thread.length>=100)throw new Error('这段个人评论已达上限');
+        var now=Date.now();
+        thread.push({role:'user',text:value,createdAt:now});
+        if(readerAccountToken()!==token||!findBook(target.bookId))throw new Error('账号或书籍已改变');
+        await saveReaderComment({id:key,bookId:target.bookId,chapterIndex:target.chapterIndex,paragraphIndex:target.paragraphIndex,roleId:'@reader',accountToken:token,thread:thread,createdAt:now});
+        if(readerAccountToken()!==token)return;
+        updateReadingPreview(target,settings.commentRoleId);
+        if(activeParagraph&&ownReadingKey(activeParagraph,token)===key&&input.value.trim()===value)input.value='';
+        showToast('已发表段评');
+      });
+    }catch(e){showToast(e.message||'段评保存失败');}
+    finally{readerPublishing=false;renderParagraphCommentThread();}
   }
 
   function coReadKey(kind, token) { return 'maomao_reader_' + kind + '_v1:' + encodeURIComponent(token); }
@@ -1638,23 +1663,17 @@ button{font:inherit;color:inherit;cursor:pointer;border:0;background:transparent
     return ChatContextPolicy.buildWorldbookInjectionText(selected,{currentText:target.previous+'\n'+target.paragraph+'\n'+reply,maxEntries:8,maxChars:2400});
   }
   function updateReadingPreview(target, roleId) {
-    if (!state.book || state.book.id!==target.bookId || settings.commentRoleId!==roleId || !settings.comments) return;
+    if(!state.book||state.book.id!==target.bookId||!settings.comments)return;
     var block=readerBody.querySelector('.chapter-page[data-ch="'+target.chapterIndex+'"] [data-reader-paragraph="'+target.paragraphIndex+'"]');
-    if (!block) return;
-    var old=block.querySelector('.paragraph-comment-preview');
-    if (old) old.remove();
-    var c=getParagraphComment(target.bookId,target.chapterIndex,target.paragraphIndex,roleId);
-    if (c) {
-      var el=document.createElement('div');el.className='paragraph-comment-preview';
-      var author=document.createElement('strong'), content=document.createElement('span');
-      author.textContent=c.roleName||'角色';content.textContent=c.text||'';
-      el.append(author,content);block.appendChild(el);
-    }
+    if(!block)return;
+    var old=block.querySelector('.paragraph-tools');if(old)old.remove();
+    var count=mergedReadingThread(target,settings.commentRoleId||'').length;
+    if(count)block.insertAdjacentHTML('beforeend',paragraphBubbleHtml(target.paragraphIndex,count));
   }
   async function generateParagraphComment(options) {
     options=options||{};
     var automatic=options.auto===true, reply=String(options.reply||'').trim().slice(0,800);
-    if (paragraphRequest || !(options.target||activeParagraph)) return;
+    if (paragraphRequest || readerPublishing || !(options.target||activeParagraph)) return;
     var target=Object.freeze(Object.assign({},options.target||activeParagraph));
     var roleId=String(automatic?settings.commentRoleId:(paragraphRoleSelect.value||settings.commentRoleId||''));
     var role=readerRoleById(roleId);
@@ -1679,7 +1698,8 @@ button{font:inherit;color:inherit;cursor:pointer;border:0;background:transparent
         var old=await loadCurrentReadingComment(key);
         if (automatic && old) return;
         var thread=readingThread(old);
-        if (reply && !thread.length) throw new Error('请先生成一条段评');
+        var personal=readingThread(await loadCurrentReadingComment(ownReadingKey(target,token)));
+        var discussion=personal.concat(thread).sort(function(a,b){return (a.createdAt||0)-(b.createdAt||0);});
         if (thread.length+(reply?2:1)>100) throw new Error('这段讨论已达到 100 条记录上限');
         var lore=readingWorldbook(role,target,reply);
         var rolePersona=[role.persona,role.prompt,role.description,role.bio,role.personality,role.character,role.speechStyle,role.systemPrompt].filter(Boolean).join('\n').slice(0,2600);
@@ -1691,7 +1711,7 @@ button{font:inherit;color:inherit;cursor:pointer;border:0;background:transparent
           '\n近期聊天：'+recentChat.join('\n')+'\n角色记忆：'+memories.join('\n')+
           '\n之前已读讨论：'+readingHistory(target,roleId)+'\n当前段落之前：'+String(target.previous||'').slice(-1200)+
           '\n当前段落：'+String(target.paragraph||'').slice(0,4000)+'\n本段讨论：'+
-          thread.slice(-12).map(function(m){return m.role+': '+m.text.slice(0,500);}).join('\n')+'\n用户回复：'+reply;
+          discussion.slice(-12).map(function(m){return m.role+': '+m.text.slice(0,500);}).join('\n')+'\n用户回复：'+reply;
         if (!reserveReadingCall(token,automatic,key,Date.now())) return;
         syncCoReadControls();
         var response=await PhoneAPI.complete({system:system,user:prompt,temperature:0.75,timeoutMs:26000});
@@ -1789,7 +1809,6 @@ button{font:inherit;color:inherit;cursor:pointer;border:0;background:transparent
       ch.paras.map(function (p, paragraphIndex) {
         return paragraphHtml(book, ch, i, p, paragraphIndex);
       }).join('') +
-      '<div class="reader-divider"></div>' +
       '<div class="reader-foot">' +
         '<div class="foot-copy">' + esc(book.name) + '<br>' + pos + '</div>' +
         '<div class="foot-num">' + pad2(i + 1) + '</div>' +
@@ -2044,9 +2063,41 @@ button{font:inherit;color:inherit;cursor:pointer;border:0;background:transparent
     if (book) go('read-' + book.id);
   });
 
+  /* A real stationary long press opens the selected paragraph; scrolling,
+     horizontal swipes and ordinary taps must never open a comment. */
+  var paragraphHold=null,paragraphHoldTimer=0,paragraphHoldOpenedAt=0;
+  function cancelParagraphHold(){clearTimeout(paragraphHoldTimer);paragraphHoldTimer=0;paragraphHold=null;}
+  function openHeldParagraph(el){
+    var block=el.closest('[data-reader-paragraph]'),page=el.closest('.chapter-page');
+    if(!block||!page||!state.book||sheetBackdrop.classList.contains('is-open'))return;
+    openParagraphComment(Number(page.dataset.ch),Number(block.dataset.readerParagraph));
+    paragraphHoldOpenedAt=Date.now();
+  }
+  readerBody.addEventListener('pointerdown',function(e){
+    cancelParagraphHold();
+    var el=e.target.closest&&e.target.closest('.reader-paragraph');
+    if(!el||!e.isPrimary||e.button!==0||sheetBackdrop.classList.contains('is-open'))return;
+    paragraphHold={id:e.pointerId,x:e.clientX,y:e.clientY,el:el};
+    paragraphHoldTimer=setTimeout(function(){
+      if(!paragraphHold)return;var selected=paragraphHold.el;cancelParagraphHold();openHeldParagraph(selected);
+    },550);
+  },{passive:true});
+  readerBody.addEventListener('pointermove',function(e){
+    if(paragraphHold&&e.pointerId===paragraphHold.id&&Math.hypot(e.clientX-paragraphHold.x,e.clientY-paragraphHold.y)>10)cancelParagraphHold();
+  },{passive:true});
+  ['pointerup','pointercancel','pointerleave','scroll'].forEach(function(type){readerBody.addEventListener(type,cancelParagraphHold,{passive:true});});
+  readerBody.addEventListener('contextmenu',function(e){
+    var el=e.target.closest&&e.target.closest('.reader-paragraph');
+    if(!el)return;e.preventDefault();cancelParagraphHold();if(Date.now()-paragraphHoldOpenedAt>700)openHeldParagraph(el);
+  });
+  readerBody.addEventListener('keydown',function(e){
+    if(e.key==='Enter'&&e.target.classList.contains('reader-paragraph')){e.preventDefault();openHeldParagraph(e.target);}
+  });
+
   /* 段评入口优先处理；普通正文点击才呼出阅读控制栏。 */
   readerBody.addEventListener('click', function (e) {
     var trigger = e.target.closest ? e.target.closest('[data-paragraph-comment]') : null;
+    if(!trigger&&Date.now()-paragraphHoldOpenedAt<700){e.preventDefault();return;}
     if (trigger) {
       e.preventDefault();
       var page = trigger.closest('.chapter-page');
@@ -2145,10 +2196,7 @@ button{font:inherit;color:inherit;cursor:pointer;border:0;background:transparent
     refreshReaderParagraphs();
   });
   generateParagraphCommentBtn.addEventListener('click', function(){generateParagraphComment();});
-  document.getElementById('coReadReplySend').addEventListener('click',function(){
-    var value=document.getElementById('coReadReplyInput').value.trim();
-    if(value)generateParagraphComment({reply:value});
-  });
+  document.getElementById('coReadReplySend').addEventListener('click',publishOwnParagraphComment);
   document.getElementById('coReadAuto').addEventListener('click',function(){
     var enabled=this.getAttribute('aria-checked')==='true';
     if(!enabled && !confirm('开启后会把正在阅读的段落和角色资料发送给已配置的 AI API，自动段评可能产生费用；每日上限包括失败请求。确定开启？'))return;
