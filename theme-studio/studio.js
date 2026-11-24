@@ -82,7 +82,39 @@
   var photoLeases = Object.create(null);
   var imageSeq = Object.create(null);
   var imageFields = {list:[['coverImage','聊天主页封面','封面图片'],['listImage','聊天卡片底纸','列表图片']], detail:[['chatImage','聊天背景图','背景图片']]};
+  // PERF-006: cached static preview nodes, rAF-coalesced preview refresh, last-written
+  // preview variables and a session-local thumb blob lease cache. No schema or storage
+  // change; leases are released on page hide.
+  var previewNodes = null;
+  var previewRaf = 0;
+  var lastPreviewVars = Object.create(null);
+  var thumbLeases = Object.create(null);
   var $ = function (id) { return document.getElementById(id); };
+  function previewRefs() {
+    if (previewNodes) return previewNodes;
+    var stage = $('previewSurface');
+    previewNodes = {
+      stage: stage,
+      messages: $('mockMessages'),
+      mineBubble: stage.querySelector('.mock-bubble-row.mine .mock-bubble'),
+      partnerBubble: stage.querySelector('.mock-bubble-row.partner .mock-bubble'),
+      avatars: Array.prototype.slice.call(stage.querySelectorAll('.mock-bubble-avatar'))
+    };
+    return previewNodes;
+  }
+  function setPreviewVar(name, value) {
+    var v = String(value);
+    if (lastPreviewVars[name] === v) return;
+    lastPreviewVars[name] = v;
+    previewRefs().stage.style.setProperty(name, v);
+  }
+  function schedulePreview() {
+    if (previewRaf) return;
+    previewRaf = requestAnimationFrame(function () {
+      previewRaf = 0;
+      previewStyles();
+    });
+  }
   function toast(message) {
     var el = $('notice');
     el.textContent = message; el.classList.add('show');
@@ -190,7 +222,7 @@
       input.addEventListener('focus',function(){ if(!pendingBefore) pendingBefore=currentSnapshot(); });
       input.addEventListener('input',function(){
         var value=field[2]==='color'?input.value:Number(input.value);
-        drafts[tab][field[0]]=value;output.textContent=input.value+(field[6]||'');drawPreview();refreshDirty();
+        drafts[tab][field[0]]=value;output.textContent=input.value+(field[6]||'');schedulePreview();refreshDirty();
       });
       input.addEventListener('change',commitFieldEdit);
       input.addEventListener('blur',commitFieldEdit);
@@ -217,7 +249,7 @@
     });
   }
   function previewStyles() {
-    var stage=$('previewSurface');
+    var refs=previewRefs();
     ['list','detail'].forEach(function(group){
       Object.keys(api.SPECS[group]).forEach(function(key){
         if(api.SPECS[group][key][0]==='asset')return;
@@ -225,55 +257,64 @@
         if(key==='coverOpacity')value=Number(value)/100;
         else if(key==='avatarRadius'||key==='coverPosition'||key==='chatImagePosition')value+='%';
         else if(api.SPECS[group][key][0]==='number')value+='px';
-        stage.style.setProperty('--p-'+group+'-'+api.cssKey(key),value);
+        setPreviewVar('--p-'+group+'-'+api.cssKey(key),value);
       });
     });
     applyPhotoPreview('list.coverImage','--p-list-cover-image',drafts.list.coverImage);
     applyPhotoPreview('list.listImage','--p-list-paper-image',drafts.list.listImage);
     applyPhotoPreview('detail.chatImage','--p-detail-chat-image',drafts.detail.chatImage);
     var bubble=drafts.bubble;
-    stage.style.setProperty('--p-my-bg',bubble.myBubbleBg);
-    stage.style.setProperty('--p-my-text',bubble.myBubbleColor);
-    stage.style.setProperty('--p-partner-bg',bubble.partnerBubbleBg);
-    stage.style.setProperty('--p-partner-text',bubble.partnerBubbleColor);
-    stage.style.setProperty('--p-bubble-width',bubble.bubbleMaxWidth+'%');
-    stage.style.setProperty('--p-my-radius',bubble.myBubbleRadiusSize+'px');
-    stage.style.setProperty('--p-partner-radius',bubble.partnerBubbleRadiusSize+'px');
-    stage.style.setProperty('--p-my-pad',(bubble.myBubblePadding-2)+'px '+(bubble.myBubblePadding+1)+'px');
-    stage.style.setProperty('--p-partner-pad',(bubble.partnerBubblePadding-2)+'px '+(bubble.partnerBubblePadding+1)+'px');
-    stage.style.setProperty('--p-my-tail-size',bubble.myBubbleTailSize+'px');
-    stage.style.setProperty('--p-partner-tail-size',bubble.partnerBubbleTailSize+'px');
-    stage.style.setProperty('--p-my-border-width',bubble.myBubbleBorderWidth+'px');
-    stage.style.setProperty('--p-my-border-color',bubble.myBubbleBorderColor);
-    stage.style.setProperty('--p-partner-border-width',bubble.partnerBubbleBorderWidth+'px');
-    stage.style.setProperty('--p-partner-border-color',bubble.partnerBubbleBorderColor);
-    stage.style.setProperty('--p-my-font-size',bubble.myBubbleFontSize+'px');
-    stage.style.setProperty('--p-partner-font-size',bubble.partnerBubbleFontSize+'px');
-    $('mockMessages').style.gap=bubble.bubbleGap+'px';
-    document.querySelector('.mock-bubble-row.mine .mock-bubble').style.opacity=bubble.myBubbleOpacity/100;
-    document.querySelector('.mock-bubble-row.partner .mock-bubble').style.opacity=bubble.partnerBubbleOpacity/100;
-    document.querySelectorAll('.mock-bubble-avatar').forEach(function(el){
-      el.style.width=Math.round(bubble.avatarSize*.72)+'px';
-      el.style.height=Math.round(bubble.avatarSize*.72)+'px';
+    setPreviewVar('--p-my-bg',bubble.myBubbleBg);
+    setPreviewVar('--p-my-text',bubble.myBubbleColor);
+    setPreviewVar('--p-partner-bg',bubble.partnerBubbleBg);
+    setPreviewVar('--p-partner-text',bubble.partnerBubbleColor);
+    setPreviewVar('--p-bubble-width',bubble.bubbleMaxWidth+'%');
+    setPreviewVar('--p-my-radius',bubble.myBubbleRadiusSize+'px');
+    setPreviewVar('--p-partner-radius',bubble.partnerBubbleRadiusSize+'px');
+    setPreviewVar('--p-my-pad',(bubble.myBubblePadding-2)+'px '+(bubble.myBubblePadding+1)+'px');
+    setPreviewVar('--p-partner-pad',(bubble.partnerBubblePadding-2)+'px '+(bubble.partnerBubblePadding+1)+'px');
+    setPreviewVar('--p-my-tail-size',bubble.myBubbleTailSize+'px');
+    setPreviewVar('--p-partner-tail-size',bubble.partnerBubbleTailSize+'px');
+    setPreviewVar('--p-my-border-width',bubble.myBubbleBorderWidth+'px');
+    setPreviewVar('--p-my-border-color',bubble.myBubbleBorderColor);
+    setPreviewVar('--p-partner-border-width',bubble.partnerBubbleBorderWidth+'px');
+    setPreviewVar('--p-partner-border-color',bubble.partnerBubbleBorderColor);
+    setPreviewVar('--p-my-font-size',bubble.myBubbleFontSize+'px');
+    setPreviewVar('--p-partner-font-size',bubble.partnerBubbleFontSize+'px');
+    if(refs.messages) refs.messages.style.gap=bubble.bubbleGap+'px';
+    if(refs.mineBubble) refs.mineBubble.style.opacity=bubble.myBubbleOpacity/100;
+    if(refs.partnerBubble) refs.partnerBubble.style.opacity=bubble.partnerBubbleOpacity/100;
+    var avatarPx=Math.round(bubble.avatarSize*.72)+'px';
+    refs.avatars.forEach(function(el){
+      if(el.dataset.px!==avatarPx){el.dataset.px=avatarPx;el.style.width=avatarPx;el.style.height=avatarPx;}
+    });
+  }
+  // Session-local lease cache: the same uploaded assetId is resolved from IDB once and
+  // reused when the slot list rebuilds on tab switches. Leases are released on page hide;
+  // the underlying blob repository and its schema are untouched.
+  function resolveThumb(id){
+    if(thumbLeases[id]) return Promise.resolve(thumbLeases[id]);
+    if(!window.MAOMAOThemeStudioAssets) return Promise.resolve(null);
+    return window.MAOMAOThemeStudioAssets.resolve(id).then(function(asset){
+      if(asset) thumbLeases[id]=asset;
+      return asset;
     });
   }
   function renderImageSlots(){
     var panel=$('imagePanel'),box=$('imageSlots');
     panel.hidden=tab==='bubble';
-    box.querySelectorAll('.image-thumb').forEach(function(el){if(el._asset)el._asset.revoke();});
     box.replaceChildren();
     if(tab==='bubble')return;
     imageFields[tab].forEach(function(row){
       var key=row[0],slot=tab+'.'+key,id=drafts[tab][key];
       var wrap=document.createElement('div');wrap.className='image-slot';
       var thumb=document.createElement('div');thumb.className='image-thumb';thumb.textContent=id?'素材':'空';
-      if(id && window.MAOMAOThemeStudioAssets){
-        window.MAOMAOThemeStudioAssets.resolve(id).then(function(asset){
+      if(id){
+        resolveThumb(id).then(function(asset){
           if(!asset)return;
-          if(!thumb.isConnected){asset.revoke();return;}
-          var previous=thumb._asset;
-          if(previous)previous.revoke();
-          thumb._asset=asset;thumb.style.backgroundImage='url("'+asset.url+'")';thumb.textContent='';
+          thumb._asset=asset;
+          thumb.style.backgroundImage='url("'+asset.url.replace(/["\\]/g,'')+'")';
+          thumb.textContent='';
         });
       }
       var copy=document.createElement('div');copy.className='image-copy';
@@ -295,6 +336,7 @@
     });
   }
   function drawPreview() {
+    if(previewRaf){cancelAnimationFrame(previewRaf);previewRaf=0;}
     previewStyles();
     var showList=tab==='list';
     $('mockList').hidden=!showList;$('mockDetail').hidden=showList;
@@ -746,8 +788,10 @@
     });
   });
   window.addEventListener('pagehide',function(){
+    if(previewRaf){cancelAnimationFrame(previewRaf);previewRaf=0;}
     Object.keys(photoLeases).forEach(function(key){if(photoLeases[key].asset)photoLeases[key].asset.revoke();});
-    document.querySelectorAll('.image-thumb').forEach(function(el){if(el._asset)el._asset.revoke();});
+    Object.keys(thumbLeases).forEach(function(id){if(thumbLeases[id])thumbLeases[id].revoke();});
+    thumbLeases=Object.create(null);
   });
   // Read-only QA inspection hook; never persists user data.
   api._draftSnapshot=function(){
