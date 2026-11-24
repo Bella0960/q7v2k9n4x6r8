@@ -117,3 +117,18 @@ test('cache version advances and private HTML is network-only', () => {
   assert.match(source, /self\.addEventListener\('push'/);
   assert.match(source, /self\.addEventListener\('notificationclick'/);
 });
+
+test('lock screen never displays arbitrary payload titles, links, account IDs or message text', async () => {
+  const h = harness();
+  await sendPush(h, {
+    accountId: ACCOUNT,
+    title: 'https://private.example/invite',
+    body: ACCOUNT + ' secret message https://private.example/api',
+    url: './chat/chat/chat-detail.html?id=role-01'
+  });
+  assert.equal(h.notifications.length, 1);
+  assert.equal(h.notifications[0].title, '新消息');
+  assert.equal(h.notifications[0].options.body, '你收到了一条新消息，打开应用查看。');
+  await clickNotice(h, h.notifications[0].options.data);
+  assert.equal(h.opened[0], 'https://preview.mao520.com/chat/chat/chat-detail.html?id=role-01');
+});
