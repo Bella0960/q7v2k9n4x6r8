@@ -7,7 +7,7 @@
  * observed here is reported as `unavailable` with a reason code.
  */
 
-import { MIGRATIONS } from '../../migrations.js';
+import { MIGRATIONS, runtimeMigrations } from '../../migrations.js';
 import { validateConfig } from '../../scheduler-policy.js';
 import { usesDelegatedIdentity } from '../../identity-bridge.js';
 import { createRepository } from '../repository.js';
@@ -101,17 +101,23 @@ export const healthSection = {
 
     checks.push(runCheck('schema_migrations', '数据库迁移', () => {
       const applied = new Set(repo.listMigrationVersions());
-      const expected = MIGRATIONS.map(migration => migration.version);
+      // A delegated gateway must not require the authority's optional social
+      // schema. Previously applied, recognized optional schema is retained
+      // (not a drift or an invitation to delete data).
+      const expected = runtimeMigrations(env).map(migration => migration.version);
+      const knownSet = new Set(MIGRATIONS.map(migration => migration.version));
       const expectedSet = new Set(expected);
       const pending = expected.filter(version => !applied.has(version));
-      const unknownApplied = [...applied].filter(version => !expectedSet.has(version)).length;
+      const unknownApplied = [...applied].filter(version => !knownSet.has(version)).length;
+      const retainedOptional = [...applied].filter(version => knownSet.has(version) && !expectedSet.has(version)).length;
       return {
         state: pending.length === 0 && unknownApplied === 0 ? 'ok' : 'degraded',
         facts: {
           applied: applied.size,
           expected: expected.length,
           pending: pending.slice(0, 20),
-          unknownApplied
+          unknownApplied,
+          retainedOptional
         }
       };
     }));
