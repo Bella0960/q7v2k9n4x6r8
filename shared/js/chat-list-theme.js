@@ -17,7 +17,7 @@
     if (!shell) return;
 
     var pageTheme = global.ChatBeauty && global.ChatBeauty.getThemePreset ? global.ChatBeauty.getThemePreset() : '';
-    if (readTheme() === THEME_ID && pageTheme !== 'atmosphere') {
+    if (readTheme() === THEME_ID && !['wechat','qq','silver-butterfly','atmosphere'].includes(pageTheme)) {
       shell.setAttribute('data-chat-list-theme', THEME_ID);
     } else {
       shell.removeAttribute('data-chat-list-theme');
