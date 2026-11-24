@@ -7,6 +7,7 @@ import { readFile } from 'node:fs/promises';
 const origin='http://127.0.0.1:4193';
 const vite=spawn(process.execPath,[resolve('node_modules/vite/bin/vite.js'),'--host','127.0.0.1','--port','4193','--strictPort'],{stdio:'ignore'});
 let browser;
+let browserPhase = 0;
 try {
     for(let i=0;i<120;i++) {
         if(vite.exitCode!==null) throw Error('Vite exited');
@@ -14,8 +15,10 @@ try {
         if(i===119) throw Error('Vite timeout');
         await delay(250);
     }
+    browserPhase = 1;
     browser=await chromium.launch({headless:true});
     for(const width of [375,390,430]) {
+        browserPhase = width + 0;
         const context=await browser.newContext({viewport:{width,height:844},deviceScaleFactor:3,isMobile:true,hasTouch:true,serviceWorkers:'block'});
         await context.addInitScript(()=>{
             if(sessionStorage.getItem('moments-test-seeded')) return;
@@ -52,6 +55,7 @@ try {
         assert.equal(await page.evaluate(()=>window.mockCalls),1);
         assert.equal(await page.evaluate(()=>localStorage.getItem('phone_current_contact')),'A');
         assert.ok(await page.evaluate(()=>JSON.parse(localStorage.moments).some(p=>p.id==='old')));
+        browserPhase = width + 1;
         const png=await page.evaluate(()=>{
             const c=document.createElement('canvas');c.width=3200;c.height=1600;
             const ctx=c.getContext('2d');ctx.fillStyle='#555';ctx.fillRect(0,0,c.width,c.height);
@@ -99,6 +103,7 @@ try {
             return [image.naturalWidth, image.naturalHeight, style.backgroundSize, style.filter, devicePixelRatio];
         }, beforeBackup);
         assert.deepEqual(coverStyle, [2400, 1440, 'cover', 'none', 3]);
+        browserPhase = width + 2;
         const settings = await context.newPage();
         await settings.goto(origin + '/settings/settings.html');
         await settings.locator('#backupModuleSelect').selectOption('moments');
@@ -117,6 +122,7 @@ try {
         await page.reload();
         await page.waitForFunction(() => document.querySelector('.cover-block').style.backgroundSize === 'cover');
 
+        browserPhase = width + 3;
         const chat = await context.newPage();
         chat.on('pageerror', e => errors.push(e.message));
         let replies = [];
@@ -141,12 +147,14 @@ try {
         async function send(text, response) {
             await waitForIdle();
             const count = calls.length;
+            const previous = await chat.evaluate(() => JSON.parse(localStorage.chat_history_A || '[]').filter(row => row.role === 'assistant').length);
             replies.push(response);
             await chat.locator('#chat-input').fill(text);
             await chat.locator('#chat-input').press('Enter');
-            await chat.waitForFunction(message => JSON.parse(localStorage.chat_history_A || '[]')
-                .some(row => row.role === 'assistant' && row.text === message),
-                response.startsWith('[朋友圈动态:') ? '朋友圈已发布。' : response.split('\n')[0]);
+            await chat.waitForFunction(({message,previous}) => {
+                const replies = JSON.parse(localStorage.chat_history_A || '[]').filter(row => row.role === 'assistant');
+                return replies.length > previous && replies.slice(previous).some(row => row.text === message);
+            }, {message:response.startsWith('[朋友圈动态:') ? '朋友圈已发布。' : response.split('\n')[0],previous});
             await waitForIdle();
             assert.equal(calls.length, count + 1);
             return calls.at(-1);
@@ -157,6 +165,7 @@ try {
         await page.locator('#momentsList').getByText('今天的读书心得').waitFor();
         await send('把今天的心情发到朋友圈', '[朋友圈动态:今天心情很好]');
         await page.locator('#momentsList').getByText('今天心情很好').waitFor();
+        browserPhase = width + 4;
         const disabled = await send('刚刚看完一本书', '读完了。\n[自主朋友圈:关闭时不得出现]');
         assert.doesNotMatch(disabled[0].content, /可选朋友圈自主发布/);
         await page.evaluate(() => {
@@ -182,6 +191,7 @@ try {
             posts.forEach(post => { if (post.authorId === 'B') post.time -= 86400001; });
             localStorage.moments = JSON.stringify(posts);
         });
+        browserPhase = width + 5;
         const competingPost = tab => tab.evaluate(() => MomentsChatAction.publishLocked({
             source: 'auto', roleId: 'B', requestId: 'same-turn', content: '并发动态',
             storage: localStorage, getCharacters: () => PhoneStorage.getCharacters()
@@ -196,6 +206,7 @@ try {
             await MAOMAOWallpaperStore.getByKey('home_custom_wallpaper')
         ]), ['legacy-profile-cover', otherBackground, otherBackground]);
 
+        browserPhase = width + 6;
         await page.evaluate(() => {
             window.menuCalls = 0;
             PhoneAPI.complete = () => {
@@ -224,6 +235,7 @@ try {
 
         await page.evaluate(() => document.getElementById('btnAdd').click());
         await page.locator('#roleSelect').selectOption('A');
+        browserPhase = width + 7;
         for (const failure of ['offline', 'empty', 'quota']) {
             const before = await page.evaluate(() => localStorage.moments);
             await page.evaluate(mode => {
@@ -253,6 +265,11 @@ try {
         await context.close();
         console.log('PASS Moments publication and cover @ '+width+'px DPR3');
     }
+} catch (error) {
+    // Numeric phase and fixed category only; never print page content or raw errors to public output.
+    const code = error?.name === 'TimeoutError' ? 'timeout' : error?.code === 'ERR_ASSERTION' ? 'assertion' : /Executable doesn't exist|error while loading shared libraries|Host system is missing dependencies/i.test(String(error?.message || '')) ? 'browser-environment' : browserPhase === 0 ? 'local-server' : 'other';
+    console.error('SEALED_BROWSER_FAILURE:' + browserPhase + ':' + code);
+    throw error;
 } finally {
     if(browser) await browser.close();
     vite.kill('SIGTERM');
