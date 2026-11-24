@@ -645,7 +645,7 @@ a:active, button:active, [role="button"]:active { transform: scale(0.97); }</sty
     </div>
 
     <script src="../../shared/js/phone/role-public-timeline.js?v=20261102v1"></script>
-    <script src="../../shared/js/phone/moments-chat-action.js?v=20261124v2"></script>
+    <script src="../../shared/js/phone/moments-chat-action.js?v=20261124v3"></script>
         <script src="../../shared/js/nav.js"></script>
     <script>
         /* ================= 数据层 ================= */
@@ -1670,36 +1670,34 @@ a:active, button:active, [role="button"]:active { transform: scale(0.97); }</sty
         /* ================= 角色选择（封面菜单内） ================= */
         (function initRoleSelect() {
             var S = window.PhoneStorage;
-            var E = window.PhoneEngine;
-
-            if (!S || !E) return; // 公共模块没加载就跳过
-
+            if (!S) return;
             var roleSelect = document.getElementById('roleSelect');
-
-            // 填充角色下拉
+            if (!roleSelect) return;
+            var key = 'moments_selected_role_v1';
             var chars = S.getCharacters();
-            if (roleSelect && chars.length) {
-                roleSelect.textContent = '';
-                for (var i = 0; i < chars.length; i++) {
-                    var c = chars[i];
-                    if (!c || c.id == null || String(c.id) === '') continue;
-                    var option = document.createElement('option');
-                    option.value = String(c.id);
-                    option.textContent = c.name || '角色' + (i + 1);
-                    roleSelect.appendChild(option);
-                }
-                // 默认选中 currentContact 或第一个
-                var saved = E.getCurrentContactId();
-                if (saved && chars.some(function (c) { return c && String(c.id) === String(saved); })) roleSelect.value = String(saved);
-                if (roleSelect.value) E.setCurrentContact(roleSelect.value);
-            }
-
-            // 角色切换 → 保存
-            if (roleSelect) {
-                roleSelect.addEventListener('change', function () {
-                    E.setCurrentContact(roleSelect.value);
-                });
-            }
+            roleSelect.textContent = '';
+            var placeholder = document.createElement('option');
+            placeholder.value = '';
+            placeholder.textContent = '请选择角色';
+            roleSelect.appendChild(placeholder);
+            chars.forEach(function (c) {
+                if (!c || c.id == null || String(c.id) === '') return;
+                var option = document.createElement('option');
+                option.value = String(c.id);
+                option.textContent = c.name || '角色';
+                roleSelect.appendChild(option);
+            });
+            try {
+                var saved = localStorage.getItem(key);
+                // Use the current chat only as the initial suggestion; never change it.
+                if (saved === null && typeof S.getCurrentContactId === 'function') saved = S.getCurrentContactId();
+                if (window.MomentsChatAction && window.MomentsChatAction.resolveRole(chars, saved)) roleSelect.value = String(saved);
+                else roleSelect.value = '';
+            } catch (e) { roleSelect.value = ''; }
+            roleSelect.addEventListener('change', function () {
+                try { localStorage.setItem(key, roleSelect.value); }
+                catch (e) { showToast('角色选择未能保存'); }
+            });
         })();
     </script>
 <script src="../../shared/js/statusbar-control.js"></script>
