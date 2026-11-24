@@ -8,7 +8,7 @@ const env = { ASSETS: { fetch: async () => new Response('synthetic asset') } };
 
 test('android smoke is a separate synthetic-only Worker with isolated Preview storage', () => {
   const cfg = JSON.parse(read('wrangler.android-push-smoke.jsonc'));
-  assert.equal(cfg.name, 'maomao-push-android-smoke');
+  assert.equal(cfg.name, 'isolated-android-notification-smoke');
   assert.equal(cfg.main, './qa/android-lockscreen-worker.js');
   assert.equal(cfg.previews.vars.MAO_ANDROID_SMOKE, 'true');
   assert.equal(cfg.previews.durable_objects.bindings[0].name, 'PUSH_RATE_GATE');
