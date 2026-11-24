@@ -503,7 +503,8 @@ async function verifySocialCoreReadiness(core, binding, initialized) {
     ['MAO_QA_ISOLATED_IDENTITY_CORE', 'true'],
     ['MAO_SOCIAL_ENABLED', 'true'],
     ['MAO_SOCIAL_E2EE_ENABLED', 'true'],
-    ['MAO_SOCIAL_CHAT_ENABLED', 'false']
+    ['MAO_SOCIAL_CHAT_ENABLED', 'false'],
+    ['MAO_QA_ENROLLMENT_ENABLED', 'true']
   ]) {
     const value = binding(core, key);
     assert.ok(value?.type === 'plain_text' && value.text === expected,

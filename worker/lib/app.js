@@ -2017,6 +2017,8 @@ export function createApp({ store, env = {}, now = () => Date.now(), fetchImpl =
     const pageAccountId = String(request.headers.get('x-mao-account-context') || '').trim();
     const contextOptionalPaths = new Set([
       '/api/accounts/register',
+      '/api/accounts/enrollment/register',
+      '/api/accounts/enrollment/activate',
       '/api/accounts/login',
       '/api/accounts/logout',
       '/api/accounts/me',

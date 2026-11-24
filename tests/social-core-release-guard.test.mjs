@@ -20,7 +20,7 @@ function mount(row = [3,7,1], written = 0) {
   });
   const core = {bindings:Object.entries({
     MAO_IDENTITY_MODE:'local', MAO_QA_ISOLATED_IDENTITY_CORE:'true',
-    MAO_SOCIAL_ENABLED:'true', MAO_SOCIAL_E2EE_ENABLED:'true', MAO_SOCIAL_CHAT_ENABLED:'false'
+    MAO_SOCIAL_ENABLED:'true', MAO_SOCIAL_E2EE_ENABLED:'true', MAO_SOCIAL_CHAT_ENABLED:'false', MAO_QA_ENROLLMENT_ENABLED:'true'
   }).map(([name,text])=>({name,text,type:'plain_text'}))};
   return {fn,calls,core,binding:(settings,name)=>settings.bindings.find(x=>x.name===name)};
 }
