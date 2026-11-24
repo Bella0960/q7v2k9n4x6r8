@@ -118,6 +118,10 @@ export default {
     }
     if (url.pathname.startsWith('/api/')) return reply({ ok: false }, 404);
     if (!env.ASSETS) return new Response('Assets unavailable', { status: 503 });
+    if (url.pathname === '/') {
+      const home = new URL('/index.html', url);
+      return env.ASSETS.fetch(new Request(home, request));
+    }
     return env.ASSETS.fetch(request);
   }
 };
