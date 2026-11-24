@@ -29,6 +29,8 @@ const CORE_DB = 'e1b78d3813ae4a819841e8c5c3e9e8ec';
 const QA_DO = '4a10d3dab4e16639445f4afdb0b7e5e2462cf06894cb4ae85f0ac3cd3cdba101';
 const CORE_DO = 'dba114c7b0abd8e53d1d78e579924852b8e40907e50213634aeeaeb41ab51a98';
 const BRANCH = 'integration/qa-mobile-push-private-on-v156-20261124';
+// Release ONLY on the verified existing v156 QA Worker; never replace a newer QA build.
+const MOBILE_QA_APPROVED_PREVIOUS_VERSION = 'b93c1212-36e0-4938-b101-bdba16cfd8b0';
 const QA_SETUP_OPEN = 'isolated_authority';
 const QA_SETUP_CLOSED = 'disabled';
 const TESTS = [
@@ -591,6 +593,10 @@ async function main() {
     [qaBaseline, coreBaseline] = await Promise.all([
       liveWorkerVersion(QA), liveWorkerVersion(CORE)
     ]);
+    if (qaOnly) {
+      assert.equal(qaBaseline.versionId, MOBILE_QA_APPROVED_PREVIOUS_VERSION,
+        'The isolated QA Worker no longer matches the approved v156 baseline; refusing to overwrite a newer release');
+    }
     console.log('Pinned existing QA Worker version before tests: ' + qaBaseline.versionId);
   }
   console.log('Validating original MAOMAO QA candidate; production is never targeted.');
