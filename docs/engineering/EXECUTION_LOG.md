@@ -647,3 +647,14 @@ On the next turn/session, read this file and the current `AGENTS.md` first. Cont
 - ecf05ba270afe7b323c6dd6172e8029a308cf219 的三套群设置 Chromium 回归在 #44843160164 通过。完整发布仍须以 QA-only 门禁和同源 SHA 回执为准。
 
 - 第二轮定位记忆清理回归仍走旧入口，旧档案的角色副本与群共享 ID 时还会遮蔽群记录。明确从群选项入口进入时优先按群 ID 读取，单聊入口沿用原规则。Vite 和四套 Chromium 专项（含 375、390、430、1100px 的记忆清理）在 #44843984791 通过。
+
+
+## 2026-11-24 | MCP-001 restore on v161
+
+- Restore original connection center, scoped client/permissions/AI adapter and existing tests from #202 / 6db64c36; add settings link and adapter scripts without any changes to the live chat request loop. No old workflows, SW, package or API credentials copied.
+- Fix token read ordering, pending connection cancellation, stale responses, corrupt saved metadata, checked writes and bounded disconnect. No automatic tool invocation, no real endpoint used. Synthetic QA and phone verification pending. This independent branch does not include the blocked social schema candidate.
+
+
+## 2026-11-25 | MCP-001 restore QA failure repair
+
+- Actual public release run 45415570102 failed at gate 49/51: mcp-client.test.mjs:553, mcp-role-permissions.test.mjs:114 and :126. Corrected invalid catalog fixture (40 x 5 x 1200 Chinese characters did not exceed 768 KiB; 45 does, with explicit per-schema/response budget checks), synchronous listForRole error assertion, and exact grant-cap error assertion. Added post-cap retained permission and denied-new-tool checks. No runtime security limits weakened. Carried the same already-submitted narrow Moments browser navigation race fix from #513 into this independently based v161 candidate to avoid known shared test failure. Wait for serialized #513 verification, then test current exact MCP candidate or its updated integration on the actually deployed baseline. No deployment or live data changes.
