@@ -209,3 +209,19 @@ test('invalid account/role bindings are refused before creation', () => {
   vm.runInNewContext(source, ctx);
   assert.equal(ctx.window.MaomaoCloudInbox.create({ accountId: 'owner' }), null);
 });
+
+test('missing initialized account namespace returns strict false, never undefined', () => {
+  const win = {
+    document: { querySelector: () => ({ content: ACCOUNT }), visibilityState: 'visible' },
+    navigator: { onLine: true }
+  };
+  vm.runInNewContext(source, { window: win, console, Date });
+  const receiver = win.MaomaoCloudInbox.create({
+    accountId: ACCOUNT, roleId: ROLE,
+    cloud: { receiveCharacterOutboundMessages: async () => {} },
+    readHistory: () => [], saveHistory: () => true,
+    verifySession: async () => true
+  });
+  assert.ok(receiver);
+  assert.equal(receiver.isAccountReady(), false);
+});
