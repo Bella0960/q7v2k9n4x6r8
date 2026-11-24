@@ -25,3 +25,37 @@ test('0017-0019 append to the current migration history and are idempotent on a 
  assert.equal(exec("SELECT COUNT(*) AS n FROM sqlite_master WHERE type='table' AND name='mao_social_messages'")[0].n,1);
  }finally{db.close()}
 });
+
+
+test('isolated core upgrade preserves preexisting accounts, sessions, invites and audit rows; old migration mode remains compatible',()=>{
+ const db=new DatabaseSync(':memory:');
+ try{
+  db.exec('PRAGMA foreign_keys=ON');
+  const exec=(sql,...args)=>{const st=db.prepare(sql);if(/^\s*(SELECT|PRAGMA)\b/i.test(sql))return st.all(...args);st.run(...args);return [];};
+  const old=MIGRATIONS.filter(m=>!/^001[789]_mao_social/.test(m.version));
+  const founder='MAO-FFFFFFFFFFFF',pending='MAO-PPPPPPPPPPPP',active='MAO-AAAAAAAAAAAA';
+  applyMigrations(exec,1,null,old);
+  for(const [id,username,role,status] of [[founder,'synthetic-founder','super_admin','active'],[pending,'synthetic-pending','user','pending_invite'],[active,'synthetic-active','user','active']]){
+   exec('INSERT INTO mao_accounts (id,username,username_key,password_salt,password_hash,role,status,created_at,updated_at,authorized_at) VALUES (?,?,?,?,?,?,?,?,?,?)',
+      id,username,username,'synthetic-salt-'+username,'synthetic-hash-'+username,role,status,1,1,status==='active'?1:null);
+  }
+  exec('INSERT INTO mao_account_sessions (id,account_id,token_hash,created_at,expires_at,last_used_at) VALUES (?,?,?,?,?,?)','synthetic-session',active,'synthetic-token-hash',1,999999,2);
+  exec('INSERT INTO mao_invite_codes (id,token_hash,target_account_id,created_by_account_id,created_at,expires_at) VALUES (?,?,?,?,?,?)','synthetic-invite','synthetic-invite-hash',pending,founder,1,999999);
+  exec('INSERT INTO mao_account_audit (id,actor_account_id,target_account_id,action,created_at) VALUES (?,?,?,?,?)','synthetic-audit',founder,pending,'synthetic-only',1);
+  const tables=['mao_accounts','mao_account_sessions','mao_invite_codes','mao_account_audit'];
+  const snapshot=()=>tables.map(table=>exec('SELECT * FROM '+table+' ORDER BY id'));
+  const before=snapshot(),versions=exec('SELECT * FROM schema_migrations ORDER BY version');
+  assert.deepEqual(applyMigrations(exec,10),['0017_mao_social','0018_mao_social_e2ee','0019_mao_social_e2ee_media']);
+  assert.deepEqual(snapshot(),before);
+  assert.deepEqual(exec('SELECT * FROM schema_migrations ORDER BY version').slice(0,versions.length),versions);
+  assert.equal(exec('PRAGMA integrity_check')[0].integrity_check,'ok');
+  assert.deepEqual(exec('PRAGMA foreign_key_check'),[]);
+  // Simulate restoring the old code's migration list without dropping new data.
+  assert.deepEqual(applyMigrations(exec,11,null,old),[]);
+  assert.deepEqual(snapshot(),before);
+  assert.deepEqual(applyMigrations(exec,12),[]);
+  assert.deepEqual(snapshot(),before);
+  assert.throws(()=>exec('INSERT INTO mao_accounts (id,username,username_key,password_salt,password_hash,role,status,created_at,updated_at) VALUES (?,?,?,?,?,?,?,?,?)','MAO-XXXXXXXXXXXX','bad-admin','bad-admin','synthetic','synthetic','super_admin','active',1,1),/UNIQUE|constraint/i);
+  assert.equal(exec("SELECT COUNT(*) AS n FROM mao_accounts WHERE role='super_admin'")[0].n,1);
+ }finally{db.close()}
+});
