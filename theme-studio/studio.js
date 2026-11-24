@@ -237,7 +237,7 @@
       });
       input.addEventListener('change',commitFieldEdit);
       input.addEventListener('blur',commitFieldEdit);
-      wrap.appendChild(label);wrap.appendChild(output);$('editorFields').appendChild(wrap);
+      wrap.appendChild(label);wrap.appendChild(input);$('editorFields').appendChild(wrap);
     });
   }
   function cssValue(group,key) {
@@ -501,7 +501,7 @@
       var menuBtn=document.createElement('button');menuBtn.type='button';menuBtn.className='preset-menu-btn';
       menuBtn.setAttribute('aria-label','管理方案「'+p.name+'」');
       menuBtn.innerHTML='<svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><circle cx="12" cy="5" r="1.6"/><circle cx="12" cy="12" r="1.6"/><circle cx="12" cy="19" r="1.6"/></svg>';
-      var menu=document.createElement('div');
+      var menu=document.createElement('div');menu.className='preset-menu';
       var rename=document.createElement('button');rename.type='button';rename.textContent='重命名';
       rename.addEventListener('click',function(){renamePreset(p);});
       var update=document.createElement('button');update.type='button';
@@ -688,6 +688,7 @@
       } else if (spec.type === 'number') {
         if (typeof value !== 'number' || !Number.isFinite(value)) throw new Error('数值类型不正确：' + key + ' 需为数字');
         if (value < spec.min || value > spec.max) throw new Error('数值越界：' + key + ' 需在 ' + spec.min + '–' + spec.max + ' ' + spec.unit);
+        out[key] = value;
       } else if (spec.type === 'asset') {
         if (typeof value !== 'string' || !(value === '' || /^as_[A-Z2-7]{32}$/.test(value))) throw new Error('图片素材引用格式无效：'+key);
         out[key] = value;
