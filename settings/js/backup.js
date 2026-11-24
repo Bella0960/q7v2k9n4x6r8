@@ -46,6 +46,7 @@
     // blobMaxBytes：单条记录里 blobFields 字段的 Blob 体积上限（仅带 blobFields 的 store 生效）。
     // blobStoreMaxBytes：整个 store 的 blobFields 字段总 Blob 体积上限。
     var IDB_TARGETS = [
+        { db: 'maomao-moments-cover', version: 1, stores: [{ store: 'covers', keyPath: null }] },
         {
             db: 'maomao-media-store',
             version: 2,   // 保留原本的音频 ID 与存储结构
