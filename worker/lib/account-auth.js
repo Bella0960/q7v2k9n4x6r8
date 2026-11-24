@@ -1228,9 +1228,10 @@ export function createAccountAuth({ store, env = {}, now = () => Date.now() }) {
           qaExpectedFounderId: qaCoreFounder || undefined,
           identityAuthorityConnected: delegated ? authority.connected : undefined,
           identityAuthorityInitialized: delegated ? authority.initialized : undefined,
-          qaEnrollmentReady: delegated ? Boolean(qaCoreReady && authority.initialized &&
-            authority.qaEnrollmentReady === true && env.MAO_QA_ENROLLMENT_ENABLED === 'true' &&
-            env.MAO_DELEGATED_SOCIAL_ENABLED === 'true') : qaCoreEnrollmentReady(),
+          ...(env.MAO_QA_ENROLLMENT_ENABLED === 'true' ? {
+            qaEnrollmentReady: delegated ? Boolean(qaCoreReady && authority.initialized &&
+              authority.qaEnrollmentReady === true && env.MAO_DELEGATED_SOCIAL_ENABLED === 'true') : qaCoreEnrollmentReady()
+          } : {}),
           signInReady: !delegated || (
             authority.connected && authority.initialized && authority.configured &&
             typeof env.MAO_IDENTITY_AUTHORITY?.fetch === 'function' &&

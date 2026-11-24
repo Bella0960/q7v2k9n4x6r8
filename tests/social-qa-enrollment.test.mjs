@@ -49,7 +49,7 @@ test('actual core and delegated app: pending registration, target-bound one-use 
     assert.equal((await gateway.call('/api/social/friends')).status,401);
     const issued=await core.admin('/api/admin/invites',session,post({targetAccountId:a.json.account.id}));
     assert.equal(issued.status,201);
-    const code=issued.json.inviteCode;
+    const code=issued.json.invite.code;
     assert.match(code,/^[A-Za-z0-9_-]{32,128}$/);
     assert.equal((await gateway.call(paths.activate,post(activation(b.json.account.id,code)))).status,403);
     assert.equal((await gateway.call(paths.activate,post(activation(a.json.account.id,code,'wrong-password')))).status,401);
