@@ -541,13 +541,19 @@ test('MCP tool listing rejects oversized, deeply nested and excessively wide sch
 });
 
 test('MCP tool listing enforces a cumulative metadata budget across the catalog', async () => {
-  const tools = Array.from({ length: 40 }, (_, index) => {
+  // 45 * 5 * 1200 CJK characters exceeds 768 KiB in UTF-8,
+  // while each individual schema stays below 24 KiB and the response below 1 MiB.
+  const tools = Array.from({ length: 45 }, (_, index) => {
     const properties = {};
     for (let property = 0; property < 5; property += 1) {
       properties['field-' + property] = { description: '中'.repeat(1200) };
     }
     return { name: 'catalog-' + index, inputSchema: { type: 'object', properties } };
   });
+  const bytes = tools.reduce((sum, tool) => sum + Buffer.byteLength(tool.name) + Buffer.byteLength(JSON.stringify(tool.inputSchema)), 0);
+  assert.ok(bytes > 768 * 1024);
+  assert.ok(tools.every(tool => Buffer.byteLength(JSON.stringify(tool.inputSchema)) < 24 * 1024));
+  assert.ok(Buffer.byteLength(JSON.stringify({ tools })) < 1024 * 1024);
   const { client } = createToolListClient(() => ({ tools }));
   await client.initialize();
   await assert.rejects(client.listTools(), /元数据超过 768 KB 上限/);

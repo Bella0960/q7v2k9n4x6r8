@@ -653,3 +653,8 @@ On the next turn/session, read this file and the current `AGENTS.md` first. Cont
 
 - Restore original connection center, scoped client/permissions/AI adapter and existing tests from #202 / 6db64c36; add settings link and adapter scripts without any changes to the live chat request loop. No old workflows, SW, package or API credentials copied.
 - Fix token read ordering, pending connection cancellation, stale responses, corrupt saved metadata, checked writes and bounded disconnect. No automatic tool invocation, no real endpoint used. Synthetic QA and phone verification pending. This independent branch does not include the blocked social schema candidate.
+
+
+## 2026-11-25 | MCP-001 restore QA failure repair
+
+- Actual public release run 45415570102 failed at gate 49/51: mcp-client.test.mjs:553, mcp-role-permissions.test.mjs:114 and :126. Corrected invalid catalog fixture (40 x 5 x 1200 Chinese characters did not exceed 768 KiB; 45 does, with explicit per-schema/response budget checks), synchronous listForRole error assertion, and exact grant-cap error assertion. Added post-cap retained permission and denied-new-tool checks. No runtime security limits weakened. Carried the same already-submitted narrow Moments browser navigation race fix from #513 into this independently based v161 candidate to avoid known shared test failure. Wait for serialized #513 verification, then test current exact MCP candidate or its updated integration on the actually deployed baseline. No deployment or live data changes.

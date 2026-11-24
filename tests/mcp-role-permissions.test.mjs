@@ -111,7 +111,7 @@ test('corrupted role permission records fail closed without overwriting the stor
     }]
   });
   localStorage.setItem(key, injected);
-  await assert.rejects(manager.listForRole('role-A'), /格式无效/);
+  assert.throws(() => manager.listForRole('role-A'), /格式无效/);
   assert.equal(values.get(key), injected, 'unknown fields must fail closed and remain untouched');
 });
 
@@ -125,6 +125,8 @@ test('role grant storage enforces the per-role tool cap', async () => {
   }
   await assert.rejects(
     manager.grantTool('role-A', endpointA, { name: 'tool_100', inputSchema: { type: 'object' } }),
-    /最多 100 项/
+    /最多保存 100 项/
   );
+  assert.equal(manager.listForRole('role-A').length, 100);
+  assert.equal(await manager.isAllowed('role-A', endpointA, { name: 'tool_100', inputSchema: { type: 'object' } }), false);
 });
