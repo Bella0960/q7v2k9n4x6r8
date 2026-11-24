@@ -98,6 +98,7 @@ const TESTS = [
   ['npm', ['run', 'test:role:avatars:browser']],
   // Music now-playing visual QA must pass before replacing static assets on the existing QA Worker.
   ['node', ['tests/music-mobile-browser.mjs']],
+  ['node', ['tests/reading-coreading-mobile.browser.mjs']],
   // Chat whitespace and iMessage layout must pass on real built pages at 375/390/430px.
   ['node', ['tests/chat-light-surfaces-browser.mjs']],
   // A full Node suite catches regressions outside the narrower account/chat scripts.
