@@ -6,7 +6,7 @@
   "compatibility_flags": [
     "nodejs_compat"
   ],
-  "workers_dev": true,
+  "workers_dev": false,
   "assets": {
     "directory": "./qa/android-lockscreen-assets",
     "binding": "ASSETS",
@@ -41,5 +41,14 @@
         }
       ]
     }
-  }
+  },
+  "preview_urls": true,
+  "routes": [
+    {
+      "pattern": "notify.mao520.com",
+      "custom_domain": true,
+      "previews_enabled": true,
+      "enabled": false
+    }
+  ]
 }
