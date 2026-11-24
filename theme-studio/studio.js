@@ -237,7 +237,7 @@
       });
       input.addEventListener('change',commitFieldEdit);
       input.addEventListener('blur',commitFieldEdit);
-      wrap.appendChild(label);wrap.appendChild(input);$('editorFields').appendChild(wrap);
+      wrap.appendChild(label);wrap.appendChild(output);$('editorFields').appendChild(wrap);
     });
   }
   function cssValue(group,key) {
@@ -247,6 +247,9 @@
   }
   function applyPhotoPreview(slot,cssName,id){
     var stage=$('previewSurface'),old=photoLeases[slot];
+    // Same id in flight stays short-circuited so a rebuild does not re-resolve. A failed
+    // resolve deletes its entry below, so the next render retries instead of pinning the
+    // slot blank forever.
     if(old && old.id===id)return;
     if(old && old.asset)releaseAsset(old.asset);
     var current={id:id||''};photoLeases[slot]=current;
@@ -254,9 +257,11 @@
     if(!id || !window.MAOMAOThemeStudioAssets)return;
     window.MAOMAOThemeStudioAssets.resolve(id).then(function(asset){
       if(photoLeases[slot]!==current){if(asset)releaseAsset(asset);return;}
-      if(!asset)return;
+      if(!asset){ delete photoLeases[slot]; return; }
       current.asset=asset;
       stage.style.setProperty(cssName,'url("'+asset.url.replace(/["\\]/g,'')+'")');
+    }).catch(function(){
+      if(photoLeases[slot]===current) delete photoLeases[slot];
     });
   }
   function previewStyles() {
@@ -311,13 +316,15 @@
     if(!window.MAOMAOThemeStudioAssets) return Promise.resolve(null);
     var gen = thumbGeneration;
     var pending = window.MAOMAOThemeStudioAssets.resolve(id).then(function(asset){
-      thumbPending[id] = null;
+      // Only this generation's own pending entry may clear itself. A stale late callback
+      // must not wipe a newer in-flight promise that replaced it in the map.
+      if(thumbPending[id] === pending){ thumbPending[id] = null; }
       if(!asset) return null;
       if(thumbGeneration !== gen){ releaseAsset(asset); return null; }
       thumbLeases[id] = asset;
       return asset;
     }).catch(function(){
-      thumbPending[id] = null;
+      if(thumbPending[id] === pending){ thumbPending[id] = null; }
       return null;
     });
     thumbPending[id] = pending;
@@ -494,7 +501,7 @@
       var menuBtn=document.createElement('button');menuBtn.type='button';menuBtn.className='preset-menu-btn';
       menuBtn.setAttribute('aria-label','管理方案「'+p.name+'」');
       menuBtn.innerHTML='<svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><circle cx="12" cy="5" r="1.6"/><circle cx="12" cy="12" r="1.6"/><circle cx="12" cy="19" r="1.6"/></svg>';
-      var menu=document.createElement('div');menu.className='preset-menu';
+      var menu=document.createElement('div');
       var rename=document.createElement('button');rename.type='button';rename.textContent='重命名';
       rename.addEventListener('click',function(){renamePreset(p);});
       var update=document.createElement('button');update.type='button';
@@ -681,7 +688,6 @@
       } else if (spec.type === 'number') {
         if (typeof value !== 'number' || !Number.isFinite(value)) throw new Error('数值类型不正确：' + key + ' 需为数字');
         if (value < spec.min || value > spec.max) throw new Error('数值越界：' + key + ' 需在 ' + spec.min + '–' + spec.max + ' ' + spec.unit);
-        out[key] = value;
       } else if (spec.type === 'asset') {
         if (typeof value !== 'string' || !(value === '' || /^as_[A-Z2-7]{32}$/.test(value))) throw new Error('图片素材引用格式无效：'+key);
         out[key] = value;
