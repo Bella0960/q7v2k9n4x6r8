@@ -10,6 +10,8 @@
 //    page; rolled-back after disable.
 //  - Bubble: global vs per-role isolation through ChatBeauty.resolve; clearing a
 //    role override falls back to the global value; other roles are untouched.
+//  - Disable rollback: after disabling list/detail in the workbench, reopening the
+//    real pages drops the opt-in flag and restores baseline computed styles.
 //  - Isolation: an unapplied draft must not reach the chat store; a rejected
 //    (quota) write must not fake success; quick scope switches do not cross leaks.
 //  - Built-in native / WeChat preset bridge writes data-chat-theme-preset.
@@ -253,15 +255,15 @@ try {
     // Known layering gaps: record actual computed values; do NOT assert them green.
     defects.push({
       area: 'detail header background', observed: detail.headerBg,
-      note: 'pinned transparent by shared chat-light-surfaces.css header rule'
+      note: 'pinned by chat-detail.html inline frosted-override .chat-header !important block and shared chat-light-surfaces.css header rule; owned by chat/shared, not touched here'
     });
     defects.push({
       area: 'detail stage background', observed: detail.stageBg,
-      note: 'pinned transparent by shared chat-light-surfaces.css stage/#chat-messages rule'
+      note: 'pinned transparent by chat-detail.html inline .chat-stage !important block and shared light-surfaces stage/#chat-messages rule; owned by chat/shared, not touched here'
     });
     defects.push({
       area: 'detail capsule background/radius', observed: { bg: detail.capsuleBg, radius: detail.capsuleRadius },
-      note: 'pinned by shared light-surfaces #chat-form rule and chat-detail.html inline capsule rules'
+      note: 'pinned by chat-detail.html inline .input-capsule !important block and shared light-surfaces #chat-form rule; owned by chat/shared, not touched here'
     });
 
     // Reload: detail flag and title color persist.
@@ -314,7 +316,7 @@ try {
       return { received: pick('.msg-row.received .msg-bubble'), sent: pick('.msg-row.sent .msg-bubble') };
     });
     defects.push({ area: 'detail real bubble background', observed: bubbleObs,
-      note: 'pinned frosted default by chat-detail.html inline .msg-row bubble !important rule; beauty vars reach the stage but are overridden on the bubble' });
+      note: 'beauty vars resolve and are attached to the stage, but chat-detail.html inline frosted-override block re-declares --chat-bubble-ta-bg/--chat-bubble-my-bg and background on the bubble node with !important; shared light-surfaces.css 17/18 stacks the same vars with !important. Owned by chat/shared, not touched here.' });
 
     // Clear role A override: A falls back to global, B untouched.
     await gotoWorkbench(page);
@@ -386,7 +388,46 @@ try {
     preset = await page.evaluate(() => document.querySelector('.phone-mockup')?.getAttribute('data-chat-theme-preset'));
     assert.equal(preset, 'default', width + 'px native preset restores data-chat-theme-preset');
 
-    // 8. Composer/dock stays inside the viewport; collect runtime errors.
+    // 8. Disable rollback on the real pages: list/detail customizations off and the
+    //    baseline computed values are restored on genuine DOM elements (not just storage).
+    await gotoWorkbench(page);
+    await page.click('[data-tab="list"]');
+    await delay(120);
+    await page.click('#disableButton');
+    await delay(200);
+    state = await studioState(page);
+    assert.ok(state && state.enabled.list === false, width + 'px list disable clears enabled.list');
+
+    await page.goto(origin + '/chat/chat/chat.html', { waitUntil: 'domcontentloaded' });
+    await page.waitForSelector('.chat-slim-card', { timeout: 15000 });
+    await delay(300);
+    list = await readList(page);
+    assert.equal(list.flag, null, width + 'px list flag removed after disable');
+    assert.equal(list.cardBg, 'rgba(0, 0, 0, 0)', width + 'px list card background restored after disable');
+    assert.equal(list.cardRadius, '0px', width + 'px list card radius restored after disable');
+    assert.equal(list.avatarRadius, '50%', width + 'px list avatar radius restored after disable');
+    assert.equal(list.nameColor, 'rgb(17, 17, 17)', width + 'px list name color restored after disable');
+    assert.equal(list.previewColor, 'rgb(153, 153, 153)', width + 'px list preview color restored after disable');
+    assert.equal(list.timeColor, 'rgb(170, 170, 170)', width + 'px list time color restored after disable');
+
+    await gotoWorkbench(page);
+    await page.click('[data-tab="detail"]');
+    await delay(120);
+    await page.click('#disableButton');
+    await delay(200);
+    state = await studioState(page);
+    assert.ok(state && state.enabled.detail === false, width + 'px detail disable clears enabled.detail');
+
+    await page.goto(origin + '/chat/chat/chat-detail.html?id=role-a', { waitUntil: 'domcontentloaded' });
+    await page.waitForSelector('.msg-bubble', { timeout: 15000 });
+    await delay(300);
+    detail = await readDetail(page);
+    assert.equal(detail.flag, null, width + 'px detail flag removed after disable');
+    assert.equal(detail.stageVar, '', width + 'px detail chat-bg var cleared after disable');
+    assert.equal(detail.inputVar, '', width + 'px detail input-radius var cleared after disable');
+    assert.equal(detail.userNameColor, 'rgb(17, 17, 17)', width + 'px detail title color restored after disable');
+
+    // 9. Composer/dock stays inside the viewport; collect runtime errors.
     detail = await readDetail(page);
     assert.ok(detail.dockRect, width + 'px detail composer dock exists');
     assert.ok(detail.dockRect.bottom <= 844 + 1, width + 'px composer dock does not overflow viewport bottom');
