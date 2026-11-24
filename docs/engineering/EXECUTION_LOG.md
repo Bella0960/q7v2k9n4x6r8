@@ -283,3 +283,10 @@ On the next turn/session, read this file and the current `AGENTS.md` first. Cont
 - **测试：** 新增 `tests/games-storage-trust.test.mjs`（9 项，VM 跑真实 `saveRaw/saveJSON/saveCaseProgress/selectRole/saveStat`），9/9 通过；7 段内联脚本全部 `vm.Script` 解析通过。
 - **登记未做（需产品决策）：** 游戏大厅只读角色卡 + 记忆无关；不产出世界事件（依赖 `ECO-LINK-002`）；侦探案件生成为付费调用，无次数限制或失败重试预算控制。
 - **未验证：** Vite 全站构建、Chromium 375/390/430、真机、真实配额场景。
+
+## 2026-11-24 · MOMENTS-FIX-001 · 朋友圈验收
+
+- PR #510 原分支。完成请求在收到响应头后继续计时，直到正文读取结束；正文卡住会报超时，模拟回归确认仅请求一次。
+- Chromium Headless Shell 在 375、390、430px、DPR 3 下通过封面换图、刷新、朋友圈分类备份恢复与背景资源隔离，覆盖真实聊天发布、同名角色、请求期间切换发帖选择、角色删除、自动开关、24 小时冷却、跨标签页去重以及断网、空响应和配额失败。测试均使用模拟 API。
+- Node 朋友圈与备份 30/30，聊天流超时与气泡模式 26/26，Vite 构建及产物隔离 3/3。聊天合同 238/259、隔离 33/34，失败项与 #510 分支起点 17cd858 一致。
+- 交由总控审核并部署 QA。线上 QA 与真机待验证。
