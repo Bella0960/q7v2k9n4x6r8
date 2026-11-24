@@ -5,6 +5,12 @@
 (function (global) {
   'use strict';
   var KEY = 'maomao_theme_studio_v1';
+  // Read-only mirror of ChatBeauty scopes for the opt-in bubble marker below.
+  // The runtime never writes beauty storage; it only reflects whether a saved
+  // global/role bubble customization exists, so the legacy frosted override can
+  // step aside and the bubble consumes the resolved ChatBeauty variables.
+  var BEAUTY_GLOBAL_KEY = 'beauty_chat_global_v1';
+  var BEAUTY_ROLE_PREFIX = 'beauty_chat_';
   var SPECS = {
     list: {
       headerBg: ['color','#FFFFFF'], listBg: ['color','#FFFFFF'],
@@ -97,6 +103,39 @@
     } catch (e) { return false; }
   }
   function cssKey(key) { return key.replace(/[A-Z]/g, function (s) { return '-' + s.toLowerCase(); }); }
+  // Non-asset CSS variables owned by this group; asset slots/leases stay with
+  // MAOMAOThemeStudioAssets.apply for cleanup.
+  function ownedVarNames(group) {
+    return Object.keys(SPECS[group] || {}).filter(function (key) {
+      return SPECS[group][key][0] !== 'asset';
+    }).map(function (key) { return '--ts-' + group + '-' + cssKey(key); });
+  }
+  function clearOwnedVars(shell, group) {
+    ownedVarNames(group).forEach(function (name) { shell.style.removeProperty(name); });
+  }
+  function readBeautyVars(key) {
+    try {
+      var raw = global.localStorage.getItem(key);
+      if (!raw) return null;
+      var cfg = JSON.parse(raw);
+      return (cfg && cfg.vars && typeof cfg.vars === 'object') ? cfg.vars : null;
+    } catch (e) { return null; }
+  }
+  function beautyActive(roleId) {
+    var g = readBeautyVars(BEAUTY_GLOBAL_KEY);
+    if (g && Object.keys(g).length > 0) return true;
+    if (roleId) {
+      var r = readBeautyVars(BEAUTY_ROLE_PREFIX + roleId);
+      if (r && Object.keys(r).length > 0) return true;
+    }
+    return false;
+  }
+  function currentRoleId() {
+    try {
+      var params = new URL(global.location.href).searchParams;
+      return params.get('id') || params.get('contact') || '';
+    } catch (e) { return ''; }
+  }
   // Stable extension point for future editor panels: register a safe typed field.
   // Extensions provide their own opt-in CSS selector for the generated --ts-* value.
   var EXTENSION_FIELDS = {list:[],detail:[]};
@@ -128,9 +167,21 @@
     if (!group) return;
     var shell = global.document.querySelector('.phone-mockup');
     if (!shell) return;
+    // Independent of the workbench switch: mirror whether ChatBeauty has a saved
+    // global/role bubble customization so the legacy frosted override can opt out.
+    if (group === 'detail') {
+      if (beautyActive(currentRoleId())) shell.setAttribute('data-ts-beauty', '1');
+      else shell.removeAttribute('data-ts-beauty');
+    } else {
+      shell.removeAttribute('data-ts-beauty');
+    }
     var state = read(), flag = 'data-ts-' + group;
     if (!state.enabled[group]) {
       shell.removeAttribute(flag);
+      // Drop only this group's own non-asset inline variables; asset slots and
+      // leases are released through the existing assets adapter. Other theme
+      // variables and stored settings are untouched.
+      clearOwnedVars(shell, group);
       if (global.MAOMAOThemeStudioAssets) global.MAOMAOThemeStudioAssets.apply(shell,group,{});
       return;
     }
@@ -155,6 +206,9 @@
     if (global.document.readyState === 'loading') {
       global.document.addEventListener('DOMContentLoaded', apply, { once: true });
     } else { apply(); }
-    global.addEventListener('storage', function (event) { if (event.key === KEY) apply(); });
+    global.addEventListener('storage', function (event) {
+      if (!event.key || event.key === KEY || event.key === BEAUTY_GLOBAL_KEY ||
+          event.key.indexOf(BEAUTY_ROLE_PREFIX) === 0) apply();
+    });
   }
 })(typeof window !== 'undefined' ? window : globalThis);

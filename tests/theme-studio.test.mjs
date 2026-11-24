@@ -8,7 +8,7 @@ function boot(path='/chat/chat/chat.html',storage=new Map()){
   const shell={
     setAttribute(k,v){attrs[k]=v;},
     removeAttribute(k){delete attrs[k];},
-    style:{setProperty(k,v){styles.set(k,v);}}
+    style:{setProperty(k,v){styles.set(k,v);},removeProperty(k){styles.delete(k);}}
   };
   const callbacks={};
   const context={

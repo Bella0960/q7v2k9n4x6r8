@@ -68,6 +68,19 @@ test('extended list/detail controls are clamped and remain opt-in to current cha
   assert.equal(detail.styles.get('--ts-detail-header-height'),'60px');
   assert.equal(list.styles.has('--ts-detail-chat-padding'),false);
 });
+test('disabling a group drops its owned non-asset inline variables and marker',()=>{
+  const app=boot(),state=app.api.read();
+  state.enabled.list=true;state.enabled.detail=true;
+  state.list.itemBg='#eeeeee';state.detail.chatBg='#2b2b2b';state.detail.inputRadius=24;
+  assert.ok(app.api.save(state));
+  const detail=boot('/chat/chat/chat-detail.html',JSON.parse(app.memory.get(app.api.KEY)));
+  assert.ok(detail.styles.has('--ts-detail-chat-bg'),'detail variable applied before disable');
+  const off=detail.api.read();off.enabled.detail=false;
+  assert.ok(detail.api.save(off));
+  const rolled=boot('/chat/chat/chat-detail.html',JSON.parse(detail.memory.get(detail.api.KEY)));
+  for(const k of [...rolled.styles.keys()]) assert.ok(!k.startsWith('--ts-detail-'),'owned detail variable cleared: '+k);
+  assert.equal(rolled.attributes.has('data-ts-detail'),false,'detail marker removed after disable');
+});
 test('registerField offers a versioned opt-in extension without changing stored legacy fields',()=>{
   const app=boot();
   assert.equal(app.api.registerField('list',{key:'futureDensity',label:'扩展密度',type:'number',default:12,min:3,max:30,section:'扩展'}),true);

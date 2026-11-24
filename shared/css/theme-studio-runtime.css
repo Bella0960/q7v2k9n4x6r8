@@ -21,8 +21,13 @@
 .phone-mockup[data-ts-list="1"] .chat-slim-card .chat-avatar:not(.group-avatar) {
   border-radius: var(--ts-list-avatar-radius) !important;
 }
-.phone-mockup[data-ts-detail="1"] .chat-header {
-  background: var(--ts-detail-header-bg) !important;
+/* Detail overrides keep an opt-in flag and match the light-surfaces / legacy
+   inline rules on equal specificity; the runtime stylesheet loads last, so the
+   equal-specificity !important rules below win only when data-ts-detail="1" is
+   present. Stage and capsule rules reuse the existing #chat-messages / #chat-form
+   hooks to clear the ID-level legacy pins without a global unconditional override. */
+body.chat-light-detail .phone-mockup[data-ts-detail="1"] > .chat-header {
+  background-color: var(--ts-detail-header-bg) !important;
   backdrop-filter: none !important;
   -webkit-backdrop-filter: none !important;
 }
@@ -30,19 +35,19 @@
   color: var(--ts-detail-header-text) !important;
   font-size: var(--ts-detail-header-size) !important;
 }
-.phone-mockup[data-ts-detail="1"] .chat-stage {
-  background: var(--ts-detail-chat-bg) !important;
+body.chat-light-detail .phone-mockup[data-ts-detail="1"] #chat-messages.chat-stage {
+  background-color: var(--ts-detail-chat-bg) !important;
 }
-.phone-mockup[data-ts-detail="1"] .input-dock {
-  background: var(--ts-detail-composer-bg) !important;
+body.chat-light-detail .phone-mockup[data-ts-detail="1"] form#chat-form.input-dock {
+  background-color: var(--ts-detail-composer-bg) !important;
   backdrop-filter: none !important;
   -webkit-backdrop-filter: none !important;
 }
-.phone-mockup[data-ts-detail="1"] .input-capsule {
-  background: var(--ts-detail-input-bg) !important;
+body.chat-light-detail .phone-mockup[data-ts-detail="1"] form#chat-form .input-capsule {
+  background-color: var(--ts-detail-input-bg) !important;
   border-radius: var(--ts-detail-input-radius) !important;
 }
-.phone-mockup[data-ts-detail="1"] .send-icon-btn:not(:disabled) {
+body.chat-light-detail .phone-mockup[data-ts-detail="1"] .send-icon-btn:not(:disabled) {
   background: var(--ts-detail-send-bg) !important;
 }
 
@@ -102,27 +107,45 @@
 .phone-mockup[data-ts-list="1"] .chat-slim-card .chat-time {
   color: var(--ts-list-time-color) !important;
 }
-.phone-mockup[data-ts-detail="1"] .chat-header {
+body.chat-light-detail .phone-mockup[data-ts-detail="1"] > .chat-header {
   min-height: var(--ts-detail-header-height) !important;
 }
-.phone-mockup[data-ts-detail="1"] .chat-stage {
+body.chat-light-detail .phone-mockup[data-ts-detail="1"] #chat-messages.chat-stage {
   padding-left: var(--ts-detail-chat-padding) !important;
   padding-right: var(--ts-detail-chat-padding) !important;
 }
-.phone-mockup[data-ts-detail="1"][data-ts-detail-image="1"] .chat-stage {
+body.chat-light-detail .phone-mockup[data-ts-detail="1"][data-ts-detail-image="1"] #chat-messages.chat-stage {
   background-image: var(--ts-detail-image) !important;
   background-position: center var(--ts-detail-chat-image-position) !important;
   background-size: cover !important;
   background-repeat: no-repeat !important;
 }
-.phone-mockup[data-ts-detail="1"] .input-dock {
+body.chat-light-detail .phone-mockup[data-ts-detail="1"] form#chat-form.input-dock {
   padding-left: var(--ts-detail-composer-padding) !important;
   padding-right: var(--ts-detail-composer-padding) !important;
 }
-.phone-mockup[data-ts-detail="1"] .input-capsule {
+body.chat-light-detail .phone-mockup[data-ts-detail="1"] form#chat-form .input-capsule {
   color: var(--ts-detail-input-text) !important;
 }
 .phone-mockup[data-ts-detail="1"] .chat-stage .message-date,
 .phone-mockup[data-ts-detail="1"] .chat-stage .time-divider {
   color: var(--ts-detail-date-color) !important;
+}
+
+/* ChatBeauty-owned bubbles. data-ts-beauty="1" is set by the runtime only when a
+   saved global/role bubble customization exists (read-only mirror of the Beauty
+   store). Under that marker the legacy frosted pins opt out (see chat-detail.html),
+   so the bubble consumes the resolved Beauty variables on the stage; without the
+   marker the built-in frosted default is untouched. Pay/media bubbles are excluded. */
+body.chat-light-detail .phone-mockup[data-ts-beauty="1"] #chat-messages.chat-stage .msg-row.received .msg-bubble:not(.bubble-pay):not(.bubble-media),
+body.chat-light-detail .phone-mockup[data-ts-beauty="1"] #chat-messages.chat-stage .msg-row.left .msg-bubble:not(.bubble-pay):not(.bubble-media) {
+  background: var(--chat-bubble-ta-bg) !important;
+  color: var(--chat-bubble-ta-color) !important;
+  border-radius: var(--chat-bubble-ta-radius-size, var(--chat-bubble-ta-radius)) !important;
+}
+body.chat-light-detail .phone-mockup[data-ts-beauty="1"] #chat-messages.chat-stage .msg-row.sent .msg-bubble:not(.bubble-pay):not(.bubble-media),
+body.chat-light-detail .phone-mockup[data-ts-beauty="1"] #chat-messages.chat-stage .msg-row.right .msg-bubble:not(.bubble-pay):not(.bubble-media) {
+  background: var(--chat-bubble-my-bg) !important;
+  color: var(--chat-bubble-my-color) !important;
+  border-radius: var(--chat-bubble-my-radius-size, var(--chat-bubble-my-radius)) !important;
 }

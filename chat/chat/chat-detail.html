@@ -1916,9 +1916,12 @@
 .chat-stage {
     background: transparent !important;
 }
-/* 气泡强制半透明磨砂 */
-.msg-row.received .msg-bubble,
-.msg-row.left .msg-bubble {
+/* 气泡强制半透明磨砂。When the runtime marks a saved ChatBeauty global/role
+   customization (data-ts-beauty="1"), this legacy frosted override steps aside so
+   the bubble consumes the resolved Beauty variables; otherwise the built-in
+   frosted default below stays intact. */
+.phone-mockup:not([data-ts-beauty="1"]) .msg-row.received .msg-bubble,
+.phone-mockup:not([data-ts-beauty="1"]) .msg-row.left .msg-bubble {
     --chat-bubble-ta-bg: rgba(255, 255, 255, 0.6) !important;
     background: rgba(255, 255, 255, 0.6) !important;
     backdrop-filter: blur(12px) saturate(1.4) !important;
@@ -1926,8 +1929,8 @@
     border: 1px solid rgba(255, 255, 255, 0.4) !important;
     box-shadow: 0 2px 8px rgba(0, 0, 0, 0.06) !important;
 }
-.msg-row.sent .msg-bubble,
-.msg-row.right .msg-bubble {
+.phone-mockup:not([data-ts-beauty="1"]) .msg-row.sent .msg-bubble,
+.phone-mockup:not([data-ts-beauty="1"]) .msg-row.right .msg-bubble {
     --chat-bubble-my-bg: rgba(30, 30, 35, 0.68) !important;
     background: rgba(30, 30, 35, 0.68) !important;
     backdrop-filter: blur(12px) saturate(1.4) !important;
