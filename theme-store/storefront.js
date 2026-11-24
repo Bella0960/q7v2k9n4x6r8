@@ -59,6 +59,8 @@ function discover(){
  return '<div class="sf-section-line"><h2>本期精选</h2><span>左右滑动</span></div>'+
  '<div class="sf-featured" tabindex="0" aria-label="热门精选，可左右滑动">'+
  featured.map((t,i)=>'<button class="sf-feature" data-sf="detail" data-id="'+e(t.id)+'"><div><small>精选 / 0'+(i+1)+'</small><h2>'+e(t.name)+'</h2><p>'+e(t.desc)+'</p><span>查看原主题</span></div><div class="sf-feature-scene sf-native-feature">'+nativeArt(t)+'</div></button>').join('')+'</div>'+
+ heading('五页预览','薄影主题 · 聊天首页、详情、动态、我的与主页')+
+ '<button type="button" class="sf-button sf-all-themes" data-action="market-preview">预览五个页面</button>'+
  heading('主题选集','各套主题都有独立预览与应用入口')+
  gallery(api.themes.slice(0,3))+button('查看全部主题','category','themes','sf-button sf-all-themes')+api.market.renderWallpapers();
 }
