@@ -20,6 +20,7 @@ import { readFileSync, writeFileSync, existsSync } from 'node:fs';
 import { evaluateQaSnapshot } from './qa-snapshot-policy.mjs';
 import { assertPostUploadQaHttpReady } from './qa-postupload-readiness.mjs';
 import { spawnSync } from 'node:child_process';
+import { getReleasePlan } from './qa-release-plan.mjs';
 
 const QA = 'maomao-aw-qa-20261114';
 const CORE = 'maomao-identity-core';
@@ -28,7 +29,10 @@ const QA_DB = '4a24ce58079f468c87c2f75e107c4d1c';
 const CORE_DB = 'e1b78d3813ae4a819841e8c5c3e9e8ec';
 const QA_DO = '4a10d3dab4e16639445f4afdb0b7e5e2462cf06894cb4ae85f0ac3cd3cdba101';
 const CORE_DO = 'dba114c7b0abd8e53d1d78e579924852b8e40907e50213634aeeaeb41ab51a98';
-const BRANCH = 'integration/qa-mobile-push-private-on-v156-20261124';
+const LEGACY_BRANCH = 'integration/qa-mobile-push-private-on-v156-20261124';
+const adaptive = process.env.QA_ADAPTIVE_RELEASE === '1';
+const BRANCH = adaptive ? run('git', ['rev-parse','--abbrev-ref','HEAD'], true) : LEGACY_BRANCH;
+if (adaptive) assert.match(BRANCH, /^(integration|qa)\/[a-zA-Z0-9/_-]+$/, 'Expected approved QA candidate branch');
 // Release ONLY on the verified existing v156 QA Worker; never replace a newer QA build.
 const MOBILE_QA_APPROVED_PREVIOUS_VERSION = 'ccccc66f-f154-4df8-971d-19af758c763d';
 const QA_SETUP_OPEN = 'isolated_authority';
@@ -192,6 +196,16 @@ function stampQaBuildReceipt() {
   writeFileSync('dist/qa-build-receipt.json',
     JSON.stringify({ sourceCommit }) + '\n');
   return sourceCommit;
+}
+
+async function readCurrentQaSource() {
+  const response = await fetch('https://preview.mao520.com/qa-build-receipt.json?baseline=' + Date.now(), {
+    cache: 'no-store', redirect: 'manual', signal: AbortSignal.timeout(15000)
+  });
+  assert.equal(response.status, 200, 'Current QA source receipt unavailable');
+  const data = await response.json();
+  assert.match(data?.sourceCommit || '', /^[0-9a-f]{40}$/, 'Current QA source receipt invalid');
+  return data.sourceCommit;
 }
 
 async function verifyOwnerQaOrigin(expectedCommit) {
@@ -621,20 +635,44 @@ async function main() {
   // instead of burning an entire expensive test suite before discovering it.
   let qaBaseline = null;
   let coreBaseline = null;
+  let baselineSource = null;
+  let releasePlan = {mode:'standard',tests:[]};
   if (deploy) {
     assert.equal(process.env.MAOMAO_QA_DEPLOY_CONFIRM, QA,
       'Set MAOMAO_QA_DEPLOY_CONFIRM to the exact existing QA Worker name');
     [qaBaseline, coreBaseline] = await Promise.all([
       liveWorkerVersion(QA), liveWorkerVersion(CORE)
     ]);
-    if (qaOnly) {
+    if (qaOnly && !adaptive) {
       assert.equal(qaBaseline.versionId, MOBILE_QA_APPROVED_PREVIOUS_VERSION,
         'The isolated QA Worker no longer matches the approved v156 baseline; refusing to overwrite a newer release');
     }
     console.log('Pinned existing QA Worker version before tests: ' + qaBaseline.versionId);
   }
+  if (adaptive) assert.ok(!deploy || qaOnly, 'Adaptive release is QA-only');
+  if (adaptive && (qaOnly || !deploy)) {
+    baselineSource = await readCurrentQaSource();
+    releasePlan = getReleasePlan(baselineSource, run('git',['rev-parse','HEAD'],true));
+    // Fail before spending time on tests if the existing QA target is not healthy.
+    if (qaOnly) await cloudflarePreflight();
+  }
   console.log('Validating original MAOMAO QA candidate; production is never targeted.');
-  for (const [command, args] of TESTS) run(command, args);
+  console.log('QA_TEST_PLAN:' + releasePlan.mode);
+  const selected = releasePlan.mode === 'presentation'
+    ? [
+        ['npm',['ci','--no-audit','--no-fund']],
+        ['node',['--test','tests/qa-release-plan.test.mjs']],
+        ['npm',['run','build']],
+        ['npm',['run','test:pwa:navigation']],
+        ['npx',['playwright','install','--with-deps','chromium']],
+        ...releasePlan.tests.map(file => ['node',['tests/'+file]])
+      ] : TESTS;
+  for (const [command, args] of selected) {
+    run(command, args);
+    if (releasePlan.mode === 'standard' && command === 'npx' && args.join(' ') === 'playwright install --with-deps chromium' && existsSync('tests/moments-publication.browser.mjs')) {
+      run('node', ['tests/moments-publication.browser.mjs']);
+    }
+  }
   console.log('Node, Vite and Chromium tests passed.');
   if (!deploy) {
     console.log('Validation only. No Cloudflare release attempted.');
@@ -691,6 +729,8 @@ async function main() {
     'QA Worker changed after preflight; refusing to replace a newer deployment');
   assert.equal(coreCurrent.versionId, coreVersion.versionId,
     'QA identity authority changed after preflight; refusing unsafe QA deployment');
+  if (baselineSource) assert.equal(await readCurrentQaSource(), baselineSource,
+    'QA source changed before upload; refusing to replace a newer candidate');
   const testedCommit = stampQaBuildReceipt();
   run('npx', ['--yes', 'wrangler@4', 'deploy', '--config', 'wrangler.qa.jsonc']);
   const qaVersion = await liveWorkerVersion(QA);
