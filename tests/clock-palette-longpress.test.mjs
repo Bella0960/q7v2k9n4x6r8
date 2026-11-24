@@ -81,8 +81,12 @@ function startServer() {
         res.writeHead(403).end('Forbidden');
         return;
       }
-      const data = await readFile(filePath);
-      res.writeHead(200, { 'Content-Type': MIME[path.extname(filePath).toLowerCase()] || 'application/octet-stream' });
+      const ext = path.extname(filePath).toLowerCase();
+      let data = await readFile(filePath);
+      // Serve the same root URL substitution as the real build. Browser URL
+      // parsing can reject an unresolved percent placeholder before routing.
+      if (ext === '.html') data = Buffer.from(data.toString('utf8').replaceAll('%BASE_URL%', '/'));
+      res.writeHead(200, { 'Content-Type': MIME[ext] || 'application/octet-stream' });
       res.end(data);
     } catch {
       res.writeHead(404, { 'Content-Type': 'text/plain; charset=utf-8' }).end('Not found');
@@ -100,6 +104,8 @@ function check(name, ok, detail) {
   results.push({ name, ok, detail });
   if (!ok) failed = true;
   console.log(`${ok ? 'PASS' : 'FAIL'} ${name} ${JSON.stringify(detail)}`);
+  // Public runner may expose only an ordinal, never source or detail values.
+  if (!ok) console.log('CLOCK_REGRESSION_FAILURE:' + results.length);
 }
 
 async function openPage(browser, origin, viewport, touch) {
@@ -462,10 +468,31 @@ async function runEditModeDrag(browser, origin) {
   if (before) {
     await page.mouse.move(before.x + before.w / 2, before.y + before.h / 2);
     await page.mouse.down();
-    await delay(60);
-    await page.mouse.move(before.x + before.w / 2 + 40, before.y + before.h / 2 + 50, { steps: 6 });
-    await delay(60);
+    await page.waitForSelector('.drag-avatar',{timeout:3000});
+    // A 40x50px movement can remain entirely within a two-row clock slot.
+    // Resolve a real destination outside the current placeholder after the
+    // drag engine has laid out the grid; do not treat an in-slot drag as a move.
+    const target = await page.evaluate(() => {
+      const slot=document.querySelector('.desktop-grid > .drag-placeholder');
+      if(!slot)return null;
+      const bounds=slot.getBoundingClientRect();
+      const screen=document.getElementById('homeScreen').getBoundingClientRect();
+      const items=[...slot.parentElement.children].filter(el=>el.matches('.app-tile[data-drag]')&&!el.classList.contains('is-dragging-source'));
+      for(const item of items.reverse()){
+        const rect=item.getBoundingClientRect();
+        const x=rect.left+rect.width*.75,y=rect.top+rect.height*.5;
+        if(rect.width>0&&rect.height>0&&x>screen.left+45&&x<screen.right-45&&y>screen.top&&y<screen.bottom&&y>bounds.bottom+2)return {x,y};
+      }
+      return null;
+    });
+    if(!target)throw new Error('No visible clock drop target beyond its original slot');
+    await page.mouse.move(target.x,target.y,{steps:8});
+    await page.waitForFunction(()=>{
+      const slot=document.querySelector('.desktop-grid > .drag-placeholder');
+      return !!slot&&slot.previousElementSibling!==null;
+    },null,{timeout:3000});
     await page.mouse.up();
+    await page.waitForFunction(()=>!document.querySelector('.drag-avatar'),null,{timeout:3000});
     await delay(500);
   }
   const after = await readRect(page, 'clock-lg');
@@ -474,6 +501,9 @@ async function runEditModeDrag(browser, origin) {
   const layoutHasClock = !!savedLayout && reasoningLayout(savedLayout);
   const stillEditing = await page.evaluate(() => document.body.classList.contains('home-editing'));
   const paletteOpen = await page.evaluate(() => !!document.querySelector('.clock-palette'));
+  if (!(moved(before, after) && stillEditing && !paletteOpen)) {
+    console.log('CLOCK_DRAG_FLAGS:' + Number(moved(before, after)) + ':' + Number(stillEditing) + ':' + Number(paletteOpen));
+  }
   check('edit mode drag large clock',
     moved(before, after) && stillEditing && !paletteOpen,
     { before, after, editing: stillEditing, palette: paletteOpen });
@@ -539,26 +569,41 @@ async function runEditModeDrag(browser, origin) {
       editing: await isEditing(page)
     });
     const smallBefore = await readRect(page, 'clock');
+    // Select a *visible same-page* drop destination. document-wide results may
+    // include horizontally offscreen pages despite having valid top/bottom rects.
+    await page.mouse.move(smallBefore.x + smallBefore.w / 2, smallBefore.y + smallBefore.h / 2);
+    await page.mouse.down();
+    await page.waitForSelector('.drag-avatar', { timeout: 3000 });
     const dropTarget = await page.evaluate(() => {
-      const el = Array.from(document.querySelectorAll('[data-drag]')).find((item) => {
-        const id = item.getAttribute('data-drag');
-        if (!id || id === 'clock' || id === 'clock-lg') return false;
+      const placeholder = document.querySelector('.desktop-grid > .drag-placeholder');
+      const screen = document.getElementById('homeScreen')?.getBoundingClientRect();
+      if (!placeholder || !screen) return null;
+      const slot = placeholder.getBoundingClientRect();
+      const items = [...placeholder.parentElement.children].filter(el =>
+        el.hasAttribute('data-drag') && !el.classList.contains('is-dragging-source'));
+      for (const item of items.reverse()) {
         const rect = item.getBoundingClientRect();
-        return rect.width > 0 && rect.height > 0 && rect.top >= 0 && rect.bottom <= window.innerHeight;
-      });
-      if (!el) return null;
-      const rect = el.getBoundingClientRect();
-      return { id: el.getAttribute('data-drag'), x: rect.left + rect.width / 2, y: rect.top + rect.height / 2 };
+        const x = rect.left + rect.width * .75;
+        const y = rect.top + rect.height * .5;
+        const inside = x > screen.left + 45 && x < screen.right - 45 &&
+          y > screen.top + 5 && y < screen.bottom - 5;
+        const outsideOriginalSlot = x < slot.left - 2 || x > slot.right + 2 ||
+          y < slot.top - 2 || y > slot.bottom + 2;
+        if (rect.width > 0 && rect.height > 0 && inside && outsideOriginalSlot) {
+          return { id: item.getAttribute('data-drag'), x, y };
+        }
+      }
+      return null;
     });
-    if (smallBefore && dropTarget) {
-      await page.mouse.move(smallBefore.x + smallBefore.w / 2, smallBefore.y + smallBefore.h / 2);
-      await page.mouse.down();
-      await delay(60);
-      await page.mouse.move(dropTarget.x, dropTarget.y, { steps: 8 });
-      await delay(60);
-      await page.mouse.up();
-      await delay(500);
-    }
+    if (!dropTarget) throw new Error('No visible same-page small clock drop target');
+    await page.mouse.move(dropTarget.x, dropTarget.y, { steps: 8 });
+    await page.waitForFunction(() => {
+      const slot = document.querySelector('.desktop-grid > .drag-placeholder');
+      return !!slot && slot.previousElementSibling !== null;
+    }, null, { timeout: 3000 });
+    await page.mouse.up();
+    await page.waitForFunction(() => !document.querySelector('.drag-avatar'), null, { timeout: 3000 });
+    await delay(500);
     const smallAfter = await readRect(page, 'clock');
     const layoutSmall = await page.evaluate((key) => localStorage.getItem(key), LAYOUT_KEY);
     const smallSaved = layoutSmall ? JSON.parse(layoutSmall) : null;
