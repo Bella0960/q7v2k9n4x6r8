@@ -8,7 +8,7 @@ function boot(path='/chat/chat/chat.html',storage=new Map()){
   const shell={
     setAttribute(k,v){attrs[k]=v;},
     removeAttribute(k){delete attrs[k];},
-    style:{setProperty(k,v){styles.set(k,v);}}
+    style:{setProperty(k,v){styles.set(k,v);},removeProperty(k){styles.delete(k);}}
   };
   const callbacks={};
   const context={
@@ -81,4 +81,30 @@ test('runtime CSS is opt-in and scoped to native chat pages',()=>{
   const launcher=readFileSync(new URL('../index.html',import.meta.url),'utf8');
   assert.match(launcher,/data-drag="app_theme_studio"/);
   assert.match(launcher,/addThemeStudioShortcut/);
+});
+
+test('disabling a group removes only its own scalar vars and keeps the other group/role vars',()=>{
+  const storage=new Map();
+  const app=boot('/chat/chat/chat.html',storage);
+  const next=app.api.read();
+  next.enabled.list=true;
+  next.list.itemRadius=6;
+  next.list.headerBg='#111111';
+  assert.equal(app.api.save(next),true);
+  app.api.apply();
+  assert.equal(app.styles.get('--ts-list-item-radius'),'6px');
+  assert.equal(app.styles.get('--ts-list-header-bg'),'#111111');
+  // Preset another group's var and a per-role beauty var; the list adapter must not own either.
+  app.styles.set('--ts-detail-chat-bg','#000000');
+  app.styles.set('--chat-bubble-my-bg','#abcdef');
+  const off=app.api.read();
+  off.enabled.list=false;
+  assert.equal(app.api.save(off),true);
+  app.api.apply();
+  assert.equal(app.attrs['data-ts-list'],undefined);
+  assert.equal(app.styles.has('--ts-list-item-radius'),false);
+  assert.equal(app.styles.has('--ts-list-header-bg'),false);
+  // Other group and role beauty variables are outside this group's ownership and remain intact.
+  assert.equal(app.styles.get('--ts-detail-chat-bg'),'#000000');
+  assert.equal(app.styles.get('--chat-bubble-my-bg'),'#abcdef');
 });

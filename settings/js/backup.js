@@ -120,6 +120,10 @@
     // 一旦打包进去就等于把密钥交出去。需要整机迁移时，由用户在 DATA 分组
     // 显式勾选「导出时包含 API 密钥」，走 confirm 二次确认后才打包。
     var SECRET_KEYS = ['api_settings', 'api_profiles_v1', 'minimax_tts_config'];
+    // 后续版本新增的可选偏好键：旧版备份文件里通常不带这些字段。
+    // 恢复时若备份未携带、而本机当前已有值，保留本机值，不随旧备份被擦除。
+    // 只登记明确的新增可选偏好，不扩大为整模块前缀。
+    var PRESERVE_ON_MISSING_KEYS = ['maomao_atmosphere_tone_v1'];
     // 核心键抽样前缀：快速判断"这像不像本应用的备份"
     var CORE_HINTS = ['ai_custom_characters', 'phone_data_v2', 'myProfile', 'chat_history_'];
 
@@ -539,6 +543,7 @@
         Object.keys(localStorage).forEach(function(k) {
             if (!registry.belongsTo(scope,k) || neverBackupKey(k) ||
                 SECRET_KEYS.indexOf(k) >= 0) return;
+            if (PRESERVE_ON_MISSING_KEYS.indexOf(k) >= 0) return;
             if (Object.prototype.hasOwnProperty.call(snap,k)) return;
             try { localStorage.removeItem(k); } catch(e) { failed = true; }
         });
@@ -1055,6 +1060,26 @@
         return result;
     }
 
+    // 旧版备份缺失的新增可选偏好：本机已有值时回填保留，不被旧备份清空。
+    function carryOverPreserved(incoming, beforeSnap) {
+        var result = { shouldKeep: 0, written: 0, failed: 0, failedKeys: [] };
+        PRESERVE_ON_MISSING_KEYS.forEach(function (k) {
+            if (Object.prototype.hasOwnProperty.call(incoming, k)) return;
+            if (!beforeSnap || !Object.prototype.hasOwnProperty.call(beforeSnap, k)) return;
+            var cur = beforeSnap[k];
+            if (cur == null) return;
+            result.shouldKeep++;
+            try {
+                localStorage.setItem(k, String(cur));
+                result.written++;
+            } catch (e) {
+                result.failed++;
+                result.failedKeys.push(k);
+            }
+        });
+        return result;
+    }
+
     // 检查 localStorage 里的 active_font_preset_id 是否指向本机仍存在的预设。
     // 字体恢复时可能因体积超限 / blob 解码失败被跳过，或备份本来就不含字体库——
     // 这时保留悬空 id 会导致主题层读不到记录、用户字体静默回到系统默认却不知道为什么。
@@ -1266,6 +1291,8 @@
                     secretRes.failedKeys.push('本机登录状态');
                 }
             });
+            // 旧版备份未携带的新增可选偏好：本机已有值时保留，不被旧备份清空。
+            if (!scope) carryOverPreserved(incoming, current);
 
             // 4. IndexedDB 恢复：schema < 2 的旧备份跳过并提示
             var dbRestored = 0;

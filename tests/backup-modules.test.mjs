@@ -27,7 +27,7 @@ function browser(initial={}) {
     console,Date,Promise,Blob,setTimeout,clearTimeout,URL,confirm:()=>true};
   runInNewContext(registrySource,ctx,{filename:'backup-modules.js'});
   const source=backupSource.replace(injection,
-    '    window.__probe = { snapshot, validateBackup, restoreScoped, restoreStore, backupTargets, neverBackupKey };\n'+injection);
+    '    window.__probe = { snapshot, validateBackup, restoreScoped, restore, restoreStore, backupTargets, neverBackupKey, carryOverPreserved };\n'+injection);
   runInNewContext(source,ctx,{filename:'backup.js'});
   return {reg:win.MAOMAOBackupRegistry,tools:win.__probe,storage};
 }
@@ -204,4 +204,29 @@ test('real forum, chat and theme storage keys round-trip separately without wipi
   assert.equal(storage.getItem('beauty_presets'),themeValue);
   assert.equal(storage.getItem('diary_entry_001'),original.diary_entry_001);
   assert.equal(storage.getItem('mao_session_token'),original.mao_session_token);
+});
+
+test('atmosphere tone is owned by themes and old backups that omit it keep the local value',()=>{
+  const themeValue=JSON.stringify({name:'Monochrome',version:1});
+  const {reg,tools,storage}=browser({
+    beauty_presets:themeValue,
+    maomao_atmosphere_tone_v1:'dark'
+  });
+  // 导出：tone 进入 themes 模块快照，不落到其他模块
+  const exported=tools.snapshot(true,true);
+  const themeSnap=reg.selectSnapshot('themes',exported);
+  assert.equal(themeSnap.maomao_atmosphere_tone_v1,'dark');
+  assert.equal(reg.belongsTo('chats','maomao_atmosphere_tone_v1'),false);
+  // 旧版 themes 备份不含 tone：模块级恢复不得擦除本机 tone
+  assert.equal(tools.restoreScoped({beauty_presets:themeValue},'themes'),true);
+  assert.equal(storage.getItem('maomao_atmosphere_tone_v1'),'dark');
+  // 全量导入旧备份（无 tone）后，回填保留本机 tone，不被清空
+  const before={beauty_presets:themeValue,maomao_atmosphere_tone_v1:'dark'};
+  tools.restore({beauty_presets:themeValue});
+  tools.carryOverPreserved({beauty_presets:themeValue},before);
+  assert.equal(storage.getItem('maomao_atmosphere_tone_v1'),'dark');
+  // 备份自带 tone 时以备份为准，回填不覆盖
+  tools.restore({maomao_atmosphere_tone_v1:'light'});
+  tools.carryOverPreserved({maomao_atmosphere_tone_v1:'light'},before);
+  assert.equal(storage.getItem('maomao_atmosphere_tone_v1'),'light');
 });
