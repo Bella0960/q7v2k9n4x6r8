@@ -129,7 +129,19 @@
       return value && typeof value === 'object' ? value : {};
     } catch (error) { return {}; }
   }
+  var viewParams = new URLSearchParams(location.search);
+  var memberView = viewParams.get('view') === 'members';
+  var memoryView = viewParams.get('view') === 'memory';
+  function managementUrl(section) {
+    var group = loadCurrentGroup();
+    return group ? 'group-play.html?id='+encodeURIComponent(String(group.id))+(section?'&section='+encodeURIComponent(section):'') : '';
+  }
   function openManagement(invite) {
+    if (!memberView) {
+      var group=loadCurrentGroup();
+      if (group) location.href='chat-settings.html?roleId='+encodeURIComponent(String(group.id))+'&view=members'+(invite?'&intent=invite':'');
+      return;
+    }
     var action = byId('actionGroupManage');
     if (!manage.classList.contains('is-open')) action.click();
     var inviteBlock = byId('gpInviteBlock');
@@ -212,13 +224,19 @@
   info.classList.add('gp-name-card');
   alias.classList.add('gp-alias-card');
   manage.classList.add('gp-manage-card');
-  var permissionEntry = btn('gp-permissions-entry','管理员与头衔',function(){
-    var group = loadCurrentGroup();
-    if (!group) return;
-    location.href='group-play.html?id='+encodeURIComponent(String(group.id))+'#memberManagement';
-  });
-  bilingual(permissionEntry,'ROLES / TITLES');
-  byId('gpManagePanel').prepend(permissionEntry);
+  // The original inline management handler remains available on the member subpage.
+  // On the overview the same entry navigates to the directory instead.
+  byId('actionGroupManage').addEventListener('click',function(event){
+    if(memberView)return;
+    event.preventDefault();event.stopImmediatePropagation();
+    var url=managementUrl('');
+    if(url)location.href=url;
+  },true);
+  byId('gpAdvancedEntry').addEventListener('click',function(event){
+    event.preventDefault();event.stopImmediatePropagation();
+    var url=managementUrl('behavior');
+    if(url)location.href=url;
+  },true);
   byId('actionGroupInfo').prepend(el('span','gp-setting-label','群聊名称'));
   byId('actionGroupAlias').prepend(el('span','gp-setting-label','备注'));
   byId('actionGroupManage').querySelector('.action-title').textContent='群组管理';
@@ -241,6 +259,28 @@
   var title = stage.querySelector('.cs-title');
   title.textContent='群聊设置';
   title.prepend(english('GROUP SETTINGS'));
+  var fakeStatus = stage.parentElement.querySelector('.status-bar');
+  if(fakeStatus) fakeStatus.hidden=true;
+  if(memberView || memoryView){
+    stage.classList.add('gp-subpage');
+    var subpage=el('section','gp-subpage-content');
+    subpage.id='gpSubpageContent';
+    if(memberView){
+      title.textContent='成员管理';title.prepend(english('MEMBERS'));
+      subpage.append(manage);
+      manage.classList.add('is-open');
+      if(viewParams.get('intent')==='invite') openManagement(true);
+    }else{
+      title.textContent='记忆空间';title.prepend(english('MEMORY'));
+      subpage.append(byId('memCard'));
+    }
+    stage.append(subpage);
+    byId('btnBack').addEventListener('click',function(event){
+      event.preventDefault();event.stopImmediatePropagation();
+      var url=managementUrl(memoryView?'memory':'');
+      if(url)location.href=url;
+    },true);
+  }
   renderMembers();
   refreshCover();
   new MutationObserver(renderMembers).observe(byId('gpMembersList'),{childList:true});
