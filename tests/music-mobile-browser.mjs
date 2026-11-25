@@ -594,7 +594,19 @@ try {
       {name:'QA 桌面第一首.wav',mimeType:'audio/wav',buffer:makeWav(220)},
       {name:'QA 桌面第二首.wav',mimeType:'audio/wav',buffer:makeWav(330)}
     ]);
-    await library.waitForFunction(()=>JSON.parse(localStorage.getItem('music_local_tracks')||'[]').length===2);
+    // Import automatically starts playback and the music app advances on ended.
+    // Wait for its asynchronous duration writes, then explicitly release the
+    // library's origin-wide playback lock before starting the group session.
+    await library.waitForFunction(()=>{
+      const rows=JSON.parse(localStorage.getItem('music_local_tracks')||'[]');
+      return rows.length===2&&rows.every(t=>Number(t.durSec)>0)&&musicDurationPending.size===0;
+    },null,{timeout:15000});
+    await library.evaluate(()=>{musicPauseNative();musicDiscardAudioSource();});
+    await library.waitForFunction(async()=>{
+      const state=musicController.getState();
+      return !state.pending&&!state.playing&&state.trackId===null&&window.audio.paused&&
+        !(await navigator.locks.query()).held.some(l=>l.name==='maomao-native-music-playback-v1');
+    },null,{timeout:10000});
     const tracks=await library.evaluate(()=>{
       localStorage.setItem('phone_groups',JSON.stringify([{id:'g-listen-desktop',name:'桌面一起听歌测试群',ownerId:'__user',members:[{id:'desktop-role',name:'测试成员'}]}]));
       localStorage.setItem('ai_custom_characters',JSON.stringify([{id:'desktop-role',name:'测试成员',persona:'测试角色，喜欢音乐。',tone:'简短自然'}]));
@@ -638,6 +650,16 @@ try {
     assert.ok(card.contained&&card.height>0&&card.height<=60&&card.overflow<=1,'compact card stays within desktop chat shell');
     await strip.getByRole('button',{name:'打开一起听歌详情'}).click();
     await assertDialogLayout();
+    // Metadata changes in the sibling music library refresh the mounted card
+    // even without a session revision. They never switch the native source.
+    await library.evaluate(id=>{
+      const rows=JSON.parse(localStorage.getItem('music_local_tracks'));
+      const row=rows.find(x=>x.id===id);row.name='QA 已更新曲名';
+      localStorage.setItem('music_local_tracks',JSON.stringify(rows));
+    },firstId);
+    await chat.waitForFunction(()=>document.querySelector('#groupListeningStrip strong')?.textContent==='QA 已更新曲名');
+    assert.equal(await dialog.locator('.glisten-now strong').textContent(),'QA 已更新曲名');
+    assert.deepEqual(await chat.evaluate(()=>{const a=document.querySelector('[data-group-listening-audio]');return {src:a.src,paused:a.paused};}),{src:source,paused:false});
     await dialog.getByRole('button',{name:'重新选歌'}).click();
     await trackRow(secondId).check();
     console.log('SEALED_BROWSER_CHECKPOINT:600'); // desktop initial playback and layout complete
@@ -674,8 +696,30 @@ try {
     assert.equal(await chat.locator('#chat-input').inputValue(),'桌面听歌时保留输入');
     assert.equal(await chat.locator('[data-group-listening-audio]').count(),0);
     await chat.waitForFunction(async()=>!(await navigator.locks.query()).held.some(l=>l.name==='maomao-native-music-playback-v1'));
+    // A new real session must be revoked when its current stable catalog ID
+    // is removed in the sibling music window. Keep the original audio records.
+    await chat.locator('#plus-action-btn').click();
+    await chat.locator('[data-plus-section="group"]').click();
+    await entry.click();
+    await trackRow(firstId).check();
+    await dialog.locator('[data-glisten-start]').click();
+    await chat.waitForFunction(()=>{const a=document.querySelector('[data-group-listening-audio]');return a&&!a.paused;});
+    await strip.getByRole('button',{name:'打开一起听歌详情'}).click();
+    await library.evaluate(id=>{
+      const rows=JSON.parse(localStorage.getItem('music_local_tracks'));
+      localStorage.setItem('music_local_tracks',JSON.stringify(rows.filter(t=>t.id!==id)));
+    },firstId);
+    await chat.locator('[data-group-listening-audio]').waitFor({state:'detached'});
+    await strip.waitFor({state:'hidden'});await dialog.waitFor({state:'hidden'});
+    await chat.waitForFunction(async()=>!(await navigator.locks.query()).held.some(l=>l.name==='maomao-native-music-playback-v1'));
+    assert.equal(await chat.locator('#chat-input').inputValue(),'桌面听歌时保留输入');
+    // Restoring the catalog is not permission to restart stale audio.
+    await library.evaluate(rows=>localStorage.setItem('music_local_tracks',JSON.stringify(rows)),tracks);
+    await chat.waitForFunction(()=>window.MAOMusicCatalogAdapter.listTracks().tracks?.length===2);
+    assert.equal(await chat.locator('[data-group-listening-audio]').count(),0);
+    await strip.waitFor({state:'hidden'});
     assert.deepEqual(desktopErrors,[]);
-    console.log('PASS Chromium desktop 1280px: real group picker, stale catalog, valid replacement, draft and resource cleanup');
+    console.log('PASS Chromium desktop 1280px: real group picker, stale catalog, valid replacement, draft, current deletion and resource cleanup');
   } finally {await desktop.close();}
   console.log('PASS all 375/390/430px browser checks (screenshots in ' + shots + ')');
 } catch (error) {

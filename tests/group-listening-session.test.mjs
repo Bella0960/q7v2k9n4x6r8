@@ -173,3 +173,38 @@ test('queue replacement cancels an outstanding old source and copies caller queu
  assert.equal((await pending).ok,false);assert.deepEqual(h.api.getSnapshot().queue,['b','a']);
  assert.equal(h.audio.src,'');assert.equal((await h.api.play(done.snapshot)).ok,true);h.api.destroy();
 });
+
+test('sparse queue update cannot replace active queue or interrupt playback',async()=>{
+ for(const useBatch of [false,true]){
+  const h=fixture();
+  if(useBatch)h.opts.catalog.listTracks=()=>({ok:true,tracks:[...h.tracks.values()]});
+  try{
+   const s=(await h.api.play(ready(h))).snapshot,source=h.audio.src;
+   const sparse=['a'];sparse.length=2;
+   assert.equal(h.api.setQueue(s,sparse).code,'INVALID_QUEUE');
+   assert.equal(h.api.getSnapshot().revision,s.revision);
+   assert.deepEqual(h.api.getSnapshot().queue,['a']);
+   assert.equal(h.audio.src,source);assert.equal(h.audio.paused,false);
+   const valid=h.api.setQueue(s,['a','b']);assert.equal(valid.ok,true);
+   assert.deepEqual(valid.snapshot.queue,['a','b']);
+  }finally{h.api.destroy();}
+ }
+});
+
+test('current track deletion releases native audio; metadata and unrelated deletion preserve it',async()=>{
+ const h=fixture(),s=(await h.api.play(ready(h))).snapshot,src=h.audio.src;
+ const event=key=>{for(const fn of h.events.get('storage')||[])fn({key});};
+ h.tracks.set('a',{id:'a',name:'renamed'});h.tracks.delete('b');
+ event('music_local_tracks');assert.equal(h.api.getSnapshot().revision,s.revision);assert.equal(h.audio.src,src);assert.equal(h.audio.paused,false);
+ h.tracks.delete('a');event('music_recent');assert.equal(h.audio.src,src);
+ event('__mao_account_v1__MAO-BBBBBBBBBBBB__music_local_tracks');assert.equal(h.audio.src,src);
+ event('__mao_account_v1__MAO-AAAAAAAAAAAA__music_local_tracks');
+ assert.equal(h.api.getSnapshot(),null);assert.equal(h.audio.src,'');assert.equal(h.audio.paused,true);
+ h.api.destroy();
+});
+test('catalog deletion cancels pending load and prevents stale completion after clear',async()=>{
+ const h=fixture(),s=ready(h),release=h.defer(),pending=h.api.play(s);
+ h.tracks.delete('a');for(const fn of h.events.get('storage')||[])fn({key:null});
+ release();assert.equal((await pending).ok,false);assert.equal(h.api.getSnapshot(),null);assert.equal(h.audio.src,'');assert.equal(h.audio.paused,true);
+ h.api.destroy();
+});

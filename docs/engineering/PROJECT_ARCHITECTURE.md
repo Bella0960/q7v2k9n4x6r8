@@ -22,7 +22,7 @@ Phone desktop / launcher
 → shared Phone infrastructure for API, AI context, memory, and storage
 → browser persistence (localStorage + multiple IndexedDB databases).
 
-The app is not currently backed by a server-side user database. Cloudflare deployment serves static files. User data is local to the browser origin/device unless explicitly exported or separately synced by a future approved feature.
+Current main has a Cloudflare Worker with `CLOUD_DB` Durable Object binding and static assets. The earlier static-only description is obsolete. Verify actual cloud and local data boundaries against current source and runtime; see RELEASE_POLICY.md.
 
 ## 3. Top-level directory map
 

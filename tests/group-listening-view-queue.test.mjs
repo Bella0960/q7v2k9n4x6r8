@@ -20,3 +20,20 @@ test('deleted selections are pruned while remaining order is preserved',()=>{
  assert.deepEqual([...prune(['gone'],[])],[]);
  assert.equal(prune(Array.from({length:110},(_,i)=>'t'+i),Array.from({length:110},(_,i)=>({id:'t'+i}))).size,100);
 });
+
+const changed=new Function(fn+'\nreturn catalogChanged;')();
+test('catalog metadata changes invalidate only the relevant view, including scoped keys',()=>{
+ const a='MAO-AAAAAAAAAAAA';
+ for(const k of ['music_local_tracks','music_cover_assets_v1','__mao_account_v1__'+a+'__music_local_tracks','__mao_account_v1__'+a+'__music_cover_assets_v1',null])assert.equal(changed(k,a),true);
+ for(const k of ['music_state','music_recent','phone_groups','__mao_account_v1__MAO-BBBBBBBBBBBB__music_local_tracks',undefined])assert.equal(changed(k,a),false);
+});
+test('catalog storage listener invalidates the render key without altering the player or picker',()=>{
+ const anchor=src.slice(src.indexOf('    function onStorage(event)'),src.indexOf('    function syncTimer()'));
+ let tickCount=0;
+ const run=new Function('catalogChanged','account','tick',`let lastKey='unchanged';${anchor};return {onStorage,key:()=>lastKey};`)(changed,'MAO-AAAAAAAAAAAA',()=>tickCount++);
+ run.onStorage({key:'music_state'});assert.equal(run.key(),'unchanged');
+ run.onStorage({key:'music_local_tracks'});assert.equal(run.key(),'');
+ assert.equal(tickCount,2);
+ assert.match(src,/removeEventListener\('storage',onStorage\)/);
+ assert.match(src,/addEventListener\('storage',onStorage\)/);
+});

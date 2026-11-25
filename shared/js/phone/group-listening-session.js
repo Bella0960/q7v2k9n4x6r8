@@ -163,10 +163,13 @@
     }
     function setQueue(token,ids){
       const denied=authorize(token);if(denied)return denied;
-      if(!Array.isArray(ids)||ids.length>100||new Set(ids).size!==ids.length||!validQueueTracks(ids)||
-        (session.trackId!==null&&!ids.includes(session.trackId)))return fail('INVALID_QUEUE');
+      if(!Array.isArray(ids)||ids.length>100)return fail('INVALID_QUEUE');
+      // Densify before validation: Array#some/every skip sparse slots.
+      const queue=Array.from(ids);
+      if(new Set(queue).size!==queue.length||!validQueueTracks(queue)||
+        (session.trackId!==null&&!queue.includes(session.trackId)))return fail('INVALID_QUEUE');
       if(!ensure())return fail('SCOPE_CHANGED');
-      session.queue=ids.slice();session.revision++;return ok('queue');
+      session.queue=queue;session.revision++;return ok('queue');
     }
     function join(token,id){
       const denied=authorize(token);if(denied)return denied;
@@ -243,7 +246,17 @@
       if(['pause','ended','release','error'].includes(event?.type))reconcile();
     }
     const unsubscribe=player.subscribe(onPlayer);
-    function onStorage(){reconcile();}
+    function onStorage(event){
+      if(!ensure())return;
+      // Scoped catalog deletion/replacement invalidates only a missing current
+      // track. Metadata edits and unrelated storage must not interrupt audio.
+      const key=event?.key, prefix='__mao_account_v1__'+encodeURIComponent(scope.account)+'__';
+      if(session.status!=='ended'&&session.trackId&&
+        (key===null||key==='music_local_tracks'||key===prefix+'music_local_tracks')&&!getTrack(session.trackId)){
+        invalidate('TRACK_UNAVAILABLE');return;
+      }
+      reconcile();
+    }
     function onExit(){invalidate('PAGE_EXIT');}
     root.addEventListener('storage',onStorage);
     root.addEventListener('pagehide',onExit);

@@ -2,6 +2,10 @@
 
 This file is the repository-wide entry point for every AI coding agent and human contributor.
 
+## Current release policy (mandatory)
+
+Read `docs/engineering/RELEASE_POLICY.md` first for every deployment or QA task. It supersedes older release instructions. Both repositories are public; credentials and user data remain protected. Do not invent per-version workflows or treat old SHA/version records as current.
+
 ## Read before changing code
 
 Read these files first:
@@ -14,7 +18,6 @@ Read these files first:
 6. docs/chat-architecture-contract.md and docs/chat-regression-baseline.md before touching chat.
 7. docs/MAOMAO_VISUAL_DESIGN_CONSTITUTION.md before touching UI or visual design.
 8. CLAUDE.md for additional repository-specific context. If it conflicts with the engineering documents, report the conflict and follow the newer, explicitly verified engineering baseline.
-9. **docs/engineering/QA_TEST_RELEASE_RUNBOOK.md — the current, verified route for integrating fixes into the one existing mobile QA site.** Read it whenever the owner requests a phone-test release. It does not authorize production deployment. Do not copy historical pinned SHAs into a new release.
 
 ## Non-negotiable project constraints
 
@@ -38,7 +41,7 @@ Read these files first:
 - Use a dedicated branch named task-ID/short-description. Do not push unreviewed changes directly to main.
 - Do not let two agents edit the same files concurrently. Agree on file ownership first.
 - Keep the patch narrow. Avoid formatting unrelated files or adding dependencies without approval.
-- Add/update tests for the behavior changed. Run npm run build and the relevant test scripts. Remember: the current npm run lint command is a placeholder and is not a real linter.
+- Add/update tests for the behavior changed. Select the required checks using the current release policy; run the relevant test scripts and build when required. Remember: the current npm run lint command is a placeholder and is not a real linter.
 - For UI work, verify at the phone viewport (375–430px) and desktop shell. For chat/storage work, follow the manual acceptance lists in the chat contract and storage plan.
 - Report: task IDs, files changed, behavior preserved, tests run and exact results, migration/rollback behavior, known gaps, and commit/PR link.
 - If you cannot inspect or verify something, label it NOT VERIFIED. Do not infer success from a green unrelated workflow.
