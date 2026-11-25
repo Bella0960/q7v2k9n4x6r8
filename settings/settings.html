@@ -187,6 +187,7 @@
                     <button type="button" id="rowExportRecoveryPoint" style="flex:1;min-width:76px;font:inherit;font-size:12px;padding:8px 10px;color:var(--ink,#111);background:var(--card-2,#f7f7f9);border:1px solid #dedee2;border-radius:10px;">导出档案</button>
                     <button type="button" id="rowReleaseRecoveryPoint" style="flex:1;min-width:76px;font:inherit;font-size:12px;padding:8px 10px;color:var(--ink,#111);background:var(--card-2,#f7f7f9);border:1px solid #dedee2;border-radius:10px;">释放恢复点</button>
                 </div>
+                <button type="button" id="rowRecoverMissingMedia" style="width:100%;margin-top:8px;font:inherit;font-size:12px;padding:8px 10px;color:var(--ink,#111);background:var(--card-2,#f7f7f9);border:1px solid #dedee2;border-radius:10px;">补回空表媒体</button>
                 <input type="file" id="recoveryPointFileInput" accept=".json,application/json" style="display:none;">
                 <p style="font-size:11px;line-height:1.7;color:var(--aux,#888);margin:10px 0 0;">恢复档案含私人资料，不是完整备份，暂不能直接导入。释放时需重新选择已保存的档案。请勿分享。</p>
             </section>
@@ -380,7 +381,7 @@
     </div>
     <script src="js/settings.js"></script>
     <script src="js/backup-modules.js"></script>
-    <script src="js/backup.js?v=20261126backupsafe5"></script>
+    <script src="js/backup.js?v=20261126backupsafe6"></script>
     <script>
     // 设置页用户卡片 + 深色模式开关
     (function () {
