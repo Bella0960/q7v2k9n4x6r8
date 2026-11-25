@@ -67,6 +67,10 @@ export function createRoomSession({verifyContext,createLifetime,spec,rules}={}) 
     viewRole:roleId=>active().viewRole(roleId),
     prepareUserAction:()=>bind(active().prepareUserAction()),
     prepareRoleMove:roleId=>bind(active().prepareRoleMove(roleId),roleId),
+    prepareBotTurn(seatId) {
+      const turn=active().prepareBotTurn(seatId);
+      return Object.freeze({view:turn.view,commit:bind(turn.commit)});
+    },
     prepareRoleTurn(roleId) {
       const turn=active().prepareRoleTurn(roleId);
       return Object.freeze({view:turn.view,commit:bind(turn.commit,roleId)});

@@ -52,7 +52,7 @@ export function buildLudoBoard(view){
 // deterministic local policy is a fallback, not an AI request or a new rule engine.
 export function chooseLudoRoleMove(view,proposal){
   const b=buildLudoBoard(view);
-  if(!b.selfSeatId.startsWith('role:')||b.selfSeatId!==b.turnSeatId||b.phase!=='playing')return null;
+  if(!(b.selfSeatId.startsWith('role:')||/^bot:[1-3]$/.test(b.selfSeatId))||b.selfSeatId!==b.turnSeatId||b.phase!=='playing')return null;
   if(b.canRoll){
     // Reserve the one deterministic action for a known useful landing.
     const own=b.pieces.filter(p=>p.seatId===b.selfSeatId);

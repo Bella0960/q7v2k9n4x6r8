@@ -30,14 +30,16 @@ export function createLudoTurnDriver({session,onView=()=>{},pace=()=>{},maxActio
       }
       validate(view);await onView(view);check(stamp);
       while(view.phase==='playing'&&view.turnSeatId!=='user'&&actions<maxActions){
-        const role=view.seats.find(s=>s.seatId===view.turnSeatId&&s.kind==='role'&&s.mode==='player');
-        if(!role||role.seatId!=='role:'+role.roleId)fail('LUDO_INVALID_ROLE_TURN');
+        const role=view.seats.find(s=>s.seatId===view.turnSeatId&&s.mode==='player');
+        const bot=role?.kind==='bot'&&/^bot:[1-3]$/.test(role.seatId)&&role.roleId===undefined;
+        if(!bot&&(!role||role.kind!=='role'||role.seatId!=='role:'+role.roleId))fail('LUDO_INVALID_ROLE_TURN');
+        if(bot&&typeof session.prepareBotTurn!=='function')fail('LUDO_BOT_UNAVAILABLE');
         await waitForWork(stamp,()=>pace(view));check(stamp);
-        const turn=await session.prepareRoleTurn(role.roleId);check(stamp);
+        const turn=await (bot?session.prepareBotTurn(role.seatId):session.prepareRoleTurn(role.roleId));check(stamp);
         const own=turn?.view;
         if(own?.roomId!==roomId||own.gameId!=='ludo'||own.revision!==view.revision||own.selfSeatId!==role.seatId||own.turnSeatId!==role.seatId||typeof turn.commit!=='function')fail('LUDO_STALE_VIEW');
         let choice=null;
-        if(decide&&own.game.legalMoves.length>1){try{choice=await waitForWork(stamp,signal=>decide(own,signal));}catch{check(stamp);}}
+        if(!bot&&decide&&own.game.legalMoves.length>1){try{choice=await waitForWork(stamp,signal=>decide(own,signal));}catch{check(stamp);}}
         check(stamp);
         // Match the model proposal against this exact seat/revision's projected legal actions.
         const proposed=choice?.move,allowed=proposed&&own.game.legalMoves.find(m=>m.kind===proposed.kind&&m.plane===proposed.plane&&m.card===proposed.card&&Object.keys(proposed).every(k=>['kind','plane','card'].includes(k)));

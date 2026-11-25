@@ -36,7 +36,7 @@ export function createLudoPageHost(root,{win=root?.ownerDocument?.defaultView,on
     check(e,stamp);
     if(view.roomId!==e.roomId||view.gameId!=='ludo'||view.selfSeatId!=='user'||!['playing','finished'].includes(view.phase))fail('LUDO_PAGE_INVALID_VIEW');
     if(e.revision===view.revision&&e.board)return;
-    if(!e.board)e.board=createLudoBoardView(root,{onMove:action=>move(e,action)});
+    if(!e.board)e.board=createLudoBoardView(root,{onMove:action=>move(e,action),labelForSeat:id=>/^bot:[1-3]$/.test(id)?'普通棋手 '+id.slice(4):undefined});
     e.board.render(view);e.revision=view.revision;
   }
   async function runRoles(e,stamp){
@@ -60,18 +60,19 @@ export function createLudoPageHost(root,{win=root?.ownerDocument?.defaultView,on
     }catch(error){if(entry===e&&stamp===epoch){pause('paused');if(e.session.status()==='disposed')end();}throw error;}
     finally{busy=false;}
   }
-  async function start({roomId,roleIds}={}){
+  async function start({roomId,roleIds=[],playerCount=Math.max(2,roleIds?.length+1),mode='classic'}={}){
     if(destroyed||busy||entry)fail('LUDO_PAGE_BUSY');
-    if(typeof roomId!=='string'||!roomId.trim()||!Array.isArray(roleIds)||roleIds.length<1||roleIds.length>3||new Set(roleIds).size!==roleIds.length||!Array.from(roleIds).every(id=>typeof id==='string'&&id.trim()===id&&id.length>0&&id.length<=256))fail('LUDO_PAGE_INVALID_PLAYERS');
+    if(typeof roomId!=='string'||!roomId.trim()||!Array.isArray(roleIds)||roleIds.length>3||!Number.isInteger(playerCount)||playerCount<2||playerCount>4||roleIds.length>=playerCount||!['classic','adventure'].includes(mode)||new Set(roleIds).size!==roleIds.length||!Array.from(roleIds).every(id=>typeof id==='string'&&id.trim()===id&&id.length>0&&id.length<=256))fail('LUDO_PAGE_INVALID_PLAYERS');
     const selected=[...roleIds];busy=true;const stamp=++epoch;
     let e;
     try{
-      const session=createBrowserRoomSession({win,spec:{roomId,gameId:'ludo'},rules:createLudoRules({rollDie})});
+      const session=createBrowserRoomSession({win,spec:{roomId,gameId:'ludo'},rules:createLudoRules({rollDie,mode})});
       e={roomId,session,board:null,revision:-1,driver:null,runStamp:stamp};
       e.driver=createLudoTurnDriver({session,pace,onView:view=>publish(e,view,e.runStamp)});
       entry=e;report('opening');
       await session.refresh();check(e,stamp);
       for(const roleId of selected){const invite=await session.prepareUserAction();check(e,stamp);await invite({type:'invite',roleId});check(e,stamp);}
+      if(selected.length+1<playerCount){const fill=await session.prepareUserAction();check(e,stamp);await fill({type:'fillBots',playerCount});check(e,stamp);}
       const begin=await session.prepareUserAction();check(e,stamp);
       const view=await begin({type:'start'});check(e,stamp);publish(e,view,stamp);report('ready');
       return view;

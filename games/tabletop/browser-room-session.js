@@ -116,7 +116,14 @@ export function createBrowserRoomSession({win=globalThis.window,spec,rules}={}) 
     guard();if(stamp!==epoch) fail('STALE_BROWSER_CONTEXT');
     return Object.freeze({view:turn.view,commit:bindBrowser(turn.commit,stamp)});
   }
+  async function prepareBotTurn(seatId) {
+    await refresh();guard();
+    const stamp=epoch,turn=session.prepareBotTurn(seatId);
+    guard();if(stamp!==epoch) fail('STALE_BROWSER_CONTEXT');
+    return Object.freeze({view:turn.view,commit:bindBrowser(turn.commit,stamp)});
+  }
   return Object.freeze({
+    prepareBotTurn,
     refresh,dispose,status:()=>disposed?'disposed':session.status(),
     lastError:()=>lastError?.message??null,
     async viewUser(){await refresh();guard();return session.viewUser();},
