@@ -75,3 +75,32 @@ test('visible online recovery retries initial setup or resumes the current conve
   sync();
   assert.deepEqual(calls, ['initialize', 'sync']);
 });
+
+test('received media offers a scoped retry only for transient errors', async () => {
+  const start = page.indexOf('async function loadMediaForBubble(');
+  const end = page.indexOf('function mediaReady()', start);
+  assert.ok(start >= 0 && end > start);
+  let attempts = 0;
+  let retry;
+  const context = {
+    closed:false, identityEpoch:1, friendshipId:'friendship', peer:'peer',
+    async api() {
+      attempts++;
+      throw Object.assign(new Error('fixture'), {retryable: attempts === 1});
+    },
+    document:{createElement(){return {addEventListener(_event, listener){retry=listener;}};}}
+  };
+  const bubble = {appendChild(button){this.button=button;}};
+  const load = runInNewContext(page.slice(start,end) + '\nloadMediaForBubble',context);
+  await load({id:'image1',kind:'image'}, {}, bubble, 1, 'friendship', {});
+  assert.equal(bubble.button.textContent,'重新加载图片');
+  const original = retry;
+  context.identityEpoch = 2;
+  retry();
+  assert.equal(attempts,1);
+  context.identityEpoch = 1;
+  retry();
+  await Promise.resolve();
+  assert.equal(attempts,2);
+  assert.equal(retry,original);
+});

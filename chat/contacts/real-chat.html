@@ -455,6 +455,7 @@ function mountVoicePlayer(bubble,url,message,recordedSeconds=null,legacyBytes=nu
 // account, friendship generation, sender and client-message binding are checked
 // before using a local blob URL. No third-party media URL or AI call is used.
 async function loadMediaForBubble(marker,message,bubble,epoch,relation,conversation){
+  if(closed||epoch!==identityEpoch||relation!==friendshipId)return;
   try{
     const data=await api('/api/social/e2ee/chats/'+encodeURIComponent(peer)+
       '/media/'+encodeURIComponent(marker.id));
@@ -491,6 +492,19 @@ async function loadMediaForBubble(marker,message,bubble,epoch,relation,conversat
     if(!closed&&epoch===identityEpoch&&relation===friendshipId){
       bubble.textContent=marker.kind==='image'?'图片暂时无法加载':'语音暂时无法播放';
       bubble.title=String(error?.message||'解密失败').slice(0,130);
+      if(error?.retryable){
+        const retry=document.createElement('button');
+        retry.type='button';
+        retry.className='retry-media';
+        retry.textContent=marker.kind==='image'?'重新加载图片':'重新加载语音';
+        retry.addEventListener('click',()=>{
+          if(closed||epoch!==identityEpoch||relation!==friendshipId)return;
+          bubble.title='';
+          bubble.textContent='正在重新加载…';
+          loadMediaForBubble(marker,message,bubble,epoch,relation,conversation);
+        },{once:true});
+        bubble.appendChild(retry);
+      }
     }
   }
 }
