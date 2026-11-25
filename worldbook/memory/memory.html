@@ -6,8 +6,8 @@
     <title>记忆空间 · 小手机</title>
     <script src="../../shared/js/font-loader.js?v=20261022v1"></script>
     <script src="../../shared/js/native-feel.js"></script>
-    <script src="../../shared/js/phone/phone_storage.js?v=20261121memory1"></script>
-    <script src="../../shared/js/phone/memory_recall.js?v=20261024v2"></script>
+    <script src="../../shared/js/phone/phone_storage.js?v=20261126memoryruntime3"></script>
+    <script src="../../shared/js/phone/memory_recall.js?v=20261126memoryruntime3"></script>
     <style>
         /* 全局重置 */
         * {
@@ -1079,8 +1079,8 @@ button:focus-visible,input:focus-visible,select:focus-visible{outline:1px solid 
         } catch (e) { return []; }
     }
     function saveMemories(id, arr) {
-        if (_storage) return _storage.saveMemories(id, arr);
-        try { localStorage.setItem('chat_memories_' + id, JSON.stringify(arr)); return true; } catch (e) { return false; }
+        if (!_storage || typeof _storage.saveMemories !== 'function') return false;
+        return _storage.saveMemories(id, arr) === true;
     }
     function readHistory(id) {
         if (_storage) return _storage.getChatHistory(id);
@@ -1211,8 +1211,21 @@ button:focus-visible,input:focus-visible,select:focus-visible{outline:1px solid 
         try { return JSON.parse(localStorage.getItem('api_settings') || '{}'); } catch (e) { return {}; }
     }
     async function runSummary(historySlice, isAll, processedTo) {
-        const summaryId = currentMemId;
-        const revision = _storage.getMemoryArchive(summaryId).revision;
+        const summaryId = String(currentMemId || '');
+        const recall = window.MemoryRecall;
+        if (!summaryId || summaryId.charAt(0) === 'g' || !_storage ||
+            !recall || typeof recall.appendReviewCandidates !== 'function') { alert('记忆组件未就绪，请刷新后重试'); return; }
+        const account = window.__MAO_ACCOUNT_SCOPE__;
+        const revision = JSON.stringify(_storage.getMemoryArchive(summaryId));
+        let rawHistory;
+        try { rawHistory = localStorage.getItem('chat_history_' + summaryId); } catch (_) {}
+        if (typeof rawHistory !== 'string') { alert('聊天主存档不可读'); return; }
+        const currentSource = () => {
+            try { return !!(account && account.ready === true && window.__MAO_ACCOUNT_SCOPE__ === account &&
+                String(currentMemId) === summaryId && localStorage.getItem('chat_history_' + summaryId) === rawHistory &&
+                JSON.stringify(_storage.getMemoryArchive(summaryId)) === revision); } catch (_) { return false; }
+        };
+        if (!currentSource()) { alert('会话状态已变化，请重试'); return; }
         const config = getAiConfig();
         const apiKey = (config.apiKey || '').trim();
         if (!apiKey) { alert('请先到设置页配置 API Key'); return; }
@@ -1222,12 +1235,16 @@ button:focus-visible,input:focus-visible,select:focus-visible{outline:1px solid 
         const cats = getSelectedCats();
         const catNames = cats.map(c => CAT_LABEL[c]).join('、');
         let transcript = historySlice.map(m => {
-            if (!m || m.isError || m.role === 'system_error') return '';
+            if (!m || m.isError || m.sendFailed || m.silent || !['sent','user','received','assistant'].includes(m.role) ||
+                m.groupId != null || m.memberId != null || m.type === 'group_private' || m.type === 'group_game_private' ||
+                m.visibility === 'private' || m.visibility === 'role_only' ||
+                (m.sourceRoleId != null && String(m.sourceRoleId) !== summaryId) ||
+                (m.roleId != null && String(m.roleId) !== summaryId)) return '';
             const who = (m.role === 'sent' || m.role === 'user') ? '用户' : '角色';
-            return who + '：' + String(m.text || m.content || m.desc || '').trim();
+            return who + '：' + recall.cleanText(m.text || m.content || m.desc || '');
         }).filter(Boolean).join('\n');
         // Keep summary input bounded. The original messages are never changed or deleted.
-        if (transcript.length > 4000) transcript = transcript.slice(0, 3800) + '\n…（摘要输入达到上限，原文仍完整保留）';
+        if (!transcript.trim() || transcript.length > 4000) { alert('可整理内容为空或过长，请缩小范围'); return; }
         const btn = isAll ? document.getElementById('btnManualAll') : document.getElementById('btnManualRecent');
         btn.disabled = true;
         const oldText = btn.textContent;
@@ -1253,7 +1270,7 @@ button:focus-visible,input:focus-visible,select:focus-visible{outline:1px solid 
             clearTimeout(timer);
             if (!resp.ok) { alert('总结失败（HTTP ' + resp.status + '）'); return; }
             const data = await resp.json();
-            if (_storage.getMemoryArchive(summaryId).revision !== revision) return;
+            if (!currentSource()) { alert('原始聊天已变化，本次整理未保存'); return; }
             const text = data.choices && data.choices[0] && data.choices[0].message
                 ? (data.choices[0].message.content || '').trim() : '';
             const jsonMatch = text.match(/\[[\s\S]*\]/);
@@ -1262,53 +1279,15 @@ button:focus-visible,input:focus-visible,select:focus-visible{outline:1px solid 
             try { items = JSON.parse(jsonMatch[0]); } catch (e) { throw new Error('memory-json-invalid'); }
             if (!Array.isArray(items)) throw new Error('memory-json-invalid');
 
-            const mems = loadMemories(summaryId);
-            const now = Date.now();
-            let autoN = 0, pendingN = 0, reinforcedN = 0;
-            items.forEach(it => {
-                if (!it || !it.content) return;
-                const content = String(it.content).trim().slice(0, 240);
-                const key = content.toLowerCase().replace(/[^\u3400-\u9fffA-Za-z0-9]/g, '');
-                const duplicate = mems.find(e => {
-                    const old = String(e && e.content || '').toLowerCase().replace(/[^\u3400-\u9fffA-Za-z0-9]/g, '');
-                    return old && old === key;
-                });
-                const imp = Math.max(1, Math.min(5, parseInt(it.importance, 10) || 3));
-                if (duplicate) {
-                    duplicate.reinforcementCount = Math.max(1, Number(duplicate.reinforcementCount) || 1) + 1;
-                    duplicate.lastReinforcedAt = now;
-                    duplicate.updatedAt = now;
-                    duplicate.importance = Math.max(Number(duplicate.importance) || 3, imp);
-                    reinforcedN++;
-                    return;
-                }
-                const st = imp >= 4 ? 'confirmed' : 'pending';
-                if (st === 'confirmed') autoN++; else pendingN++;
-                mems.push({
-                    id: 'mem_' + now.toString(36) + '_' + mems.length.toString(36),
-                    content: content,
-                    category: ['key', 'plot', 'detail', 'anniversary', 'preference'].indexOf(it.category) !== -1 ? it.category : 'detail',
-                    importance: imp,
-                    status: st,
-                    createdAt: now,
-                    lastReinforcedAt: now,
-                    reinforcementCount: 1,
-                    source: 'manual-summary',
-                    sourceRoleId: String(summaryId),
-                    sourceMessageCount: historySlice.length
-                });
+            const result = recall.appendReviewCandidates(summaryId, items, {
+                source:'manual-summary', sourceMessageCount:historySlice.length, isCurrent:currentSource
             });
-            if (!saveMemories(summaryId, mems)) { alert('记忆保存失败，请重试'); return; }
-            // Only chronological "next batch" summaries advance this cursor.
-            // Summarizing recent N messages must never mark older history as processed.
+            if (!result.ok) { alert('整理未保存，原记忆和进度仍保留：' + (result.reason === 'capacity' ? '记忆库已满' : '请重试')); return; }
             if (isAll && Number.isFinite(Number(processedTo))) {
-                try { localStorage.setItem('chat_summary_processed_' + summaryId, String(Number(processedTo))); } catch (e) {}
+                try { localStorage.setItem('chat_summary_processed_' + summaryId, String(Number(processedTo))); } catch (e) { alert('记忆已保存，但进度未更新'); return; }
             }
-            try { localStorage.setItem('chat_last_summary_' + summaryId, String(now)); } catch (e) {}
-            let msg = '已整理：' + autoN + ' 条新记忆';
-            if (pendingN > 0) msg += '，' + pendingN + ' 条待确认';
-            if (reinforcedN > 0) msg += '，强化旧记忆 ' + reinforcedN + ' 条';
-            alert(msg);
+            try { localStorage.setItem('chat_last_summary_' + summaryId, String(Date.now())); } catch (e) {}
+            alert('已新增 ' + result.added + ' 条待确认记忆，原记录保留');
             refreshManual();
             renderLib();
         } catch (err) {
@@ -1399,7 +1378,7 @@ button:focus-visible,input:focus-visible,select:focus-visible{outline:1px solid 
             if (!delIdx.size) { alert('没有勾选任何条目'); return; }
             let arr = loadMemories(currentMemId);
             arr = arr.filter((m, i) => !delIdx.has(i));
-            saveMemories(currentMemId, arr);
+            if (!saveMemories(currentMemId, arr)) { alert('删除未保存，请刷新后重试'); return; }
             box.innerHTML = '';
             alert('已删除 ' + delIdx.size + ' 条重复记忆');
             renderLib();
@@ -1410,7 +1389,8 @@ button:focus-visible,input:focus-visible,select:focus-visible{outline:1px solid 
         const arr = loadMemories(currentMemId);
         const pools = { plot: [], detail: [], preference: [] };
         arr.forEach(m => {
-            if (m.status === 'fixed' || m.status === 'pending') return;
+            if (!m || m.status !== 'confirmed' || typeof m.id !== 'string' ||
+                String(m.sourceRoleId || '') !== String(currentMemId) || m.source === 'user-correction') return;
             if (m.category === 'key' || m.category === 'anniversary') return;
             if (pools[m.category]) pools[m.category].push(m);
         });
@@ -1423,6 +1403,11 @@ button:focus-visible,input:focus-visible,select:focus-visible{outline:1px solid 
         return est;
     }
     async function doMerge() {
+        const mergeId = String(currentMemId || '');
+        const mergeAccount = window.__MAO_ACCOUNT_SCOPE__;
+        const recall = window.MemoryRecall;
+        if (!mergeId || mergeId.charAt(0) === 'g' || !recall || typeof recall.appendReviewCandidates !== 'function' ||
+            !mergeAccount || mergeAccount.ready !== true) { alert('记忆组件未就绪'); return; }
         const est = mergeEstimate();
         const box = document.getElementById('toolResult');
         if (!est.length) {
@@ -1437,8 +1422,8 @@ button:focus-visible,input:focus-visible,select:focus-visible{outline:1px solid 
         const totalFrom = est.reduce((s, e) => s + e.from, 0);
         const totalTo = est.reduce((s, e) => s + e.to, 0);
         box.innerHTML = '<div class="merge-est">合并预估：<br>' +
-            est.map(e => CAT_LABEL[e.cat] + '：' + e.from + ' 条 → ' + e.to + ' 条').join('<br>') +
-            '<br><br>合计 ' + totalFrom + ' 条 → ' + totalTo + ' 条，固定记忆与关键事件、纪念日不会被合并。</div>' +
+            est.map(e => CAT_LABEL[e.cat] + '：' + e.from + ' 条 → 生成 ' + e.to + ' 条待确认提案').join('<br>') +
+            '<br><br>合计 ' + totalFrom + ' 条 → ' + totalTo + ' 条提案，原始记录全部保留。</div>' +
             '<div style="display:flex;gap:10px;margin-top:12px;">' +
                 '<button type="button" class="btn-ghost" id="btnMergeCancel">取消</button>' +
                 '<button type="button" class="btn-primary" id="btnMergeConfirm">确认合并</button>' +
@@ -1449,10 +1434,16 @@ button:focus-visible,input:focus-visible,select:focus-visible{outline:1px solid 
             btn.disabled = true;
             btn.textContent = '合并中...';
             try {
+                let added = 0;
                 for (const e of est) {
-                    const mems = loadMemories(currentMemId);
-                    const pool = mems.filter(m => m.status === 'confirmed' && m.category === e.cat
-                        && m.category !== 'key' && m.category !== 'anniversary');
+                    if (String(currentMemId) !== mergeId || window.__MAO_ACCOUNT_SCOPE__ !== mergeAccount) { alert('会话已变化，停止整理'); return; }
+                    const mems = loadMemories(mergeId);
+                    const baseline = JSON.stringify(mems);
+                    const currentSource = () => String(currentMemId) === mergeId &&
+                        window.__MAO_ACCOUNT_SCOPE__ === mergeAccount && JSON.stringify(loadMemories(mergeId)) === baseline;
+                    const pool = mems.filter(m => m && m.status === 'confirmed' && m.category === e.cat &&
+                        typeof m.id === 'string' && m.sourceRoleId === mergeId && m.source !== 'user-correction' &&
+                        m.category !== 'key' && m.category !== 'anniversary');
                     if (pool.length < 3) continue;
                     const src = pool.map(m => m.content).join('\n');
                     const controller = new AbortController();
@@ -1479,24 +1470,15 @@ button:focus-visible,input:focus-visible,select:focus-visible{outline:1px solid 
                     let items = [];
                     if (jsonMatch) { try { items = JSON.parse(jsonMatch[0]); } catch (err2) {} }
                     if (!Array.isArray(items) || !items.length) continue;
-                    let arr = loadMemories(currentMemId);
-                    // 删除该类原已确认记忆
-                    arr = arr.filter(m => !(m.status === 'confirmed' && m.category === e.cat));
-                    // 追加合并结果
-                    items.forEach(it => {
-                        if (!it || !it.content) return;
-                        arr.push({
-                            content: String(it.content).slice(0, 160),
-                            category: e.cat,
-                            importance: Math.max(1, Math.min(5, parseInt(it.importance, 10) || 3)),
-                            status: 'confirmed',
-                            createdAt: Date.now()
-                        });
+                    if (!currentSource()) { alert('原记忆已变化，停止整理'); return; }
+                    const result = recall.appendReviewCandidates(mergeId, items.map(it => Object.assign({},it,{category:e.cat})), {
+                        source:'merge-candidate', sourceMemoryIds:pool.map(m=>m.id), isCurrent:currentSource
                     });
-                    saveMemories(currentMemId, arr);
+                    if (!result.ok) { alert('本批提案未保存，原记录保留'); return; }
+                    added += result.added;
                 }
                 box.innerHTML = '';
-                alert('合并完成');
+                alert('已生成 ' + added + ' 条待确认提案，原记忆全部保留');
                 renderLib();
             } catch (err) {
                 alert('合并失败：' + (err.name === 'AbortError' ? '请求超时' : '网络错误'));
