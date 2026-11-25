@@ -857,6 +857,14 @@ html,body{background:#f7f7f8}
     if(!id){if(!/^(localhost|127\.0\.0\.1|\[::1\])$/.test(location.hostname))throw Error('无法确认当前账号');id='local-development';}
     return JSON.stringify([id,window.__MAO_ACCOUNT_SCOPE__||null]);
   }
+  function diaryWithRequestLock(token,roleId,operation,run){
+    var locks=window.navigator&&window.navigator.locks;
+    if(!locks||typeof locks.request!=='function')return Promise.reject(Error('当前浏览器不支持安全的多页面请求锁，未发出 AI 请求'));
+    try{return locks.request('maomao-diary:'+JSON.stringify([token,roleId,operation]),{ifAvailable:true},function(lock){
+      if(!lock||!diaryArchiveIsCurrent()||diaryAccountToken()!==token)throw Error('日记正在其他页面处理，或数据已变化');
+      return run();
+    });}catch(e){return Promise.reject(e);}
+  }
   function diaryCommentTarget(entryId,roleId,token,recordKind){
     if(!diaryArchiveIsCurrent())return null;
     if(token!==diaryAccountToken())return null;
@@ -944,7 +952,10 @@ html,body{background:#f7f7f8}
     annotationBusy=true;
     var button=$('annotationGenerate');button.disabled=true;button.textContent='正在等角色回信…';
     $('annotationStatus').textContent='正在生成。关闭此面板不会取消已发出的请求。';
-    window.PhoneAPI.complete({system:system,user:user,temperature:0.78,timeoutMs:30000}).then(function(response){
+    diaryWithRequestLock(token,role.id,'comment:'+entryId,function(){
+      var target=diaryCommentTarget(entryId,role.id,token,recordKind);
+      if(!target||diaryCommentSource(target)!==sourceSnapshot||!diaryRoleContextStillCurrent(role.id,topic,false,contextSnapshot))throw Error('日记或角色资料已变化，未发出请求');
+      return window.PhoneAPI.complete({system:system,user:user,temperature:0.78,timeoutMs:30000}).then(function(response){
       var text=String(response||'').trim();
       if(!text||!diaryRoleReplyValid(role,text))throw new Error('角色留言为空或身份不一致，未保存。');
       var live=diaryCommentTarget(entryId,role.id,token,recordKind);if(!live||diaryCommentSource(live)!==sourceSnapshot||!diaryRoleContextStillCurrent(role.id,topic,false,contextSnapshot))throw new Error('日记内容、角色资料或账号已改变，本次留言不保存。');
@@ -955,7 +966,7 @@ html,body{background:#f7f7f8}
       if(readerId===entryId)renderReader();
       if(readerId===entryId){renderAnnotationHistory(live);$('annotationStatus').textContent=role.name+' 的留言已保存在这篇日记里。';}
       showToast('已收到 '+role.name+' 的留言');
-    }).catch(function(err){
+    });}).catch(function(err){
       $('annotationStatus').textContent='生成失败：'+String(err&&err.message?err.message:err||'未知错误').slice(0,150)+'。请检查 API 配置后重试。';
     }).then(function(){
       annotationBusy=false;button.disabled=false;button.textContent='再生成一条留言';
@@ -1417,7 +1428,7 @@ html,body{background:#f7f7f8}
   }
   function peekCurrentRole(){
     var roles=diaryCharacters();if(!roles.length)return null;
-    var cid=null;try{cid=window.PhoneStorage&&PhoneStorage.getCurrentContactId?PhoneStorage.getCurrentContactId():null}catch(e){}
+    var cid=null;try{cid=window.PhoneStorage&&PhoneStorage.getCurrentContactId?PhoneStorage.getCurrentContactId():null}catch(e){return null;}
     if(cid)return roles.find(function(r){return String(r.id)===String(cid)})||null;
     return roles.length===1?roles[0]:null;
   }
@@ -1437,7 +1448,10 @@ html,body{background:#f7f7f8}
     try{contextSnapshot=diaryRoleContext(role,diaryText,false);system='为用户自己的'+diaryRecordKind(target)+'创作符合所选虚构角色的简短批注。要求：20-50字，语气自然、符合人设，不复述原文，不编造事实，只输出批注。\n'+contextSnapshot;}catch(e){showToast(e.message);return;}
     peekBusy=true;
     var user='用户'+diaryRecordKind(target)+'：\n日期：'+target.date+'\n标题：'+(target.title||'（无标题）')+'\n心情：'+target.mood+'\n正文：'+(diaryText||'（空白）');
-    PhoneAPI.complete({system:system,user:user,temperature:0.85,timeoutMs:20000}).then(function(text){
+    diaryWithRequestLock(token,role.id,'comment:'+target.id,function(){
+      var current=diaryCommentTarget(target.id,role.id,token,recordKind);
+      if(!peekEnabled()||!current||diaryCommentSource(current)!==sourceSnapshot||!diaryRoleContextStillCurrent(role.id,diaryText,false,contextSnapshot)||(Array.isArray(current.charComments)&&current.charComments.some(function(c){return String(c.characterId)===role.id;})))return;
+      return PhoneAPI.complete({system:system,user:user,temperature:0.85,timeoutMs:20000}).then(function(text){
       text=String(text||'').trim().replace(/^["「『]+|["」』]+$/g,'').slice(0,120);
       if(!text||!peekEnabled()||!diaryRoleReplyValid(role,text))return;
       var live=diaryCommentTarget(target.id,role.id,token,recordKind);if(!live||diaryCommentSource(live)!==sourceSnapshot||!diaryRoleContextStillCurrent(role.id,diaryText,false,contextSnapshot))return;
@@ -1446,10 +1460,7 @@ html,body{background:#f7f7f8}
       live.charComments.push({id:'peek_'+Date.now().toString(36)+'_'+Math.random().toString(36).slice(2,6),characterId:role.id,characterName:role.name,text:text,createdAt:new Date().toISOString(),auto:true});
       if(!persist()){live.charComments.pop();return}
       render()
-    }).catch(function(err){
-      console.warn('[Char Peek] 备忘录偷看失败:',err&&err.message?err.message:err);
-      if(err&&/API Key|未配置|api/i.test(String(err.message||'')))showToast('Char 偷看失败：还没配 AI API Key，去设置配一下');
-    }).then(function(){peekBusy=false});
+    });}).catch(function(){showToast('角色批注未完成，请检查日记状态及 API 配置');}).finally(function(){peekBusy=false});
   }
   setTimeout(maybeAutoPeek,1800);
 
@@ -1474,7 +1485,11 @@ html,body{background:#f7f7f8}
     var system;try{system=diaryWritingPrompt(role);}catch(e){showToast(e.message);return;}
     var user='今天日期：'+new Date().toLocaleDateString('zh-CN')+'。按这个角色本人的生活习惯，记下今天值得写下的片段。';
     maybeAutoWriteCharEntry.inFlight=true;
-    return Promise.resolve().then(function(){return PhoneAPI.complete({system:system,user:user,temperature:0.85,timeoutMs:25000});}).then(function(text){
+    return Promise.resolve().then(function(){return diaryWithRequestLock(token,role.id,'write',function(){
+      var current=diaryCharacters().find(function(r){return r.id===role.id;});
+      var cooldown=Number(localStorage.getItem(lastKey))||0;
+      if(!peekEnabled()||Date.now()-cooldown<6*3600*1000||!current||diaryWritingPrompt(current)!==system)return;
+      return PhoneAPI.complete({system:system,user:user,temperature:0.85,timeoutMs:25000}).then(function(text){
       text=String(text||'').trim();
       var liveRole=diaryCharacters().find(function(r){return r.id===role.id;});
       if(text.length<20||!peekEnabled()||!diaryArchiveIsCurrent()||!diaryRoleReplyValid(role,text)||diaryAccountToken()!==token||!liveRole||diaryWritingPrompt(liveRole)!==system)return;
@@ -1483,7 +1498,7 @@ html,body{background:#f7f7f8}
       if(!persist()){entries.pop();return}
       try{localStorage.setItem(lastKey,String(Date.now()))}catch(e){}
       render();
-    }).catch(function(){showToast('角色日记生成失败，未保存');}).finally(function(){maybeAutoWriteCharEntry.inFlight=false;});
+    });});}).catch(function(){showToast('角色日记生成失败，未保存');}).finally(function(){maybeAutoWriteCharEntry.inFlight=false;});
   }
   setTimeout(maybeAutoWriteCharEntry,3000);
 })();
