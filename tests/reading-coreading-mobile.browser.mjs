@@ -57,6 +57,35 @@ try{
    await page.locator('#ctrlSet').click();
    await page.locator('#readSettings.is-open').waitFor();
   };
+  // Header must remain visible and outside the moving chapter in both reading modes.
+  const assertHeader=async()=>{
+   const h=await page.locator('#readerTitle').evaluate(e=>{
+    const r=e.getBoundingClientRect(),head=e.closest('.reader-head').getBoundingClientRect();
+    const body=document.getElementById('readerBody').getBoundingClientRect();
+    const hit=document.elementFromPoint(r.left+r.width/2,r.top+r.height/2);
+    return {top:r.top,bottom:r.bottom,headBottom:head.bottom,bodyTop:body.top,visible:!!hit&&(hit===e||e.contains(hit)),text:e.textContent};
+   });
+   assert.ok(h.visible && h.top>=0 && h.bottom<=h.headBottom && h.headBottom<=h.bodyTop+1);
+   assert.match(h.text,/QA fixture/);
+   return h.top;
+  };
+  const top=await assertHeader();
+  await page.locator('#readerBody').evaluate(e=>{e.scrollTop=e.scrollHeight;});
+  await page.waitForTimeout(450);
+  assert.ok(Math.abs(await assertHeader()-top)<2);
+  await page.locator('#readerBody').evaluate(e=>{e.scrollTop=0;});
+  await openPrefs();
+  await page.locator('[data-mode="smooth"]').click();
+  await page.locator('#sheetBackdrop').click({position:{x:10,y:10}});
+  await page.locator('#readerBody').evaluate(e=>{e.scrollLeft=e.scrollWidth;});
+  await page.waitForTimeout(500);
+  assert.ok(Math.abs(await assertHeader()-top)<2);
+  await page.locator('#readerBody').evaluate(e=>{e.scrollLeft=0;});
+  await page.waitForTimeout(500);
+  await openPrefs();
+  await page.locator('[data-mode="scroll"]').click();
+  await page.locator('#sheetBackdrop').click({position:{x:10,y:10}});
+  await page.locator('#readerBody').evaluate(e=>{e.scrollTop=0;});
   await openPrefs();
   const prefs=page.locator('#coReadPreferences');
   assert.equal(await prefs.evaluate(e=>e.open),false);
