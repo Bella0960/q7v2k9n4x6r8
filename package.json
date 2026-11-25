@@ -44,6 +44,8 @@
     "test:group:ui": "node --test tests/group-ui-collapse-invite.test.mjs",
     "test:group:governance": "node --test tests/group-governance.test.mjs tests/group-social-settings-contract.test.mjs tests/group-game-boundary.test.mjs tests/group-game-chat-receipts.test.mjs tests/group-turn-effects.test.mjs tests/group-turn-integration.test.mjs tests/group-private-receipt-recovery.test.mjs tests/group-history-scope-concurrency.test.mjs",
     "test:group:invite-e2e": "node --test tests/group-chat-invite-e2e.test.mjs",
+    "test:group:music-catalog": "node --test tests/group-listening-catalog.test.mjs",
+    "test:group:music-catalog:browser": "node tests/group-listening-catalog.browser.mjs",
     "test:wechat:browser": "node tests/wechat-theme-browser.mjs",
     "test:clock:palette": "node tests/clock-palette-longpress.test.mjs",
     "test:chat:isolation:browser": "node tests/chat-data-isolation-browser.mjs",
