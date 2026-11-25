@@ -627,20 +627,21 @@ test('desktop glass pauses expensive optical work while editing and excludes vis
 
 
 test('glass edit quick touch starts drag instead of cancelling before the timer', () => {
-  const source = index.slice(index.indexOf('      // 1. Touch Events'),index.indexOf('      // Only a confirmed long-press drag'));
+  const source = index.slice(index.indexOf('      // 1. Touch Events'),index.indexOf("      document.addEventListener('touchend', function (e) {",index.indexOf('      // 1. Touch Events')));
   assert.ok(source.includes('pendingGlassTouchTarget'));
   function probe(theme, editing, delta, at) {
-    const events={}, timers=new Map(), calls=[];let now=0,seq=0;
+    const events={}, timers=new Map(), calls=[];let now=0,seq=0,prevented=0;
     const target={isConnected:true,closest(){return this},matches(){return true},classList:{contains(){return false}}};
     const ctx={editing,pressTimer:null,startX:0,startY:0,hasMoved:false,isDragging:false,
-      document:{documentElement:{getAttribute:()=>theme},addEventListener:(n,f)=>events[n]=f},
+      document:{documentElement:{getAttribute:()=>theme},addEventListener:(n,f)=>(events[n]??=new Set()).add(f),removeEventListener:(n,f)=>events[n]?.delete(f)},
       isClockDragTarget:()=>false,cancelDrag(){},startDrag(t,x,y){calls.push(['start',x,y]);ctx.isDragging=true;},
       queueDragMove(x,y){calls.push(['move',x,y]);},
       setTimeout(f,ms){const id=++seq;timers.set(id,{f,t:now+ms});return id},clearTimeout(id){timers.delete(id)}};
     runInNewContext(source,ctx);
-    const emit=(name,x)=>events[name]({target,touches:[{clientX:x,clientY:100}]});
+    const emit=(name,x)=>{for(const f of [...events[name]??[]])f({target,touches:[{clientX:x,clientY:100}],cancelable:true,preventDefault(){prevented++}})};
     function advance(t){now=t;for(const [id,o] of timers)if(o.t<=now){timers.delete(id);o.f()}}
     emit('touchstart',100);advance(at);emit('touchmove',100+delta);advance(400);
+    if(theme==='liquid-glass'&&editing&&delta>9&&at<40)assert.ok(prevented>0,'first move must be claimed before native scrolling');
     return calls;
   }
   assert.deepEqual(probe('liquid-glass',true,12,16),[['start',100,100],['move',112,100]]);
