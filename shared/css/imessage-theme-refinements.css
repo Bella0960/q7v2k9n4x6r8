@@ -1,0 +1,89 @@
+/* POLISH-011 · iMessage (Apple Messages) theme refinements
+   Loaded after chat-light-surfaces.css. Every rule is scoped to the iMessage preset.
+   Bubble fill / border / radius / tail and their saved customizations stay owned by
+   ChatBeauty; this layer only refines chrome, list rows, spacing, geometry and type.
+   No default aesthetic, other preset, account, storage key or message logic is touched.
+*/
+
+:root {
+  --im-ink: #111113;
+  --im-muted: #8E8E93;
+  --im-faint: #AEAEB2;
+  --im-press: #F2F2F7;
+  --im-avatar: #EFEFF1;
+}
+
+/* ============ Conversation list ============ */
+body.chat-light-list .phone-mockup[data-chat-theme-preset="imessage"] #chatListContainer {
+  gap: 2px;
+}
+
+body.chat-light-list .phone-mockup[data-chat-theme-preset="imessage"] .chat-slim-card {
+  background: transparent;
+  border: 0;
+  border-radius: 0;
+  box-shadow: none;
+  backdrop-filter: none;
+  -webkit-backdrop-filter: none;
+  padding: 11px 4px;
+  gap: 12px;
+  min-height: 62px;
+}
+body.chat-light-list .phone-mockup[data-chat-theme-preset="imessage"] .chat-slim-card:active {
+  background: var(--im-press);
+  transform: none;
+}
+
+body.chat-light-list .phone-mockup[data-chat-theme-preset="imessage"] .chat-avatar {
+  width: 40px;
+  height: 40px;
+  background: var(--im-avatar);
+}
+
+body.chat-light-list .phone-mockup[data-chat-theme-preset="imessage"] .chat-meta {
+  gap: 3px;
+}
+body.chat-light-list .phone-mockup[data-chat-theme-preset="imessage"] .chat-title-row {
+  gap: 8px;
+}
+body.chat-light-list .phone-mockup[data-chat-theme-preset="imessage"] .chat-name {
+  font-size: 16px;
+  font-weight: 500;
+  color: var(--im-ink);
+}
+body.chat-light-list .phone-mockup[data-chat-theme-preset="imessage"] .chat-last-msg {
+  font-size: 14px;
+  color: var(--im-muted);
+}
+body.chat-light-list .phone-mockup[data-chat-theme-preset="imessage"] .chat-time {
+  font-size: 12px;
+  font-family: inherit;
+  color: var(--im-faint);
+}
+
+/* ============ Conversation detail ============ */
+/* Clear any residual translucent frosted header so the light surface reads flat. */
+body.chat-light-detail .phone-mockup[data-chat-theme-preset="imessage"] > .chat-header {
+  background: transparent !important;
+  border-bottom: 0 !important;
+  backdrop-filter: none !important;
+  -webkit-backdrop-filter: none !important;
+}
+
+/* Timestamps sit as quiet centered gray labels on the light surface, not frosted pills. */
+body.chat-light-detail .phone-mockup[data-chat-theme-preset="imessage"] .message-time {
+  background: transparent !important;
+  border: 0 !important;
+  border-radius: 0 !important;
+  backdrop-filter: none !important;
+  -webkit-backdrop-filter: none !important;
+  padding: 2px 0 !important;
+  font-family: inherit !important;
+  font-size: 11px !important;
+  color: var(--chat-time-color, var(--im-muted)) !important;
+}
+
+/* Composer capsule: a large rounded pill, not a full-round track. */
+body.chat-light-detail .phone-mockup[data-chat-theme-preset="imessage"] form#chat-form .input-capsule {
+  border-radius: 20px !important;
+}
