@@ -1424,6 +1424,42 @@ class CloudStore {
    * per-message delivery is missing or due for retry. Message bodies are never
    * selected here; the notification itself is intentionally content-free.
    */
+  hasCloudContextSchema() {
+    return Boolean(this.exec('SELECT version FROM schema_migrations WHERE version = ?', '0020_cloud_autonomous_context')[0]);
+  }
+
+  outboundIntegrityCondition() {
+    const legacy = `         AND NOT EXISTS (
+           SELECT 1 FROM activity_queue staged
+           WHERE staged.status = 'completed'
+             AND staged.result_server_message_id = o.server_message_id
+             AND staged.result_json IS NOT NULL
+             AND (
+               staged.device_id <> o.device_id
+               OR staged.character_id <> o.character_id
+               OR staged.result_json <> o.payload_json
+               OR staged.result_dedupe_key IS NOT o.dedupe_key
+             )
+         )`;
+    if (!this.hasCloudContextSchema()) return legacy;
+    return `AND (
+      (o.group_id IS NULL ${legacy})
+      OR (o.group_id IS NOT NULL AND EXISTS (
+        SELECT 1 FROM activity_queue staged,
+          json_each(CASE WHEN json_valid(staged.result_json) THEN staged.result_json ELSE '[]' END) bubble
+        WHERE staged.status = 'completed'
+          AND staged.result_group_id = o.group_id
+          AND staged.device_id = o.device_id
+          AND staged.character_id = o.character_id
+          AND staged.result_message_count = o.group_count
+          AND json_extract(bubble.value, '$.groupIndex') = o.group_index
+          AND json_extract(bubble.value, '$.serverMessageId') = o.server_message_id
+          AND json_extract(bubble.value, '$.dedupeKey') = o.dedupe_key
+          AND json_extract(bubble.value, '$.payload') = o.payload_json
+      ))
+    )`;
+  }
+
   listOutboundPushCandidates({ now, limit = 50 }) {
     const safeLimit = Math.max(1, Math.min(100, Math.floor(Number(limit) || 50)));
     const timestamp = Number(now);
@@ -1453,18 +1489,8 @@ class CloudStore {
          ON p.dedupe_key = ('outbound:' || o.server_message_id)
         AND p.subscription_id = s.id
        WHERE r.local_saved_at IS NULL
-         AND NOT EXISTS (
-           SELECT 1 FROM activity_queue staged
-           WHERE staged.status = 'completed'
-             AND staged.result_server_message_id = o.server_message_id
-             AND staged.result_json IS NOT NULL
-             AND (
-               staged.device_id <> o.device_id
-               OR staged.character_id <> o.character_id
-               OR staged.result_json <> o.payload_json
-               OR staged.result_dedupe_key IS NOT o.dedupe_key
-             )
-         )
+${this.outboundIntegrityCondition()}
+         ${this.hasCloudContextSchema() ? 'AND (o.group_id IS NULL OR o.group_index = 1)' : ''}
          AND (
            p.id IS NULL
            OR (p.status = 'error'
@@ -1493,18 +1519,7 @@ class CloudStore {
         AND requesting_device.revoked_at IS NULL
        WHERE o.server_message_id = ? AND o.character_id = ?
          AND source_device.user_id = ?
-         AND NOT EXISTS (
-           SELECT 1 FROM activity_queue staged
-           WHERE staged.status = 'completed'
-             AND staged.result_server_message_id = o.server_message_id
-             AND staged.result_json IS NOT NULL
-             AND (
-               staged.device_id <> o.device_id
-               OR staged.character_id <> o.character_id
-               OR staged.result_json <> o.payload_json
-               OR staged.result_dedupe_key IS NOT o.dedupe_key
-             )
-         )`,
+${this.outboundIntegrityCondition()}`,
       deviceId, serverMessageId, characterId, userId
     )[0] || null;
   }
@@ -1549,18 +1564,7 @@ class CloudStore {
         AND r.device_id = requesting_device.id
        WHERE source_device.user_id = ? AND o.character_id = ?
          AND r.local_saved_at IS NULL
-         AND NOT EXISTS (
-           SELECT 1 FROM activity_queue staged
-           WHERE staged.status = 'completed'
-             AND staged.result_server_message_id = o.server_message_id
-             AND staged.result_json IS NOT NULL
-             AND (
-               staged.device_id <> o.device_id
-               OR staged.character_id <> o.character_id
-               OR staged.result_json <> o.payload_json
-               OR staged.result_dedupe_key IS NOT o.dedupe_key
-             )
-         )
+${this.outboundIntegrityCondition()}
          AND (? IS NULL OR o.created_at > ?
               OR (o.created_at = ? AND o.id > ?))
        ORDER BY o.created_at ASC, o.id ASC
@@ -1795,6 +1799,39 @@ class CloudStore {
     return identical
       ? { inserted: false, duplicate: true, activity: existing }
       : { inserted: false, conflict: true, activity: existing };
+  }
+
+  enqueueCloudContactForSnapshot({ userId, characterId, deviceId, contextVersion,
+    now, minIdleMs, maxAttempts }) {
+    return this.transaction(() => {
+      const snapshot = this.getLatestCharacterContextSnapshot({ userId, characterId });
+      if (snapshot?.context_version !== contextVersion || snapshot.source_device_id !== deviceId ||
+          Number(this.getUserAutonomy(userId)?.enabled) !== 1 ||
+          Number(this.getCharacterAutonomy(userId, characterId)?.enabled ?? 1) !== 1) {
+        return null;
+      }
+      const turn = Number(snapshot.last_user_message_at);
+      const dedupeKey = ['cloud-contact-v1', userId, characterId, String(turn)]
+        .map(encodeURIComponent).join(':');
+      const payload = { contextVersion, sourceDeviceId: deviceId, executionMode: 'cloud' };
+      if (turn === 0) payload.triggerType = 'initial_contact';
+      const existing = this.getActivityByDedupeKey(dedupeKey);
+      if (existing) {
+        if (existing.device_id !== deviceId || existing.character_id !== characterId) return null;
+        return this.exec(
+          `UPDATE activity_queue SET payload_json = ?, updated_at = ?
+           WHERE id = ? AND status IN ('waiting','retry') AND locked_by IS NULL
+           RETURNING scheduled_at`, JSON.stringify(payload), now, existing.id
+        )[0] || null;
+      }
+      if (this.countPendingActivitiesForCharacter(userId, characterId) >= 5) return null;
+      const result = this.enqueueActivity({
+        id: crypto.randomUUID(), userId, deviceId, characterId, payload, dedupeKey,
+        kind: 'contact', scheduledAt: turn ? Math.max(now, turn + minIdleMs) : now + 120000,
+        maxAttempts, now, requireActiveDevice: true
+      });
+      return result.inserted ? result.activity : null;
+    });
   }
 
   getActivityByDedupeKey(dedupeKey) {

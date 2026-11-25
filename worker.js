@@ -15,6 +15,7 @@ import { createApp, dispatchPendingOutboundPushes } from './worker/lib/app.js';
 import { createStore } from './worker/lib/store.js';
 import { applyMigrations, runtimeMigrations } from './worker/lib/migrations.js';
 import { runTick } from './worker/lib/scheduler.js';
+import { runCloudModelTick } from './worker/lib/cloud-model-scheduler.js';
 import { createSchedulerGate } from './worker/lib/scheduler-gate.js';
 
 const INSTANCE_NAME = 'maomao-global';
@@ -255,6 +256,13 @@ export class CloudDatabase {
       });
     }
     if (url.pathname === '/internal/tick' && request.method === 'POST') {
+      if (this.env.AUTONOMY_CLOUD_ENABLED === 'true') {
+        if (!this.store.hasCloudContextSchema()) {
+          return Response.json({ ok: false, reason: 'cloud_context_schema_unavailable' }, { status: 503 });
+        }
+        const result = await runCloudModelTick({ store: this.store, env: this.env });
+        return Response.json({ ok: result.ok, result });
+      }
       // 真实 gate 已接入；缺少显式授权/作息/lease 配置或可信上下文版本时仍 fail-closed。
       const timestamp = Date.now();
       const result = runTick({
@@ -389,8 +397,15 @@ export default {
     if (!env.CLOUD_DB) return;
     ctx.waitUntil((async () => {
       const stub = env.CLOUD_DB.get(env.CLOUD_DB.idFromName(INSTANCE_NAME));
-      await stub.fetch(new Request('https://maomao.internal/internal/maintenance', { method: 'POST' }));
-      await stub.fetch(new Request('https://maomao.internal/internal/tick', { method: 'POST' }));
+      const tick = () => stub.fetch(new Request('https://maomao.internal/internal/tick', { method: 'POST' }));
+      const maintenance = () => stub.fetch(new Request('https://maomao.internal/internal/maintenance', { method: 'POST' }));
+      if (env.AUTONOMY_CLOUD_ENABLED === 'true') {
+        try { await tick(); }
+        finally { await maintenance(); }
+      } else {
+        await maintenance();
+        await tick();
+      }
     })());
   }
 };

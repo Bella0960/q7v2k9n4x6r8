@@ -1253,6 +1253,166 @@ export function createApp({ store, env = {}, now = () => Date.now(), fetchImpl =
     });
   }
 
+  function assertCloudContextAvailable() {
+    if (env.AUTONOMY_CLOUD_ENABLED !== 'true' || !store.hasCloudContextSchema()) {
+      throw new ApiError(503, 'CLOUD_CONTEXT_UNAVAILABLE', '云端上下文暂未启用');
+    }
+  }
+
+  async function getContextSharing(request) {
+    assertCloudContextAvailable();
+    const device = await authenticate(request);
+    const row = await store.getUserContextSharing(device.user_id || OWNER_USER_ID);
+    return ok({ enabled: Boolean(row && Number(row.enabled) === 1), configured: Boolean(row) });
+  }
+
+  async function setContextSharing(request) {
+    assertCloudContextAvailable();
+    const device = await authenticate(request);
+    const body = await readJsonBody(request);
+    if (!body || typeof body !== 'object' || Array.isArray(body) ||
+        Object.keys(body).length !== 1 || typeof body.enabled !== 'boolean') {
+      throw new ApiError(400, 'INVALID_CONTEXT_SHARING', '请求只允许包含布尔值 enabled');
+    }
+    const row = await store.setUserContextSharing({
+      userId: device.user_id || OWNER_USER_ID,
+      enabled: body.enabled,
+      deviceId: device.id,
+      now: now()
+    });
+    if (!row) throw new ApiError(403, 'DEVICE_REVOKED', '设备授权已撤销');
+    return ok({ enabled: Number(row.enabled) === 1, deletedSnapshots: body.enabled ? 0 : true });
+  }
+
+  function normalizeSnapshotText(value, maxLength, field) {
+    if (typeof value !== 'string') throw new ApiError(400, 'INVALID_CONTEXT_SNAPSHOT', field + ' 必须是文字');
+    let result = value
+      .replace(/-----BEGIN [A-Z ]*PRIVATE KEY-----[\s\S]*?-----END [A-Z ]*PRIVATE KEY-----/g, '[私钥已省略]')
+      .replace(/\b(?:sk-[A-Za-z0-9_-]{16,}|AIza[A-Za-z0-9_-]{20,}|gh[pousr]_[A-Za-z0-9]{20,}|AKIA[0-9A-Z]{16}|xox[baprs]-[A-Za-z0-9-]{20,})\b/g, '[密钥已省略]')
+      .replace(/\bBearer\s+[A-Za-z0-9._~+/-]{12,}/gi, 'Bearer [凭据已省略]')
+      .replace(/\b(?:api[_-]?key|access[_-]?token|secret|password|token)\s*[:=]\s*[\w.+/-]{12,}/gi, '[凭据已省略]')
+      .replace(/<[^>]*>/g, ' ')
+      .replace(/[\u0000-\u0008\u000B\u000C\u000E-\u001F]/g, ' ')
+      .replace(/https?:\/\/\S+/gi, '[链接已省略]')
+      .replace(/[\w.+-]+@[\w.-]+\.[A-Za-z]{2,}/g, '[邮箱已省略]')
+      .replace(/(?<!\d)(?:\+?\d[\s().-]?){8,15}(?!\d)/g, '[号码已省略]')
+      .replace(/\s+/g, ' ')
+      .trim();
+    if (Array.from(result).length > maxLength) result = Array.from(result).slice(0, maxLength).join('');
+    return result;
+  }
+
+  async function saveCharacterContextSnapshot(request, characterId) {
+    assertCloudContextAvailable();
+    const device = await authenticate(request);
+    const body = await readJsonBody(request, 65536);
+    const required = ['eventId', 'characterName', 'personaText', 'recentMessages', 'lastUserMessageAt'];
+    const allowed = new Set([...required, 'initialContact']);
+    if (!body || typeof body !== 'object' || Array.isArray(body) ||
+        required.some(key => !Object.prototype.hasOwnProperty.call(body, key)) ||
+        Object.keys(body).some(key => !allowed.has(key)) ||
+        (Object.prototype.hasOwnProperty.call(body, 'initialContact') &&
+         typeof body.initialContact !== 'boolean')) {
+      throw new ApiError(400, 'INVALID_CONTEXT_SNAPSHOT', '上下文快照字段不完整或包含未允许的数据');
+    }
+    const initialContact = body.initialContact === true;
+    const suppliedEventId = String(body.eventId || '').trim();
+    if (!CONTEXT_EVENT_ID_PATTERN.test(suppliedEventId)) {
+      throw new ApiError(400, 'INVALID_CONTEXT_SNAPSHOT', 'eventId 格式无效');
+    }
+
+    const userId = device.user_id || OWNER_USER_ID;
+    const sharing = await store.getUserContextSharing(userId);
+    if (!sharing || Number(sharing.enabled) !== 1) return ok({ disabled: true, saved: false });
+
+    const characterName = normalizeSnapshotText(body.characterName, 80, 'characterName');
+    const personaText = normalizeSnapshotText(body.personaText, 5000, 'personaText');
+    if (!Array.isArray(body.recentMessages) || body.recentMessages.length > 12) {
+      throw new ApiError(400, 'INVALID_CONTEXT_SNAPSHOT', 'recentMessages 最多包含 12 条文字消息');
+    }
+    const recentMessages = body.recentMessages.map((item, index) => {
+      if (!item || typeof item !== 'object' || Array.isArray(item) ||
+          Object.keys(item).length !== 2 ||
+          Object.keys(item).some(key => !['role', 'content'].includes(key)) ||
+          !['user', 'assistant'].includes(item.role)) {
+        throw new ApiError(400, 'INVALID_CONTEXT_SNAPSHOT', 'recentMessages[' + index + '] 格式无效');
+      }
+      return {
+        role: item.role,
+        content: normalizeSnapshotText(item.content, 600, 'recentMessages[' + index + '].content')
+      };
+    });
+    const totalChars = Array.from(personaText).length + Array.from(characterName).length +
+      recentMessages.reduce((sum, item) => sum + Array.from(item.content).length, 0);
+    if (totalChars > 11000) throw new ApiError(413, 'CONTEXT_SNAPSHOT_TOO_LARGE', '角色上下文超过允许的总长度');
+
+    const timestamp = now();
+    const lastUserMessageAt = Number(body.lastUserMessageAt);
+    if (!Number.isSafeInteger(lastUserMessageAt)) {
+      throw new ApiError(400, 'INVALID_CONTEXT_SNAPSHOT_TIME', '最后一条用户消息时间无效');
+    }
+    if (initialContact) {
+      if (body.lastUserMessageAt !== 0 || lastUserMessageAt !== 0 || recentMessages.length !== 0) {
+        throw new ApiError(400, 'INVALID_INITIAL_CONTACT_SNAPSHOT',
+          '首次主动开场必须使用空消息列表和 lastUserMessageAt=0');
+      }
+    } else if (lastUserMessageAt <= 0 ||
+        lastUserMessageAt > timestamp + 60000 ||
+        lastUserMessageAt < timestamp - 30 * 86400000) {
+      throw new ApiError(400, 'INVALID_CONTEXT_SNAPSHOT_TIME', '最后一条用户消息时间无效');
+    }
+
+    const previousSnapshot = await store.getLatestCharacterContextSnapshot({ userId, characterId });
+    let result;
+    if (initialContact && previousSnapshot && Number(previousSnapshot.last_user_message_at) > 0) {
+      return ok({
+        saved: false, duplicate: true, queued: false, scheduledAt: null,
+        queueReason: 'conversation_already_exists'
+      });
+    }
+
+    if (initialContact && previousSnapshot && Number(previousSnapshot.last_user_message_at) === 0) {
+      result = { saved: true, duplicate: true, contextVersion: Number(previousSnapshot.context_version) };
+    } else {
+      const eventId = initialContact
+        ? 'initial_' + (await sha256Hex(
+          userId + '|' + characterId + '|' + String(sharing.updated_at || 0)
+        )).slice(0, 40)
+        : suppliedEventId;
+      result = await store.recordCharacterContextSnapshot({
+        userId, characterId, eventId, deviceId: device.id,
+        characterName, personaText, recentMessages, lastUserMessageAt,
+        now: timestamp, eventLimit: 600, windowStart: timestamp - 3600000
+      });
+      if (result.conflict && initialContact) {
+        const racedSnapshot = await store.getLatestCharacterContextSnapshot({ userId, characterId });
+        if (racedSnapshot && Number(racedSnapshot.last_user_message_at) === 0 &&
+            racedSnapshot.character_name === characterName &&
+            racedSnapshot.persona_text === personaText &&
+            racedSnapshot.recent_messages_json === '[]') {
+          result = {
+            saved: true, duplicate: true, contextVersion: Number(racedSnapshot.context_version)
+          };
+        }
+      }
+    }
+
+    if (result.revoked) throw new ApiError(403, 'DEVICE_REVOKED', '设备授权已撤销');
+    if (result.limited) throw new ApiError(429, 'CONTEXT_VERSION_RATE_LIMITED', '上下文同步过于频繁，请稍后重试');
+    if (result.conflict) throw new ApiError(409, 'CONTEXT_SNAPSHOT_CONFLICT', '上下文版本已存在不同快照，请重新保存聊天记录');
+    if (result.disabled || !result.saved) return ok({ disabled: true, saved: false });
+
+    const schedule = readActivityExecutionConfig(env);
+    const minIdleMs = parsePositiveEnv(env, 'AUTONOMY_MIN_IDLE_MS');
+    const task = schedule && minIdleMs != null ? store.enqueueCloudContactForSnapshot({
+      userId, characterId, deviceId: device.id, contextVersion: result.contextVersion,
+      now: now(), minIdleMs, maxAttempts: schedule.maxAttempts
+    }) : null;
+    return ok({ saved: true, duplicate: result.duplicate === true,
+      contextVersion: result.contextVersion, queued: Boolean(task),
+      scheduledAt: task?.scheduled_at ?? null, initialContact });
+  }
+
   async function listCharacterOutboundMessages(request, characterId, url) {
     const device = await authenticate(request);
     const rawLimit = url.searchParams.get('limit');
@@ -2097,6 +2257,13 @@ export function createApp({ store, env = {}, now = () => Date.now(), fetchImpl =
         const characterId = readCharacterId(characterAutonomyMatch[1]);
         if (method === 'GET') return await getCharacterAutonomy(request, characterId);
         if (method === 'PUT') return await setCharacterAutonomy(request, characterId);
+      }
+
+      if (path === '/api/autonomy/context-sharing' && method === 'GET') return await getContextSharing(request);
+      if (path === '/api/autonomy/context-sharing' && method === 'PUT') return await setContextSharing(request);
+      const contextSnapshot = /^\/api\/characters\/([^/]+)\/context-snapshot$/.exec(path);
+      if (contextSnapshot && method === 'POST' && readCharacterId(contextSnapshot[1])) {
+        return await saveCharacterContextSnapshot(request, readCharacterId(contextSnapshot[1]));
       }
 
       const characterContextVersionMatch = /^\/api\/characters\/([^/]+)\/context-version$/.exec(path);

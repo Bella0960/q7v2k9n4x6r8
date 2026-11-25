@@ -438,9 +438,10 @@ test('Workers AI respects explicit timeout configuration and never auto-enables'
 // grouped outbox are ported and verified in a separate review.
 test('staged cloud model is not activated by the current Worker or config',()=>{
   const worker=fs.readFileSync(new URL('../worker.js',import.meta.url),'utf8');
-  assert.doesNotMatch(worker,/runCloudModelTick/);
+  assert.match(worker,/AUTONOMY_CLOUD_ENABLED === 'true'[\s\S]*?hasCloudContextSchema\(\)[\s\S]*?runCloudModelTick\(/);
   for(const path of ['../wrangler.jsonc','../wrangler.qa.jsonc','../wrangler.qa-identity-core.jsonc']) {
     const config=fs.readFileSync(new URL(path,import.meta.url),'utf8');
+    assert.doesNotMatch(config,/"AUTONOMY_CLOUD_ENABLED"\s*:/);
     assert.doesNotMatch(config,/"AUTONOMY_MODEL_DAILY_(?:GLOBAL|ACCOUNT|ROLE)_LIMIT"\s*:/);
   }
 });

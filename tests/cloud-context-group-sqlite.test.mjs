@@ -62,7 +62,42 @@ test('group commit is all-or-nothing on conflict, scoped and replay safe',()=>{
   assert.equal(store.completeCloudActivityWithOutboundGroup(args).completed,true);
   assert.equal(store.completeCloudActivityWithOutboundGroup(args).alreadyCompleted,true);
   assert.deepEqual(exec('SELECT group_index FROM outbound_messages WHERE device_id=? ORDER BY group_index','d1').map(r=>r.group_index),[1,2]);
+  for(const [id,device] of [['s1','d1'],['s2','d2']]){
+    exec('INSERT INTO push_subscriptions(id,device_id,endpoint,p256dh,auth_key,created_at,updated_at) VALUES(?,?,?,?,?,?,?)',
+      id,device,'https://example.test/'+id,'synthetic','synthetic',now,now);
+  }
+  assert.deepEqual(store.listOutboundPushCandidates({now:now+2}).map(r=>[r.device_id,r.server_message_id]),
+    [['d1',messages[0].serverMessageId]]);
+  const pending=(userId,deviceId)=>store.listPendingOutboundMessages({userId,deviceId,characterId:'r'}).map(r=>r.server_message_id);
+  assert.deepEqual(pending('a','d1'),messages.map(m=>m.serverMessageId));
+  assert.deepEqual(pending('b','d2'),[]);
+  assert.ok(store.getOutboundAccess({userId:'a',deviceId:'d1',characterId:'r',serverMessageId:messages[0].serverMessageId}));
+  exec("UPDATE outbound_messages SET payload_json='{}' WHERE server_message_id=?",messages[0].serverMessageId);
+  assert.deepEqual(pending('a','d1'),[messages[1].serverMessageId]);
+  assert.deepEqual(store.listOutboundPushCandidates({now:now+2}),[]);
+  exec('UPDATE outbound_messages SET payload_json=? WHERE server_message_id=?',JSON.stringify(messages[0].payload),messages[0].serverMessageId);
   assert.equal(store.repairAllStagedActivityOutboxes({now:now+2}).scanned,0);
   assert.equal(store.completeCloudActivityWithOutboundGroup({...args,messages:[{...messages[0],payload:{type:'text',text:'changed'}},messages[1]]}),null);
  }finally{db.close();}
+});
+
+test('contact scheduling binds the latest consented turn and reuses its pending task',()=>{
+  const {db,store}=fixture();
+  try {
+    store.setUserContextSharing({userId:'a',deviceId:'d1',enabled:true,now});
+    const first=store.recordCharacterContextSnapshot(snap('a','d1','r','e1'));
+    const args={userId:'a',characterId:'r',deviceId:'d1',contextVersion:first.contextVersion,
+      now,minIdleMs:60000,maxAttempts:2};
+    assert.equal(store.enqueueCloudContactForSnapshot(args),null);
+    store.setUserAutonomy('a',true,now,'d1');
+    const pending=store.enqueueCloudContactForSnapshot(args);
+    assert.equal(pending.scheduled_at,now+59999);
+    assert.equal(store.enqueueCloudContactForSnapshot(args).scheduled_at,pending.scheduled_at);
+    assert.equal(store.countPendingActivitiesForCharacter('a','r'),1);
+    const newer=store.recordCharacterContextSnapshot(snap('a','d1','r','e2',now+5));
+    assert.equal(store.enqueueCloudContactForSnapshot(args),null);
+    assert.equal(store.enqueueCloudContactForSnapshot({...args,deviceId:'d2',contextVersion:newer.contextVersion}),null);
+    store.setUserContextSharing({userId:'a',deviceId:'d1',enabled:false,now:now+6});
+    assert.equal(store.enqueueCloudContactForSnapshot({...args,contextVersion:newer.contextVersion}),null);
+  } finally {db.close();}
 });
