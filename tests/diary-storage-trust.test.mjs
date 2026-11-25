@@ -215,13 +215,13 @@ test('manual comment rejects role-authored entries before any paid call',()=>{
  sb.generateCharComment();assert.equal(calls,0);
 });
 test('manual/automatic delayed replies are discarded if author, role, or account changes',async()=>{
- for(const manual of [false,true])for(const change of ['author','role','account']){
+ for(const manual of [false,true])for(const change of ['author','role','account','record-kind']){
   const entry={id:'d_user',author:'me',date:'2026-11-25',content:'user'};
   const {sb}=makeSandbox({store:makeStore(),entries:[entry]});
   sb.readerId=entry.id;let resolve;sb.PhoneAPI.complete=()=>new Promise(r=>resolve=r);
   if(manual)sb.generateCharComment();else sb.maybeAutoPeek();
   assert.equal(typeof resolve,'function');
-  if(change==='author')entry.author='roleB';else if(change==='role')sb.diaryCharacters=()=>[];else sb.account='other';
+  if(change==='author')entry.author='roleB';else if(change==='role')sb.diaryCharacters=()=>[];else if(change==='record-kind')entry.noteType='备忘';else sb.account='other';
   resolve('reply');await new Promise(r=>setTimeout(r,10));
   assert.equal(entry.charComments?.length||0,0);
  }
