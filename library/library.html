@@ -108,10 +108,6 @@ button{font:inherit;color:inherit;cursor:pointer;border:0;background:transparent
 .book-detail-list .toc-item{width:100%;min-height:44px;text-align:left}
 .book-detail-list .toc-name{white-space:normal;overflow-wrap:anywhere}
 .book-detail-list .toc-item+.toc-item{border-top:1px solid #efefef}
-.import-help{margin-top:8px;color:#777;font:400 11px/1.7 var(--sans)}
-.import-help summary{cursor:pointer;padding:8px 0;list-style:none}
-.import-help summary::-webkit-details-marker{display:none}
-.import-help p{margin:0 0 8px}
 /* ===== 起始页页脚 ===== */
 .poster-foot{display:flex;justify-content:space-between;align-items:flex-end;margin-top:26px;padding:13px 0 0;border-top:1px solid var(--line)}
 .foot-copy{font-size:8px;letter-spacing:.14em;color:#777;line-height:1.9;text-transform:uppercase}
@@ -487,14 +483,13 @@ button{font:inherit;color:inherit;cursor:pointer;border:0;background:transparent
             <span class="set-value">清空</span>
           </button>
         </div>
-        <details class="import-help"><summary>如何导入网盘书籍</summary><p>在系统文件选择器中选择已接入的网盘位置。若看不到百度网盘等位置，请在网盘应用中将 TXT 或 EPUB 下载或保存到本机，再在这里导入。不会要求网盘账号或密码，也不读取整个网盘。</p></details>
       </section>
 
 
       <div style="height:26px"></div>
     </div>
 
-    <!-- 系统文件选择器：支持本机及系统已接入的文件提供方，TXT / EPUB -->
+    <!-- 系统文件选择器：TXT / EPUB -->
     <input type="file" id="importFile" accept=".txt,.epub,text/plain,application/epub+zip" hidden>
   </section>
 
