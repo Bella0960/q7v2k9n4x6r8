@@ -39,7 +39,7 @@
     return typeof value === 'string' &&
       /^(?:data:image\/(?:png|jpeg|jpg|webp|gif);|https?:\/\/|blob:|\.{1,2}\/)/i.test(value);
   }
-  function portrait(member) {
+  function portrait(member, group) {
     var box = el('span', 'gp-portrait');
     var name = String(member.name || '成员');
     var fallback = el('span', '', Array.from(name)[0] || '·');
@@ -52,6 +52,14 @@
       photo.addEventListener('error', function () { photo.remove(); fallback.hidden = false; });
       photo.src = member.avatar;
       box.append(photo);
+    }
+    if(group && member.id != null && window.MAOGroupPortraits){
+      window.MAOGroupPortraits.resolve(group,String(member.id)).then(function(url){
+        if(!url||!box.isConnected)return;
+        var image=el('img');image.alt='';image.decoding='async';
+        image.addEventListener('load',function(){if(box.isConnected){box.replaceChildren(image);}});
+        image.src=url;
+      });
     }
     return box;
   }
@@ -154,9 +162,9 @@
       (invite && inviteToggle ? inviteToggle : action).scrollIntoView({block:'nearest',behavior:'auto'});
     });
   }
-  function memberTile(member) {
+  function memberTile(member,group) {
     var tile = el('div', 'gp-member-tile');
-    tile.append(portrait(member), el('span', '', member.name));
+    tile.append(portrait(member,group), el('span', '', member.name));
     return tile;
   }
   function actionTile(symbol, label, handler) {
@@ -175,20 +183,95 @@
     var selfName = String(prefs.myNickname || me.nickname || me.name || '我');
     ownValue.textContent = selfName;
     var others = Array.isArray(group.members) ? group.members.filter(function(m){return m && m.id != null && String(m.id) !== '__user';}) : [];
-    var members = [{name:selfName,avatar:me.avatar}].concat(others.map(function(m){
-      return {name:String(m.nickname || m.name || '成员'),avatar:m.avatar};
+    var members = [{id:'__user',name:selfName,avatar:me.avatar}].concat(others.map(function(m){
+      return {id:String(m.id),name:String(m.nickname || m.name || '成员'),avatar:m.avatar};
     }));
     preview.replaceChildren();
-    members.slice(0,3).forEach(function(m){preview.append(portrait(m));});
+    members.slice(0,3).forEach(function(m){preview.append(portrait(m,group));});
     collapsedLabel = members.slice(0,2).map(function(m){return m.name;}).join('、') +
       ' · 共 ' + members.length + ' 人 · 展开';
     summary.textContent = expanded ? '收起' : collapsedLabel;
     strip.replaceChildren();
-    members.forEach(function(m){strip.append(memberTile(m));});
+    members.forEach(function(m){strip.append(memberTile(m,group));});
     var invite = actionTile('+','邀请',function(){openManagement(true);});
     var remove = actionTile('−','移除',function(){openManagement(false);});
     remove.disabled = !others.length;
     strip.append(invite,remove);
+  }
+
+  function openPortraits(){
+    var api=window.MAOGroupPortraits, group=loadCurrentGroup(), state;
+    if(!api||!group){showToast('群内头像暂不可用');return;}
+    try{state=api.snapshot(String(group.id));}catch(error){showToast(error.message);return;}
+    var dialog=el('dialog','gp-portrait-dialog');
+    dialog.setAttribute('aria-label','群内头像');
+    var heading=el('h2','gp-portrait-heading','群内头像');heading.prepend(english('GROUP PORTRAITS'));
+    var desc=el('p','gp-portrait-desc','仅用于这个群聊，不改变原个人头像。');
+    var grid=el('div','gp-portrait-grid'), status=el('p','gp-portrait-status','');
+    status.setAttribute('role','status');
+    var changes=new Map(), urls=new Map(), busy=false, pending=0;
+    var me=profile();
+    var members=[{id:'__user',name:me.nickname||me.name||'我',avatar:me.avatar}].concat((state.group.members||[]).filter(function(m){return m&&m.id!=null&&String(m.id)!=='__user';}).map(function(m){return {id:String(m.id),name:m.nickname||m.name||'成员',avatar:m.avatar};}));
+    function refreshButtons(){saveButton.disabled=busy||pending>0||!changes.size;cancel.disabled=busy;resetAll.disabled=busy||pending>0;}
+    function close(){
+      if(busy)return;
+      dialog.close();
+    }
+    async function compress(file){
+      if(!file||!/^image\/(?:jpeg|png|webp)$/.test(file.type)||file.size>12*1024*1024)throw Error('请选择 12 MB 以内的 JPG、PNG 或 WebP');
+      var url=URL.createObjectURL(file);
+      try{
+        var img=new Image();
+        await new Promise(function(resolve,reject){img.onload=resolve;img.onerror=function(){reject(Error('图片无法打开'));};img.src=url;});
+        var size=Math.min(img.naturalWidth,img.naturalHeight);
+        if(!size||img.naturalWidth*img.naturalHeight>40000000)throw Error('图片尺寸过大');
+        var canvas=document.createElement('canvas');canvas.width=canvas.height=Math.min(512,size);
+        var ctx=canvas.getContext('2d');if(!ctx)throw Error('图片处理失败');
+        ctx.drawImage(img,(img.naturalWidth-size)/2,(img.naturalHeight-size)/2,size,size,0,0,canvas.width,canvas.height);
+        return await new Promise(function(resolve,reject){canvas.toBlob(function(b){if(b)resolve(b);else reject(Error('图片处理失败'));},'image/webp',.88);});
+      }finally{URL.revokeObjectURL(url);}
+    }
+    function setDraft(member,blob){
+      var old=urls.get(member.id);if(old)URL.revokeObjectURL(old);
+      urls.delete(member.id);
+      changes.set(member.id,blob);
+      if(blob)urls.set(member.id,URL.createObjectURL(blob));
+      draw();refreshButtons();
+    }
+    function draw(){
+      grid.replaceChildren();
+      members.forEach(function(member){
+        var cell=el('div','gp-portrait-cell'), chosen=changes.has(member.id);
+        var draft={id:member.id,name:member.name,avatar:urls.get(member.id)||member.avatar};
+        var choose=btn('gp-portrait-choose','',function(){if(!busy&&!pending)input.click();});
+        choose.setAttribute('aria-label','更换'+member.name+'的群内头像');
+        choose.append(portrait(draft,chosen?null:state.group),el('span','',member.name));
+        var input=el('input');input.type='file';input.accept='image/jpeg,image/png,image/webp';input.hidden=true;
+        input.addEventListener('change',async function(){
+          if(!input.files[0]||busy||pending)return;
+          pending++;refreshButtons();status.textContent='正在处理图片';
+          try{var blob=await compress(input.files[0]);if(dialog.open){setDraft(member,blob);status.textContent='已选中，保存后生效';}}
+          catch(error){status.textContent=error.message;}
+          finally{pending--;refreshButtons();}
+        });
+        var reset=btn('gp-portrait-reset','恢复默认',function(){if(!busy&&!pending)setDraft(member,null);});
+        cell.append(choose,input,reset);grid.append(cell);
+      });
+    }
+    var resetAll=btn('gp-portrait-resetall','全部恢复默认',function(){if(busy||pending)return;members.forEach(function(m){var old=urls.get(m.id);if(old)URL.revokeObjectURL(old);changes.set(m.id,null);});urls.clear();draw();refreshButtons();});
+    var cancel=btn('gp-portrait-cancel','取消',close);
+    var saveButton=btn('gp-portrait-save','保存搭配',async function(){
+      if(busy||pending||!changes.size)return;
+      busy=true;refreshButtons();status.textContent='正在保存';
+      try{await api.save(state,changes);busy=false;renderMembers();dialog.close();showToast('群内头像已保存');}
+      catch(error){status.textContent=error.message||'保存失败，请重试';}
+      finally{busy=false;refreshButtons();}
+    });
+    var footer=el('div','gp-portrait-footer');footer.append(cancel,saveButton);
+    dialog.append(heading,desc,grid,resetAll,status,footer);
+    dialog.addEventListener('cancel',function(event){if(busy)event.preventDefault();});
+    dialog.addEventListener('close',function(){urls.forEach(function(url){URL.revokeObjectURL(url);});urls.clear();dialog.remove();avatarButton.focus();},{once:true});
+    stage.append(dialog);draw();refreshButtons();dialog.showModal();
   }
 
   // Move the actual nodes, never clone interactive elements or register a second write handler.
@@ -196,13 +279,13 @@
   var noticeButton = btn('gp-shortcut','群公告',function(){byId('actionGroupNotice').click();});
   noticeButton.setAttribute('aria-controls','gpNoticePanel');
   noticeButton.setAttribute('aria-expanded','false');
-  var avatarButton = btn('gp-shortcut','群头像',function(){byId('gpAvatarEditBtn').click();});
+  var avatarButton = btn('gp-shortcut','群内头像',openPortraits);
   var searchCard = search.closest('.settings-card');
   var bgCard = background.closest('.settings-card');
   search.querySelector('.action-title').textContent = '查找';
   background.querySelector('.action-title').textContent = '背景';
   bilingual(noticeButton,'NOTICE');
-  bilingual(avatarButton,'AVATAR');
+  bilingual(avatarButton,'PORTRAITS');
   bilingual(search.querySelector('.action-title'),'SEARCH');
   bilingual(background.querySelector('.action-title'),'BACKGROUND');
   shortcuts.append(noticeButton,avatarButton,searchCard,bgCard);
