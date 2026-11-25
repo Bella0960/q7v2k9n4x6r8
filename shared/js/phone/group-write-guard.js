@@ -42,7 +42,19 @@
       return {ok:true};
     }catch(error){return {ok:false,reason:'storage'};}
   }
+  function matches(expected,speakerId){
+    try{
+      if(!expected)return false;
+      var fresh=read(expected.id);
+      if(!fresh||fresh.account!==expected.account||fresh.serialized!==expected.serialized)return false;
+      if(speakerId==null)return true;
+      if(typeof speakerId!=='string'||!speakerId||speakerId==='__user')return false;
+      var members=Array.isArray(fresh.group.members)?fresh.group.members:[];
+      var found=members.filter(function(m){return m&&String(m.id)===speakerId;});
+      return found.length===1&&!found[0].muted;
+    }catch(error){return false;}
+  }
   function commit(expected,next){return change(expected,next,false);}
   function remove(expected){return change(expected,null,true);}
-  global.MAOGroupWriteGuard={read:read,create:create,commit:commit,remove:remove,account:account};
+  global.MAOGroupWriteGuard={read:read,matches:matches,create:create,commit:commit,remove:remove,account:account};
 })(window);
