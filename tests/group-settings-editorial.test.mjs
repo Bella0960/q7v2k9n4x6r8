@@ -279,3 +279,34 @@ test('missing account identity fails closed remotely, only explicit loopback rem
     assert.equal(JSON.parse(data)[1].id,'g2');
   }
 });
+
+
+test('group creation never overwrites damaged, duplicate, stale or foreign-account data',()=>{
+  function setup(raw='[{"id":"g1","name":"old","extra":{"keep":true}}]'){
+    const state={raw,owner:'A',writes:0,reads:0,host:'preview.mao520.com'};
+    const ctx={location:{get hostname(){return state.host}},document:{querySelector:()=>({content:state.owner})},localStorage:{getItem(){state.reads++;if(state.onRead)state.onRead();return state.raw},setItem(k,v){state.writes++;if(state.fail)throw Error('quota');if(!state.ignore)state.raw=v}}};ctx.window=ctx;
+    vm.runInNewContext(read('shared/js/phone/group-write-guard.js'),ctx);
+    return [ctx.MAOGroupWriteGuard,state];
+  }
+  const next={id:'g2',name:'new',members:[]};
+  {const [g,s]=setup();const old=JSON.parse(s.raw)[0];assert.equal(g.create('A',next).ok,true);assert.deepEqual(JSON.parse(s.raw),[old,next]);}
+  {const [g,s]=setup(null);assert.equal(g.create('A',next).ok,true);assert.deepEqual(JSON.parse(s.raw),[next]);}
+  for(const raw of ['', '{oops','null','{}']){const [g,s]=setup(raw);assert.equal(g.create('A',next).ok,false);assert.equal(s.raw,raw);assert.equal(s.writes,0);}
+  {const [g,s]=setup();assert.equal(g.create('A',{id:'g1'}).reason,'duplicate');assert.equal(s.writes,0);}
+  {const [g,s]=setup();s.owner='B';assert.equal(g.create('A',next).reason,'scope');s.owner='';assert.equal(g.create('',next).reason,'scope');assert.equal(s.writes,0);}
+  {const [g,s]=setup();s.onRead=()=>{s.owner='B'};assert.equal(g.create('A',next).ok,false);assert.equal(s.writes,0);}
+  {const [g,s]=setup();s.onRead=()=>{if(s.reads===2)s.raw='[{"id":"g3"}]'};assert.equal(g.create('A',next).reason,'stale');assert.equal(s.raw,'[{"id":"g3"}]');assert.equal(s.writes,0);}
+  {const [g,s]=setup();const old=s.raw;s.fail=true;assert.equal(g.create('A',next).reason,'storage');assert.equal(s.raw,old);}
+  {const [g,s]=setup();s.ignore=true;assert.equal(g.create('A',next).reason,'unconfirmed');}
+  {const [g,s]=setup();const snap=g.read('g1');s.raw='[{"id":"g1","name":"newer"}]';assert.equal(g.commit(snap,{id:'g1',name:'wrong'}).reason,'stale');assert.equal(s.writes,0);}
+});
+test('chat list create menu reaches original modal and waits for verified save',()=>{
+  const list=read('chat/chat/chat.html');
+  assert.ok(list.includes('group-write-guard.js?v=20261125g4'));
+  assert.ok(list.includes("document.getElementById('menuGroup').addEventListener('click',function(){"));
+  assert.ok(list.includes("document.getElementById('wechatMenu').style.display='none';\n        openModal();"));
+  assert.ok(list.includes('guard.create(modalAccount,'));
+  const handler=list.slice(list.indexOf("document.getElementById('groupModalCreate').addEventListener"));
+  assert.ok(handler.indexOf('if(!result.ok)')<handler.indexOf('closeModal();'));
+  assert.equal(handler.includes("localStorage.setItem('phone_groups'"),false);
+});
