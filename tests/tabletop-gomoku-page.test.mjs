@@ -1,0 +1,60 @@
+import {test} from 'node:test';
+import assert from 'node:assert/strict';
+import {mountGomokuPage} from '../games/tabletop/gomoku-page.js';
+const accountId='MAO-AAAAAAAAAAAA';
+function target(o={}){const events=new Map();return Object.assign(o,{addEventListener(k,f){if(!events.has(k))events.set(k,new Set());events.get(k).add(f);},removeEventListener(k,f){events.get(k)?.delete(f);},fire(k,e={}){for(const f of [...(events.get(k)||[])])f(e);}});}
+class El{
+  constructor(doc,tag){this.ownerDocument=doc;this.tagName=tag;this.children=[];this.value='';this.attrs={};target(this);}
+  setAttribute(k,v){this.attrs[k]=v;}append(...a){this.children.push(...a);a.forEach(x=>x.parent=this);}
+  replaceChildren(...a){this.children=[];this.append(...a);}
+  remove(){this.parent.children=this.parent.children.filter(c=>c!==this);}
+  click(){if(!this.disabled)this.fire('click');}
+}
+const all=(e,cls)=>[...(e.className?.split(' ').includes(cls)?[e]:[]),...e.children.flatMap(c=>all(c,cls))];
+const wait=async()=>{for(let i=0;i<5000;i++)await Promise.resolve();};
+function fixture({ready=true,decideRole=null}={}){
+  let sessionId='s1',reads=0;
+  const doc=target({hidden:false,createElement:tag=>new El(doc,tag),querySelector:s=>({content:s.includes('mao-account-role')?'user':accountId})});
+  const win=target({document:doc,navigator:{onLine:true},__MAO_ACCOUNT_SCOPE__:{ready,accountId,role:'user'},PhoneStorage:{result:{getCharacters(){reads++;return {ok:true,meta:{source:'ai_custom_characters'},value:[{id:'r1',name:'棋友一'},{id:'r2',name:'棋友二'},{id:'r3',name:'棋友三'}]};}}},fetch:async path=>({ok:true,json:async()=>path.endsWith('/me')?{account:{id:accountId,role:'user',status:'active'}}:{currentSessionId:sessionId}})});
+  const root=new El(doc,'div'),page=mountGomokuPage(root,{win,makeRoomId:()=> 'room',decideRole});
+  const one=c=>all(root,c)[0],choose=(c,value)=>{one(c).value=value;one(c).fire('change');};
+  return {win,root,page,one,choose,session:x=>{sessionId=x;},reads:()=>reads};
+}
+test('verified picker and actual 225-cell board support user black, role reply and occupied rejection',async()=>{
+  const f=fixture();await wait();f.choose('mao-gomoku__first','r1');
+  f.one('mao-gomoku__start').click();await wait();
+  assert.equal(f.one('mao-gomoku__game').hidden,false);assert.equal(all(f.root,'mao-gomoku-board__cell').length,225);
+  const cell=all(f.root,'mao-gomoku-board__cell')[112];cell.click();await wait();
+  assert.equal(all(f.root,'mao-gomoku-board__cell').filter(c=>c.className.includes('is-black')).length,1);
+  assert.equal(all(f.root,'mao-gomoku-board__cell').filter(c=>c.className.includes('is-white')).length,1);
+  cell.click();await wait();assert.equal(all(f.root,'mao-gomoku-board__cell').filter(c=>c.className.includes('is-black')).length,1);
+  f.page.destroy();
+});
+test('user white starts with role black then user legal turn',async()=>{
+  const f=fixture();await wait();f.choose('mao-gomoku__first','r1');f.choose('mao-gomoku__color','white');f.one('mao-gomoku__start').click();await wait();
+  assert.equal(all(f.root,'mao-gomoku-board__cell').filter(c=>c.className.includes('is-black')).length,1);
+  assert.equal(all(f.root,'mao-gomoku-board__cell').filter(c=>c.className.includes('is-white')).length,0);
+  assert.ok(all(f.root,'mao-gomoku-board__cell').some(c=>c.attrs['aria-disabled']==='false'));f.page.destroy();
+});
+test('watch two distinct roles and extra observer, board cannot be clicked, bounded batch continues',async()=>{
+  const f=fixture();await wait();f.choose('mao-gomoku__mode','watch');f.choose('mao-gomoku__first','r1');f.choose('mao-gomoku__second','r1');
+  assert.equal(f.one('mao-gomoku__start').disabled,true);
+  f.choose('mao-gomoku__second','r2');const box=all(f.root,'mao-gomoku__observer')[2].children[0];box.checked=true;box.fire('change');
+  f.one('mao-gomoku__start').click();await wait();
+  const count=()=>all(f.root,'mao-gomoku-board__cell').filter(c=>/is-black|is-white/.test(c.className)).length;
+  assert.equal(count(),8);assert.ok(all(f.root,'mao-gomoku-board__cell').every(c=>c.attrs['aria-disabled']==='true'));assert.equal(f.one('mao-gomoku__next').hidden,false);
+  f.one('mao-gomoku__next').click();await wait();assert.ok(count()>8);f.page.destroy();
+});
+test('offline clears board; same login resume retains board; changed session rejects old game',async()=>{
+  const f=fixture();await wait();f.choose('mao-gomoku__first','r1');f.one('mao-gomoku__start').click();await wait();
+  all(f.root,'mao-gomoku-board__cell')[112].click();await wait();
+  f.win.navigator.onLine=false;f.win.fire('offline');assert.equal(all(f.root,'mao-gomoku-board__cell').length,0);
+  f.win.navigator.onLine=true;f.one('mao-gomoku__next').click();await wait();assert.equal(all(f.root,'mao-gomoku-board__cell').length,225);
+  f.win.fire('storage',{key:null});f.session('s2');f.one('mao-gomoku__next').click();await wait();
+  assert.equal(all(f.root,'mao-gomoku-board__cell').length,0);assert.equal(f.one('mao-gomoku__game').hidden,true);f.page.destroy();
+});
+test('unready identity never reads roster; changed login after picker prevents start',async()=>{
+  const f=fixture({ready:false});await wait();assert.equal(f.reads(),0);assert.equal(f.one('mao-gomoku__start').disabled,true);f.page.destroy();
+  const g=fixture();await wait();g.choose('mao-gomoku__first','r1');g.session('s2');g.one('mao-gomoku__start').click();await wait();
+  assert.equal(all(g.root,'mao-gomoku-board__cell').length,0);g.page.destroy();
+});
