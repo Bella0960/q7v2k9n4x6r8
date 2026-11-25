@@ -36,7 +36,7 @@
     <script src="../../shared/js/phone/phone_stream.js?v=20261121global2"></script>
     <script src="../../shared/js/phone/chat-message-policy.js?v=20261029v5"></script>
     <script src="../../shared/js/phone/chat-send-policy.js?v=20261122-draftfix1"></script>
-    <script src="../../shared/js/phone/chat-context-policy.js?v=20261118historybudget1"></script>
+    <script src="../../shared/js/phone/chat-context-policy.js?v=20261125public1"></script>
     <script src="../../shared/js/phone/chat-presence-policy.js?v=20261119scheduled1"></script>
     <script src="../../shared/js/phone/role-public-timeline.js?v=20261102v1"></script>
     <script src="../../shared/js/phone/moments-chat-action.js?v=20261124v4"></script>
@@ -49,7 +49,7 @@
     <script src="../../shared/js/phone/group-game-session.js?v=20261116game11"></script>
     <script src="../../shared/js/phone/group-turn-effects.js?v=20261125scope1"></script>
     <script src="../../shared/js/phone/group-private-receipt-recovery.js?v=20261125scope1"></script>
-    <script src="../../shared/js/phone/group-memory-events.js?v=20261116gme4"></script>
+    <script src="../../shared/js/phone/group-memory-events.js?v=20261125public1"></script>
     <script src="../../shared/js/phone/group-game-chat-receipts.js?v=20261116receipt2"></script>
     <script src="../../shared/js/chat-notifier.js?v=20261119scheduled1"></script>
     <style>
@@ -6063,6 +6063,14 @@
                 return;
             }
 
+            // Prepare a single public model view before any group context consumer.
+            if(isGroupChat){
+                if(!window.ChatContextPolicy||typeof window.ChatContextPolicy.groupPublicHistory!=='function'){
+                    showToast('群聊公开上下文过滤未加载，本轮已停止');return;
+                }
+                modelHistoryList=window.ChatContextPolicy.groupPublicHistory(modelHistoryList,String(currentRoleId));
+            }
+
             // 单聊每轮从同一角色 ID 只读最新档案；不沿用页面打开时的旧快照。
             const roleForTurn = !isGroupChat
                 ? (window.MAOMAOChatRoleContext && typeof window.MAOMAOChatRoleContext.resolveRole === 'function'
@@ -6102,7 +6110,7 @@
             let groupContextPrompt = '';
             if (isGroupChat && currentGroup) {
                 const members = currentGroup.members || [];
-                const turnWakeIds = isGroupFollowup ? getGroupWakeMentionIds('', historyList) : wakeMentionIds;
+                const turnWakeIds = isGroupFollowup ? getGroupWakeMentionIds('', modelHistoryList) : wakeMentionIds;
                 const availableMembers = getAvailableGroupMembers(turnWakeIds);
                 // Only public group identities belong in the shared roster.
                 // Do not flood this member's request with all other roles' private
@@ -6123,11 +6131,11 @@
                     '」的公开成员目录（不是任何人的完整人设）：\n' +
                     (personaLines.join('\n') || '暂无成员');
                 if (availableMembers.length) {
-                    var previousSpeaker = findGroupSpeakerInHistory(historyList);
+                    var previousSpeaker = findGroupSpeakerInHistory(modelHistoryList);
                     var selectionText = String(text || '');
                     if (!selectionText && isGroupFollowup) {
-                        for (var userIndex = historyList.length - 1; userIndex >= 0; userIndex--) {
-                            var userEntry = historyList[userIndex];
+                        for (var userIndex = modelHistoryList.length - 1; userIndex >= 0; userIndex--) {
+                            var userEntry = modelHistoryList[userIndex];
                             if (userEntry && (userEntry.role === 'user' || userEntry.role === 'sent')) {
                                 selectionText = String(userEntry.text || userEntry.content || '');
                                 break;
@@ -6144,13 +6152,13 @@
                     }
                     if (groupPolicy && typeof groupPolicy.selectSpeaker === 'function') {
                         var mentionQueue = wakeMentionIds.length ? wakeMentionIds : typeof groupPolicy.getPendingMentionIds === 'function'
-                            ? groupPolicy.getPendingMentionIds(historyList, members, availableMembers, selectionText)
+                            ? groupPolicy.getPendingMentionIds(modelHistoryList, members, availableMembers, selectionText)
                             : (typeof groupPolicy.extractMentionedMemberIds === 'function'
                                 ? groupPolicy.extractMentionedMemberIds(selectionText, members)
                                 : []);
                         var recentSpeakerIds = [];
-                        for (var recentIndex = historyList.length - 1; recentIndex >= 0 && recentSpeakerIds.length < 5; recentIndex--) {
-                            var recentMessage = historyList[recentIndex];
+                        for (var recentIndex = modelHistoryList.length - 1; recentIndex >= 0 && recentSpeakerIds.length < 5; recentIndex--) {
+                            var recentMessage = modelHistoryList[recentIndex];
                             if (!recentMessage || recentMessage.type || (recentMessage.role !== 'assistant' && recentMessage.role !== 'received')) continue;
                             var recentId = recentMessage.memberId != null ? String(recentMessage.memberId) : '';
                             if (!recentId && recentMessage.name) {
@@ -6256,6 +6264,7 @@
                     modelHistoryList, currentGroup && currentGroup.members, getRoleById
                 );
             }
+            if(isGroupChat&&(!groupReplyPick||!currentGroupSpeaker(String(groupReplyPick.id)))){showToast('无法确认本轮发言成员');return;}
             if (groupContextPrompt) rolePersona += '\n' + groupContextPrompt;
             // Full saved persona remains authoritative for the active speaker.
             // Only the auxiliary group roster is limited.
@@ -6451,6 +6460,7 @@
             // 世界书：召回当前话题相关条目；兼容旧版只有 content 的整本设定
             let worldbookText = '';
             let worldbookReadError = null;
+            let groupLoreBaseline=null;
             try {
               const rawWB = localStorage.getItem('phone_worldbooks');
               let wbList = rawWB === null ? [] : JSON.parse(rawWB);
@@ -6498,14 +6508,13 @@
                     if (!speakerSelection.ok || !groupSelection.ok) {
                         throw new Error('group role-worldbook binding read failed');
                     }
-                    const allowed = speakerSelection.ids.concat(groupSelection.ids);
-                    wbList = wbList.filter(function (book) {
-                        return book && allowed.indexOf(String(book.id)) !== -1;
-                    });
-                    mountedBookIds = groupSelection.ids;
-                    wbList = roleBookPolicy.selectWorldbooksForGroupSpeaker(
-                        wbList, mountedBookIds, speakerRole
-                    );
+                    const allowed = new Set(speakerSelection.ids.concat(groupSelection.ids).map(String));
+                    // The bridge has already resolved explicit clear/disable and legacy mounts.
+                    // Do not re-filter by a potentially stale character field.
+                    wbList = wbList.filter(book=>book&&allowed.has(String(book.id)));
+                    if(new Set(wbList.map(book=>String(book.id))).size!==wbList.length)throw new Error('duplicate mounted worldbook ID');
+                    mountedBookIds=groupSelection.ids;
+                    groupLoreBaseline={books:rawWB,speakerId:speakerId,speakerIds:JSON.stringify(speakerSelection.ids),groupIds:JSON.stringify(groupSelection.ids)};
                 } else {
                     const selected = bindingBridge.filterBooks(
                         String(roleForTurn && roleForTurn.id || aliasRoleId),
@@ -6521,10 +6530,7 @@
                     typeof window.ChatContextPolicy.buildWorldbookInjectionText === 'function') {
                   worldbookText = window.ChatContextPolicy.buildWorldbookInjectionText(wbList, {
                     currentText: text,
-                    recentMessages: (isGroupChat ? historyList.filter(function (m) {
-                        return m && m.type !== 'group_private' && m.type !== 'group_game_private' &&
-                            m.visibility !== 'private' && m.visibility !== 'role_only';
-                    }) : roleModelHistory).slice(-8),
+                    recentMessages: roleModelHistory.slice(-8),
                     // Collect all triggered entries; never silently send a partial lore entry.
                     maxEntries: Math.max(1, wbList.reduce(function (count, book) {
                         return count + (Array.isArray(book.entries) && book.entries.length ? book.entries.length : 1);
@@ -7285,6 +7291,8 @@
             if (window.ChatContextPolicy && typeof window.ChatContextPolicy.mapHistoryToApiMessages === 'function') {
                 apiMessages.push.apply(apiMessages, window.ChatContextPolicy.mapHistoryToApiMessages(recentHistory, stripInternalReasoning, {
                     isGroupChat: isGroupChat,
+                    publicHistoryPrepared:isGroupChat,
+                    groupId:isGroupChat?String(currentRoleId):'',
                     groupMode: currentGroup && currentGroup.settings && currentGroup.settings.chatMode === 'offline' ? 'offline' : 'online',
                     groupMembers: currentGroup && Array.isArray(currentGroup.members) ? currentGroup.members : [],
                     speakerId: isGroupChat && groupReplyPick ? String(groupReplyPick.id) : '',
@@ -7392,7 +7400,13 @@
             const latestSpeaker = isGroupChat
                 ? (groupReplyPick && getRoleById(groupReplyPick.id))
                 : getRoleById(roleForTurn.id);
-            const groupSpeakerBaseline=isGroupChat&&latestSpeaker?JSON.stringify(latestSpeaker):null;
+            const groupSpeakerBaseline=isGroupChat&&relationshipRole?JSON.stringify(relationshipRole):null;
+            function groupLoreCurrent(){
+                try{if(!groupLoreBaseline||!window.RoleWorldbookBindings)return false;
+                    const a=window.RoleWorldbookBindings.read(groupLoreBaseline.speakerId,getRoleById(groupLoreBaseline.speakerId)),b=window.RoleWorldbookBindings.read(aliasRoleId);
+                    return a.ok&&b.ok&&JSON.stringify(a.ids)===groupLoreBaseline.speakerIds&&JSON.stringify(b.ids)===groupLoreBaseline.groupIds&&localStorage.getItem('phone_worldbooks')===groupLoreBaseline.books;
+                }catch(error){return false;}
+            }
             let storedProtocolAtSend = '';
             try { storedProtocolAtSend = localStorage.getItem('chat_rp_protocol_') || ''; }
             catch (protocolReadErr) {
@@ -7451,7 +7465,7 @@
             let groupReplyVisible = false;
             function groupTurnCurrent(){
                 if(!isGroupChat)return true;
-                try{return !groupPageExited&&!!turnGroup&&groupGuard.account()===groupPageAccount&&groupGuard.matches(turnGroup)&&!!groupReplyPick&&currentGroupSpeaker(String(groupReplyPick.id))&&groupSpeakerBaseline!==null&&JSON.stringify(getRoleById(groupReplyPick.id))===groupSpeakerBaseline&&_chatHistoryBaselines.has(historyList)&&localStorage.getItem(storageKey)===_chatHistoryBaselines.get(historyList)&&groupGuard.account()===groupPageAccount;}catch(error){return false;}
+                try{return !groupPageExited&&!!turnGroup&&groupGuard.account()===groupPageAccount&&groupGuard.matches(turnGroup)&&!!groupReplyPick&&currentGroupSpeaker(String(groupReplyPick.id))&&groupSpeakerBaseline!==null&&JSON.stringify(getRoleById(groupReplyPick.id))===groupSpeakerBaseline&&groupLoreCurrent()&&_chatHistoryBaselines.has(historyList)&&localStorage.getItem(storageKey)===_chatHistoryBaselines.get(historyList)&&groupGuard.account()===groupPageAccount;}catch(error){return false;}
             }
             function discardStaleGroupTurn(){
                 inflightSnapshot=null;
