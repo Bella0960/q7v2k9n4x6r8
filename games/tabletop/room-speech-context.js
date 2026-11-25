@@ -7,7 +7,7 @@ const clone=v=>JSON.parse(JSON.stringify(v));
 const bounded=(v,max)=>Number.isSafeInteger(v)&&v>0&&v<=max;
 
 export function buildRoomSpeechContext({roleSeatId,view,chatLog,historyLimit=24,historyChars=12000}={}) {
-  if(!id(roleSeatId)||!roleSeatId.startsWith('role:')||!id(roleSeatId.slice(5))||
+  if(!id(roleSeatId)||!((roleSeatId.startsWith('role:')&&id(roleSeatId.slice(5)))||/^bot:[1-3]$/.test(roleSeatId))||
      !bounded(historyLimit,100)||!bounded(historyChars,64000)) fail('INVALID_SPEECH_CONTEXT');
   if(!view||!id(view.roomId)||!id(view.gameId)||view.selfSeatId!==roleSeatId||
      !Number.isSafeInteger(view.revision)||view.revision<0||!['playing','finished'].includes(view.phase)||
@@ -19,6 +19,7 @@ export function buildRoomSpeechContext({roleSeatId,view,chatLog,historyLimit=24,
     seen.add(s.seatId);
     if(s.kind==='user'&&s.seatId==='user') return {seatId:'user',kind:'user',mode:s.mode};
     if(s.kind==='role'&&id(s.roleId)&&s.seatId==='role:'+s.roleId) return {seatId:s.seatId,kind:'role',roleId:s.roleId,mode:s.mode};
+    if(view.gameId==='ludo'&&s.kind==='bot'&&/^bot:[1-3]$/.test(s.seatId)&&s.roleId===undefined&&s.mode==='player') return {seatId:s.seatId,kind:'bot',mode:'player'};
     fail('INVALID_SPEECH_VIEW');
   });
   if(!seen.has('user')||!seen.has(roleSeatId)|| (view.turnSeatId!==null&&!seen.has(view.turnSeatId))) fail('INVALID_SPEECH_VIEW');

@@ -65,6 +65,7 @@ export function createRoomSession({verifyContext,createLifetime,spec,rules}={}) 
     refresh,dispose,status:()=>status,
     viewUser:()=>active().viewUser(),
     viewRole:roleId=>active().viewRole(roleId),
+    viewBot:seatId=>active().viewBot(seatId),
     prepareUserAction:()=>bind(active().prepareUserAction()),
     prepareRoleMove:roleId=>bind(active().prepareRoleMove(roleId),roleId),
     prepareBotTurn(seatId) {

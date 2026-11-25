@@ -133,6 +133,30 @@ export function createBrowserRoomSession({win=globalThis.window,spec,rules}={}) 
       guard();if(stamp!==epoch) fail('STALE_BROWSER_CONTEXT');
       return view;
     },
+    async viewBot(seatId){
+      await refresh();guard();
+      const stamp=epoch,view=session.viewBot(seatId);
+      guard();if(stamp!==epoch) fail('STALE_BROWSER_CONTEXT');
+      return view;
+    },
+    // Synchronous publication guard after the asynchronous account check.
+    // The current local scope/roster must still match that check.
+    discussionCurrent(signal){
+      try {
+        guard();
+        if(!lastVerified||signal!==discussionController.signal||signal.aborted||session.status()!=='ready') return false;
+        const scope=win.__MAO_ACCOUNT_SCOPE__;
+        if(scope?.ready!==true||scope.accountId!==lastVerified.accountId||
+          win.document.querySelector('meta[name="mao-account-id"]')?.content!==scope.accountId||
+          win.document.querySelector('meta[name="mao-account-role"]')?.content!==scope.role) return false;
+        const roster=win.PhoneStorage?.result?.getCharacters?.();
+        const ids=roster?.ok===false&&roster.error?.code==='NOT_FOUND'?[]:
+          roster?.ok===true&&roster.meta?.source==='ai_custom_characters'&&Array.isArray(roster.value)?Array.from(roster.value,r=>r?.id):null;
+        if(!ids||!ids.every(validId)||new Set(ids).size!==lastVerified.roleIds.length||!lastVerified.roleIds.every(id=>ids.includes(id))) return false;
+        if(signal!==discussionController.signal||signal.aborted||win.__MAO_ACCOUNT_SCOPE__?.accountId!==scope.accountId) return false;
+        return session.viewUser().phase==='playing';
+      } catch {return false;}
+    },
     // Trusted caller passes this signal to the existing speech runner.
     // This detects observed invalidation, not unobserved server-side changes.
     async discussionSignal(){

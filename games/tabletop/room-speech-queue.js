@@ -2,7 +2,7 @@
 // supplies eligible role seats and job IDs; no model, storage or board calls.
 const fail=code=>{throw new Error(code);};
 const id=v=>typeof v==='string'&&v.length>0&&v.length<=256&&v.trim()===v;
-const roleSeat=v=>id(v)&&v.startsWith('role:')&&id(v.slice(5));
+const roleSeat=v=>id(v)&&((v.startsWith('role:')&&id(v.slice(5)))||/^bot:[1-3]$/.test(v));
 const limit=(v,max)=>Number.isSafeInteger(v)&&v>0&&v<=max;
 
 export function createRoomSpeechQueue({roleSeatIds,maxPerRound=6,maxPerRoom=128}={}) {

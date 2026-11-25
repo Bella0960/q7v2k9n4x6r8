@@ -59,6 +59,13 @@ export function createRoomLifetime({getContext,createDispatcher,spec,rules}) {
     if (['ludo','gomoku'].includes(v.gameId) && v.turnSeatId!==actor) fail('NOT_YOUR_TURN');
     return Object.freeze({view:v,commit:prepare(actor,roleId)});
   }
+  function viewBot(seatId) {
+    if(typeof seatId!=='string'||!/^bot:[1-3]$/.test(seatId)) fail('INVALID_BOT_SEAT');
+    const v=current().view(seatId);
+    if(v.gameId!=='ludo'||!['playing','finished'].includes(v.phase)||
+      !v.seats.some(s=>s.seatId===seatId&&s.kind==='bot'&&s.mode==='player')) fail('BOT_CANNOT_VIEW');
+    return v;
+  }
   function prepareBotTurn(seatId) {
     if(typeof seatId!=='string'||!/^bot:[1-3]$/.test(seatId)) fail('INVALID_BOT_SEAT');
     const v=current().view(seatId);
@@ -67,7 +74,7 @@ export function createRoomLifetime({getContext,createDispatcher,spec,rules}) {
     return Object.freeze({view:v,commit:prepare(seatId,null)});
   }
   return Object.freeze({
-    prepareBotTurn,
+    prepareBotTurn,viewBot,
     viewUser: () => current().view('user'),
     viewRole,
     prepareUserAction: () => prepare('user',null),

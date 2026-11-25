@@ -15,6 +15,7 @@ export function createRoomChatLog({roomId,seats,maxMessages=4096,maxTextLength=4
     let sender;
     if(seat.kind==='user'&&seat.seatId==='user'&&seat.roleId===undefined) sender={seatId:'user',kind:'user'};
     else if(seat.kind==='role'&&validId(seat.roleId)&&seat.seatId==='role:'+seat.roleId) sender={seatId:seat.seatId,kind:'role',roleId:seat.roleId};
+    else if(seat.kind==='bot'&&/^bot:[1-3]$/.test(seat.seatId)&&seat.roleId===undefined) sender={seatId:seat.seatId,kind:'bot'};
     else fail('INVALID_CHAT_SEAT');
     members.set(seat.seatId,Object.freeze(sender));
   }
