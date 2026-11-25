@@ -70,6 +70,15 @@ export function reduceRoom(room,ctx,actorSeatId,token,action) {
       if(requested!=='player'&&(requested!=='observer'||!room.observerLimit)) fail('INVALID_SEAT_MODE');
       next.seats.push({seatId:'role:'+roleId,kind:'role',roleId,mode:requested});checkCapacity(next);break;
     }
+    case 'fillBots': {
+      lobby();checkRoster(room,ctx);
+      if(room.gameId!=='ludo') fail('BOTS_UNSUPPORTED');
+      const count=action.playerCount, real=participants(room).filter(s=>s.kind!=='bot').length;
+      if(!Number.isInteger(count)||count<room.minSeats||count>room.maxSeats||count<real) fail('INVALID_PLAYER_COUNT');
+      next.seats=next.seats.filter(s=>s.kind!=='bot');
+      for(let i=1;i<=count-real;i++) next.seats.push({seatId:'bot:'+i,kind:'bot',mode:'player'});
+      checkCapacity(next);break;
+    }
     case 'remove': {
       lobby();const i=room.seats.findIndex(s=>s.kind==='role'&&s.seatId===action.seatId);
       if(i<0) fail('UNKNOWN_ROLE_SEAT');next.seats.splice(i,1);break;
@@ -112,5 +121,5 @@ export function reduceRoom(room,ctx,actorSeatId,token,action) {
 export function seatView(room,ctx,seatId) {
   authorize(room,ctx);checkRoster(room,ctx);
   if(!room.seats.some(s=>s.seatId===seatId)) fail('UNKNOWN_SEAT');
-  return {schema:ROOM_SCHEMA,roomId:room.roomId,gameId:room.gameId,revision:room.revision,phase:room.phase,turnSeatId:room.turnSeatId,selfSeatId:seatId,seats:room.seats.map(s=>s.kind==='user'?{seatId:s.seatId,kind:s.kind,mode:s.mode}:{seatId:s.seatId,kind:s.kind,roleId:s.roleId,mode:s.mode})};
+  return {schema:ROOM_SCHEMA,roomId:room.roomId,gameId:room.gameId,revision:room.revision,phase:room.phase,turnSeatId:room.turnSeatId,selfSeatId:seatId,seats:room.seats.map(s=>s.kind!=='role'?{seatId:s.seatId,kind:s.kind,mode:s.mode}:{seatId:s.seatId,kind:s.kind,roleId:s.roleId,mode:s.mode})};
 }

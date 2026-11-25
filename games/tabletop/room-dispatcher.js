@@ -4,7 +4,7 @@ import {createGameRoom, gamePolicy, reduceRoom, roomToken, seatView} from './roo
 // verify session/actor identity and use one authoritative instance per room.
 const clone = value => JSON.parse(JSON.stringify(value));
 const fail = code => { throw new Error(code); };
-const lobbyActions = new Set(['invite','remove','reorder','swapSeats','setModerator','start','close']);
+const lobbyActions = new Set(['invite','fillBots','remove','reorder','swapSeats','setModerator','start','close']);
 const terminal = r => r.phase === 'finished' || r.phase === 'closed';
 function sameToken(a,b) {
   return a && ['accountId','sessionId','roomId','revision','seatId'].every(k=>a[k]===b[k]);

@@ -34,7 +34,7 @@ export function createRoomLifetime({getContext,createDispatcher,spec,rules}) {
       consumed = true;
       if (roleId !== null && !scopedContext().roleIds.includes(roleId)) fail('ROLE_UNAVAILABLE');
       // Role output is a move payload only; it cannot select an actor or action.
-      return active.dispatch(actor,token,roleId === null ? payload : {type:'move',move:payload});
+      return active.dispatch(actor,token,actor === 'user' ? payload : {type:'move',move:payload});
     };
   }
   // Trusted discussion scheduler: read a seat projection without a move token.
@@ -59,7 +59,15 @@ export function createRoomLifetime({getContext,createDispatcher,spec,rules}) {
     if (['ludo','gomoku'].includes(v.gameId) && v.turnSeatId!==actor) fail('NOT_YOUR_TURN');
     return Object.freeze({view:v,commit:prepare(actor,roleId)});
   }
+  function prepareBotTurn(seatId) {
+    if(typeof seatId!=='string'||!/^bot:[1-3]$/.test(seatId)) fail('INVALID_BOT_SEAT');
+    const v=current().view(seatId);
+    if(v.gameId!=='ludo'||v.phase!=='playing'||v.turnSeatId!==seatId||
+      !v.seats.some(s=>s.seatId===seatId&&s.kind==='bot'&&s.mode==='player')) fail('BOT_CANNOT_MOVE');
+    return Object.freeze({view:v,commit:prepare(seatId,null)});
+  }
   return Object.freeze({
+    prepareBotTurn,
     viewUser: () => current().view('user'),
     viewRole,
     prepareUserAction: () => prepare('user',null),
