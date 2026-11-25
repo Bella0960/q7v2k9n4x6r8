@@ -573,6 +573,102 @@ try {
       await context.close();
     }
   }
+  // M09: actual desktop shell, imported audio, and stale picker transaction.
+  // Separate fresh browser context: no real account, no external request.
+  const desktop = await browser.newContext({viewport:{width:1280,height:800},serviceWorkers:'block'});
+  const desktopErrors=[];
+  try {
+    const origin=new URL(BASE).origin;
+    await desktop.route('**/*',route=>route.request().url().startsWith(origin+'/')?route.continue():route.abort());
+    const library=await desktop.newPage();
+    library.on('pageerror',err=>desktopErrors.push(err.message));
+    await library.goto(BASE,{waitUntil:'domcontentloaded'});
+    await library.locator('.music-import-link').waitFor({state:'visible'});
+    await library.evaluate(()=>showSetting());
+    const chooser=library.waitForEvent('filechooser');
+    await library.locator('#settingSheet [aria-label^="导入音乐"]').click();
+    await (await chooser).setFiles([
+      {name:'QA 桌面第一首.wav',mimeType:'audio/wav',buffer:makeWav(220)},
+      {name:'QA 桌面第二首.wav',mimeType:'audio/wav',buffer:makeWav(330)}
+    ]);
+    await library.waitForFunction(()=>JSON.parse(localStorage.getItem('music_local_tracks')||'[]').length===2);
+    const tracks=await library.evaluate(()=>{
+      localStorage.setItem('phone_groups',JSON.stringify([{id:'g-listen-desktop',name:'桌面一起听歌测试群',ownerId:'__user',members:[{id:'desktop-role',name:'测试成员'}]}]));
+      localStorage.setItem('ai_custom_characters',JSON.stringify([{id:'desktop-role',name:'测试成员',persona:'测试角色，喜欢音乐。',tone:'简短自然'}]));
+      localStorage.removeItem('api_settings');
+      return JSON.parse(localStorage.getItem('music_local_tracks'));
+    });
+    const chat=await desktop.newPage();
+    chat.on('pageerror',err=>desktopErrors.push(err.message));
+    await chat.goto(new URL('/chat/chat/chat-detail.html?id=g-listen-desktop',BASE).href);
+    const entry=chat.locator('[data-group-listening-entry]'),dialog=chat.locator('#groupListeningDialog'),strip=chat.locator('#groupListeningStrip');
+    await entry.waitFor({state:'attached'});
+    await chat.locator('#plus-action-btn').click();
+    await chat.locator('[data-plus-section="group"]').click();
+    await entry.click();
+    await dialog.waitFor({state:'visible'});
+    const assertDialogLayout=async()=>{
+      const geometry=await chat.evaluate(()=>{
+        const b=document.getElementById('groupListeningDialog').getBoundingClientRect();
+        return {left:b.left,right:b.right,top:b.top,bottom:b.bottom,width:b.width,viewWidth:innerWidth,viewHeight:innerHeight,overflow:document.documentElement.scrollWidth-innerWidth};
+      });
+      assert.ok(geometry.width>0&&geometry.width<=431&&geometry.left>=0&&geometry.right<=geometry.viewWidth+1&&geometry.top>=0&&geometry.bottom<=geometry.viewHeight+1,'desktop dialog contained');
+      assert.ok(geometry.overflow<=1,'desktop shell has no horizontal overflow');
+    };
+    await assertDialogLayout();
+    const items=dialog.locator('[data-glisten-track]');
+    assert.equal(await items.count(),2);
+    const firstId=await items.first().getAttribute('data-glisten-track');
+    const secondId=await items.nth(1).getAttribute('data-glisten-track');
+    assert.ok(firstId&&secondId&&firstId!==secondId);
+    await items.first().check();
+    await chat.evaluate(()=>{const original=HTMLMediaElement.prototype.play;HTMLMediaElement.prototype.play=function(){if(this.dataset.groupListeningAudio)this.loop=true;return original.call(this);};});
+    await dialog.locator('[data-glisten-start]').click();
+    await strip.waitFor({state:'visible'});
+    await chat.waitForFunction(()=>{const a=document.querySelector('[data-group-listening-audio]');return a&&!a.paused;});
+    const source=await chat.evaluate(()=>document.querySelector('[data-group-listening-audio]').src);
+    const card=await chat.evaluate(()=>{
+      const strip=document.getElementById('groupListeningStrip'),host=document.querySelector('.phone-mockup');
+      const b=strip.getBoundingClientRect(),h=host.getBoundingClientRect();
+      return {contained:host.contains(strip)&&b.left>=h.left-1&&b.right<=h.right+1,height:b.height,overflow:document.documentElement.scrollWidth-innerWidth};
+    });
+    assert.ok(card.contained&&card.height>0&&card.height<=60&&card.overflow<=1,'compact card stays within desktop chat shell');
+    await strip.getByRole('button',{name:'打开一起听歌详情'}).click();
+    await assertDialogLayout();
+    await dialog.getByRole('button',{name:'重新选歌'}).click();
+    await dialog.locator('[data-glisten-track]').nth(1).check();
+    // Simulate a catalog update in the real sibling music document. Only
+    // synthetic fixture metadata is altered; no real audio data is deleted.
+    await library.evaluate(id=>{
+      const rows=JSON.parse(localStorage.getItem('music_local_tracks'));
+      localStorage.setItem('music_local_tracks',JSON.stringify(rows.filter(x=>x.id!==id)));
+    },secondId);
+    await dialog.locator('[data-glisten-start]').click();
+    await dialog.locator('[data-glisten-track]').waitFor({state:'visible'});
+    assert.equal(await dialog.locator('[data-glisten-track]').count(),1,'stale selection removed in actual picker');
+    assert.equal(await dialog.locator('[data-glisten-track]').first().getAttribute('data-glisten-track'),firstId);
+    assert.equal(await dialog.locator('[data-glisten-track]').first().isChecked(),true);
+    assert.equal(await dialog.isVisible(),true,'changed queue must be confirmed again');
+    assert.deepEqual(await chat.evaluate(()=>{const a=document.querySelector('[data-group-listening-audio]');return {src:a.src,paused:a.paused};}),{src:source,paused:false},'rejected stale queue does not stop the previous song');
+    await library.evaluate(rows=>localStorage.setItem('music_local_tracks',JSON.stringify(rows)),tracks);
+    await dialog.getByRole('button',{name:'关闭',exact:true}).click();
+    await strip.getByRole('button',{name:'打开一起听歌详情'}).click();
+    await dialog.getByRole('button',{name:'重新选歌'}).click();
+    assert.equal(await dialog.locator('[data-glisten-track]').count(),2,'restored catalog is selectable');
+    await dialog.locator('[data-glisten-track]').first().uncheck();
+    await dialog.locator('[data-glisten-track]').nth(1).check();
+    await dialog.locator('[data-glisten-start]').click();
+    await chat.waitForFunction(old=>{const a=document.querySelector('[data-group-listening-audio]');return a&&!a.paused&&a.src!==old;},source);
+    await chat.locator('#chat-input').fill('桌面听歌时保留输入');
+    await strip.getByRole('button',{name:'打开一起听歌详情'}).click();
+    await dialog.locator('[data-glisten-end]').click();
+    await strip.waitFor({state:'hidden'});
+    assert.equal(await chat.locator('#chat-input').inputValue(),'桌面听歌时保留输入');
+    assert.equal(await chat.locator('[data-group-listening-audio]').count(),0);
+    await chat.waitForFunction(async()=>!(await navigator.locks.query()).held.some(l=>l.name==='maomao-native-music-playback-v1'));
+    assert.deepEqual(desktopErrors,[]);
+    console.log('PASS Chromium desktop 1280px: real group picker, stale catalog, valid replacement, draft and resource cleanup');
+  } finally {await desktop.close();}
   console.log('PASS all 375/390/430px browser checks (screenshots in ' + shots + ')');
 } catch (error) {
   console.error('FAIL MUSIC Chromium QA:', error && error.stack || error);

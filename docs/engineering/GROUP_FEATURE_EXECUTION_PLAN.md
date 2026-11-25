@@ -141,3 +141,5 @@ Owner explicitly requested one shared music catalog and NetEase/QQ source channe
 
 ### M07 / 音乐专项 M08 复验结项
 - 45681440014 精确候选 16cd729 完整 verify 成功，日志确认 post-test-guard；不宣称全部66项群聊缺陷已关闭。当前 Cloudflare QA Worker 版本号171（100%），与历史发布回执时间吻合，实际 HTTP 源码回执仍未取得。M09 保持主线整合及 Android/iPhone 真机待验收，不部署。
+
+- M09 补充正式桌面页面 1280×800 Chromium 专项：真实导入、群选歌、卡片及弹层边界、曲库变动保留原播放、恢复后正常切换、草稿与播放锁清理。仅新增测试，语法检查通过，实际浏览器待最终集中执行；原 16cd729 功能回执有效，不为测试文件单独重复公共 QA。
