@@ -246,8 +246,8 @@ test('diary request contains full canonical persona and tone, not another role c
  const store=makeStore({phone_worldbooks:JSON.stringify([{id:'a',name:'A lore',entries:[{name:'A note',content:'ROLE_A_LORE',enabled:true,constant:true}]},{id:'b',name:'B lore',entries:[{name:'B note',content:'ROLE_B_PRIVATE',enabled:true,constant:true}]}])});
  const {sb}=makeSandbox({store,role});
  sb.PhoneStorage={getMemories:id=>{assert.equal(id,'roleA');return [{status:'confirmed',content:'ROLE_A_MEMORY'},{status:'pending',content:'PENDING_MEMORY'}]}};
- let request;sb.PhoneAPI.complete=opts=>{request=opts;return Promise.resolve('观察植物生长记录，今天叶片有新的变化。')};
- sb.maybeAutoWriteCharEntry();await new Promise(r=>setTimeout(r,10));
+ let request;sb.PhoneAPI.complete=opts=>{request=opts;return Promise.resolve('记录今天的植物生长情况，叶片在日光下有了新的变化。')};
+ await sb.maybeAutoWriteCharEntry();
  assert.ok(request);
  assert.ok(request.system.includes(role.persona));
  assert.match(request.system,/ROLE_A_TONE/);
@@ -277,4 +277,12 @@ test('auto diary generation shares one in-flight request on the same page',async
  await Promise.resolve();assert.equal(calls,1);
  resolve('记录植物的生长，叶片在日光中舒展开，今天有新的观察结果。');
  await p;assert.equal(sb.entries.length,1);assert.equal(sb.maybeAutoWriteCharEntry.inFlight,false);
+});
+
+test('too-short model diary is not persisted and does not mark the cooldown',async()=>{
+ const store=makeStore(),{sb}=makeSandbox({store,aiText:'观察植物生长记录，今天叶片有新的变化。'});
+ await sb.maybeAutoWriteCharEntry();
+ assert.equal(sb.entries.length,0);
+ assert.equal(store.getItem('char_last_wrote_roleA'),null);
+ assert.equal(sb.maybeAutoWriteCharEntry.inFlight,false);
 });
