@@ -1227,7 +1227,8 @@ test('reader paragraph comments use the chosen persona and grounded co-reading c
 
 test('reader keeps three books per row and shows three recommendations on the home page', () => {
   assert.match(libraryReader, /grid-template-columns:repeat\(3,1fr\)/);
-  assert.match(libraryReader, /var picks = books\.slice\(0, 3\)/);
+  assert.match(libraryReader, /var picks = recentBookPicks\(books,getBookProgress\)/);
+  assert.match(libraryReader, /\.slice\(0,3\)\.map\(function\(item\)\{return item\.book;\}\)/);
 });
 
 test('takeout cart stays bound to one restaurant and checkout uses the cart restaurant', () => {
