@@ -59,3 +59,10 @@ test('picker invalidation clears names and rejects duplicate role ID projection'
   const f=fixture();await wait();f.win.fire('storage');assert.equal(all(f.root,'mao-flight__role').length,0);assert.equal(f.one('mao-flight__start').disabled,true);f.page.destroy();
   const g=fixture({roles:[{id:'r1',name:'A'},{id:'r1',name:'B'}]});await wait();assert.equal(g.one('mao-flight__start').disabled,true);assert.equal(all(g.root,'mao-flight__role').length,0);g.page.destroy();
 });
+
+test('full page remount restores saved board and chat and avoids old message IDs',async()=>{
+ const f=fixture();await wait();f.one('mao-flight__start').click();await wait();f.one('mao-flight__input').value='第一条';f.one('mao-flight__send').click();await wait();const saved=await f.page.saveMatch();f.page.destroy();
+ const g=fixture();await wait();g.session('s2');await g.page.reload();const v=await g.page.restoreMatch(saved);
+ assert.equal(v.gameId,'ludo');assert.equal(all(g.root,'mao-flight__message').length,1);g.one('mao-flight__input').value='第二条';g.one('mao-flight__send').click();await wait();
+ assert.equal(all(g.root,'mao-flight__message').length,2);assert.ok(text(g.root).includes('第二条'));g.page.destroy();
+});
