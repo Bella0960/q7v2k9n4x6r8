@@ -8,6 +8,11 @@
   const errors={PLAYBACK_BUSY:'另一个窗口正在播放，请先暂停后重试',LOCK_UNAVAILABLE:'当前浏览器不支持安全播放协调',SOURCE_MISSING:'歌曲文件暂时无法读取，请检查原音乐库',PLAY_REJECTED:'无法播放，请重试或检查手机播放权限',TRACK_UNAVAILABLE:'歌曲不可用，请重新选歌',GROUP_UNAVAILABLE:'群聊已变化，请重新进入',SCOPE_CHANGED:'群聊或账号已变化，请重新进入',SESSION_UNAVAILABLE:'听歌会话已失效，请重新开始'};
   function el(tag,cls,text){const e=d.createElement(tag);if(cls)e.className=cls;if(text!=null)e.textContent=text;return e;}
   function button(text,cls,action){const e=el('button',cls,text);e.type='button';e.addEventListener('click',action);return e;}
+  function nextAfterEnd(s,audio){
+    if(!s||s.status!=='paused'||s.playing||!audio?.ended||!audio.paused||!Array.isArray(s.queue)||!s.trackId||!Number.isFinite(s.duration)||s.duration<=0||s.currentTime<s.duration-0.15)return null;
+    const index=s.queue.indexOf(s.trackId);
+    return index>=0&&index+1<s.queue.length?s.queue[index+1]:null;
+  }
   function mount(o){
     const {host,menu,header,getGroupScope,hasRole,memberName,paintAvatar,notify}=o||{};
     if(!host||!menu||!header||typeof getGroupScope!=='function'||typeof hasRole!=='function'||!root.MAOGroupListeningSession||!root.MAOMusicCatalogAdapter)return null;
@@ -55,7 +60,7 @@
         coverUrl=root.URL.createObjectURL(v.value);paintCover(stripCover,coverUrl);paintCover(body.querySelector('.glisten-now .glisten-cover'),coverUrl);
       }catch{}})();
     }
-    function disposeSession(){const old=api;api=null;if(unsubscribe)unsubscribe();unsubscribe=null;if(old)old.destroy();if(audio)audio.remove();audio=null;clearCover();}
+    function disposeSession(){const old=api;api=null;if(unsubscribe)unsubscribe();unsubscribe=null;if(old)old.destroy();if(audio){audio.removeEventListener('ended',onEnded);audio.remove();}audio=null;clearCover();}
     function snapshot(){if(!scope())return null;return api?.getSnapshot()||null;}
     function ensureSession(){
       if(!scope())return false;
@@ -64,7 +69,7 @@
         audio=el('audio');audio.hidden=true;audio.preload='metadata';audio.dataset.groupListeningAudio='1';host.append(audio);
         api=root.MAOGroupListeningSession.createForGroup({audio,getGroupId:()=>scope()?.id||null,hasRole});
         unsubscribe=api.subscribe(e=>{if(e.type==='invalidated'){strip.hidden=true;clearCover();if(dialog.open)dialog.close();}schedule();});
-        const r=api.start();if(!r.ok){warn(r.code);disposeSession();return false;}syncTimer();return true;
+        const r=api.start();if(!r.ok){warn(r.code);disposeSession();return false;}audio.addEventListener('ended',onEnded);syncTimer();return true;
       }catch{disposeSession();warn('GROUP_UNAVAILABLE');return false;}
     }
     function schedule(){if(dead||pendingRender)return;pendingRender=true;root.setTimeout(()=>{pendingRender=false;render();},0);}
@@ -131,6 +136,11 @@
       const s=snapshot();if(!s||!api)return;
       const r=api.selectTrack(s,id);if(!r.ok){warn(r.code);return;}render();await play(r.snapshot);
     }
+    function onEnded(event){
+      if(dead||!audio||event.currentTarget!==audio||!scope())return;
+      const s=snapshot(),next=nextAfterEnd(s,audio);
+      if(next&&api)void changeTrack(next);else render();
+    }
     function adjacent(delta){
       const s=snapshot();if(!s)return;const i=s.queue.indexOf(s.trackId)+delta;
       if(i>=0&&i<s.queue.length)void changeTrack(s.queue[i]);
@@ -181,11 +191,11 @@
       if(!scope()){destroy();return;}
       const s=snapshot();if(!s||s.status==='ended'){if(api)disposeSession();strip.hidden=true;clearCover();if(mode==='detail'&&dialog.open)dialog.close();lastKey='';syncTimer();return;}
       if(!s.trackId){strip.hidden=true;lastKey='';return;}
-      strip.hidden=false;const key=s.sessionId+':'+s.revision;
+      strip.hidden=false;const key=s.sessionId+':'+s.revision+':'+String(!!audio?.ended);
       if(key!==lastKey){
         const track=get(s.trackId);
         strip.querySelector('strong').textContent=track?.name||'歌曲不可用';
-        strip.querySelector('small').textContent=labels[s.status]||'一起听歌';
+        strip.querySelector('small').textContent=s.status==='paused'&&audio?.ended?'已播完':labels[s.status]||'一起听歌';
         toggle.innerHTML=icon(s.playing||s.status==='loading'?'pause':'play');toggle.setAttribute('aria-label',s.playing||s.status==='loading'?'暂停':'播放');
         const faces=strip.querySelector('.glisten-faces');faces.replaceChildren();for(const id of s.participants.slice(0,3)){const av=el('span','glisten-avatar');showMember(av,id);faces.append(av);}
         faces.setAttribute('aria-label',s.participants.length+' 位参与成员');

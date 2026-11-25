@@ -433,7 +433,7 @@ try {
       await chat.route('**/*',route=>route.request().url().startsWith(new URL(BASE).origin+'/')?route.continue():route.abort());
       await page.evaluate(()=>{
         localStorage.setItem('phone_groups',JSON.stringify([{id:'g-listen-ui',name:'一起听歌测试群',ownerId:'__user',members:[{id:'listen-role',name:'测试成员'}]}]));
-        localStorage.setItem('ai_custom_characters',JSON.stringify([{id:'listen-role',name:'测试成员'}]));
+        localStorage.setItem('ai_custom_characters',JSON.stringify([{id:'listen-role',name:'测试成员',persona:'测试角色，喜欢音乐，回复简短自然。',tone:'简短自然',replyBubbleMode:'single'}]));
       });
       try{
         await chat.goto(new URL('/chat/chat/chat-detail.html?id=g-listen-ui',BASE).href);
@@ -461,6 +461,25 @@ try {
         await chat.locator('#chat-form button[type=submit]').click();
         await chat.waitForFunction(()=>JSON.parse(localStorage.getItem('chat_history_g-listen-ui')||'[]').some(m=>m.role==='user'&&m.text==='听歌时继续发送聊天消息'&&m.sendFailedReason==='missing-api-key'));
         assert.deepEqual(await chat.evaluate(()=>{const a=document.querySelector('[data-group-listening-audio]');return {paused:a.paused,src:a.src};}),{paused:false,src:sourceBefore},'real chat send/storage path does not interrupt playback');
+        // Real chat success path, only a local intercepted synthetic API response.
+        const mockBase=new URL('/__test_group_listen_api__/v1',BASE).href;
+        let mockPosts=0;
+        await chat.route(mockBase+'/**',async route=>{
+          const request=route.request();
+          if(request.method()!=='POST')return route.abort();
+          const payload=request.postDataJSON();mockPosts++;
+          const answer='这首歌很适合今天。';
+          return payload.stream===false?route.fulfill({status:200,contentType:'application/json',body:JSON.stringify({choices:[{message:{content:answer}}]})}):
+            route.fulfill({status:200,contentType:'text/event-stream',body:'data: '+JSON.stringify({choices:[{delta:{content:answer}}]})+'\n\ndata: [DONE]\n\n'});
+        });
+        await chat.evaluate(base=>localStorage.setItem('api_settings',JSON.stringify({apiKey:'synthetic-test-only',baseUrl:base,model:'test-model'})),mockBase);
+        try{
+          await chat.locator('#chat-input').fill('测试正常回复期间的播放');
+          await chat.locator('#chat-form button[type=submit]').click();
+          await chat.waitForFunction(()=>JSON.parse(localStorage.getItem('chat_history_g-listen-ui')||'[]').some(m=>m.role==='assistant'&&String(m.memberId)==='listen-role'&&String(m.text).includes('这首歌很适合今天')),null,{timeout:25000});
+          assert.ok(mockPosts>0,'actual chat request reached only synthetic route');
+          assert.deepEqual(await chat.evaluate(()=>{const a=document.querySelector('[data-group-listening-audio]');return {paused:a.paused,src:a.src};}),{paused:false,src:sourceBefore},'successful assistant reply does not interrupt audio');
+        }finally{await chat.evaluate(()=>localStorage.removeItem('api_settings'));await chat.unroute(mockBase+'/**');}
         await strip.getByRole('button',{name:'打开一起听歌详情'}).click();
         await dialog.locator('[data-glisten-member="listen-role"]').click();
         assert.equal(await dialog.locator('[data-glisten-member="listen-role"]').getAttribute('aria-pressed'),'true');
@@ -471,6 +490,16 @@ try {
         const previousSource=await chat.evaluate(()=>document.querySelector('[data-group-listening-audio]').src);
         await dialog.getByRole('button',{name:'下一首'}).click();
         await chat.waitForFunction(old=>{const a=document.querySelector('[data-group-listening-audio]');return a&&!a.paused&&a.src!==old;},previousSource);
+        // Native ended events, not synthetic dispatch: the last song stops; previous then ends and advances.
+        await chat.evaluate(()=>{const a=document.querySelector('[data-group-listening-audio]');a.loop=false;a.currentTime=Math.max(0,a.duration-0.08);});
+        await chat.waitForFunction(()=>{const a=document.querySelector('[data-group-listening-audio]');return a&&a.ended&&a.paused;});
+        assert.equal(await strip.locator('small').textContent(),'已播完');
+        const finalSource=await chat.evaluate(()=>document.querySelector('[data-group-listening-audio]').src);
+        await dialog.getByRole('button',{name:'上一首'}).click();
+        await chat.waitForFunction(old=>{const a=document.querySelector('[data-group-listening-audio]');return a&&!a.paused&&a.src!==old;},finalSource);
+        const firstSource=await chat.evaluate(()=>{const a=document.querySelector('[data-group-listening-audio]');a.loop=false;a.currentTime=Math.max(0,a.duration-0.08);return a.src;});
+        await chat.waitForFunction(old=>{const a=document.querySelector('[data-group-listening-audio]');return a&&!a.paused&&a.src!==old;},firstSource);
+        assert.equal(await dialog.getByRole('button',{name:'下一首'}).isDisabled(),true,'queue advanced to final song');
         // A removed participant invalidates the actual mounted view, including the audio DOM.
         await page.evaluate(()=>{const groups=JSON.parse(localStorage.getItem('phone_groups'));groups[0].members=[];localStorage.setItem('phone_groups',JSON.stringify(groups));});
         await chat.locator('[data-group-listening-audio]').waitFor({state:'detached'});
