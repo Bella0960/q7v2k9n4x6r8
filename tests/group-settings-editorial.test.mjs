@@ -343,3 +343,31 @@ test('group reply is guarded before request, after stream, on pagehide and befor
   assert.ok(detail.includes("exactId!==String(speaker.id)||exactId==='__user'"));
   assert.ok(detail.includes('privateActionSeen||isRegeneration'));
 });
+
+
+test('group preferences preserve newer writes and reject scope changes',()=>{
+  function setup(){
+    const state={account:'001',writes:0,data:new Map([['phone_groups',JSON.stringify([{id:'g1',name:'one'},{id:'g2',name:'two'}])],['chat_group_alias_g1','old'],['chat_group_notice_g2','other']])};
+    const ctx={document:{querySelector:()=>({content:state.account})},location:{hostname:'preview.mao520.com'},localStorage:{getItem:k=>state.data.get(k)??null,setItem(k,v){state.writes++;if(state.fail)throw Error('quota');if(!state.ignore)state.data.set(k,v)}}};ctx.window=ctx;
+    vm.runInNewContext(read('shared/js/phone/group-write-guard.js'),ctx);
+    const api=ctx.MAOGroupWriteGuard;return {api,state,group:api.read('g1')};
+  }
+  {const {api,state,group}=setup();assert.equal(api.writePreference(api.readPreference(group,'alias'),'new').ok,true);assert.equal(state.data.get('chat_group_alias_g1'),'new');assert.equal(state.data.get('chat_group_notice_g2'),'other');}
+  {const {api,state,group}=setup();assert.equal(api.writePreference(api.readPreference(group,'notice'),'').ok,true);assert.equal(state.data.get('chat_group_notice_g1'),'');}
+  {const {api,state,group}=setup();const snap=api.readPreference(group,'alias');state.data.set('chat_group_alias_g1','newer');assert.equal(api.writePreference(snap,'old editor').reason,'stale');assert.equal(state.writes,0);}
+  for(const account of ['002','']){const {api,state,group}=setup();const snap=api.readPreference(group,'alias');state.account=account;assert.equal(api.writePreference(snap,'wrong').ok,false);assert.equal(state.writes,0);}
+  {const {api,state,group}=setup();const snap=api.readPreference(group,'notice');state.data.set('phone_groups','[{"id":"g2"}]');assert.equal(api.writePreference(snap,'wrong').ok,false);assert.equal(state.writes,0);}
+  {const {api,state,group}=setup();assert.equal(api.readPreference(group,'history'),null);assert.equal(api.writePreference({group,kind:'history',raw:null},'wrong').ok,false);assert.equal(state.writes,0);}
+  {const {api,state,group}=setup();const snap=api.readPreference(group,'alias');state.fail=true;assert.equal(api.writePreference(snap,'new').reason,'storage');assert.equal(state.data.get('chat_group_alias_g1'),'old');}
+  {const {api,state,group}=setup();const snap=api.readPreference(group,'alias');state.ignore=true;assert.equal(api.writePreference(snap,'new').reason,'unconfirmed');}
+  {const {api,state,group}=setup();const snap=api.readPreference(group,'alias');const groups=JSON.parse(state.data.get('phone_groups'));groups[1].name='updated';state.data.set('phone_groups',JSON.stringify(groups));assert.equal(api.writePreference(snap,'new').ok,true);}
+});
+test('group settings binds initial account and edit snapshots instead of reloading a new target at save',()=>{
+  assert.ok(html.includes('snapshot.account!==groupPageScope.account'));
+  assert.ok(html.includes('var g=renderedGroup;'));
+  assert.ok(html.includes('avatarSelection=loadCurrentGroup()'));
+  assert.ok(html.includes('var g=avatarSelection;avatarSelection=null'));
+  assert.ok(html.includes('writePreference(aliasSnapshot,val)'));
+  assert.ok(html.includes('writePreference(noticeSnapshot,val)'));
+  assert.ok(html.includes("targets.length===1&&rid!=='__user'"));
+});
