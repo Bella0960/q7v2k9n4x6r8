@@ -256,3 +256,26 @@ test('AI invitation uses exact identity and complete existing member defaults',(
  assert.match(detail,/policy\.defaultMember\(targetRole\)/);
  assert.match(detail,/JSON\.stringify\(managementRoster\)/);
 });
+
+
+test('missing account identity fails closed remotely, only explicit loopback remains compatible',()=>{
+  let account='',host='preview.mao520.com',data=JSON.stringify([{id:'g1',name:'original'},{id:'g2'}]),writes=0,changeOnRead=false;
+  const ctx={document:{querySelector:()=>account?{content:account}:null},location:{get hostname(){return host}},localStorage:{getItem(){if(changeOnRead)account='002';return data},setItem(k,v){writes++;data=v}}};ctx.window=ctx;
+  vm.runInNewContext(read('shared/js/phone/group-write-guard.js'),ctx);
+  const api=ctx.MAOGroupWriteGuard, fake={id:'g1',account:'',serialized:JSON.stringify(JSON.parse(data)[0])};
+  assert.equal(api.read('g1'),null);
+  assert.equal(api.commit(fake,{id:'g1',name:'wrong'}).reason,'scope');
+  assert.equal(api.remove(fake).reason,'scope');
+  assert.equal(writes,0);
+  account='001';const snapshot=api.read('g1');account='';
+  assert.equal(api.commit(snapshot,snapshot.group).reason,'scope');
+  assert.equal(api.remove(snapshot).reason,'scope');
+  assert.equal(writes,0);
+  account='001';changeOnRead=true;assert.equal(api.read('g1'),null);changeOnRead=false;account='';
+  host='localhost.example.org';assert.equal(api.read('g1'),null);
+  for(const h of ['localhost','127.0.0.1','[::1]']){
+    host=h;const local=api.read('g1');assert.ok(local);
+    assert.equal(api.commit(local,{...local.group,name:'local'}).ok,true);
+    assert.equal(JSON.parse(data)[1].id,'g2');
+  }
+});
