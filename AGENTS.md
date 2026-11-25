@@ -61,6 +61,10 @@ When the owner gives a direct implementation request (“fix”, “finish”, �
 
 “Complete all” means complete all authorized subtasks within the requested scope. It does not authorize enabling deferred roadmap items or crossing the release/data-safety boundaries above.
 
+## Owner-approved module closeout (mandatory)
+
+When the owner explicitly accepts a module and declares its current version settled, record the accepted SHA, QA receipt and satisfaction score if supplied. Freeze the accepted behavior. Reconcile the verified implementation and its tests with main through one reviewed integration PR; retire superseded PRs and active runtime paths after checking replacements and dependencies. Remove demonstrably unused obsolete code, duplicate handlers, assets and cache generations only when no supported consumer remains. Do not merge obsolete candidates over the accepted implementation. Preserve Git history, rollback evidence, user data and required read/migration compatibility; remove legacy data only after verified safe migration and explicit authorization. Test the actual cleanup delta without repeating unchanged acceptance checks unnecessarily. This is mandatory for all modules, not only reading.
+
 ## Definition of done
 
 A task is done only when its acceptance criteria pass, required tests/build pass, existing behavior is preserved, no user data can be lost, documentation is updated, and the patch is independently reviewable.
