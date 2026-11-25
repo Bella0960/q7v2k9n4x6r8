@@ -483,3 +483,42 @@ test('reverse audit: post-save render failure is not reported as a failed paid g
  assert.equal(sb.entries.length,1);
  assert.equal(JSON.parse(sb.localStorage.getItem('maomao_diary_entries_v1')).length,1);
 });
+
+test('new remarks are readable by the exact diary owner, not the same-name role or another record kind',async()=>{
+ const a={id:'roleA',name:'同名',persona:'研究植物，记录观察。'},b={id:'roleB',name:'同名',persona:'研究音乐，整理乐谱。'};
+ const own={id:'d_char_a',author:a.id,date:'2026-11-25',content:'OWN_BODY'},other={id:'d_char_b',author:b.id,date:'2026-11-25',content:'OTHER_BODY'},legacy={id:'d_char_old',author:a.id,date:'2026-11-24',content:'old',personalRemark:{text:'LEGACY_PRIVATE'}};
+ const {sb}=makeSandbox({store:makeStore(),role:a,entries:[own,other,legacy]});sb.diaryCharacters=()=>[a,b];
+ const token=sb.diaryAccountToken();
+ assert.equal(sb.savePersonalRemark(own.id,token,'OWNER_REMARK'),true);
+ assert.equal(sb.savePersonalRemark(other.id,token,'OTHER_REMARK'),true);
+ assert.equal(own.personalRemark.sharedWithRoleId,a.id);
+ assert.match(sb.diaryWritingPrompt(a,'日记'),/OWNER_REMARK/);
+ assert.doesNotMatch(sb.diaryWritingPrompt(a,'日记'),/OTHER_REMARK|OTHER_BODY|LEGACY_PRIVATE/);
+ assert.doesNotMatch(sb.diaryWritingPrompt(b,'日记'),/OWNER_REMARK/);
+ assert.doesNotMatch(sb.diaryWritingPrompt(a,'备忘'),/OWNER_REMARK/);
+ let calls=[];sb.PhoneAPI.complete=opts=>{calls.push(opts);return Promise.resolve('收到这条备注。')};
+ assert.equal(await sb.readSharedRemark(own.id),true);
+ assert.equal(calls.length,1);assert.match(calls[0].user,/OWNER_REMARK|OWN_BODY/);assert.doesNotMatch(calls[0].user+calls[0].system,/OTHER_REMARK|OTHER_BODY|研究音乐/);
+ assert.equal(own.personalRemark.readReceipt.roleId,a.id);assert.equal(own.charComments,undefined);
+ assert.equal(await sb.readSharedRemark(own.id),false);assert.equal(calls.length,1);
+ assert.equal(await sb.readSharedRemark(legacy.id),false);
+ assert.equal(sb.savePersonalRemark(own.id,token,'edited'),true);assert.equal(own.personalRemark.readReceipt,undefined);
+});
+test('a user diary remark is shared only on an explicitly invited comment, not auto peek',async()=>{
+ const entry={id:'u',author:'me',date:'2026-11-25',content:'BODY'};
+ const {sb}=makeSandbox({store:makeStore(),entries:[entry]});
+ assert.equal(sb.savePersonalRemark('u',sb.diaryAccountToken(),'SHARED_USER_REMARK'),true);
+ let calls=[];sb.PhoneAPI.complete=opts=>{calls.push(opts);return Promise.resolve('留言')};
+ sb.maybeAutoPeek();await new Promise(r=>setTimeout(r,10));
+ sb.readerId='u';sb.generateCharComment();await new Promise(r=>setTimeout(r,10));
+ assert.equal(calls.length,2);assert.doesNotMatch(calls[0].user+calls[0].system,/SHARED_USER_REMARK/);assert.match(calls[1].user,/SHARED_USER_REMARK/);
+});
+test('owner remark reply is discarded when the note changes in flight',async()=>{
+ const entry={id:'d_char_a',author:'roleA',date:'2026-11-25',content:'BODY'};
+ const {sb}=makeSandbox({store:makeStore(),entries:[entry]});
+ const token=sb.diaryAccountToken();sb.savePersonalRemark(entry.id,token,'first');
+ let finish;sb.PhoneAPI.complete=()=>new Promise(r=>finish=r);
+ const p=sb.readSharedRemark(entry.id);assert.equal(typeof finish,'function');
+ sb.savePersonalRemark(entry.id,token,'second');finish('收到');assert.equal(await p,false);
+ assert.equal(entry.personalRemark.text,'second');assert.equal(entry.personalRemark.readReceipt,undefined);
+});
