@@ -112,5 +112,5 @@ test('all three primary user-send routes use the shared lock, never a stale whol
     assert.match(detail, /userSaved = await appendChatSafely\(\[userMsg\]\)/);
     assert.match(detail, /if \(!await appendChatSafely\(\[userMsg\]\)\)/);
     assert.match(detail, /historyList = loadMessages\(\);[\s\S]*?messages committed snapshot|historyList = loadMessages\(\);/);
-    assert.match(detail, /chat-history-atomic\.js\?v=20261118v3/);
+    assert.match(detail, /chat-history-atomic\.js\?v=20261125scope1/);
 });
