@@ -72,5 +72,17 @@ export function createBrowserRoomVerifier(win=globalThis.window) {
     if(!roleIds.every(validId)) fail('ROSTER_UNVERIFIED');
     return {accountId,sessionId,roleIds};
   }
-  return ({signal}={})=>verifyRoomContext({request:(path,options)=>win.fetch(path,options),readScope,readScopedRoster,signal});
+  return async ({signal}={})=>{
+    const initial=scopeSnapshot(readScope);
+    const context=await verifyRoomContext({request:(path,options)=>win.fetch(path,options),readScope,readScopedRoster,signal});
+    // Same-document storage changes do not emit storage events. Re-read the
+    // synchronous scoped roster after the final network response, not before it.
+    if(signal?.aborted) fail('CONTEXT_CANCELLED');
+    const current=scopeSnapshot(readScope);
+    if(current.accountId!==initial.accountId || current.role!==initial.role) fail('ACCOUNT_SCOPE_CHANGED');
+    const latest=new Set(readScopedRoster(context).roleIds);
+    if(latest.size!==context.roleIds.length || context.roleIds.some(id=>!latest.has(id))) fail('ROSTER_CHANGED');
+    if(signal?.aborted) fail('CONTEXT_CANCELLED');
+    return context;
+  };
 }
