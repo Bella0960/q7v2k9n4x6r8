@@ -47,3 +47,14 @@ test('automatic settlement advances only matching temporary checkpoint and resto
  await f.click('查看已结束对局');assert.ok(f.one('mao-turtle__turn').textContent.includes('本局结束'));assert.ok(f.one('mao-turtle__solution').textContent);assert.equal(f.one('mao-turtle__controls').hidden,true);
  await f.click('返回多人游戏');await f.click('返回多人游戏');await f.click('游戏手账');assert.equal(f.cls('mao-table-journal__row').length,1);f.page.destroy();
 });
+
+test('journal opens archived public transcript without mounting another game or revealing solution',async()=>{
+ const f=fixture();await f.click('海龟汤');f.pick();f.one('mao-turtle__host').value='role:r1';f.one('mao-turtle__start').click();await wait();
+ f.one('mao-turtle__question').click();await wait();
+ f.one('mao-turtle__reveal').click();f.one('mao-turtle__reveal').click();await wait();
+ const secret=f.one('mao-turtle__solution').textContent;assert.ok(secret);
+ await f.click('返回多人游戏');await f.click('返回多人游戏');await f.click('游戏手账');
+ const detail=f.one('mao-table-journal__fragment');detail.open=true;detail.fire('toggle');await wait();
+ const entries=f.cls('mao-table-journal__text');assert.equal(entries.length,2);assert.ok(entries[0].textContent.startsWith('我：'));assert.ok(!entries.some(e=>e.textContent.includes(secret)));
+ assert.equal(f.cls('mao-turtle__solution').length,0);f.page.destroy();
+});
