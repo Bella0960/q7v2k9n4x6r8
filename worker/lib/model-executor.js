@@ -104,7 +104,7 @@ function parseModelResult(content) {
 }
 
 export async function generateAutonomousMessages({
-  env = {}, snapshot, fetchImpl = fetch, initialContact = false
+  env = {}, snapshot, fetchImpl = fetch, initialContact = false, evaluatedAt = Date.now()
 } = {}) {
   const config = readAutonomyModelConfig(env);
   if (!config) return { ok: false, reason: 'model_not_configured' };
@@ -128,6 +128,7 @@ export async function generateAutonomousMessages({
 
   const context = {
     initialContact: initialContact === true,
+    evaluatedAtUtc: new Date(evaluatedAt).toISOString(),
     characterName: String(snapshot.character_name || '').slice(0, 80),
     persona: String(snapshot.persona_text || '').slice(0, 5000),
     recentMessages: recentMessages.map(item => ({

@@ -281,7 +281,7 @@ export async function runCloudModelTick({
       continue;
     }
     const generation = await generateAutonomousMessages({
-      env, snapshot, fetchImpl, initialContact: isInitialContact
+      env, snapshot, fetchImpl, initialContact: isInitialContact, evaluatedAt: Number(clock())
     });
     if (!generation.ok) {
       const finishedAt = Number(clock());
