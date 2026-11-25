@@ -136,3 +136,12 @@ test('checkpoint refuses unfinished generation; stopped round can save without l
   const restored=createLudoDiscussion({session:f.session,view:f.view,checkpoint:saved});
   assert.equal((await restored.read()).length,1);await assert.rejects(restored.send({messageId:'2',text:'结束'}),/LUDO_DISCUSSION_SCOPE/);
 });
+
+test('terminal save drains cancelled speech without waiting for provider or losing committed text',async()=>{
+ let start,release;const started=new Promise(r=>{start=r;});
+ const f=fixture({generateRole:()=>{start();return new Promise(r=>{release=r;});},allowOutput:()=>true});
+ const pending=f.discussion.send({messageId:'final',text:'最后一手'}),rejected=assert.rejects(pending,/SPEECH_CANCELLED|LUDO_DISCUSSION_STOPPED/);
+ await started;f.view.phase='finished';f.update();f.discussion.stop();
+ const saved=await f.discussion.save(2);assert.equal(saved.messages.length,1);assert.equal(saved.messages[0].text,'最后一手');assert.equal(saved.jobIds.length,1);
+ release('过期发言');await rejected;assert.equal((await f.discussion.read()).length,1);f.discussion.close();
+});

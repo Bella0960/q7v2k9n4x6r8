@@ -55,3 +55,13 @@ test('terminal journal records board-derived winner and observer memory without 
  const bad=JSON.parse(JSON.stringify(saved));bad.chat.messages[1].senderSeatId='role:r1';assert.throws(()=>createGameJournal({getContext:()=>ctx}).recordSavedMatch(bad),/GOMOKU_CHAT_CHECKPOINT/);
  chat.close();
 });
+
+test('terminal board save drains cancelled speech and archives only committed public messages',async()=>{
+ const f=fixture();let start,release;const started=new Promise(r=>{start=r;});
+ const chat=createGomokuDiscussion({session:f.session,view:f.d.view('user'),generateRole:()=>{start();return new Promise(r=>{release=r;});},allowOutput:()=>true});
+ const pending=chat.send({messageId:'final',text:'最后一手',replyToSeatId:'role:r1'}),rejected=assert.rejects(pending,/SPEECH_CANCELLED|GOMOKU_CHAT_STOPPED/);
+ await started;for(let i=0;i<5;i++){f.move(i,3);if(i<4)f.move(i*2,10);}
+ chat.stop();const v=f.d.view('user'),saved={schema:1,board:f.d.checkpoint(),chat:await chat.save(v.revision),difficulty:'normal'};
+ assert.equal(saved.chat.messages.length,1);assert.equal(saved.chat.jobIds.length,1);const j=createGameJournal({getContext:()=>ctx});assert.equal(j.recordSavedMatch(saved).duplicate,false);
+ release('过期发言');await rejected;assert.equal((await chat.read()).length,1);chat.close();
+});
