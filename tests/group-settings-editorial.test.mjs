@@ -22,10 +22,18 @@ test('adapter loads after original settings handlers and delegates existing oper
 test('only the member strip collapses; no group name overlays cover', () => {
   assert.match(js,/inner\.append\(strip\)/);
   assert.match(js,/drawer\.append\(inner\)/);
-  for (const section of ['drawer','shortcuts','quick','settingsTitle']) assert.ok(js.includes('home.insertBefore('+section+',list);'));
+  for (const section of ['drawer','shortcuts','notice']) assert.ok(js.includes('home.insertBefore('+section+',list);'));
   assert.match(js,/cover\.append\(photo, empty\)/);
   assert.match(js,/drawer\.setAttribute\('inert'/);
   assert.match(js,/toggle\.setAttribute\('aria-expanded'/);
   assert.match(css,/prefers-reduced-motion/);
   assert.match(css,/repeat\(4,minmax\(0,1fr\)\)/);
+});
+
+test('no quick grid or extra heading; group management first, real pin in ordinary list', () => {
+  assert.match(js,/list\.replaceChildren\(manage,info,alias,own,pinCard,advanced\)/);
+  assert.match(js,/var pinCard = pin\.closest\('\.settings-card'\)/);
+  assert.doesNotMatch(js,/gp-quick|quickTitle|settingsTitle|time\.closest\(|sound\.closest\(/);
+  assert.doesNotMatch(css,/\.gp-quick/);
+  assert.match(css,/\.gp-pin-card #pinSub/);
 });
