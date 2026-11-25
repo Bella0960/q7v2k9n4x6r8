@@ -1,4 +1,5 @@
 import {createBrowserRoomVerifier} from './account-room-context.js';
+import {createTabletopModelOptions} from './tabletop-model-options.js';
 import {createGameJournal} from './ludo-journal.js';
 import {mountGameJournal} from './game-journal-page.js';
 import {mountLudoPage} from './ludo-page.js';
@@ -16,7 +17,7 @@ const mounts=Object.freeze({ludo:mountLudoPage,gomoku:mountGomokuPage,turtle:mou
 const fail=code=>{throw Error(code);};
 // A mountable feature module for the existing hall, not a second route.
 // Session-only save slots: durable storage requires the approved repository.
-export function mountTabletopHall(root,{win=root?.ownerDocument?.defaultView,gameOptions={},onExit=()=>{}}={}){
+export function mountTabletopHall(root,{win=root?.ownerDocument?.defaultView,gameOptions={},modelServices=null,onExit=()=>{}}={}){
  if(!root?.ownerDocument||!win?.document||typeof onExit!=='function')fail('TABLETOP_HALL_INVALID');
  const doc=root.ownerDocument,verify=createBrowserRoomVerifier(win,{includeRoleLabels:true});
  const el=(tag,cls='',text)=>{const n=doc.createElement(tag);n.className=cls;if(text!==undefined)n.textContent=text;return n;};
@@ -62,7 +63,8 @@ export function mountTabletopHall(root,{win=root?.ownerDocument?.defaultView,gam
    try{
      const c=await verified(stamp);const saved=restore?saves.get(id):null;if(restore&&!saved)fail('TABLETOP_NO_SAVE');
      const container=el('div','mao-table-hall__game');main.replaceChildren(container);title.hidden=true;back.textContent='返回多人游戏';tools();
-     page=mounts[id](container,{...gameOptions[id],win});current={kind:'game',id,page};
+     const modelOptions=modelServices?createTabletopModelOptions({...modelServices,win,identity:c,gameId:id}):{};
+     page=mounts[id](container,{...gameOptions[id],...modelOptions,win});current={kind:'game',id,page};
      if(saved){
        // Wait for the page's own scoped roster verification. A duplicate
        // reload cancels the initial picker request instead of bypassing it.
