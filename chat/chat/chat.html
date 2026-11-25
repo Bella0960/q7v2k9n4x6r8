@@ -8,6 +8,7 @@
 <script src="../../shared/js/native-feel.js"></script>
 <script src="../../shared/js/chat-beauty.js?v=20261102v3"></script>
 <script src="../../shared/js/phone/phone_storage.js"></script>
+<script src="../../shared/js/phone/group-write-guard.js?v=20261125g10"></script>
 <style>
   * {
     box-sizing: border-box;
@@ -1085,11 +1086,7 @@
         menu.style.display = 'none';
       });
 
-      // 菜单选项：添加群聊
-      document.getElementById('menuGroup').addEventListener('click', function () {
-        menu.style.display = 'none';
-        document.getElementById('groupEntryBtn').click();
-      });
+      // 添加群聊由页面底部的创建弹窗控制器绑定。
     })();
 
     /* ================= 上传绑定 ================= */
@@ -1488,7 +1485,7 @@
       var backdrop = document.getElementById('groupModalBackdrop');
       var nameInput = document.getElementById('groupNameInput');
       var membersList = document.getElementById('groupMembersList');
-      var selected = {};
+      var selected = Object.create(null), modalAccount = null;
 
       function loadCharacters() {
         try {
@@ -1525,7 +1522,10 @@
       }
 
       function openModal() {
-        selected = {};
+        var guard=window.MAOGroupWriteGuard;
+        if(!guard){showToast('群聊服务暂不可用，请刷新');return;}
+        modalAccount=guard.account();
+        selected = Object.create(null);
         if (nameInput) nameInput.value = '';
         renderMembers();
         backdrop.classList.add('show');
@@ -1533,8 +1533,13 @@
       }
 
       function closeModal() {
+        modalAccount=null;
         backdrop.classList.remove('show');
       }
+      document.getElementById('menuGroup').addEventListener('click',function(){
+        document.getElementById('wechatMenu').style.display='none';
+        openModal();
+      });
 
       document.getElementById('groupEntryBtn').addEventListener('click', function(e) {
         e.stopPropagation();
@@ -1562,22 +1567,22 @@
           setTimeout(function(){ nameInput.style.boxShadow = ''; }, 800);
           return;
         }
+        var guard=window.MAOGroupWriteGuard;
+        if(!guard||modalAccount===null||guard.account()!==modalAccount){showToast('账号已变化，请重新打开创建群聊');return;}
         var roles = loadCharacters();
         var memberIds = Object.keys(selected);
-        var members = roles.filter(function(r) { return memberIds.indexOf(String(r.id)) !== -1; });
-        var groups = [];
-        try {
-          var raw = localStorage.getItem('phone_groups');
-          if (raw) groups = JSON.parse(raw);
-          if (!Array.isArray(groups)) groups = [];
-        } catch(e) {}
-        groups.push({
-          id: 'g' + Date.now(),
+        var members = roles.filter(function(r) { return r&&r.id!=null&&memberIds.indexOf(String(r.id)) !== -1; });
+        if(members.length!==memberIds.length||new Set(members.map(function(m){return String(m.id);})).size!==members.length||members.some(function(m){return String(m.id)==='__user';})){
+          showToast('成员资料已变化，请重新选择');return;
+        }
+        var now=Date.now();
+        var result=guard.create(modalAccount,{
+          id: 'g' + now,
           name: name,
           members: members.map(function(m) { return { id: String(m.id), name: m.name, avatar: m.avatar || '' }; }),
-          createdAt: Date.now()
+          createdAt: now
         });
-        localStorage.setItem('phone_groups', JSON.stringify(groups));
+        if(!result.ok){showToast('创建未确认，未覆盖旧群资料，请刷新后检查');return;}
         closeModal();
         renderChatList();  // 群聊直接进入消息列表，不跳转
       });

@@ -86,6 +86,7 @@ test('C1-C5 invite writes group, role library unchanged, candidate disappears', 
     assert.deepEqual(snapshot, roles.find((r) => r.id === 'c3'));
 
     await page.locator('#actionGroupManage').click();
+    await page.locator('[data-management-route="members"]').click();
     await page.locator('#gpInviteToggle').click();
     await page.locator('.gp-invite-row').first().waitFor({ state: 'visible' });
     const beforeIds = await page.$$eval('.gp-invite-row', (rows) => rows.map((r) => r.getAttribute('data-role-id')));
@@ -123,6 +124,7 @@ test('C6-C8 chat.html -> chat-detail renders 3 members and request context conta
     await settingsPage.goto(baseUrl + '/chat/chat/chat-settings.html?roleId=g1', { waitUntil: 'load' });
     await settingsPage.waitForFunction(() => document.querySelectorAll('.gp-member-row').length === 2);
     await settingsPage.locator('#actionGroupManage').click();
+    await settingsPage.locator('[data-management-route="members"]').click();
     await settingsPage.locator('#gpInviteToggle').click();
     await settingsPage.locator('.gp-invite-row').first().waitFor({ state: 'visible' });
     await settingsPage.locator('.gp-invite-row[data-role-id="c3"] .gp-invite-add').click();
@@ -133,7 +135,7 @@ test('C6-C8 chat.html -> chat-detail renders 3 members and request context conta
 
     // 用群设置页真实编辑新成员资料，并让其余成员禁言，确保本轮发言者确定性为新成员
     const detailSeedPage = await context.newPage();
-    await detailSeedPage.goto(baseUrl + '/chat/chat/group-play.html?id=g1', { waitUntil: 'load' });
+    await detailSeedPage.goto(baseUrl + '/chat/chat/group-play.html?id=g1&section=roles', { waitUntil: 'load' });
     await detailSeedPage.waitForFunction(() => document.querySelectorAll('#membersList .member').length === 3);
     const c1Card = detailSeedPage.locator('#membersList .member[data-member-id="c1"]');
     await c1Card.locator('.member-toggle').click();
@@ -234,8 +236,8 @@ test('C9 spectatorMode saved in settings page is reflected in a fresh chat-detai
     // 设置页开启旁观模式并保存
     const settings = await context.newPage();
     await setupGroup(settings, groups, roles);
-    await settings.goto(baseUrl + '/chat/chat/group-play.html?id=g1', { waitUntil: 'load' });
-    await settings.waitForFunction(() => document.querySelectorAll('#membersList .member').length === 3);
+    await settings.goto(baseUrl + '/chat/chat/group-play.html?id=g1&section=behavior', { waitUntil: 'load' });
+    await settings.locator('input[data-setting="spectatorMode"]').waitFor({state:'visible'});
     await settings.locator('input[data-setting="spectatorMode"]').check();
     let stored = await read(settings, 'phone_groups');
     assert.equal(stored[0].settings.spectatorMode, true, 'spectatorMode must be persisted by the settings page');
@@ -343,8 +345,8 @@ test('C9 spectatorMode saved in settings page is reflected in a fresh chat-detai
 
     // 关闭并保存，再用新的页面实例验证规则消失
     const settings2 = await context.newPage();
-    await settings2.goto(baseUrl + '/chat/chat/group-play.html?id=g1', { waitUntil: 'load' });
-    await settings2.waitForFunction(() => document.querySelectorAll('#membersList .member').length === 3);
+    await settings2.goto(baseUrl + '/chat/chat/group-play.html?id=g1&section=behavior', { waitUntil: 'load' });
+    await settings2.locator('input[data-setting="spectatorMode"]').waitFor({state:'visible'});
     await settings2.locator('input[data-setting="spectatorMode"]').uncheck();
     stored = await read(settings2, 'phone_groups');
     assert.equal(stored[0].settings.spectatorMode, false);

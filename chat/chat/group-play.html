@@ -6,6 +6,9 @@
 <title>群聊玩法 · 小手机</title>
 <script src="../../shared/js/font-loader.js?v=20261022v1"></script>
 <script src="../../shared/js/native-feel.js"></script>
+<script src="../../shared/js/phone/group-admin-policy.js?v=20261125g3"></script>
+<script src="../../shared/js/phone/group-write-guard.js?v=20261125g10"></script>
+<script src="../../shared/js/phone/group-portraits.js?v=20261125g5"></script>
 <style>
 *{box-sizing:border-box;margin:0;padding:0;-webkit-tap-highlight-color:transparent}
 :root{color-scheme:light;--ink:#111;--muted:#888;--line:#e9e9ed;--paper:#fff;--wash:#f7f7f9}
@@ -111,6 +114,42 @@ body{background:#e7e7e9;color:var(--ink);font-family:-apple-system,BlinkMacSyste
 .error{font-size:13px;line-height:1.8;color:#777;padding:30px 2px}
 @media(min-width:431px){.phone{min-height:calc(100dvh - 24px);margin:12px 0;border-radius:28px;box-shadow:0 12px 45px #0000000c}}
 @media(prefers-reduced-motion:reduce){*{transition:none!important}}
+/* Unified editorial group-management layout, scoped to this page. */
+body,.phone,.top{background:#fff}
+body{font-family:"Source Han Sans SC","Noto Sans SC","PingFang SC",system-ui,sans-serif}
+.top{border-bottom:0;padding-bottom:10px}
+.kicker,.section span{font-family:"Source Han Serif SC","Noto Serif SC","Songti SC",Georgia,serif;letter-spacing:.12em}
+.hero{border-bottom:0;margin-bottom:8px;padding-bottom:8px}
+.hero h2{font-size:25px}
+.section{margin:22px 0 10px}
+.member{border:0;border-radius:0;padding:14px 2px}
+.members{gap:6px}
+.avatar{border-radius:5px}
+.member-access{display:flex;flex-direction:column;gap:10px;margin:12px 0 2px}
+.member-access .admin-control{display:flex;justify-content:space-between;background:transparent;padding:5px 0;font-size:12px;color:#333}
+.member-access .field{display:flex;flex-direction:row;align-items:center;gap:14px}
+.member-access .field label{flex:none;font-size:12px;color:#333}
+.member-access .field input{flex:1;text-align:right;background:#fff;border-color:#eee}
+.member-body{border-top:0}
+.settings{border-top:0}
+.setting{border-bottom:0}
+#memberManagement{scroll-margin-top:86px}
+@media(min-width:431px){.phone{box-shadow:none}}
+/* Directory-first navigation: keep every original control and handler mounted. */
+[hidden]{display:none!important}
+.management-directory{display:flex;flex-direction:column;margin-top:20px}
+.management-directory a,.directory-link{display:flex;align-items:center;justify-content:space-between;min-height:64px;padding:12px 2px;text-decoration:none;color:#111;font-size:14px;gap:12px}
+.management-directory a>span:first-child{display:flex;flex-direction:column;gap:5px}
+.management-directory small,.directory-link small{font:400 9px/1.4 "Source Han Serif SC","Noto Serif SC",Georgia,serif;color:#767676;letter-spacing:.12em}
+.directory-detail{font-size:11px;color:#777;text-align:right}
+.management-directory a:focus-visible,.directory-link:focus-visible{outline:2px solid #555;outline-offset:3px}
+.management-view{padding-top:2px}
+.management-view>.section:first-child{margin-top:8px}
+.hero .hero-label,.hero p{display:none}
+.hero h2{font-size:25px;margin-top:4px}
+.hero .meta{margin-top:9px}
+@media(max-width:360px){.directory-detail{font-size:10px}}
+ .self-title-save{display:block;margin:12px 0 0 auto;border:0;border-radius:8px;background:#111;color:#fff;font:inherit;font-size:12px;padding:9px 24px;cursor:pointer}
 </style>
 </head>
 <body>
@@ -128,6 +167,38 @@ body{background:#e7e7e9;color:var(--ink);font-family:-apple-system,BlinkMacSyste
       <p>给群成员安排身份、作息与行动边界，让每一场群聊更像一群真实的人在相处。</p>
       <div class="meta"><span class="meta-dot"></span><span id="memberCount">读取群成员中</span><span>·</span><span>自动保存</span></div>
     </div>
+    <nav id="managementDirectory" class="management-directory" aria-label="群组管理分类">
+      <a data-management-route="members"><span>成员管理<small>MEMBERS</small></span><span class="directory-detail">邀请 · 移除</span></a>
+      <a data-management-route="roles"><span>身份与头衔<small>ROLES / TITLES</small></span><span class="directory-detail">群主 · 管理员</span></a>
+      <a data-management-route="behavior"><span>群聊机制<small>BEHAVIOR</small></span><span class="directory-detail">发言 · 作息</span></a>
+      <a data-management-route="relations"><span>成员关系<small>RELATIONSHIPS</small></span><span class="directory-detail">关系 · 共同经历</span></a>
+      <a data-management-route="memory"><span>记忆空间<small>MEMORY</small></span><span class="directory-detail">记忆同步 · 上下文</span></a>
+    </nav>
+    <section class="management-view" data-management-view="roles" hidden>
+    <div class="section" id="memberManagement"><h3>群主与权限</h3><span>OWNER / ADMIN</span></div>
+    <div class="member" id="ownerPanel">
+      <div class="member-head">
+        <div class="avatar" id="ownerAvatar">我</div>
+        <div class="member-heading"><div class="member-name" id="ownerName">我（群主）</div><div class="member-id" id="ownerDesc">当前群主</div></div>
+      </div>
+      <div class="field">
+        <label for="ownerSelect">转让群主给</label>
+        <select id="ownerSelect" style="width:100%;height:40px;border:1px solid #e8e8ec;border-radius:9px;background:#fafafc;padding:0 10px;font:inherit;font-size:12px;color:#111;">
+          <option value="__user">我自己（不转让）</option>
+        </select>
+      </div>
+      <button type="button" id="transferOwnerBtn" style="width:100%;height:40px;margin-top:10px;border:1px solid #111;border-radius:10px;background:#111;color:#fff;font:inherit;font-size:12px;cursor:pointer;">确认转让群主</button>
+      <p class="hint">转让仅改变群聊内的模拟群主身份，不会影响角色库。群主仍可在本页面管理群设置。</p>
+    </div>
+
+    <div class="section"><h3>我的群内头衔</h3><span>MY TITLE</span></div>
+    <div class="member"><div class="field"><label for="selfGroupTitle">专属头衔</label><input id="selfGroupTitle" type="text" maxlength="40" placeholder="未设置"></div><button type="button" id="saveSelfGroupTitle" class="self-title-save">保存</button></div>
+    <div class="section"><h3>成员资料</h3><span>IDENTITY / HOURS</span></div>
+    <div id="membersList" class="members"></div>
+    <p class="hint">群昵称和专属头衔只影响群聊显示，不会修改角色库原始资料。禁言与作息只影响该角色能否被选中发言。</p>
+
+    </section>
+    <section class="management-view" data-management-view="behavior" hidden>
     <div class="section"><h3>群聊机制</h3><span>BEHAVIOR</span></div>
     <div class="settings" id="settingsList">
       <label class="setting">
@@ -135,15 +206,11 @@ body{background:#e7e7e9;color:var(--ink);font-family:-apple-system,BlinkMacSyste
         <span class="switch"><input type="checkbox" data-setting="scheduleEnabled"><span class="track"></span></span>
       </label>
       <label class="setting">
-        <span class="setting-copy"><span class="setting-title">同步成员的单聊记忆</span><span class="setting-desc">开启后，群聊 AI 会参考成员在各自单聊中的长期记忆。关闭时不额外注入，节省上下文。</span></span>
-        <span class="switch"><input type="checkbox" data-setting="memorySharing"><span class="track"></span></span>
-      </label>
-      <label class="setting">
         <span class="setting-copy"><span class="setting-title">旁观模式</span><span class="setting-desc">把发送内容当作剧情走向提示；角色优先彼此互动，不把每句话都当成对用户说。</span></span>
         <span class="switch"><input type="checkbox" data-setting="spectatorMode"><span class="track"></span></span>
       </label>
       <label class="setting">
-        <span class="setting-copy"><span class="setting-title">允许角色自主管理群聊</span><span class="setting-desc">管理员或群主可按剧情提出改群名、邀请现有角色入群或移除成员；实际变更会保存到群资料。</span></span>
+        <span class="setting-copy"><span class="setting-title">允许角色自主管理群聊</span><span class="setting-desc">角色可在权限范围内修改群内头衔，管理员或群主也可管理成员、禁言及修改群名。实际变更会保存到本群。</span></span>
         <span class="switch"><input type="checkbox" data-setting="allowRoleActions"><span class="track"></span></span>
       </label>
       <label class="setting">
@@ -179,29 +246,20 @@ body{background:#e7e7e9;color:var(--ink);font-family:-apple-system,BlinkMacSyste
       </div>
     </div>
 
-    <div class="section"><h3>群主与权限</h3><span>OWNER / ADMIN</span></div>
-    <div class="member" id="ownerPanel">
-      <div class="member-head">
-        <div class="avatar" id="ownerAvatar">我</div>
-        <div class="member-heading"><div class="member-name" id="ownerName">我（群主）</div><div class="member-id" id="ownerDesc">当前群主</div></div>
-      </div>
-      <div class="field">
-        <label for="ownerSelect">转让群主给</label>
-        <select id="ownerSelect" style="width:100%;height:40px;border:1px solid #e8e8ec;border-radius:9px;background:#fafafc;padding:0 10px;font:inherit;font-size:12px;color:#111;">
-          <option value="__user">我自己（不转让）</option>
-        </select>
-      </div>
-      <button type="button" id="transferOwnerBtn" style="width:100%;height:40px;margin-top:10px;border:1px solid #111;border-radius:10px;background:#111;color:#fff;font:inherit;font-size:12px;cursor:pointer;">确认转让群主</button>
-      <p class="hint">转让仅改变群聊内的模拟群主身份，不会影响角色库。群主仍可在本页面管理群设置。</p>
-    </div>
-
-    <div class="section"><h3>成员资料</h3><span>IDENTITY / HOURS</span></div>
-    <div id="membersList" class="members"></div>
-    <p class="hint">群昵称和专属头衔只影响群聊显示，不会修改角色库原始资料。禁言与作息只影响该角色能否被选中发言。</p>
-
+    </section>
+    <section class="management-view" data-management-view="relations" hidden>
     <div class="section"><h3>成员关系与熟悉度</h3><span>RELATIONSHIPS</span></div>
     <div id="relationshipsList" class="relationships"></div>
     <p class="hint">每个方向分别保存亲密度、信任度、关系类型与情绪倾向；角色的发言频率、话题兴趣和触发阈值单独设置。关系数值当前为静态配置，不会被普通聊天自动改写。</p>
+    </section>
+    <section class="management-view" data-management-view="memory" hidden>
+      <div class="section"><h3>记忆同步</h3><span>MEMORY</span></div>
+      <label class="setting">
+        <span class="setting-copy"><span class="setting-title">同步成员的单聊记忆</span><span class="setting-desc">开启后，群聊 AI 会参考成员在各自单聊中的长期记忆。关闭时不额外注入，节省上下文。</span></span>
+        <span class="switch"><input type="checkbox" data-setting="memorySharing"><span class="track"></span></span>
+      </label>
+      <a class="directory-link" id="groupContextLink">上下文条数 <small>CONTEXT</small></a>
+    </section>
   </main>
 </div>
 <div id="toast" class="toast" role="status" aria-live="polite"></div>
@@ -210,6 +268,11 @@ body{background:#e7e7e9;color:var(--ink);font-family:-apple-system,BlinkMacSyste
   'use strict';
   var params = new URLSearchParams(location.search);
   var groupId = params.get('id') || params.get('roleId') || '';
+  var allowedViews=['roles','behavior','relations','memory'];
+  var requestedView=params.get('section')||(location.hash==='#memberManagement'?'roles':'menu');
+  var activeView=allowedViews.indexOf(requestedView)!==-1?requestedView:'menu';
+  function groupSettingsUrl(view){return 'chat-settings.html?roleId='+encodeURIComponent(groupId)+(view?'&view='+encodeURIComponent(view):'');}
+  function managementUrl(view){return 'group-play.html?id='+encodeURIComponent(groupId)+(view&&view!=='menu'?'&section='+encodeURIComponent(view):'');}
   var toastTimer = 0;
   function escapeHtml(value){
     return String(value == null ? '' : value).replace(/[&<>"']/g,function(ch){
@@ -227,10 +290,12 @@ body{background:#e7e7e9;color:var(--ink);font-family:-apple-system,BlinkMacSyste
   function findGroup(){
     return readArray('phone_groups').find(function(g){return g&&String(g.id)===String(groupId);})||null;
   }
-  var group=findGroup();
+  var groupBase=null;
+  try{groupBase=window.MAOGroupWriteGuard.read(groupId);}catch(error){}
+  var group=groupBase&&groupBase.group;
   if(!group || String(group.id).charAt(0)!=='g'){
     document.getElementById('mainContent').innerHTML='<div class="error">没有找到这条群聊记录。<br>可能群聊已经被解散，或链接已失效。</div>';
-    document.getElementById('groupTitle').textContent='群聊不存在';
+    document.querySelector('.top h1').textContent='群聊不存在';
   }else{
     if(!group.settings||typeof group.settings!=='object')group.settings={};
     var defaults={scheduleEnabled:false,memorySharing:false,spectatorMode:false,allowRoleActions:false,allowPrivateMessages:true,autoTalkEnabled:false,relationshipDynamicsEnabled:true,followUpEnabled:false};
@@ -239,15 +304,22 @@ body{background:#e7e7e9;color:var(--ink);font-family:-apple-system,BlinkMacSyste
     if([0,1,2].indexOf(autoRounds)===-1)group.settings.autoTalkRounds=1;
     if(group.settings.chatMode!=='online'&&group.settings.chatMode!=='offline')group.settings.chatMode='online';
     document.getElementById('groupTitle').textContent=group.name||'未命名群聊';
+    document.getElementById('memberCount').textContent=(Array.isArray(group.members)?group.members.length:0)+' 位群成员';
+    var writeBlocked=false;
     function persist(message){
-      var groups=readArray('phone_groups');
-      var found=false;
-      for(var i=0;i<groups.length;i++){
-        if(String(groups[i]&&groups[i].id)===String(group.id)){groups[i]=group;found=true;break;}
+      if(writeBlocked)return false;
+      var result=window.MAOGroupWriteGuard.commit(groupBase,group);
+      if(!result.ok){
+        writeBlocked=true;
+        document.querySelectorAll('#mainContent input,#mainContent select,#mainContent textarea,#mainContent button').forEach(function(control){control.disabled=true;});
+        notify('群资料已变化或保存失败，请返回后重新进入');
+        var reload=document.createElement('button');reload.type='button';reload.className='self-title-save';reload.textContent='重新读取群资料';reload.addEventListener('click',function(){location.reload();});
+        document.getElementById('mainContent').prepend(reload);
+        return false;
       }
-      if(!found){notify('群聊已不存在，保存失败');return false;}
-      try{localStorage.setItem('phone_groups',JSON.stringify(groups));if(message)notify(message);return true;}
-      catch(e){notify('保存失败：本地存储空间不足');return false;}
+      groupBase=result.expected;
+      if(message)notify(message);
+      return true;
     }
     if (!group.ownerId) group.ownerId='__user';
     function renderSettings(){
@@ -259,6 +331,17 @@ body{background:#e7e7e9;color:var(--ink);font-family:-apple-system,BlinkMacSyste
       var modeSelect=document.getElementById('groupChatMode');
       if(modeSelect)modeSelect.value=group.settings.chatMode;
     }
+    function renderSelfTitle(){document.getElementById('selfGroupTitle').value=typeof group.selfTitle==='string'?group.selfTitle:'';}
+    document.getElementById('saveSelfGroupTitle').addEventListener('click',function(){
+      var policy=window.MAOGroupAdminPolicy,value=policy&&policy.title(document.getElementById('selfGroupTitle').value);
+      if(value==null){notify('头衔最多20个字符');return;}
+      if(writeBlocked)return;
+      group.selfTitle=value;
+      if(!persist('头衔已保存'))return;
+      renderSelfTitle();renderOwner();
+    });
+    var adminPolicy=window.MAOGroupAdminPolicy;
+    function canManage(action,target){return !!adminPolicy&&adminPolicy.userCanManage(group,action,target);}
     function renderOwner(){
       var select=document.getElementById('ownerSelect');
       var ownerName=document.getElementById('ownerName');
@@ -270,13 +353,14 @@ body{background:#e7e7e9;color:var(--ink);font-family:-apple-system,BlinkMacSyste
       ownerDesc.textContent=owner?'群主 · '+(owner.title||'成员'):'当前由你管理群聊';
       ownerAvatar.innerHTML=owner?(owner.avatar?'<img src="'+escapeHtml(owner.avatar)+'" alt="">':escapeHtml((owner.nickname||owner.name||'群').slice(0,1))):'我';
       select.innerHTML='<option value="__user">我自己（不转让）</option>'+members.map(function(m){
-        return '<option value="'+escapeHtml(String(m.id))+'">'+escapeHtml(m.nickname||m.name||'未命名成员')+(m.isAdmin?' · 管理员':'')+'</option>';
+        return '<option value="'+escapeHtml(String(m.id))+'">'+escapeHtml(m.nickname||m.name||'未命名成员')+(adminPolicy&&adminPolicy.isAdmin(m)?' · 管理员':'')+'</option>';
       }).join('');
       select.value=members.some(function(m){return String(m.id)===String(group.ownerId);})?String(group.ownerId):'__user';
       var transferBtn=document.getElementById('transferOwnerBtn');
       var currentOwnerId=String(group.ownerId||'__user');
       transferBtn.textContent=String(select.value)===currentOwnerId?'当前群主':(select.value==='__user'?'转让群主给我':'确认转让群主');
-      transferBtn.disabled=String(select.value)===currentOwnerId;
+      select.disabled=writeBlocked||!adminPolicy||!adminPolicy.userOwns(group);
+       transferBtn.disabled=select.disabled||String(select.value)===currentOwnerId||!canManage('transfer',String(select.value));
       transferBtn.style.opacity=transferBtn.disabled?'.58':'1';
       transferBtn.style.cursor=transferBtn.disabled?'default':'pointer';
     }
@@ -285,17 +369,17 @@ body{background:#e7e7e9;color:var(--ink);font-family:-apple-system,BlinkMacSyste
       var isCurrent=String(this.value)===currentOwnerId;
       var button=document.getElementById('transferOwnerBtn');
       button.textContent=isCurrent?'当前群主':(this.value==='__user'?'转让群主给我':'确认转让群主');
-      button.disabled=isCurrent;
+      button.disabled=writeBlocked||isCurrent||!canManage('transfer',String(this.value));
       button.style.opacity=isCurrent?'.58':'1';
       button.style.cursor=isCurrent?'default':'pointer';
     });
     document.querySelectorAll('[data-setting]').forEach(function(input){
       input.addEventListener('change',function(){
         group.settings[input.getAttribute('data-setting')]=!!input.checked;
+        if(!persist('设置已保存'))return;
         if(input.getAttribute('data-setting')==='followUpEnabled'&&!input.checked){
-          try{localStorage.removeItem('chat_followup_state_group_'+groupId);}catch(e){}
+          try{localStorage.removeItem('chat_followup_state_group_'+groupId);}catch(e){notify('设置已保存，旧追问状态清理失败');}
         }
-        persist('设置已保存');
       });
     });
     document.getElementById('groupChatMode').addEventListener('change',function(){
@@ -310,7 +394,8 @@ body{background:#e7e7e9;color:var(--ink);font-family:-apple-system,BlinkMacSyste
     var expandedMembers={};
     var CHEVRON_SVG='<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="m6 9 6 6 6-6"/></svg>';
     function memberSummary(member){
-      return '角色 · '+escapeHtml(member.name||'未命名角色')+(member.nickname?' · 群昵称 · '+escapeHtml(member.nickname):'');
+      var identity=String(member.id)===String(group.ownerId||'__user')?'群主':adminPolicy&&adminPolicy.isAdmin(member)?'管理员':'普通成员';
+      return escapeHtml(identity)+' · 角色 · '+escapeHtml(member.name||'未命名角色')+(member.nickname?' · 群昵称 · '+escapeHtml(member.nickname):'')+(member.title?' · '+escapeHtml(member.title):'');
     }
     function renderMembers(){
       var list=document.getElementById('membersList');
@@ -334,12 +419,16 @@ body{background:#e7e7e9;color:var(--ink);font-family:-apple-system,BlinkMacSyste
               '<span class="member-heading"><span class="member-name">'+escapeHtml(member.nickname||member.name||'未命名成员')+'</span><span class="member-id">'+memberSummary(member)+'</span></span>'+
               '<span class="chevron">'+CHEVRON_SVG+'</span>'+
             '</button>'+
-            '<button type="button" class="remove" data-remove-member="'+escapeHtml(id)+'">移出群聊</button>'+
+            (canManage('remove',id)?'<button type="button" class="remove" data-remove-member="'+escapeHtml(id)+'">移出群聊</button>':'')+
+          '</div>'+
+          '<div class="member-access">'+
+            '<label class="check-label admin-control"><span>'+(String(group.ownerId||'__user')===id?'群主身份':adminPolicy&&adminPolicy.isAdmin(member)?'已设为管理员':'设为管理员')+'</span><span class="switch"><input type="checkbox" aria-label="管理员" data-member-field="isAdmin" '+((adminPolicy&&adminPolicy.isAdmin(member))||String(group.ownerId||'__user')===id?'checked':'')+(!canManage('admin',id)?' disabled':'')+'><span class="track"></span></span></label>'+
+            '<div class="field"><label>专属头衔</label><input type="text" maxlength="20" data-member-field="title" value="'+escapeHtml(member.title||'')+'" placeholder="未设置"></div>'+
           '</div>'+
           '<div class="member-body">'+
           '<div class="fields">'+
             '<div class="field"><label>群昵称</label><input type="text" maxlength="20" data-member-field="nickname" value="'+escapeHtml(member.nickname||'')+'" placeholder="'+escapeHtml(member.name||'原角色名')+'"></div>'+
-            '<div class="field"><label>专属头衔</label><input type="text" maxlength="20" data-member-field="title" value="'+escapeHtml(member.title||'')+'" placeholder="例如：管理员 / 气氛组"></div>'+
+
           '</div>'+
           '<div class="speaking-settings"><div class="schedule-head"><span>发言倾向</span><span>仅影响自动选人</span></div><div class="speaking-grid">'+
             '<div class="field"><div class="relationship-meter"><label>话唠度</label><strong><span data-talkativeness-value>'+Math.round(talkativeness*100)+'</span> / 100</strong></div><input type="range" min="0" max="1" step="0.05" data-member-field="talkativeness" value="'+talkativeness+'"></div>'+
@@ -350,8 +439,8 @@ body{background:#e7e7e9;color:var(--ink);font-family:-apple-system,BlinkMacSyste
             '<div class="field"><label>背景关联</label><input type="text" data-member-field="backgroundTags" maxlength="160" value="'+escapeHtml(backgroundTags)+'" placeholder="例如：大学室友、医生、武汉"></div>'+
           '</div></details></div>'+
           '<div class="member-options">'+
-            '<label class="check-label"><input type="checkbox" data-member-field="isAdmin" '+(member.isAdmin?'checked':'')+'> 管理员</label>'+
-            '<label class="check-label"><input type="checkbox" data-member-field="muted" '+(member.muted?'checked':'')+'> 禁言</label>'+
+
+            '<label class="check-label"><input type="checkbox" data-member-field="muted" '+(adminPolicy&&adminPolicy.isMuted(member)?'checked':'')+(!canManage('mute',id)?' disabled':'')+'> 禁言</label>'+
           '</div>'+
           '<div class="schedule"><div class="schedule-head"><span>个人活跃时间</span><span>仅作息感知开启时生效</span></div><div class="time-fields">'+
             '<div class="field"><label>开始活跃</label><input type="time" data-member-field="activeFrom" value="'+escapeHtml(member.activeFrom||'08:00')+'"></div>'+
@@ -417,6 +506,7 @@ body{background:#e7e7e9;color:var(--ink);font-family:-apple-system,BlinkMacSyste
     }
     var expandedRelationships={};
     function renderRelationships(){
+      if(activeView!=='relations'||writeBlocked)return;
       var list=document.getElementById('relationshipsList');
       var members=Array.isArray(group.members)?group.members:[];
       if(members.length<2){list.innerHTML='<div class="empty">至少邀请两位角色入群，才能设置他们之间的关系。</div>';return;}
@@ -435,7 +525,8 @@ body{background:#e7e7e9;color:var(--ink);font-family:-apple-system,BlinkMacSyste
         }
       }
       list.innerHTML=rows.join('');
-      if(migrated)persist();
+      // Compatibility normalization is saved only when the user edits a relationship.
+      // Entering a directory or viewing relationships never writes group data.
     }
     function groupMemberName(member){return String((member&&(member.nickname||member.name))||'未命名成员');}
     document.getElementById('relationshipsList').addEventListener('click',function(event){
@@ -488,29 +579,38 @@ body{background:#e7e7e9;color:var(--ink);font-family:-apple-system,BlinkMacSyste
           return {summary:summary,time:Number(old.time)||Date.now(),fromId:fromId,toId:String(to.id)};
         });
       }
-      persist('关系网已保存');
+      if(!persist('关系网已保存'))return;
       renderRelationships();
     });
     document.getElementById('transferOwnerBtn').addEventListener('click',function(){
       var nextOwnerId=document.getElementById('ownerSelect').value||'__user';
+      if(writeBlocked||!canManage('transfer',String(nextOwnerId))){notify('仅群主可以转让给有效成员');return;}
       var oldOwner=String(group.ownerId||'__user');
       if(nextOwnerId===oldOwner){notify('这位成员已经是群主');return;}
-      var nextOwner=(group.members||[]).find(function(m){return String(m.id)===String(nextOwnerId);});
+      var nextOwner=adminPolicy.member(group,String(nextOwnerId));
+      if(!nextOwner)return;
       var nextName=nextOwner?(nextOwner.nickname||nextOwner.name||'群成员'):'你自己';
       if(!confirm('确定将群主转让给「'+nextName+'」吗？'))return;
       group.ownerId=nextOwner?String(nextOwner.id):'__user';
-      if(nextOwner)nextOwner.isAdmin=true;
-      persist('群主已更新');
+      if(nextOwner){nextOwner.isAdmin=true;nextOwner.memberRole='admin';}
+      if(!persist('群主已更新'))return;
       renderMembers();renderOwner();
     });
     document.getElementById('membersList').addEventListener('change',function(event){
       var input=event.target.closest('[data-member-field]');
       if(!input)return;
       var card=input.closest('[data-member-id]');
-      var member=(group.members||[]).find(function(m){return String(m.id)===String(card.getAttribute('data-member-id'));});
+      var member=card&&adminPolicy&&adminPolicy.member(group,String(card.getAttribute('data-member-id')));
       if(!member)return;
       var field=input.getAttribute('data-member-field');
-      if(input.type==='checkbox')member[field]=input.checked;
+      if(writeBlocked)return;
+      if(field==='isAdmin'){
+        if(!canManage('admin',String(member.id))){notify('仅群主可以任免管理员');renderMembers();return;}
+        member.isAdmin=input.checked;member.memberRole=input.checked?'admin':'member';
+      }else if(field==='muted'){
+        if(!canManage('mute',String(member.id))){notify('当前无权禁言该成员');renderMembers();return;}
+        member.muted=input.checked;member.isMuted=input.checked;member.mutedUntil=0;
+      }else if(input.type==='checkbox')member[field]=input.checked;
       else if(field==='talkativeness')member.talkativeness=Math.max(0,Math.min(1,Number(input.value)||0));
       else if(field==='replyThreshold')member.replyThreshold=Math.max(30,Math.min(85,parseInt(input.value,10)||55));
       else if(field==='interests'||field==='interestTags'||field==='expertiseTags'||field==='backgroundTags'){
@@ -518,8 +618,12 @@ body{background:#e7e7e9;color:var(--ink);font-family:-apple-system,BlinkMacSyste
         if(field==='interests'||field==='interestTags'){member.interestTags=tags;member.interests=tags;}
         else member[field]=tags;
       }
-      else member[field]=input.value.trim();
-      persist('成员资料已保存');
+      else if(field==='title'){
+        var titleValue=window.MAOGroupAdminPolicy&&window.MAOGroupAdminPolicy.title(input.value);
+        if(titleValue==null){notify('头衔最多20个字符');renderMembers();return;}
+        member.title=titleValue;
+      }else member[field]=input.value.trim();
+      if(!persist('成员资料已保存'))return;
       renderMembers();renderOwner();renderRelationships();
     });
     document.getElementById('membersList').addEventListener('click',function(event){
@@ -537,16 +641,30 @@ body{background:#e7e7e9;color:var(--ink);font-family:-apple-system,BlinkMacSyste
       var button=event.target.closest('[data-remove-member]');
       if(!button)return;
       var id=button.getAttribute('data-remove-member');
+      if(writeBlocked||!canManage('remove',id)){notify('当前无权移除该成员');return;}
       if(!confirm('确定将这位角色移出群聊？已有聊天记录会保留。'))return;
       group.members=(group.members||[]).filter(function(m){return String(m.id)!==String(id);});
-      if(String(group.ownerId)===String(id))group.ownerId='__user';
+      if(window.MAOGroupPortraits)window.MAOGroupPortraits.forgetMember(group,String(id));
       delete expandedMembers[String(id)];
-      persist('已移出群聊');renderMembers();renderOwner();renderRelationships();
+      if(!persist('已移出群聊'))return;
+      renderMembers();renderOwner();renderRelationships();
     });
-    renderSettings();renderMembers();renderOwner();renderRelationships();
+    if(activeView==='behavior'||activeView==='memory')renderSettings();
+    if(activeView==='roles'){renderMembers();renderOwner();renderSelfTitle();}
+    if(activeView==='relations')renderRelationships();
+    var titles={menu:['群组管理','GROUP MANAGEMENT'],roles:['身份与头衔','ROLES / TITLES'],behavior:['群聊机制','BEHAVIOR'],relations:['成员关系','RELATIONSHIPS'],memory:['记忆空间','MEMORY']};
+    var heading=document.querySelector('.top h1');
+    heading.textContent=titles[activeView][0];
+    document.querySelector('.kicker').textContent=titles[activeView][1];
+    document.title=titles[activeView][0]+' · 小手机';
+    document.getElementById('managementDirectory').hidden=activeView!=='menu';
+    document.querySelector('.hero').hidden=activeView!=='menu';
+    document.querySelectorAll('[data-management-view]').forEach(function(view){view.hidden=view.getAttribute('data-management-view')!==activeView;});
+    document.querySelectorAll('[data-management-route]').forEach(function(link){var view=link.getAttribute('data-management-route');link.href=view==='members'?groupSettingsUrl('members'):managementUrl(view);});
+    document.getElementById('groupContextLink').href=groupSettingsUrl('memory');
   }
   document.getElementById('backBtn').addEventListener('click',function(){
-    location.href='chat-settings.html?roleId='+encodeURIComponent(groupId);
+    location.href=group&&activeView!=='menu'?managementUrl('menu'):groupSettingsUrl('');
   });
 })();
 </script>
