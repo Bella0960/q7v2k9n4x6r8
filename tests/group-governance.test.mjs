@@ -393,3 +393,24 @@ test('member permission fields remain compatible and changes are scoped to the a
   assert.equal(apply('promote', 'c1').code, 'NO_PERMISSION');
   assert.equal(apply('mute', 'c1').code, 'NO_PERMISSION');
 });
+
+test('canonical group governance rejects duplicate IDs, reserved user and ambiguous invitation targets',()=>{
+  const {api}=harness();
+  assert.equal(api.findMember({members:[{id:'r1'},{id:'r1'},{id:'r2',name:'r1'}]},'r1'),null);
+  assert.equal(api.findMember({members:[{id:'__user',name:'me'}]},'__user'),null);
+  assert.equal(api.findMember({members:[{id:'r1',name:'same'},{id:'r2',name:'same'}]},'same'),null);
+  const g=group();
+  const invoke=(target,roles)=>api.apply({group:g,actorId:'__user',action:'invite',target,options:{roles},save:()=>true});
+  assert.equal(invoke('unique',[{id:'r3',name:'unique'},{id:'r3',name:'other'}]).ok,false);
+  assert.equal(invoke('me',[{id:'__user',name:'me'}]).ok,false);
+  assert.equal(invoke('r3',[{id:'r3',name:'x'},{id:'r4',name:'r3'}]).ok,true);
+  assert.equal(g.members.at(-1).id,'r3');
+});
+test('group home uses current account scope and captured write snapshot',()=>{
+  const home=load('shared/js/group-settings-home.js');
+  assert.ok(home.includes('guard.commit(snapshot,group).ok===true'));
+  assert.ok(home.includes('guard.readPreference(current.snapshot,'));
+  assert.ok(home.includes("apply('rename', value, undefined, current)"));
+  assert.ok(home.includes("setPreference('myNickname', value, current)"));
+  assert.equal(home.includes("write('phone_groups', JSON.stringify(groups)"),false);
+});
