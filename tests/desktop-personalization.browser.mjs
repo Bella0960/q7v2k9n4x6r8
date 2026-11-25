@@ -572,6 +572,35 @@ try{
           return after;
         };
         await measure('hd-glass-font-normal',false);
+        // Reproduce the reported edit-mode quick touch: do not wait for a ghost before moving.
+        const quick=await hp.evaluate(()=>{
+          const bounds=document.getElementById('homeScreen').getBoundingClientRect();
+          const tile=Array.from(document.querySelectorAll('#gridPage0 .app-tile[data-drag]')).find(el=>{
+            const r=el.getBoundingClientRect(),x=r.left+r.width/2,y=r.top+r.height/2;
+            return x>bounds.left+45&&x<bounds.right-45&&y>bounds.top+45&&y<bounds.bottom-45&&document.elementFromPoint(x,y)?.closest('[data-drag]')===el;
+          });
+          if(!tile)return null;const r=tile.getBoundingClientRect();
+          return {x:r.left+r.width/2,y:r.top+r.height/2,touchAction:getComputedStyle(tile).touchAction,editing:document.body.classList.contains('home-editing')};
+        });
+        assert.ok(quick?.editing&&quick.touchAction==='none','glass edit tile does not own touch gesture');
+        assert.equal(await hp.evaluate(()=>matchMedia('(pointer: coarse)').matches&&window.LiquidGlass.capabilities.liveRefraction),false,'touch profile retained live SVG refraction');
+        diagnosticPhase=430;
+        await ht('touchStart',quick.x,quick.y);
+        try{
+          // No selector wait or sleep before the first move. Multiple increments
+          // cross the compositor touch slop and prove a real continuing gesture.
+          diagnosticPhase=431;
+          await ht('touchMove',quick.x+14,quick.y);
+          await ht('touchMove',quick.x+30,quick.y);
+          await hp.waitForSelector('.drag-avatar',{timeout:3000});
+          diagnosticPhase=432;
+          await ht('touchMove',quick.x+40,quick.y);
+          await hp.waitForFunction(x=>Math.abs(parseFloat(document.querySelector('.drag-avatar')?.style.getPropertyValue('--drag-x'))-x)<2,quick.x+40,{timeout:3000});
+          assert.equal(await hp.evaluate(()=>getComputedStyle(document.querySelector('.drag-avatar .maomao-liquid-glass-icon'),'::after').display),'none','ghost still paints live optical overlay');
+        }finally{await ht('touchCancel');}
+        diagnosticPhase=433;
+        await hp.waitForFunction(()=>!document.querySelector('.drag-avatar,.drag-placeholder,.is-dragging-source'));
+        assert.deepEqual(await readLayout(hp),heavyLayout,'fast touch cancellation changed saved layout');
         await hc.send('Emulation.setCPUThrottlingRate',{rate:4});
         let committed;
         try{committed=await measure('hd-glass-font-cpu4x',true);}

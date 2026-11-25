@@ -41,7 +41,7 @@
     <link rel="stylesheet" href="desktop/css/styles.css?v=20261124-motion1">
   <link rel="stylesheet" href="shared/css/mobile-fit.css?v=20261106-home-layout2">
     <link rel="stylesheet" href="shared/vendor/liquid-glass/liquid-glass.css?v=1.2.0">
-    <script>window.LiquidGlassConfig = { selector: '.maomao-liquid-glass-icon:not([data-home-drag-ghost])', deferDuring: 'body.maomao-home:is(.home-editing,.home-dragging,.home-paging):not(.lg-controls-open)', preset: 'ios26', refraction: 'auto', maxRefractive: 2, maxRefractiveAreaRatio: 0.12, observe: true, debug: false };</script>
+    <script>window.LiquidGlassConfig = { selector: '.maomao-liquid-glass-icon:not([data-home-drag-ghost])', deferDuring: 'body.maomao-home:is(.home-editing,.home-dragging,.home-paging):not(.lg-controls-open)', preset: 'ios26', refraction: window.matchMedia && window.matchMedia('(pointer: coarse)').matches ? 'off' : 'auto', maxRefractive: 2, maxRefractiveAreaRatio: 0.12, observe: true, debug: false };</script>
     <script defer src="shared/vendor/liquid-glass/liquid-glass.js?v=1.2.0-mao-motion1"></script>
   <style>
     /* ===== 添加挂件：跳转独立挂件管理页（desktop/widgets.html） ===== */
@@ -1782,7 +1782,13 @@
       }
 
       // 1. Touch Events
+      var pendingGlassTouchTarget = null;
+      function clearPendingGlassTouch() {
+        pendingGlassTouchTarget = null;
+        if (!isDragging) document.removeEventListener('touchmove', handleActiveDragTouch);
+      }
       document.addEventListener('touchstart', function (e) {
+        clearPendingGlassTouch();
         if (e.touches.length !== 1) {
           if (pressTimer) { clearTimeout(pressTimer); pressTimer = null; }
           if (isDragging) cancelDrag();
@@ -1799,9 +1805,16 @@
         hasMoved = false;
 
         if (editing) {
-          // 编辑模式下点按直接准备拖拽
+          // Preserve short taps; a fast move in glass edit mode must start, not cancel, the drag.
+          if (document.documentElement.getAttribute('data-theme') === 'liquid-glass' &&
+              t.matches('.app-tile, .dock-item')) {
+            pendingGlassTouchTarget = t;
+            // Install before the first move; a listener added during that event cannot claim it.
+            document.addEventListener('touchmove', handleActiveDragTouch, { passive: false });
+          }
           pressTimer = setTimeout(function () {
             pressTimer = null;
+            pendingGlassTouchTarget = null;
             startDrag(t, startX, startY);
           }, 40);
         } else {
@@ -1818,9 +1831,8 @@
         var touch = e.touches[0];
         var cx = touch.clientX, cy = touch.clientY;
 
-        if (pressTimer) {
+        if (pressTimer && !pendingGlassTouchTarget) {
           if (Math.hypot(cx - startX, cy - startY) > 9) {
-            // 手指滑动位移大于阈值，判定为普通页面滑动，取消长按
             clearTimeout(pressTimer);
             pressTimer = null;
           }
@@ -1828,15 +1840,31 @@
 
       }, { passive: true });
 
-      // Only a confirmed long-press drag needs scroll cancellation. Ordinary
-      // swipes stay on the browser's passive/compositor scrolling path.
+      // Ordinary swipes remain passive. A glass edit tile claims its first
+      // moving touch synchronously, before the browser starts native scrolling.
       function handleActiveDragTouch(e) {
-        if (!isDragging || !e.touches || e.touches.length !== 1) return;
+        if (!e.touches || e.touches.length !== 1) return;
+        var touch = e.touches[0];
+        if (!isDragging && pendingGlassTouchTarget) {
+          if (!editing || !pendingGlassTouchTarget.isConnected) {
+            if (pressTimer) { clearTimeout(pressTimer); pressTimer = null; }
+            clearPendingGlassTouch();
+            return;
+          }
+          if (Math.hypot(touch.clientX - startX, touch.clientY - startY) <= 9) return;
+          if (e.cancelable) e.preventDefault();
+          var target = pendingGlassTouchTarget;
+          pendingGlassTouchTarget = null;
+          if (pressTimer) { clearTimeout(pressTimer); pressTimer = null; }
+          startDrag(target, startX, startY);
+        }
+        if (!isDragging) return;
         if (e.cancelable) e.preventDefault();
-        queueDragMove(e.touches[0].clientX, e.touches[0].clientY);
+        queueDragMove(touch.clientX, touch.clientY);
       }
 
       document.addEventListener('touchend', function (e) {
+        clearPendingGlassTouch();
         if (pressTimer) {
           clearTimeout(pressTimer);
           pressTimer = null;
@@ -1848,6 +1876,7 @@
       });
 
       document.addEventListener('touchcancel', function () {
+        clearPendingGlassTouch();
         if (pressTimer) {
           clearTimeout(pressTimer);
           pressTimer = null;
@@ -1859,6 +1888,7 @@
 
       // Interruption outside the page must not leave a hidden source or a ghost.
       function interruptHomeDrag() {
+        clearPendingGlassTouch();
         if (pressTimer) {
           clearTimeout(pressTimer);
           pressTimer = null;
@@ -3377,7 +3407,7 @@
 </script>
 
 <script src="shared/js/dock-control.js?v=20261023v1"></script>
-<script src="shared/js/liquid-glass-controls.js?v=20261125motion1"></script>
+<script src="shared/js/liquid-glass-controls.js?v=20261125motion2"></script>
 <script src="shared/js/chat-notifier.js?v=20261119scheduled1"></script>
 </body>
 </html>

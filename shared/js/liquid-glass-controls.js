@@ -177,7 +177,7 @@
         selector: '.maomao-liquid-glass-icon:not([data-home-drag-ghost])',
         deferDuring: 'body.maomao-home:is(.home-editing,.home-dragging,.home-paging):not(.lg-controls-open)',
         preset: 'ios26',
-        refraction: 'auto',
+        refraction: window.matchMedia && window.matchMedia('(pointer: coarse)').matches ? 'off' : 'auto',
         maxRefractive: 2,
         maxRefractiveAreaRatio: 0.12,
         observe: true,

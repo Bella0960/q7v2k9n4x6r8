@@ -624,3 +624,36 @@ test('desktop glass pauses expensive optical work while editing and excludes vis
   assert.equal(runtime.tiers.timer,99);
   assert.equal(runtime.toneState.timer,99);
 });
+
+
+test('glass edit quick touch starts drag instead of cancelling before the timer', () => {
+  const source = index.slice(index.indexOf('      // 1. Touch Events'),index.indexOf("      document.addEventListener('touchend', function (e) {",index.indexOf('      // 1. Touch Events')));
+  assert.ok(source.includes('pendingGlassTouchTarget'));
+  function probe(theme, editing, delta, at) {
+    const events={}, timers=new Map(), calls=[];let now=0,seq=0,prevented=0;
+    const target={isConnected:true,closest(){return this},matches(){return true},classList:{contains(){return false}}};
+    const ctx={editing,pressTimer:null,startX:0,startY:0,hasMoved:false,isDragging:false,
+      document:{documentElement:{getAttribute:()=>theme},addEventListener:(n,f)=>(events[n]??=new Set()).add(f),removeEventListener:(n,f)=>events[n]?.delete(f)},
+      isClockDragTarget:()=>false,cancelDrag(){},startDrag(t,x,y){calls.push(['start',x,y]);ctx.isDragging=true;},
+      queueDragMove(x,y){calls.push(['move',x,y]);},
+      setTimeout(f,ms){const id=++seq;timers.set(id,{f,t:now+ms});return id},clearTimeout(id){timers.delete(id)}};
+    runInNewContext(source,ctx);
+    const emit=(name,x)=>{for(const f of [...events[name]??[]])f({target,touches:[{clientX:x,clientY:100}],cancelable:true,preventDefault(){prevented++}})};
+    function advance(t){now=t;for(const [id,o] of timers)if(o.t<=now){timers.delete(id);o.f()}}
+    emit('touchstart',100);advance(at);emit('touchmove',100+delta);advance(400);
+    if(theme==='liquid-glass'&&editing&&delta>9&&at<40)assert.ok(prevented>0,'first move must be claimed before native scrolling');
+    return calls;
+  }
+  assert.deepEqual(probe('liquid-glass',true,12,16),[['start',100,100],['move',112,100]]);
+  assert.deepEqual(probe('liquid-glass',false,12,16),[]);
+  assert.deepEqual(probe('classic',true,12,16),[]);
+  assert.deepEqual(probe('liquid-glass',true,4,16),[['start',100,100]]);
+});
+
+test('mobile glass uses frosted optics and a static edit lens', () => {
+  const controls=readFileSync(new URL('../shared/js/liquid-glass-controls.js',import.meta.url),'utf8');
+  const css=readFileSync(new URL('../shared/css/liquid-glass-theme.css',import.meta.url),'utf8');
+  for(const source of [index,controls])assert.ok(source.includes("window.matchMedia('(pointer: coarse)').matches ? 'off' : 'auto'"));
+  assert.match(css,/\.home-editing:not\(\.lg-controls-open\) :is\(\.app-tile,\.dock-item\)\[data-drag\] \{\s*touch-action: none/);
+  assert.match(css,/\.drag-avatar\) \.app-icon\.maomao-liquid-glass-icon::after \{\s*display: none !important/);
+});
