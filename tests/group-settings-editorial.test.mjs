@@ -37,3 +37,19 @@ test('no quick grid or extra heading; group management first, real pin in ordina
   assert.doesNotMatch(css,/\.gp-quick/);
   assert.match(css,/\.gp-pin-card #pinSub/);
 });
+
+test('white editorial page, localized English details, real invitation handler', () => {
+  assert.match(css,/\.cs-stage\.gp-editorial\{background:#fff/);
+  assert.match(css,/--gp-serif:/);
+  assert.match(css,/--gp-sans:/);
+  assert.doesNotMatch(css,/@import|https?:\/\//);
+  assert.match(js,/title\.prepend\(english\('GROUP SETTINGS'\)\)/);
+  assert.match(js,/bilingual\(noticeButton,'NOTICE'\)/);
+  assert.match(js,/actionTile\('\+','邀请',function\(\)\{openManagement\(true\);\}\)/);
+  assert.match(js,/renderInviteCandidates\(\)/);
+  assert.match(js,/inviteToggle\.click\(\)/);
+  assert.match(html,/data-invite-role/);
+  assert.match(html,/g\.members\.push\(defaultGroupMember\(target\)\)/);
+  assert.match(html,/if \(!saveCurrentGroup\(g\)\)/);
+  assert.doesNotMatch(js,/https?:\/\/[^|]/);
+});
