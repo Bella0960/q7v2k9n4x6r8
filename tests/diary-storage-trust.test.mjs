@@ -268,3 +268,13 @@ test('clear or disabled role worldbook mount never resurrects old character bind
  const {sb}=makeSandbox({store,role});
  assert.doesNotMatch(sb.diaryRoleContext(role,'日记',true),/PRIVATE_LORE/);
 });
+
+test('auto diary generation shares one in-flight request on the same page',async()=>{
+ const {sb}=makeSandbox({store:makeStore()});
+ let calls=0,resolve;
+ sb.PhoneAPI.complete=()=>{calls++;return new Promise(r=>resolve=r);};
+ const p=sb.maybeAutoWriteCharEntry();sb.maybeAutoWriteCharEntry();
+ await Promise.resolve();assert.equal(calls,1);
+ resolve('记录植物的生长，叶片在日光中舒展开，今天有新的观察结果。');
+ await p;assert.equal(sb.entries.length,1);assert.equal(sb.maybeAutoWriteCharEntry.inFlight,false);
+});
