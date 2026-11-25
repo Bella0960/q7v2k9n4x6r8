@@ -24,14 +24,15 @@ const server=createServer(async(req,res)=>{
 });
 await new Promise((accept,reject)=>{server.once('error',reject);server.listen(0,'127.0.0.1',accept);});
 const origin='http://127.0.0.1:'+server.address().port;
-const browser=await chromium.launch({headless:true,args:['--no-sandbox','--disable-dev-shm-usage']});
+const browser=await chromium.launch({headless:true,...(process.env.CHROMIUM_PATH?{executablePath:process.env.CHROMIUM_PATH}:{}),args:['--no-sandbox','--disable-dev-shm-usage']});
 let count=0;
 const pass=(name)=>{count++;console.log('STAGE04_PASS '+name);};
 
 const WIDGET_IDS=['clock-lg','photowall','postcard','music','calendar','todo','polaroid','social','note','stack','countdown','dialog'];
 
-async function newPage(width,errors){
-  const ctx=await browser.newContext({viewport:{width,height:844},hasTouch:true,isMobile:width<500});
+async function newPage(width,errors,reducedMotion='no-preference'){
+  const ctx=await browser.newContext({viewport:{width,height:844},hasTouch:true,isMobile:width<500,reducedMotion,serviceWorkers:'block'});
+  await ctx.route('**/*',route=>route.request().url().startsWith(origin+'/')?route.continue():route.abort());
   const page=await ctx.newPage();
   page.on('pageerror',e=>errors.push(e.message));
   return {ctx,page};
@@ -101,6 +102,33 @@ for(const id of WIDGET_IDS){
   await ctx.close();pass('transient highlight clears after timeout');
 }
 
+// Reduced motion removes animation, not the visible target indicator.
+{
+  const errors=[];const {ctx,page}=await newPage(390,errors,'reduce');
+  await page.goto(origin+'/desktop/widgets.html?widget=dialog',{waitUntil:'domcontentloaded'});
+  const target=page.locator('[data-widget="dialog"].is-target');
+  await target.waitFor({state:'visible'});
+  assert.equal(await target.evaluate(el=>getComputedStyle(el).transitionDuration),'0s');
+  await page.waitForTimeout(350);
+  assert.equal(await target.count(),1,'reduced motion still gets a usable highlight');
+  assert.equal(await page.evaluate(()=>localStorage.getItem('ds_layout_v14')),null);
+  await target.waitFor({state:'detached',timeout:4000});
+  assert.deepEqual(errors,[]);
+  await ctx.close();pass('reduced motion highlight remains visible and clears without layout writes');
+}
+
+// Own-property whitelist rejects inherited object names.
+{
+  const errors=[];const {ctx,page}=await newPage(390,errors);
+  for(const id of ['constructor','__proto__','toString']){
+    await page.goto(origin+'/desktop/widgets.html?widget='+encodeURIComponent(id),{waitUntil:'domcontentloaded'});
+    assert.equal(await page.locator('.widget-item.is-target').count(),0);
+    assert.equal(await page.evaluate(()=>localStorage.getItem('ds_layout_v14')),null);
+  }
+  assert.deepEqual(errors,[]);
+  await ctx.close();pass('inherited names are rejected');
+}
+
 // ---- B: three-way cross links ----
 {
   const errors=[];const {ctx,page}=await newPage(390,errors);
@@ -114,6 +142,7 @@ for(const id of WIDGET_IDS){
   await studioRow.click();
   await page.waitForURL(/theme-studio\/theme-studio\.html/);
   assert.ok(page.url().includes('theme-studio/theme-studio.html'),'storefront routes to studio');
+  assert.deepEqual(errors,[]);
   await ctx.close();pass('storefront -> studio entry navigates');
 }
 {
@@ -125,14 +154,30 @@ for(const id of WIDGET_IDS){
   assert.match(await storeLink.innerText(),/主题商城/);
   const beautyLink=page.locator('.utilities a[href="../beauty/beauty.html"]');
   assert.equal(await beautyLink.count(),1,'studio keeps beauty centre link');
-  await ctx.close();pass('studio -> storefront / beauty links present');
+  await storeLink.click();
+  await page.waitForURL(/theme-store\/theme-store\.html/);
+  await page.waitForSelector('.sf-product');
+  await page.goBack({waitUntil:'domcontentloaded'});
+  await page.waitForURL(/theme-studio\/theme-studio\.html/);
+  await beautyLink.click();
+  await page.waitForURL(/beauty\/beauty\.html/);
+  assert.deepEqual(errors,[]);
+  await ctx.close();pass('studio -> storefront / beauty links navigate');
 }
 {
   const errors=[];const {ctx,page}=await newPage(390,errors);
   await page.goto(origin+'/beauty/beauty.html',{waitUntil:'load'});
   await page.waitForTimeout(300);
-  assert.equal(await page.locator('a[href="../theme-store/theme-store.html"]').count(),1,'beauty centre links to storefront');
-  await ctx.close();pass('beauty centre -> storefront link present');
+  const storeLink=page.locator('a[href="../theme-store/theme-store.html"]');
+  assert.equal(await storeLink.count(),1,'beauty centre links to storefront');
+  await storeLink.click();
+  await page.waitForURL(/theme-store\/theme-store\.html/);
+  await page.waitForSelector('.sf-product');
+  await page.locator('[data-category="categories"]').click();
+  await page.locator('[data-sf="category"][data-id="beauty"]').click();
+  await page.waitForURL(/beauty\/beauty\.html/);
+  assert.deepEqual(errors,[]);
+  await ctx.close();pass('beauty centre and storefront navigate both directions');
 }
 
 // ---- D: three-viewport overflow, no page errors ----

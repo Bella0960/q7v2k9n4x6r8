@@ -398,7 +398,7 @@
           if (typeof location === 'undefined' || typeof URLSearchParams === 'undefined') return;
           var params = new URLSearchParams(location.search || '');
           var id = params.get('widget');
-          if (!id || !catalogById[id]) return;
+          if (!id || !Object.prototype.hasOwnProperty.call(catalogById, id)) return;
           var target = listEl.querySelector('[data-widget="' + id + '"]');
           if (!target) return;
           var reduce = !!(window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches);
@@ -406,7 +406,7 @@
           target.classList.add('is-target');
           window.setTimeout(function () {
             target.classList.remove('is-target');
-          }, reduce ? 0 : 1600);
+          }, 1600);
         }
 
         render();
