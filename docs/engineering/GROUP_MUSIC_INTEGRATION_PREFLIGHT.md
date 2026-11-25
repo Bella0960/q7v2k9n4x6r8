@@ -84,3 +84,11 @@
 5. 运行现有标准 Node/Vite/Chromium 门禁；音频导入/备份、群与角色隔离、真实播放及请求检查。设备 Android/iPhone 未实测；不能用桌面 Chromium 冒充。最终线上 release 必须另经用户授权、固定 qa-only 入口并读取真实回执。
 
 当前本地 git 无法解析 github.com，未执行真实 git merge-tree；不生成虚假无冲突结论。没有变更产品代码、数据格式、main、原 PR 或运行中的 QA。
+
+## 复验与主线三方补充
+
+
+### 2026-11-26 · GROUP-MUSIC-001 M07 / scoped M08 acceptance and M09 baseline verification
+- Exact candidate 16cd7299065650ff74ee40f38d7f5e66702ebfec, fixed request 56dca1d7d67f1f79b6a05a6a6e759d734839c4d3, run 45681440014, job 139442721403: success. Logs show regression, post-test-guard and explicit isolated candidate validation passed/no deployment. The subsequent 1076ec2 changed only two docs; no product changes. No duplicate verify. Mark M07 and the tested scoped M08 music fixes accepted, not all 66 group issues. Physical Android/iPhone still unverified.
+- Authorized read-only Cloudflare Workers API: maomao-aw-qa-20261114 current deployment 521bfe85-9d75-41bf-8615-e8ad13e06ce5, 100% version e9230574-72ca-4a3e-acd1-4347c4bfc147, Worker version number 171; created 2026-11-25T08:32:30Z, corroborates historical QA release 45575895130 (4165804, upload/origin-check). This is control-plane evidence, NOT independent pwa-release.json or qa-build-receipt.json. Web and container both failed live receipt retrieval; container GitHub DNS still unavailable. No Cloudflare write, no deployment.
+- Full three-way tree comparison from merge base a5415d7e28280fd07cea4d02e19e87d9ec36083e, latest main 7f666f1, current 1076ec2: 54 main-side changed paths not identical to candidate; 16 only-main, 38 both changed. This is blob classification, not line conflicts. Shared chat/music/storage/worker and release scripts must not be blindly replaced. Record explicit paths and integration hold in preflight. Do not merge main or PR #529; no new test environment. Next: reconcile current live receipt and approved QA baseline, confirm main-side retained changes in actual integration, then device/QA release with owner approval. No new product code changes this turn.
