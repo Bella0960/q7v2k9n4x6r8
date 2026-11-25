@@ -68,17 +68,16 @@ button.overview-entry:hover{background:#fafafa}
 .overview-disclaimer{font-size:10px;line-height:1.75;color:#a3a2a7;margin:11px 2px 0}
 .overview-tools-head{margin-top:34px}
 .overview-shortcuts{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px;margin-bottom:7px}
-.overview-shortcuts>button,.overview-shortcuts>.overview-cloud-link{
-  display:grid;grid-template-columns:minmax(0,1fr);grid-template-rows:auto auto auto;
+.overview-shortcuts>button,.overview-shortcuts>a{
+  display:grid;grid-template-columns:minmax(0,1fr);grid-template-rows:auto auto;
   min-width:0;align-content:center;gap:4px 10px;position:relative;
-  min-height:122px;padding:17px 19px;border:1px solid #e8e8eb;border-radius:15px;
+  min-height:72px;padding:17px 19px;border:1px solid #e8e8eb;border-radius:15px;
   background:#fff;text-align:left;color:inherit;text-decoration:none;
   transition:border-color .16s ease,background .16s ease;
 }
-.overview-shortcuts>button:hover,.overview-shortcuts>.overview-cloud-link:hover{background:#fcfcfc;border-color:#d6d6d9}
-.overview-shortcut-no{grid-column:1;grid-row:1;font:11px/1 var(--editorial-serif);letter-spacing:.05em;color:#b0afb4}
-.overview-shortcuts strong{grid-column:1;grid-row:2;margin-top:7px;font-size:13px;font-weight:640;color:#29292d;letter-spacing:-.015em}
-.overview-shortcuts small{grid-column:1;grid-row:3;font-size:10px;color:#9a999f;line-height:1.6}
+.overview-shortcuts>button:hover,.overview-shortcuts>a:hover{background:#fcfcfc;border-color:#d6d6d9}
+.overview-shortcuts strong{grid-column:1;grid-row:1;font-size:13px;font-weight:640;color:#29292d;letter-spacing:-.015em}
+.overview-shortcuts small{grid-column:1;grid-row:2;font-size:10px;color:#9a999f;line-height:1.6}
 .overview-shortcuts :is(button,a):focus-visible,.overview-entry:focus-visible,.overview-period:focus-visible,.overview-text-link:focus-visible,.overview-more:focus-visible,.overview-plain-action:focus-visible{
   outline:2px solid #404045;outline-offset:3px;
 }
@@ -99,7 +98,7 @@ button.overview-entry:hover{background:#fafafa}
   .overview-section-head h3{font-size:22px}
   .overview-connection>div{padding:2px 12px}
   .overview-connection span,.overview-connection strong{font-size:10px}
-  .overview-shortcuts>button,.overview-shortcuts>.overview-cloud-link{min-height:116px;padding:15px 14px}
+  .overview-shortcuts>button,.overview-shortcuts>a{min-height:70px;padding:15px 14px}
   .overview-shortcuts strong{font-size:12px}
 }
 @media(max-width:380px){
@@ -117,9 +116,9 @@ button.overview-entry:hover{background:#fafafa}
   .overview-connection strong{font-size:9px;gap:4px}
   .overview-connection strong::before{width:5px;height:5px;flex-basis:5px}
   .overview-shortcuts{gap:8px}
-  .overview-shortcuts>button,.overview-shortcuts>.overview-cloud-link{padding:12px 12px;min-height:114px}
+  .overview-shortcuts>button,.overview-shortcuts>a{padding:12px 12px;min-height:68px}
   .overview-entry{padding:13px 14px}
 }
 @media(prefers-reduced-motion:reduce){
-  .overview-entry,.overview-shortcuts>button,.overview-shortcuts>.overview-cloud-link{transition:none}
+  .overview-entry,.overview-shortcuts>button,.overview-shortcuts>a{transition:none}
 }

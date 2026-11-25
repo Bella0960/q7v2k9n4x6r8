@@ -332,6 +332,7 @@
     const invitesVerified = !invitePageError &&
       validOverviewSummary(inviteSummary, ['total', 'pending', 'used', 'expired', 'revoked']);
 
+    $('overviewTotalCount').textContent = accountsVerified ? String(accountSummary.total) : '—';
     $('overviewPendingCount').textContent = accountsVerified ? String(accountSummary.pending) : '—';
     $('overviewActiveCount').textContent = accountsVerified ? String(accountSummary.active) : '—';
     $('overviewRestrictedCount').textContent = accountsVerified ? String(accountSummary.restricted) : '—';
