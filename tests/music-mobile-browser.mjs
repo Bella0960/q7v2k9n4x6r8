@@ -8,13 +8,14 @@ import { spawn } from 'node:child_process';
 import { mkdtemp, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
+import { fileURLToPath } from 'node:url';
 import { chromium } from 'playwright';
 
 const PORT = Number(process.env.MUSIC_QA_PORT || 34273);
 const BASE = 'http://127.0.0.1:' + PORT + '/music/music.html';
 const widths = [375, 390, 430];
 const png = Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+jxGkAAAAASUVORK5CYII=', 'base64');
-function makeWav() {
+function makeWav(frequency = 220) {
   const sampleRate = 8000, frames = 8000;
   const buf = Buffer.alloc(44 + frames * 2);
   buf.write('RIFF', 0); buf.writeUInt32LE(buf.length - 8, 4); buf.write('WAVE', 8);
@@ -23,7 +24,7 @@ function makeWav() {
   buf.writeUInt32LE(sampleRate * 2, 28); buf.writeUInt16LE(2, 32);
   buf.writeUInt16LE(16, 34); buf.write('data', 36); buf.writeUInt32LE(frames * 2, 40);
   for (let i = 0; i < frames; i++)
-    buf.writeInt16LE(Math.round(Math.sin(i * 2 * Math.PI * 220 / sampleRate) * 1400), 44 + i * 2);
+    buf.writeInt16LE(Math.round(Math.sin(i * 2 * Math.PI * frequency / sampleRate) * 1400), 44 + i * 2);
   return buf;
 }
 async function waitPreview(processHandle) {
@@ -92,7 +93,7 @@ try {
       assert.equal(importPicker.isMultiple(), true, 'settings must accept multiple local audio files');
       await importPicker.setFiles([
         { name: 'QA 轻声.wav', mimeType: 'audio/wav', buffer: makeWav() },
-        { name: 'QA 第二首.wav', mimeType: 'audio/wav', buffer: makeWav() }
+        { name: 'QA 第二首.wav', mimeType: 'audio/wav', buffer: makeWav(330) }
       ]);
       await page.waitForFunction(() => {
         try { return JSON.parse(localStorage.getItem('music_local_tracks') || '[]').length === 2; }
@@ -156,6 +157,62 @@ try {
       }, trackId, { timeout: 10000 });
       assert.equal(await thumbnail.locator('img').count(), 1,
         'recent-play list must display uploaded original cover');
+      // M03 integration: consume real imported bytes from a fresh same-origin
+      // document, without seeding or copying catalog records into the reader.
+      // The existing account-isolated catalog browser test remains separate.
+      await page.waitForFunction(() => {
+        const rows = JSON.parse(localStorage.getItem('music_local_tracks') || '[]');
+        return rows.length === 2 && rows.every(t => Number(t.durSec) > 0);
+      }, null, { timeout: 15000 });
+      const original = await page.evaluate(() => ({
+        catalog: localStorage.getItem('music_local_tracks'),
+        covers: localStorage.getItem('music_cover_assets_v1')
+      }));
+      const readerUrl = new URL('/__test_music_catalog_reader__', BASE).href;
+      const readerRoute = route => route.fulfill({
+        contentType: 'text/html; charset=utf-8',
+        body: '<!doctype html><meta charset="utf-8"><title>Catalog test reader</title>'
+      });
+      await context.route(readerUrl, readerRoute);
+      const reader = await context.newPage();
+      try {
+        await reader.goto(readerUrl, {waitUntil: 'domcontentloaded'});
+        for (const file of ['group-write-guard.js', 'music-catalog-adapter.js']) {
+          await reader.addScriptTag({path: fileURLToPath(new URL('../shared/js/phone/' + file, import.meta.url))});
+        }
+        const result = await reader.evaluate(async () => {
+          const adapter = window.MAOMusicCatalogAdapter;
+          const listing = adapter.listTracks();
+          if (!listing.ok) throw Error('catalog adapter: ' + listing.code);
+          const audio = [];
+          for (const track of listing.tracks) {
+            const resolved = await adapter.resolveSource(track.id);
+            if (!resolved.ok) throw Error('resolveSource: ' + resolved.code);
+            audio.push({id: resolved.track.id, mime: resolved.source.mimeType,
+              bytes: Array.from(new Uint8Array(await resolved.source.blob.arrayBuffer()))});
+          }
+          return {tracks: listing.tracks, warnings: listing.warnings, audio,
+            catalog: localStorage.getItem('music_local_tracks'),
+            covers: localStorage.getItem('music_cover_assets_v1')};
+        });
+        const rows = JSON.parse(original.catalog), covers = JSON.parse(original.covers);
+        assert.deepEqual(result.warnings, []);
+        assert.deepEqual(result.tracks.map(t => t.id), rows.map(t => t.id));
+        assert.deepEqual(result.tracks.map(t => t.name), ['QA 轻声', 'QA 第二首']);
+        assert.equal(result.tracks.find(t => t.id === trackId).coverAssetId, covers[trackId]);
+        assert.equal(result.tracks.find(t => t.id !== trackId).coverAssetId, null);
+        for (const [index, audio] of result.audio.entries()) {
+          assert.equal(audio.id, rows[index].id);
+          assert.match(audio.mime, /^audio\//);
+          assert.deepEqual(Buffer.from(audio.bytes), makeWav(index === 0 ? 220 : 330),
+            'reader must retrieve original imported audio for the exact track ID');
+        }
+        assert.equal(result.catalog, original.catalog, 'catalog reader must not rewrite imports');
+        assert.equal(result.covers, original.covers, 'catalog reader must not rewrite covers');
+      } finally {
+        await reader.close();
+        await context.unroute(readerUrl, readerRoute);
+      }
       await page.locator('#lyricsUpload').setInputFiles({
         name: 'sample.lrc', mimeType:'text/plain',
         buffer: Buffer.from('[00:00.00]第一句\n[00:00.50]第二句\n')

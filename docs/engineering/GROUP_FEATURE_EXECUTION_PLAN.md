@@ -80,3 +80,6 @@ M02 历史记录：M02 独立原型：`previews/group-listening-preview.html`，
 
 ### 2026-11-25 · GROUP-MUSIC-001 M03a official music sources
 Owner explicitly requested one shared music catalog and NetEase/QQ source channels. Existing import writes music_local_tracks and maomao-media-store/audio, exactly the existing adapter's inputs. Independent external handoff in existing music settings; full known official song/playlist URLs only, canonicalized, no credential handling, remote fetch, persistence, media extraction, or in-app playback claim. Short links, provider SDK licensing and authorized playback remain open. QQ official H5 SDK documented for IoT panels; general PWA eligibility not verified. No changes to local music library, data schema, chat, or QA. Inline script parsed; initial parser Node fixture 19/19 before final malformed-fragment hardening; final repository test added, not yet run. Container GitHub DNS failed; direct contents write failed, use Git tree commit. M03 actual IDB/browser gate remains open; M04 not started.
+
+### M03 真实导入联动验收（2026-11-26）
+- 在原有 `tests/music-mobile-browser.mjs` 中补齐真实文件选择器导入 → 刷新 → 独立同源曲库读取器 → 原始音频逐字节核对、封面归属与只读验证。两个不同合成 WAV 音频验证 ID 不串，375/390/430px；另保留独立双账号真实 IndexedDB 验收。不新增生产入口或播放器。代码已编写，实际 Chromium 未验证，M03 不结项。
