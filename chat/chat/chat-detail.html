@@ -5752,7 +5752,8 @@
                 const rawProfile = localStorage.getItem('myProfile');
                 if (rawProfile) myProfile = JSON.parse(rawProfile) || {};
             } catch (e) {}
-            const userName = (myProfile.nickname || '').trim() || '未知';
+            const groupNickname = isGroupChat && currentGroup && currentGroup.preferences && typeof currentGroup.preferences.myNickname==='string' ? currentGroup.preferences.myNickname.trim() : '';
+            const userName = groupNickname || (myProfile.nickname || '').trim() || '未知';
             // 把用户人设拆成结构化字段，拼给 AI
             const userFacts = [];
             if (myProfile.age) userFacts.push('年龄：' + myProfile.age + '岁');
