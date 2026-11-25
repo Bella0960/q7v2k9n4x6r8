@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import vm from 'node:vm';
 const source = readFileSync(new URL('../shared/js/theme-studio-runtime.js',import.meta.url),'utf8');
-function boot(path='/chat/chat/chat.html',storage=new Map()){
+function boot(path='/chat/chat/chat.html',storage=new Map(),href){
   const attrs={};const styles=new Map();
   const shell={
     setAttribute(k,v){attrs[k]=v;},
@@ -12,9 +12,10 @@ function boot(path='/chat/chat/chat.html',storage=new Map()){
   };
   const callbacks={};
   const context={
+    URL,
     localStorage:{getItem(k){return storage.has(k)?storage.get(k):null;},
       setItem(k,v){storage.set(k,v);}},
-    location:{pathname:path},
+    location:{pathname:path,href:href||('http://localhost'+path)},
     document:{readyState:'complete',querySelector(s){return s==='.phone-mockup'?shell:null;}},
     addEventListener(k,cb){callbacks[k]=cb;}
   };
@@ -62,6 +63,34 @@ test('legacy beauty keys and role settings are never written by studio adapter',
   assert.deepEqual([...s.storage.keys()],['maomao_theme_studio_v1']);
 });
 
+test('beauty marker reflects only explicit bubble overrides, not avatar/backdrop/preset',()=>{
+  // Global holds only non-bubble fields: avatar, backdrop, legacy preset metadata.
+  const nonBubble=new Map();
+  nonBubble.set('beauty_chat_global_v1',JSON.stringify({v:1,vars:{avatarSize:40,avatarRadius:30,chatBg:'#111111',themePreset:'imessage',messageTimeColor:'#888888'}}));
+  const d1=boot('/chat/chat/chat-detail.html',nonBubble,'http://localhost/chat-detail.html?id=role-a');
+  assert.equal(d1.attrs['data-ts-beauty'],undefined,'non-bubble global fields must not raise the beauty marker');
+
+  // Explicit global bubble customization raises the marker.
+  const globalBubble=new Map();
+  globalBubble.set('beauty_chat_global_v1',JSON.stringify({v:1,vars:{partnerBubbleBg:'#333333',myBubbleBg:'#222222'}}));
+  const d2=boot('/chat/chat/chat-detail.html',globalBubble,'http://localhost/chat-detail.html?id=role-a');
+  assert.equal(d2.attrs['data-ts-beauty'],'1','global bubble override raises the beauty marker');
+
+  // Per-role A only: A carries the marker, B falls back to no marker without inheriting A.
+  const roleOnly=new Map();
+  roleOnly.set('beauty_chat_role-a',JSON.stringify({v:1,vars:{myBubbleBg:'#444444'}}));
+  const a=boot('/chat/chat/chat-detail.html',roleOnly,'http://localhost/chat-detail.html?id=role-a');
+  const b=boot('/chat/chat/chat-detail.html',roleOnly,'http://localhost/chat-detail.html?id=role-b');
+  assert.equal(a.attrs['data-ts-beauty'],'1','role-a bubble override raises marker on A');
+  assert.equal(b.attrs['data-ts-beauty'],undefined,'role-b without override does not inherit A marker');
+
+  // Empty / null / empty-array bubble values do not count as a saved override.
+  const emptyVals=new Map();
+  emptyVals.set('beauty_chat_global_v1',JSON.stringify({v:1,vars:{myBubbleBg:'',partnerBubbleColor:null,myBubbleDecorations:[]}}));
+  const d3=boot('/chat/chat/chat-detail.html',emptyVals,'http://localhost/chat-detail.html?id=role-a');
+  assert.equal(d3.attrs['data-ts-beauty'],undefined,'empty/null bubble values must not raise the marker');
+});
+
 test('phone viewport and safe-area layout exist without a separate desktop app',()=>{
   const html=readFileSync(new URL('../theme-studio/theme-studio.html',import.meta.url),'utf8');
   const css=readFileSync(new URL('../theme-studio/studio.css',import.meta.url),'utf8');
@@ -91,6 +120,10 @@ test('runtime CSS is opt-in and scoped to native chat pages',()=>{
   const css=readFileSync(new URL('../shared/css/theme-studio-runtime.css',import.meta.url),'utf8');
   assert.match(css,/data-ts-list="1"/);
   assert.match(css,/data-ts-detail="1"/);
+  // Beauty bubble rules must leave media and payment bubbles untouched.
+  const beautyBlock=css.slice(css.indexOf('data-ts-beauty="1"'));
+  assert.match(beautyBlock,/:not\(\.bubble-pay\)/);
+  assert.match(beautyBlock,/:not\(\.bubble-media\)/);
   assert.doesNotMatch(css,/(group-composer|group-settings|groupModal)/);
   const launcher=readFileSync(new URL('../index.html',import.meta.url),'utf8');
   assert.match(launcher,/data-drag="app_theme_studio"/);
