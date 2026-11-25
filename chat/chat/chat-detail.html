@@ -29,7 +29,7 @@
     <script src="../../shared/js/phone/image-generation.js?v=20261106v1"></script>
     <script src="../../shared/js/phone/role-gallery-image-autonomy.js?v=20261111v2"></script>
     <script src="../../shared/js/phone/role_family_cards.js?v=20261028v3"></script>
-    <script src="../../shared/js/phone/memory_recall.js?v=20261126memoryruntime1"></script>
+    <script src="../../shared/js/phone/memory_recall.js?v=20261126memoryruntime2"></script>
     <script src="../../shared/js/phone/phone_stream.js?v=20261121global2"></script>
     <script src="../../shared/js/phone/chat-message-policy.js?v=20261029v5"></script>
     <script src="../../shared/js/phone/chat-send-policy.js?v=20261029v2"></script>
@@ -7080,6 +7080,7 @@
                 }
             }
 
+            let historicalRecallGuard = null;
             // Search older saved conversation locally. This adds no separate API call and only
             // injects a few relevant source excerpts when the current message matches.
             if (window.MemoryRecall && typeof window.MemoryRecall.buildHistoricalRecallText === 'function') {
@@ -7121,7 +7122,55 @@
                 if (isGroupChat) recallOptions.groupPublicOnly = true;
                 if (isGroupChat) recallOptions.groupMembers =
                     currentGroup && Array.isArray(currentGroup.members) ? currentGroup.members : [];
-                const recalledText = window.MemoryRecall.buildHistoricalRecallText(recallableHistory, recallQuery, recallOptions);
+                let recalledText = '';
+                if (isGroupChat) {
+                    // Keep the existing separately scoped group path.
+                    recalledText = window.MemoryRecall.buildHistoricalRecallText(recallableHistory, recallQuery, recallOptions);
+                } else if (typeof window.MemoryRecall.recallForModelHistory === 'function') {
+                    const account = window.__MAO_ACCOUNT_SCOPE__;
+                    const rawBaseline = _chatHistoryBaselines.get(historyList);
+                    const roleId = String(roleForTurn.id);
+                    const initialHref = window.location.href;
+                    let archiveSnapshot = null;
+                    try {
+                        if (_storage && typeof _storage.getMemoryArchive === 'function') archiveSnapshot = JSON.stringify(_storage.getMemoryArchive(roleId));
+                    } catch (_) {}
+                    historicalRecallGuard = function () {
+                        try {
+                            return account && account.ready === true && window.__MAO_ACCOUNT_SCOPE__ === account &&
+                                window.location.href === initialHref && String(currentCharacter.id) === roleId &&
+                                storageKey === 'chat_history_' + roleId && typeof rawBaseline === 'string' &&
+                                localStorage.getItem(storageKey) === rawBaseline &&
+                                JSON.stringify(getRoleById(roleId)) === JSON.stringify(roleForTurn) &&
+                                archiveSnapshot !== null && JSON.stringify(_storage.getMemoryArchive(roleId)) === archiveSnapshot;
+                        } catch (_) { return false; }
+                    };
+                    let allowExtended = false;
+                    try {
+                        const archive = JSON.parse(archiveSnapshot);
+                        allowExtended = Array.isArray(archive.hidden) && archive.hidden.length === 0 &&
+                            !isRegen && !retryTarget && !contextOnly && !silent;
+                    } catch (_) {}
+                    // The authoritative model projection already respects role
+                    // identity and retry/regeneration exclusions. Never index raw storage.
+                    if (historicalRecallGuard()) {
+                        const recallResult = await window.MemoryRecall.recallForModelHistory(recallableHistory, recallQuery, recallOptions, {
+                            scope: { kind:'role', accountId:String(account.accountId), conversationId:roleId, revision:'current-turn' },
+                            isCurrent:historicalRecallGuard, allowExtended:allowExtended
+                        });
+                        if (!recallResult.ok || !historicalRecallGuard()) {
+                            stopForMissingRoleSource('recall-source-changed', '历史记录或角色资料已变化，本轮已停止');
+                            return;
+                        }
+                        recalledText = recallResult.text;
+                    } else {
+                        // Unverified or legacy-only sources do not enter the new index.
+                        historicalRecallGuard = null;
+                    }
+                } else {
+                    // Older cached engine: preserve existing bounded recall, never start an index.
+                    recalledText = window.MemoryRecall.buildHistoricalRecallText(recallableHistory, recallQuery, recallOptions);
+                }
                 if (recalledText) apiMessages[0].content += '\n\n' + recalledText;
             }
 
@@ -7248,6 +7297,10 @@
                 scrollToBottom(true);
             }
 
+            if (historicalRecallGuard && !historicalRecallGuard()) {
+                stopForMissingRoleSource('recall-source-changed', '历史记录已更新，本轮已停止');
+                return;
+            }
             // Final delivery barrier: verify what the model will actually receive.
             // This is intentionally AFTER context selection / memory retrieval / history
             // mapping, and BEFORE calling PhoneStream. No generic fallback is allowed.
