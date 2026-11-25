@@ -1291,18 +1291,31 @@
         return '';
     }
 
+    function captureRestoreBaseline() {
+        var out = Object.create(null);
+        var keys = Object.keys(localStorage);
+        for (var k of keys) {
+            var value = localStorage.getItem(k);
+            if (typeof value !== 'string') throw new Error('unreadable local snapshot');
+            out[k] = value;
+        }
+        if (Object.keys(localStorage).length !== keys.length) throw new Error('local snapshot changed');
+        return out;
+    }
+
     function restoreOutcomeComplete(incoming, current, scope, expectedCounts, outcomes, secretRes, dbFailed, dbSkippedBlob) {
         if (secretRes.failed || dbFailed.length || dbSkippedBlob) return false;
         try {
             for (var k of Object.keys(incoming)) {
                 if (localStorage.getItem(k) !== incoming[k]) return false;
             }
-            if (!scope) {
-                for (var k of Object.keys(current)) {
-                    if ((neverBackupKey(k) || SECRET_KEYS.indexOf(k) >= 0) &&
-                        !Object.prototype.hasOwnProperty.call(incoming,k) &&
-                        localStorage.getItem(k) !== current[k]) return false;
-                }
+            var registry = scope ? backupRegistry() : null;
+            if (scope && !registry) return false;
+            for (var k of Object.keys(current)) {
+                if (Object.prototype.hasOwnProperty.call(incoming,k)) continue;
+                var retain = neverBackupKey(k) || SECRET_KEYS.indexOf(k) >= 0 ||
+                    (scope && !registry.belongsTo(scope,k));
+                if (localStorage.getItem(k) !== (retain ? current[k] : null)) return false;
             }
             for (var name of Object.keys(expectedCounts)) {
                 var result = outcomes[name];
@@ -1367,7 +1380,14 @@
                   + (idbTotal ? '，IndexedDB ' + idbTotal + ' 项' : '') + '）' + label
                   + '。\\n\\n当前数据会先自动导出一份安全备份，localStorage 导入失败会自动回滚。确定继续？';
             var account = window.__MAO_ACCOUNT_SCOPE__;
-            var preview = snapshot(false,false,true);
+            var accountMeta = document.querySelector('meta[name="mao-account-id"]');
+            if ((accountMeta || account) && (!account || account.ready !== true ||
+                (accountMeta && account.accountId !== String(accountMeta.content || '').trim()))) {
+                toast('账号存储尚未就绪，已阻止恢复'); return;
+            }
+            var preview;
+            try { preview = captureRestoreBaseline(); }
+            catch (_) { toast('本机存储读取不完整，已阻止恢复'); return; }
             var registry = backupRegistry();
             var deleted = Object.keys(preview).filter(function(k) {
                 return !neverBackupKey(k) && SECRET_KEYS.indexOf(k) < 0 &&
@@ -1382,7 +1402,7 @@
             function stillCurrent() {
                 try {
                     if (window.__MAO_ACCOUNT_SCOPE__ !== account) return false;
-                    var now = snapshot(false,false,true);
+                    var now = captureRestoreBaseline();
                     return Object.keys(now).length === Object.keys(preview).length &&
                         Object.keys(preview).every(function(k) { return now[k] === preview[k]; });
                 } catch (_) { return false; }
@@ -1392,7 +1412,7 @@
             // 1. 建立本机恢复点：把当前 localStorage 快照写入独立 IndexedDB，
             //    写完立即读回并用 verifyRestore 对 localStorage 实际内容做校验。
             //    恢复点 DB 独立于三个业务库的 version，localStorage.clear() 炸不到它。
-            var current = snapshot(false, false, true);
+            var current = preview;
             var rpSnap = null;       // 从恢复点读回的真正快照
             var rpReady = false;
             try {
