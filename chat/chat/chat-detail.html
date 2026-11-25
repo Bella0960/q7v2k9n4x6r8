@@ -5243,7 +5243,7 @@
         window.addEventListener('pagehide', function () {
             try {
                 if (!aiSending || !inflightSnapshot || singleChatPartialSaved) return;
-                if(isGroupChat&&(!window.MAOGroupWriteGuard.matches(inflightSnapshot.groupScope,inflightSnapshot.memberId)))return;
+                if(isGroupChat&&(!window.MAOGroupWriteGuard.matches(inflightSnapshot.groupScope,inflightSnapshot.memberId)||!singleChatTurnIsCurrent(inflightSnapshot.historyList)))return;
                 var raw = String(inflightSnapshot.text || '').trim();
                 if (!raw) return;
                 var cleaned = stripInternalReasoning(raw)
@@ -6473,7 +6473,7 @@
                 }
             }
 
-            if(isGroupChat&&(!groupReplyPick||!window.MAOGroupWriteGuard.matches(groupTurnScope,String(groupReplyPick.id))||!singleChatTurnIsCurrent(historyList))){
+            if(isGroupChat&&(!groupReplyPick||groupReplyPick.id==null||!window.MAOGroupWriteGuard.matches(groupTurnScope,String(groupReplyPick.id))||!singleChatTurnIsCurrent(historyList))){
                 showToast('群成员或记录已变化，本轮已取消');return;
             }
             // 界面反馈：显示"对方正在输入..."状态（底部 loading + 顶部 header 切换）
@@ -6522,6 +6522,7 @@
                     })(),
                     voiceMode: presenceMode || 'online',
                     groupScope: groupTurnScope,
+                    historyList: isGroupChat ? historyList : null,
                     groupName: groupReplyPick ? groupReplyPick.name : undefined,
                     memberId: groupReplyPick && groupReplyPick.id != null ? String(groupReplyPick.id) : undefined
                 };
@@ -6609,7 +6610,7 @@
             const loadingEl2 = document.getElementById(statusId);
             if (loadingEl2) loadingEl2.remove();
 
-            if(isGroupChat&&(!groupReplyPick||!window.MAOGroupWriteGuard.matches(groupTurnScope,String(groupReplyPick.id))||!singleChatTurnIsCurrent(historyList))){
+            if(isGroupChat&&(!groupReplyPick||groupReplyPick.id==null||!window.MAOGroupWriteGuard.matches(groupTurnScope,String(groupReplyPick.id))||!singleChatTurnIsCurrent(historyList))){
                 streamNodes.forEach(function(node){if(node&&node.parentNode)node.parentNode.removeChild(node);});
                 if(_vl)_vl.streaming=false;
                 inflightSnapshot=null;aiSending=false;groupAutoFollowupToken+=1;
@@ -6972,6 +6973,11 @@
                             window.__groupPrivateCardPending = false;
                             renderAllMessages();
                         }
+                    }
+                    if(isGroupChat&&(!readPageGroup()||!singleChatTurnIsCurrent(historyList))){
+                        inflightSnapshot=null;aiSending=false;groupAutoFollowupToken+=1;
+                        if(chatTitleEl)chatTitleEl.textContent=originalTitleText;
+                        return;
                     }
                     if (parsedCall.wantCall) {
                         // 只有聊天卡片持久化成功，才允许触发自动来电跳转。
