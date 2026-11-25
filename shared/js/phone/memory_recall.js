@@ -481,11 +481,27 @@
       return found.ok ? result(formatRecallMatches(found.matches,query,options),'indexed') : result('',found.reason);
     } finally { index.dispose(); }
   }
+  // Keep the public memory review API stable while delegating the actual
+  // transition to the storage layer. No fallback to generic writes.
+  function confirmMemoryCorrection(roleId, expected, replacement, options) {
+    var storage = global.PhoneStorage;
+    if (!storage || typeof storage.reviewMemoryRevision !== 'function') return {ok:false,reason:'storage-unavailable'};
+    if (typeof replacement !== 'string' || replacement.length > 600) return {ok:false,reason:'invalid-content'};
+    var cleaned = cleanText(replacement);
+    if (!cleaned) return {ok:false,reason:'invalid-content'};
+    return storage.reviewMemoryRevision(roleId,'revise',expected,cleaned,options);
+  }
+  function undoMemoryCorrection(roleId, expected, options) {
+    var storage = global.PhoneStorage;
+    if (!storage || typeof storage.reviewMemoryRevision !== 'function') return {ok:false,reason:'storage-unavailable'};
+    return storage.reviewMemoryRevision(roleId,'undo',expected,null,options);
+  }
   global.MemoryRecall = {
     cleanText:cleanText, normalize:normalize, tokensOf:tokensOf,
     getMemories:getMemories, saveMemories:saveMemories, upsertMemory:upsertMemory,
     searchHistoryMessages:searchHistoryMessages, buildHistoricalRecallText:buildHistoricalRecallText,
     memoryValue:memoryValue, appendPendingSummary:appendPendingSummary,
-    createHistoryIndex:createHistoryIndex, recallForModelHistory:recallForModelHistory
+    createHistoryIndex:createHistoryIndex, recallForModelHistory:recallForModelHistory,
+    confirmMemoryCorrection:confirmMemoryCorrection, undoMemoryCorrection:undoMemoryCorrection
   };
 })(window);
