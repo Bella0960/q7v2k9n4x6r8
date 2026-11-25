@@ -11,7 +11,7 @@ class El {
   emit(k){if(k==='click'&&this.disabled)return;return this.events[k]?.({preventDefault(){}});}
 }
 function fixture(){
-  const ids='setup game start end resume preview-status chat messages message-form message chat-status selection-count board'.split(' ');
+  const ids='setup game start end resume preview-status chat messages message-form message chat-status selection-count board discuss stop-speech speaker'.split(' ');
   const doc={createElement:()=>new El(doc),getElementById:id=>elements[id]},elements=Object.fromEntries(ids.map(id=>[id,new El(doc)]));
   const selected=[{value:'fixture-1',checked:true},{value:'fixture-2',checked:false}];
   elements.setup.querySelectorAll=()=>selected.filter(x=>x.checked);
@@ -35,4 +35,15 @@ test('preview selection, start, real roll, chat feedback and reset work together
   e.end.emit('click');assert.equal(f.confirmations(),1);assert.equal(e.game.hidden,true);assert.equal(e.messages.children.length,0);assert.equal(e.start.disabled,false);
   e.start.emit('click');assert.equal(e.game.hidden,false);assert.equal(e.messages.children.length,0);
   assert.equal(all(e.board,'mao-ludo__action').length,1);
+});
+
+test('preview discussion button shows multiple local speaker identities and does not require AI',async()=>{
+  const f=fixture(),e=f.elements;f.selected[1].checked=true;
+  mountLudoPreview({doc:f.doc,win:f.win,delay:0,rollDie:()=>6});e.start.emit('click');
+  e.discuss.emit('click');
+  for(let i=0;i<20&&e.discuss.disabled;i++)await tick();
+  assert.equal(e.discuss.disabled,false);assert.equal(e['stop-speech'].hidden,true);
+  assert.equal(e.messages.children.length,2);
+  assert.match(e.messages.children[0].textContent,/测试棋手 1：/);assert.match(e.messages.children[1].textContent,/测试棋手 2：/);
+  e.end.emit('click');assert.equal(e.messages.children.length,0);
 });

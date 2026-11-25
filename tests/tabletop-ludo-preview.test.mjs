@@ -27,3 +27,28 @@ test('chat is independent during role pacing and restart discards prior state',a
   r.dispose();release();await assert.rejects(pending,/LUDO_DRIVER_STOPPED/);
   assert.throws(()=>r.messages(),/PREVIEW_DISPOSED/);const fresh=create(2,{roomId:'preview-new'});assert.deepEqual(fresh.messages(),[]);assert.equal(fresh.view().turnSeatId,'user');fresh.dispose();
 });
+
+test('fixture discussion uses ordered real seat identities and visible game context',async()=>{
+  const r=create(4,{rollDie:()=>6});
+  r.send('开始吧');assert.deepEqual(await r.discuss(),{committed:3});
+  const m=r.messages();assert.deepEqual(m.map(x=>x.sender.seatId),['user','role:fixture-1','role:fixture-2','role:fixture-3']);
+  assert.ok(m.slice(1).every(x=>x.text.includes('0 架抵达')));
+  assert.equal(new Set(m.map(x=>x.id)).size,4);r.dispose();
+});
+test('discussion does not block board; stop prevents late reply and next round can run',async()=>{
+  let release;let delayed=true;
+  const r=create(2,{rollDie:()=>6,speechPace:()=>delayed?new Promise(x=>{release=x;}):undefined});
+  const p=r.discuss();while(!release)await Promise.resolve();
+  r.userMove(action(r.view(),{kind:'roll'}));r.userMove(action(r.view(),{kind:'choose',plane:0}));
+  assert.equal(r.view().game.players[0].planes[0].progress,0);
+  await assert.rejects(r.discuss(),/PREVIEW_SPEECH_BUSY/);
+  r.stopSpeech();await assert.rejects(p,/SPEECH_CANCELLED/);release();
+  assert.deepEqual(r.messages(),[]);delayed=false;
+  assert.deepEqual(await r.discuss(),{committed:1});assert.equal(r.messages().length,1);r.dispose();
+});
+test('closing preview cancels discussion, fresh game never receives old reply',async()=>{
+  let release;const r=create(2,{speechPace:()=>new Promise(x=>{release=x;})});
+  const p=r.discuss();while(!release)await Promise.resolve();r.dispose();
+  await assert.rejects(p,/SPEECH_CANCELLED/);release();
+  const next=create(2,{roomId:'preview-next'});assert.deepEqual(next.messages(),[]);next.dispose();
+});

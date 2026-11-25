@@ -20,7 +20,7 @@ h1{font:400 29px/1.2 Georgia,"Songti SC",serif;margin:8px 0 12px}p{margin:8px 0;
 <label><input type="checkbox" name="player" value="fixture-3">测试棋手 3</label>
 </fieldset><p id="selection-count" aria-live="polite"></p><button id="start" type="button" class="primary">开始游戏</button></section>
 <section id="game" hidden><div id="board"></div><div class="toolbar"><button id="resume" type="button" hidden>继续自动回合</button><button id="end" type="button">结束本局</button></div>
-<details id="chat"><summary>游戏聊天</summary><p>此预览仅支持本局发言，不生成角色回复。</p><ul id="messages" aria-live="polite"></ul><form id="message-form"><input id="message" aria-label="游戏发言" maxlength="1000" autocomplete="off" placeholder="说点什么"><button type="submit">发送</button></form><p id="chat-status" role="status"></p></details></section>
+<details id="chat"><summary>游戏聊天</summary><p>本地规则演示回复，不使用真实角色人设或 AI 服务。</p><ul id="messages" aria-live="polite"></ul><form id="message-form"><input id="message" aria-label="游戏发言" maxlength="1000" autocomplete="off" placeholder="说点什么"><button type="submit">发送</button></form><div class="toolbar"><button id="discuss" type="button">讨论棋局</button><button id="stop-speech" type="button" hidden>停止</button></div><p id="speaker" role="status"></p><p id="chat-status" role="status"></p></details></section>
 <p id="preview-status" role="status"></p>
 <details><summary>玩法</summary><p>每人四架飞机，掷六点起飞并再掷一次。选择可移动的飞机，同色格跳跃，特殊格飞行，落点碰撞对手返回停机区。终点需要准确抵达，超出则反弹。四架飞机全部抵达即获胜。当前为暂定规则。</p></details>
 </main><script type="module" src="./ludo-preview-page.js"></script></body></html>
