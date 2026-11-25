@@ -374,6 +374,59 @@ try {
         await page.evaluate(()=>{musicPauseNative();musicDiscardAudioSource();window.audio.loop=false;});
         assert.deepEqual(peerErrors,[]);
       } finally {if(!peer.isClosed())await peer.close();}
+      // M05: isolated same-origin group session using real imported music,
+      // actual group permissions, actual Web Locks and HTMLAudioElement.
+      const groupReader=await context.newPage(), groupErrors=[];
+      groupReader.on('pageerror',err=>groupErrors.push(err.message));
+      await context.route(readerUrl,readerRoute);
+      try{
+        await groupReader.goto(readerUrl,{waitUntil:'domcontentloaded'});
+        for(const file of ['group-write-guard.js','music-catalog-adapter.js','music-playback-controller.js','group-listening-session.js']){
+          await groupReader.addScriptTag({path:fileURLToPath(new URL('../shared/js/phone/'+file,import.meta.url))});
+        }
+        await groupReader.addScriptTag({path:fileURLToPath(new URL('../shared/js/group-governance.js',import.meta.url))});
+        const originalGroups=await groupReader.evaluate(()=>localStorage.getItem('phone_groups'));
+        try{
+          await groupReader.evaluate(()=>{
+            localStorage.setItem('phone_groups',JSON.stringify([{id:'gMusicQA',ownerId:'__user',members:[{id:'r1',name:'同名'},{id:'r2',name:'同名'}]}]));
+            const audio=document.createElement('audio');audio.loop=true;document.body.append(audio);
+            window.__testGroupAudio=audio;
+            window.__testGroupSession=window.MAOGroupListeningSession.createForGroup({audio,getGroupId:()=> 'gMusicQA',hasRole:id=>['r1','r2'].includes(id)});
+          });
+          const sessionCheck=await groupReader.evaluate(async id=>{
+            const api=window.__testGroupSession,audio=window.__testGroupAudio;
+            const check=(v,m)=>{if(!v)throw Error(m);};
+            const tracks=window.MAOMusicCatalogAdapter.listTracks().tracks.map(t=>t.id);
+            let s=api.start().snapshot;check(s.status==='selecting','selecting');
+            s=api.setQueue(s,tracks).snapshot;s=api.selectTrack(s,id).snapshot;
+            check(!api.join(s,'同名').ok,'nickname must not join');s=api.join(s,'r2').snapshot;
+            check(s.participants.join(',')==='__user,r2','exact participant');
+            s=(await api.play(s)).snapshot;
+            check(s?.playing&&!audio.paused&&audio.currentSrc.startsWith('blob:'),'real group playback');
+            check(!s.roleAudioDelivered&&!s.remoteSynchronized,'no fabricated delivery');
+            s=api.seek(s,audio.duration/2).snapshot;check(Math.abs(s.currentTime-audio.duration/2)<0.15,'native seek');
+            s=api.pause(s).snapshot;check(s.status==='paused'&&audio.paused,'native pause');
+            s=(await api.play(s)).snapshot;check(s?.playing&&!audio.paused,'native resume');
+            return {trackId:s.trackId,participants:s.participants};
+          },trackId);
+          assert.deepEqual(sessionCheck,{trackId,participants:['__user','r2']});
+          assert.equal(await page.evaluate(id=>playTrack(id),trackId),false,'group holds the same native lock');
+          await page.evaluate(()=>{
+            const rows=JSON.parse(localStorage.getItem('phone_groups'));rows[0].members.pop();
+            localStorage.setItem('phone_groups',JSON.stringify(rows));
+          });
+          await groupReader.waitForFunction(()=>window.__testGroupSession.getSnapshot()===null&&window.__testGroupAudio.paused&&!window.__testGroupAudio.getAttribute('src'));
+          await page.waitForFunction(async()=>!(await navigator.locks.query()).held.some(l=>l.name==='maomao-native-music-playback-v1'));
+          assert.equal(await page.evaluate(id=>playTrack(id),trackId),true,'membership invalidation released the shared lock');
+          await page.evaluate(()=>{musicPauseNative();musicDiscardAudioSource();});
+          assert.deepEqual(groupErrors,[]);
+        }finally{
+          await groupReader.evaluate(raw=>{
+            window.__testGroupSession?.destroy();
+            if(raw===null)localStorage.removeItem('phone_groups');else localStorage.setItem('phone_groups',raw);
+          },originalGroups);
+        }
+      }finally{await groupReader.close();await context.unroute(readerUrl,readerRoute);}
       assert.deepEqual(pageErrors, [], 'no uncaught JS errors at ' + width);
       console.log('PASS Chromium ' + width + 'px: viewport, import Blob, reload, playback, cover, LRC, playlist');
     } finally {

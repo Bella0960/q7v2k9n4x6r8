@@ -67,7 +67,8 @@
     function ensure(){
       if(disposed||!session)return false;
       const f=fresh();
-      if(!sameScope(f)||session.participants.some(id=>!eligible(f,id))){
+      if(!sameScope(f)||session.participants.some(id=>!eligible(f,id))||
+        (typeof player.isScopeCurrent==='function'&&!player.isScopeCurrent())){
         invalidate('SCOPE_CHANGED');return false;
       }
       return true;
@@ -111,6 +112,7 @@
       if(session&&ensure()&&session.status!=='ended')return fail('SESSION_EXISTS');
       const f=fresh(),n=native();
       if(!f)return fail('GROUP_UNAVAILABLE');
+      if(typeof player.isScopeCurrent==='function'&&!player.isScopeCurrent())return fail('SCOPE_CHANGED');
       if(!n||n.playing||n.pending||n.trackId!==null)return fail('PLAYER_NOT_IDLE');
       let id;try{id=root.crypto.randomUUID();}catch{return fail('ID_UNAVAILABLE');}
       if(!validId(id))return fail('ID_UNAVAILABLE');
@@ -205,8 +207,9 @@
       busy=false;session.status='ended';session.time=0;session.duration=0;session.error=null;stopTimer();return ok('ended');
     }
     function onPlayer(event){
-      if(!session||busy||!ensure()||session.status==='ended')return;
+      if(!session)return;
       if(event?.type==='scope-lost'){invalidate('SCOPE_CHANGED');return;}
+      if(busy||!ensure()||!session||session.status==='ended')return;
       if(event?.playing&&event.trackId!==session.trackId){invalidate('UNEXPECTED_AUDIO');return;}
       if(['pause','ended','release','error'].includes(event?.type))reconcile();
     }
@@ -224,5 +227,37 @@
     return Object.freeze({version:1,start,selectTrack,setQueue,join,leave,play,pause,seek,end,reconcile,getSnapshot:reconcile,destroy,
       subscribe(fn){if(disposed||typeof fn!=='function')return ()=>{};listeners.add(fn);return ()=>listeners.delete(fn);}});
   }
-  root.MAOGroupListeningSession=Object.freeze({version:1,create});
+  // Product composition: both source lookup and native start are guarded by
+  // the same immutable account/group/membership binding. Recreate after scope loss.
+  function createForGroup(options){
+    const {audio,getGroupId,hasRole}=options||{};
+    const guard=root.MAOGroupWriteGuard,gov=root.GroupGovernance,catalog=root.MAOMusicCatalogAdapter,controller=root.MAOMusicPlaybackController;
+    if(!guard||!gov||!catalog||!controller||typeof getGroupId!=='function'||typeof hasRole!=='function')
+      throw Error('missing group listening dependencies');
+    function read(){
+      try{
+        const groupId=getGroupId(),account=guard.account(),f=guard.read(groupId);
+        if(typeof account!=='string'||!validId(groupId)||!/^g.+/.test(groupId)||!f||f.account!==account||
+          !gov.userIsInGroup(f.group)||!Array.isArray(f.group.members))return null;
+        const ids=f.group.members.map(m=>m&&m.id!=null?String(m.id):'');
+        if(ids.some(id=>!validId(id)||id==='__user'||id===groupId)||new Set(ids).size!==ids.length)return null;
+        const members=f.group.members.map(m=>[String(m.id),gov.isMuted(m),hasRole(String(m.id))===true]).sort((a,b)=>a[0]<b[0]?-1:a[0]>b[0]?1:0);
+        return {key:JSON.stringify([account,groupId,members]),scope:root.__MAO_ACCOUNT_SCOPE__,storage:root.localStorage,idb:root.indexedDB};
+      }catch{return null;}
+    }
+    const initial=read();
+    if(!initial)throw Error('group listening scope unavailable');
+    function current(){
+      const f=read();
+      return f&&f.key===initial.key&&f.scope===initial.scope&&f.storage===initial.storage&&f.idb===initial.idb?initial.key:null;
+    }
+    const player=controller.create({audio,getScope:current,
+      getTrack(id){const r=catalog.getTrack(id);return current()&&r?.ok?r.track:null;},
+      async resolveSource(t){if(!current())return null;const r=await catalog.resolveSource(t.id);return current()&&r?.ok&&r.track?.id===t.id?r.source:null;}
+    });
+    let api;
+    try{api=create({player,catalog,getGroupId,hasRole});}catch(e){player.dispose();throw e;}
+    return Object.freeze({...api,destroy(){api.destroy();player.dispose();}});
+  }
+  root.MAOGroupListeningSession=Object.freeze({version:1,create,createForGroup});
 })(window);

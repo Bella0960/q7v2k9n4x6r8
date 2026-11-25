@@ -21,6 +21,7 @@ function fixture(){
  async play(){if(reject)throw Error('denied');this.paused=false;},addEventListener(){},removeEventListener(){}};
  const catalog={getTrack:id=>tracks.has(id)?{ok:true,track:tracks.get(id)}:{ok:false,code:'TRACK_NOT_FOUND'}};
  const player=root.MAOMusicPlaybackController.create({audio,getTrack:id=>tracks.get(id),getScope:()=>root.MAOGroupWriteGuard.account(),resolveSource:async t=>{if(delay)await delay;return {kind:'blob',blob:{id:t.id}};}});
+ root.MAOMusicCatalogAdapter={...catalog,async resolveSource(id){if(delay)await delay;return {ok:true,track:tracks.get(id),source:{kind:'blob',blob:{id}}};}};
  const opts={player,catalog,getGroupId:()=>gid,hasRole:id=>roles.has(id)};
  const api=root.MAOGroupListeningSession.create(opts);
  return {api,player,root,opts,audio,data,roles,tracks,groups,events,writeCount:()=>writes,held:()=>held,
@@ -92,4 +93,23 @@ test('second session on same controller denied, bad queue rejected, snapshots im
  const h=fixture();assert.throws(()=>h.root.MAOGroupListeningSession.create(h.opts),/already assigned/);
  const s=ready(h);assert.equal(h.api.setQueue(s,['a','a']).ok,false);assert.equal(h.api.setQueue(s,['b']).ok,false);
  assert.equal(Object.isFrozen(s.queue),true);assert.equal(Object.isFrozen(s),true);h.api.destroy();
+});
+
+test('product composition blocks native play when membership changes during source read, even without timer',async()=>{
+ const h=fixture();h.api.destroy();h.player.dispose();
+ const api=h.root.MAOGroupListeningSession.createForGroup({audio:h.audio,getGroupId:h.opts.getGroupId,hasRole:h.opts.hasRole});
+ const s=api.selectTrack(api.start().snapshot,'a').snapshot;let nativeCalls=0;
+ h.audio.play=async()=>{nativeCalls++;h.audio.paused=false;};
+ const release=h.defer(),pending=api.play(s);h.change(g=>g[0].members.pop());release();
+ assert.equal((await pending).ok,false);assert.equal(nativeCalls,0);assert.equal(api.getSnapshot(),null);assert.equal(h.audio.src,'');
+ api.destroy();
+});
+test('product composition rejects replacement scope and allows fresh controller only after destroy',async()=>{
+ const h=fixture();h.api.destroy();h.player.dispose();
+ const opts={audio:h.audio,getGroupId:h.opts.getGroupId,hasRole:h.opts.hasRole};
+ const api=h.root.MAOGroupListeningSession.createForGroup(opts);
+ const s=api.selectTrack(api.start().snapshot,'a').snapshot;
+ assert.equal((await api.play(s)).ok,true);h.replaceScope();assert.equal(api.getSnapshot(),null);assert.equal(h.audio.src,'');
+ assert.equal(api.start().ok,false);api.destroy();const replacement=h.root.MAOGroupListeningSession.createForGroup(opts);
+ assert.equal(replacement.start().ok,true);replacement.destroy();
 });
