@@ -170,3 +170,21 @@ test('lobby cannot start discussion signal and closed session cannot obtain one'
 test('same-document roster change detected by verification cancels pending speech',async()=>{
   const x=await discussionFixture();x.f.setRoles(['r2']);await x.f.session.refresh();await assert.rejects(x.pending,/SPEECH_CANCELLED/);assert.equal(x.calls[0].aborted,true);x.d.resolve('late');assert.deepEqual(x.log.read('user'),[]);
 });
+
+test('synchronous discussion guard rejects same-page roster mutation and stale scope',async()=>{
+  const f=fixture();await f.start();const signal=await f.session.discussionSignal();
+  assert.equal(f.session.discussionCurrent(signal),true);
+  f.setRoles(['r2']);assert.equal(f.session.discussionCurrent(signal),false);
+  f.setRoles(['r1','r2']);assert.equal(f.session.discussionCurrent(signal),true);
+  f.win.__MAO_ACCOUNT_SCOPE__.accountId=foreign;
+  assert.equal(f.session.discussionCurrent(signal),false);f.session.dispose();
+});
+test('discussion guard rejects revoked signal and disposed room',async()=>{
+  const f=fixture();await f.start();const signal=await f.session.discussionSignal();
+  f.win.document.hidden=true;f.win.document.fire('visibilitychange');
+  assert.equal(f.session.discussionCurrent(signal),false);
+  f.win.document.hidden=false;f.win.document.fire('visibilitychange');await f.session.refresh();
+  const next=await f.session.discussionSignal();assert.equal(f.session.discussionCurrent(next),true);
+  assert.equal(f.session.discussionCurrent(signal),false);
+  f.session.dispose();assert.equal(f.session.discussionCurrent(next),false);
+});

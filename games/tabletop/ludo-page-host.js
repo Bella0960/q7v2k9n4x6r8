@@ -77,7 +77,9 @@ export function createLudoPageHost(root,{win=root?.ownerDocument?.defaultView,on
       if(selected.length+1<playerCount){const fill=await session.prepareUserAction();check(e,stamp);await fill({type:'fillBots',playerCount});check(e,stamp);}
       const begin=await session.prepareUserAction();check(e,stamp);
       const view=await begin({type:'start'});check(e,stamp);
-      e.discussion=createLudoDiscussion({...discussion,session,view});
+      e.discussion=createLudoDiscussion({...discussion,session,view,onChange:messages=>{
+        if(entry===e&&e.board&&!destroyed) discussion.onChange?.(messages);
+      }});
       publish(e,view,stamp);report('ready');
       return view;
     }catch(error){if(entry===e)end();throw error;}
