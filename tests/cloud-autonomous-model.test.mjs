@@ -176,7 +176,8 @@ test('云端模型首次开场只读取空历史并明确禁止虚构过往互�
   assert.equal(invalidCalls, 0);
 });
 
-test('云端模型响应超过执行租约后，提交必须使用新的真实时间并被拒绝', async () => {
+for (const scenario of ['late-provider-response','budget-denied','budget-write-failure','budget-readback-uncertain','budget-not-configured']) {
+test('cloud model scheduler: '+scenario, async () => {
   const env = {
     ...MODEL_ENV,
     AUTONOMY_MODEL_DAILY_GLOBAL_LIMIT: '10',
@@ -189,8 +190,12 @@ test('云端模型响应超过执行租约后，提交必须使用新的真实�
     AUTONOMY_DEVICE_LEASE_MS: '60000',
     AUTONOMY_DEVICE_GRACE_MS: '0'
   };
+  if (scenario === 'budget-not-configured') delete env.AUTONOMY_MODEL_DAILY_ROLE_LIMIT;
   const base = 1_800_000_000_000;
   let clockNow = base;
+  let providerCalls = 0;
+  let reservationCalls = 0;
+  let failureCalls = 0;
   let claimedLeaseUntil = 0;
   let commitNow = 0;
   const logs = [];
@@ -278,6 +283,14 @@ test('云端模型响应超过执行租约后，提交必须使用新的真实�
       assert.equal(args.accountId,'owner');
       assert.equal(args.characterId,'char-1');
       assert.equal(args.attemptCount,1);
+      reservationCalls++;
+      if (scenario === 'budget-write-failure') throw new Error('synthetic storage fault');
+      if (scenario === 'budget-readback-uncertain') return {written:true};
+      return scenario !== 'budget-denied';
+    },
+    failActivity(args) {
+      failureCalls++;
+      assert.equal(args.nextAttemptAt,null,'budget denial must not schedule an automatic provider retry');
       return true;
     },
     completeCloudActivityWithOutboundGroup(args) {
@@ -292,6 +305,7 @@ test('云端模型响应超过执行租约后，提交必须使用新的真实�
     }
   };
   const fetchImpl = async () => {
+    providerCalls++;
     // Simulate a provider response arriving after the 60-second executor lease.
     clockNow = base + 60_001;
     return new Response(JSON.stringify({
@@ -316,6 +330,17 @@ test('云端模型响应超过执行租约后，提交必须使用新的真实�
     fetchImpl
   });
 
+  if (scenario !== 'late-provider-response') {
+    assert.equal(providerCalls,0);
+    assert.equal(commitNow,0);
+    assert.equal(summary.generatedGroups,0);
+    assert.equal(summary.ok,false);
+    assert.equal(reservationCalls,scenario==='budget-not-configured'?0:1);
+    assert.equal(failureCalls,scenario==='budget-not-configured'?0:1);
+    assert.ok(logs.some(entry=>entry.reasonCode===(scenario==='budget-not-configured'?'cloud_model_budget_unavailable':'cloud_model_budget_denied')));
+    return;
+  }
+  assert.equal(providerCalls,1);
   assert.equal(claimedLeaseUntil, base + 60_000);
   assert.ok(commitNow > claimedLeaseUntil);
   assert.equal(summary.generatedGroups, 0);
@@ -323,6 +348,7 @@ test('云端模型响应超过执行租约后，提交必须使用新的真实�
   assert.ok(logs.some(entry => entry.reasonCode === 'outbound_group_commit_fenced'));
   assert.ok(logs.some(entry => entry.kind === 'autonomy_cloud_tick' && entry.status === 'success'));
 });
+}
 
 
 test('Workers AI is dormant unless explicitly selected and bound', () => {
