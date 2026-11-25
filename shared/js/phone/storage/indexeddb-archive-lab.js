@@ -99,6 +99,22 @@
       tx.onabort = () => reject(tx.error || new Error('IDB_TRANSACTION_ABORTED'));
     });
   }
+  function beginTransaction(db,mode) {
+    if (mode !== 'readwrite') return db.transaction(STORES,mode);
+    // Request strict durability on supporting browsers. Old implementations may
+    // reject the options argument; no other failure is retried or downgraded.
+    try { return db.transaction(STORES,mode,{durability:'strict'}); }
+    catch (e) { if (!(e instanceof TypeError)) throw e; return db.transaction(STORES,mode); }
+  }
+  function acknowledgeFailure(mode,committed,error) {
+    if (mode !== 'readwrite' || !committed) return error;
+    // The operation did commit, but permission/connection changed before
+    // acknowledgement. Do not disclose result data or claim rollback.
+    const e=new Error('COMMITTED_ACK_WITHHELD');
+    e.code='COMMITTED_ACK_WITHHELD';
+    e.committed=true;
+    return e;
+  }
   function open(options) {
     if (!options || typeof options.name !== 'string' || !/^maomao-storage-lab-[a-z0-9-]{1,80}$/.test(options.name) ||
         !options.indexedDB || !options.keyRange || typeof options.authorize !== 'function') fail('LAB_OPTIONS_REQUIRED');
@@ -120,8 +136,15 @@
         settled = true;
         const db = req.result;
         let closed = false;
-        const close = () => { closed = true; db.close(); };
+        const inflight = new Set();
+        const close = () => {
+          if(closed)return;
+          closed = true;
+          for(const tx of inflight) { try { tx.abort(); } catch (_) {} }
+          db.close();
+        };
         db.onversionchange = close;
+        db.onclose = close;
         function bind(input) {
           const scope = normalizeScope(input);
           function allowed(operation) {
@@ -131,8 +154,10 @@
           allowed('bind');
           async function transaction(mode,operation,work) {
             allowed(operation);
-            const tx = db.transaction(STORES,mode);
-            const done = completed(tx);
+            const tx = beginTransaction(db,mode);
+            inflight.add(tx);
+            let committed=false;
+            const done = completed(tx).then(()=>{committed=true;});
             // Attach an error observer immediately, even if a request fails first.
             done.catch(() => {});
             const guard = () => allowed(operation);
@@ -143,12 +168,15 @@
               guard();
               return result;
             } catch (e) {
-              try { tx.abort(); } catch (_) {}
+              if(!committed) { try { tx.abort(); } catch (_) {} }
               await done.catch(() => {});
-              throw e;
+              throw acknowledgeFailure(mode,committed,e);
+            } finally {
+              inflight.delete(tx);
             }
           }
           function append(input) {
+            allowed('append');
             const batch = prepareBatch(input), partition = partitionKey(scope,'active-lab');
             return transaction('readwrite','append',async(records,meta,guard) => {
               const oldState = await request(meta.get(partition));
