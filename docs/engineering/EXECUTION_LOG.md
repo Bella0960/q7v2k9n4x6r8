@@ -767,3 +767,8 @@ Cloudflare GET deployments and version metadata for maomao-aw-qa-20261114 confir
 ### 2026-11-25 · #529 integration / CHAT-HISTORY-001: shared lock scope recheck and group reply commit
 核对 main AGENTS/RELEASE_POLICY、原 #529 b83b0ab、公共 verify cd24b931、整合 HEAD 21f74a5。既有 ChatHistoryAtomic 只在排队前验证账户，取得锁后可能读写切换账户的存储；旧版问题已在精确源码故障注入复现。修复后锁内读前、读后、写前最后读取后、写后读回均复核账户/ready/role；写后作用域变化标记 writeMayHavePersisted，不再读取其他账户确认；原匿名 harness 兼容。新增 replaceRawIfUnchanged 在原会话锁下校验精确原始历史、保存前捕获 replacement，群多气泡与投票/接龙变更一次写入；群编辑/删除的已有 replaceIfUnchanged 增加可选实时 guard，单聊兼容。群回复接入该接口；角色库重复精确 ID 拒绝查找，发言角色档案变化拒绝旧回复；通知与聊天页缓存同步更新。更新既有测试静态断言及 marker harness，新增锁内故障注入回归。无存储 key/schema 变化。此为合作写入方的锁，其他旧同步 writer 与群资料/历史跨键事务非全局原子；群中断保文、世界书/记忆实际 payload、现有群私聊副作用的锁内写入仍待完整验收。
 隔离 V8 精确候选源码 15/15 检查（含 1 项旧漏洞复现、13 项修复行为、1 项接线检查），JS/HTML 语法通过；仓库新增 Node 测试尚未运行完整 Node/Vite/Chromium，旧测试完整适配未验证。main 的 atomic 文件缺失，当前仅整合分支；线上 SHA/Worker 回执本轮未复核，公共请求未修改，不合并不部署。
+
+
+### 2026-11-25 · #529 integration: public group model history and lore mount fence
+核对 main AGENTS/RELEASE_POLICY、原 #529 HEAD b83b0ab、公共 verify cd24b931、整合原 HEAD 107ae60。实读 chat-detail、chat-context-policy、chat-role-context、group-memory-events、role-worldbook-bindings。旧最终映射过滤私聊，但较早口吻/情绪/自主性、世界书触发和发言者选择仍可能读未过滤的群历史。新增 model-only groupPublicHistory：拒绝私聊/私聊收据/非公开 visibility/异群标记/角色冒用保留用户 ID，引用只从同群唯一公开原消息重建，未验证引用不发送模型（保守行为决策，原存档/UI 保留）。群模型历史在选择发言者、角色上下文、历史召回之前统一过滤，世界书触发使用此公共视图。世界书使用已解析的角色+群挂载集合，避免二次旧字段过滤吞掉旧挂载；重复挂载书 ID 拒绝；请求/回复保存核对书内容及挂载集合，发言者档案快照从上下文构建时捕获。公开群记忆同时拒绝明确私有、异群及角色来源。未变更存储 schema、旧历史、单聊私聊或角色原资料。历史无标记的私密旧数据无法可靠识别；当前发言者自身单聊记忆共享仍按现有开关保留，待进一步真实 payload 验收；其他读取者、旧缓存及真正跨账号需集成验收。
+实际隔离 V8 精确源码检查 14/14，包括公共历史、私聊引用、世界书关键词、实际消息 mapper、公开记忆及静态接线，JS/HTML 内联语法通过；新增仓库 Node 回归未完整执行。线上 Worker/源码本轮未复核，公共请求不动，未合并未部署。
