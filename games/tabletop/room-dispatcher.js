@@ -16,7 +16,7 @@ function jsonState(value) {
 function validateResult(result, room) {
   if (!result || !['win','draw'].includes(result.kind) || !Array.isArray(result.winnerSeatIds)) fail('INVALID_RESULT');
   const winners = result.winnerSeatIds;
-  if (new Set(winners).size !== winners.length || (result.kind==='win' ? !winners.length : winners.length!==0) || winners.some(id=>!room.seats.some(s=>s.seatId===id&&s.mode==='player'))) fail('INVALID_RESULT');
+  if (new Set(winners).size !== winners.length || (result.kind==='win' ? !winners.length : winners.length!==0) || Array.from(winners).some(id=>!room.seats.some(s=>s.seatId===id&&s.mode==='player'))) fail('INVALID_RESULT');
   return {kind:result.kind,winnerSeatIds:[...winners]};
 }
 export function createRoomDispatcher({getContext, spec, rules}) {

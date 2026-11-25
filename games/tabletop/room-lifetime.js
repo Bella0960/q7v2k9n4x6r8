@@ -4,7 +4,7 @@ const fail = code => { throw new Error(code); };
 const validId = v => typeof v === 'string' && v.length > 0 && v.length <= 256 && v.trim() === v;
 function readContext(getContext) {
   const c = getContext();
-  if (!c || !validId(c.accountId) || !validId(c.sessionId) || !Array.isArray(c.roleIds) || !c.roleIds.every(validId)) fail('UNVERIFIED_CONTEXT');
+  if (!c || !validId(c.accountId) || !validId(c.sessionId) || !Array.isArray(c.roleIds) || !Array.from(c.roleIds).every(validId)) fail('UNVERIFIED_CONTEXT');
   return {accountId:c.accountId,sessionId:c.sessionId,roleIds:[...new Set(c.roleIds)]};
 }
 export function createRoomLifetime({getContext,createDispatcher,spec,rules}) {

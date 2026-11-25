@@ -16,7 +16,7 @@ export function gamePolicy(gameId) {
   return copy(policies[gameId]);
 }
 function checkContext(ctx) {
-  if (!ctx || !id(ctx.accountId) || !id(ctx.sessionId) || !Array.isArray(ctx.roleIds) || !ctx.roleIds.every(id)) fail('INVALID_SCOPE');
+  if (!ctx || !id(ctx.accountId) || !id(ctx.sessionId) || !Array.isArray(ctx.roleIds) || !Array.from(ctx.roleIds).every(id)) fail('INVALID_SCOPE');
 }
 function authorize(room,ctx) {
   checkContext(ctx);
@@ -76,7 +76,7 @@ export function reduceRoom(room,ctx,actorSeatId,token,action) {
     }
     case 'reorder': {
       lobby();checkRoster(room,ctx);const order=action.seatIds;
-      if(!Array.isArray(order)||order.length!==room.seats.length||new Set(order).size!==order.length||order.some(s=>!room.seats.some(x=>x.seatId===s))) fail('INVALID_ORDER');
+      if(!Array.isArray(order)||order.length!==room.seats.length||new Set(order).size!==order.length||Array.from(order).some(s=>!room.seats.some(x=>x.seatId===s))) fail('INVALID_ORDER');
       next.seats=order.map(s=>getSeat(s));break;
     }
     case 'swapSeats': {
