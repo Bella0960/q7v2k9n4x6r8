@@ -1389,7 +1389,7 @@
   function readLocalTracksMeta() {
     try {
       var raw = localStorage.getItem(LOCAL_TRACKS_KEY);
-      var value = raw ? JSON.parse(raw) : [];
+      var value = raw === null ? [] : JSON.parse(raw);
       if (!Array.isArray(value)) throw new Error('music_local_tracks must be an array');
       return value;
     } catch (e) {
@@ -2625,7 +2625,12 @@
   function saveState() {
     try {
       var oldState = localStorage.getItem('music_state');
-      if (oldState) JSON.parse(oldState); // 损坏的旧播放进度不准静默覆盖
+      if (oldState !== null) {
+        var previous = JSON.parse(oldState);
+        // Only a missing key or a valid legacy empty sentinel may initialize.
+        if (previous !== null && (typeof previous !== 'object' || Array.isArray(previous)))
+          throw new Error('Invalid playback progress');
+      } // 损坏的旧播放进度不准静默覆盖
       var currentT = tracks[currentIdx];
       var payload = JSON.stringify({
         id: currentT ? currentT.id : null,
