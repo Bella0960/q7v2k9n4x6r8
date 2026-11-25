@@ -9,11 +9,11 @@ class El{
   addEventListener(k,f){this.events[k]=f;}remove(){this.parent.children=this.parent.children.filter(c=>c!==this);}
   click(){if(!this.disabled)this.events.click?.();}
 }
-function fixture({rollDie=()=>6,pace}={}){
+function fixture({rollDie=()=>6,pace,discussion}={}){
   let sessionId='s1',roles=['r1','r2','r3'],active=true,fetches=0,rolls=0;
   const doc=target({hidden:false,createElement:()=>new El(doc),querySelector:s=>({content:s.includes('mao-account-role')?'user':accountId})});
   const win=target({document:doc,navigator:{onLine:true},__MAO_ACCOUNT_SCOPE__:{ready:true,accountId,role:'user'},PhoneStorage:{result:{getCharacters:()=>({ok:true,meta:{source:'ai_custom_characters'},value:roles.map(id=>({id}))})}},async fetch(path){fetches++;return {ok:true,json:async()=>path.endsWith('/me')?{account:{id:accountId,role:'user',status:active?'active':'disabled'}}:{currentSessionId:sessionId}};}});
-  const root=new El(doc),states=[],host=createLudoPageHost(root,{win,rollDie:()=>{rolls++;return rollDie();},pace,onStatus:s=>states.push(s)});
+  const root=new El(doc),states=[],host=createLudoPageHost(root,{win,rollDie:()=>{rolls++;return rollDie();},pace,discussion,onStatus:s=>states.push(s)});
   return {root,host,win,states,fetches:()=>fetches,rolls:()=>rolls,session:x=>{sessionId=x;},roles:x=>{roles=x;},active:x=>{active=x;}};
 }
 const all=(e,cls)=>[...(e.className?.split(' ').includes(cls)?[e]:[]),...e.children.flatMap(c=>all(c,cls))];
@@ -65,4 +65,27 @@ test('picker identity pins session before first invitation, even with identical 
   const f=fixture();f.session('s2');
   await assert.rejects(f.host.start({roomId:'room',roleIds:['r1'],expectedIdentity:{accountId,sessionId:'s1'}}),/SCOPE_CHANGED/);
   assert.equal(f.root.children.length,0);f.host.destroy();
+});
+
+test('committed cruise triggers optional speech without blocking the next board action',async()=>{
+  let release,started;const waiting=new Promise(r=>{started=r;});
+  const f=fixture({discussion:{generateRole:c=>{if(c.trigger){started(c);return new Promise(r=>{release=r;});}return '收到。';},allowOutput:()=>true}});
+  await f.host.start({roomId:'room',roleIds:['r1'],mode:'adventure'});
+  all(f.root,'flight-cruise')[0].click();await settle(f.host);
+  const context=await waiting;assert.equal(context.trigger.cruise,true);
+  assert.equal(f.host.status(),'open');
+  assert.ok(all(f.root,'mao-ludo__action').length>0);
+  const manual=f.host.sendChat({messageId:'m',text:'继续玩',replyToSeatId:'role:r1'});
+  release('迟到的自动发言');await manual;
+  assert.deepEqual((await f.host.readChat()).map(m=>m.text),['继续玩','收到。']);
+  f.host.destroy();
+});
+test('ending a game cancels event speech and no later message is rendered',async()=>{
+  let release,started;const waiting=new Promise(r=>{started=r;});const changes=[];
+  const f=fixture({discussion:{generateRole:c=>{started();return new Promise(r=>{release=r;});},allowOutput:()=>true,onChange:m=>changes.push(m)}});
+  await f.host.start({roomId:'room',roleIds:['r1'],mode:'adventure'});
+  all(f.root,'flight-cruise')[0].click();await settle(f.host);await waiting;
+  f.host.end();release('旧房间回复');
+  for(let i=0;i<100;i++)await Promise.resolve();
+  assert.equal(changes.length,0);assert.equal(f.root.children.length,0);f.host.destroy();
 });
