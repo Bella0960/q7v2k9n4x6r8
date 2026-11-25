@@ -2,6 +2,9 @@
 // authentication implementation here. The caller must supply a verified scoped
 // roster reader; never substitute the legacy unscoped character list.
 const fail = code => { throw new Error(code); };
+export class RoomVerificationUnavailable extends Error {
+  constructor() { super('ACCOUNT_TEMPORARILY_UNAVAILABLE'); }
+}
 const validId = v => typeof v === 'string' && v.length > 0 && v.length <= 256 && v.trim() === v;
 function scopeSnapshot(readScope) {
   const s = readScope();
@@ -19,8 +22,16 @@ export async function verifyRoomContext({request,readScope,readScopedRoster,sign
   }
   async function get(path) {
     check();
-    const response=await request(path,{method:'GET',credentials:'same-origin',cache:'no-store',redirect:'error',signal,headers:{accept:'application/json','x-mao-account-context':initial.accountId}});
+    let response;
+    try {
+      response=await request(path,{method:'GET',credentials:'same-origin',cache:'no-store',redirect:'error',signal,headers:{accept:'application/json','x-mao-account-context':initial.accountId}});
+    } catch (error) {
+      check();
+      if(error instanceof TypeError) throw new RoomVerificationUnavailable();
+      throw error;
+    }
     check();
+    if(response?.ok===false && (response.status===429 || (Number.isInteger(response.status)&&response.status>=500&&response.status<=599))) throw new RoomVerificationUnavailable();
     if (!response || response.ok!==true) fail('ACCOUNT_VERIFICATION_FAILED');
     const data=await response.json();check();return data;
   }

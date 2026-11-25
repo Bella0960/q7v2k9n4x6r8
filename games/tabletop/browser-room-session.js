@@ -55,7 +55,7 @@ export function createBrowserRoomSession({win=globalThis.window,spec,rules}={}) 
       })();
       pending=job;
       const clear=()=>{if(pending===job) pending=null;};
-      job.then(clear,error=>{
+      job.then(()=>{lastError=null;clear();},error=>{
         lastError=error;
         if(session.status()==='disposed') dispose();
         clear();

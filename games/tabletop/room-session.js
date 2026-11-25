@@ -1,3 +1,5 @@
+import {RoomVerificationUnavailable} from './account-room-context.js';
+
 // Internal bridge: only a trusted verifier may supply account/session/roster IDs.
 // No browser event wiring, storage, authentication or AI requests in this module.
 const fail = code => { throw new Error(code); };
@@ -37,7 +39,14 @@ export function createRoomSession({verifyContext,createLifetime,spec,rules}={}) 
         if(!lifetime) lifetime=createLifetime({getContext,spec,rules});
         if(status==='disposed') {const old=lifetime;lifetime=null;old?.dispose();fail('ROOM_DISPOSED');}
         return true;
-      } catch(error) {dispose();throw error;}
+      } catch(error) {
+        // Preserve only the in-memory room on a verified transport outage.
+        // The old identity remains a comparison anchor, never usable context.
+        if(status==='verifying' && error instanceof RoomVerificationUnavailable) {
+          status='suspended';rosterRevision++;
+        } else dispose();
+        throw error;
+      }
       finally {if(pending===job) pending=null;}
     });
     return job.promise;
