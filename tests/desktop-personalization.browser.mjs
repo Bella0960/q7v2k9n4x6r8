@@ -190,7 +190,12 @@ try{
     });
     await page.evaluate(()=>{
       const samples=[], longTasks=[];
-      let last=null, frame=null, observer=null, placementChanges=0;
+      let last=null, frame=null, observer=null, placementChanges=0, reorderAnimations=0;
+      const originalAnimate=Element.prototype.animate;
+      Element.prototype.animate=function(frames,options){
+        if(this.parentElement?.classList.contains('desktop-grid')&&Array.isArray(frames)&&frames[0]?.translate)reorderAnimations++;
+        return originalAnimate.call(this,frames,options);
+      };
       const start=performance.now();
       const tick=t=>{if(last!==null)samples.push(t-last);last=t;frame=requestAnimationFrame(tick);};
       frame=requestAnimationFrame(tick);
@@ -205,6 +210,7 @@ try{
       }
       window.__stopDragFrameProbe=()=>{
         cancelAnimationFrame(frame);
+        Element.prototype.animate=originalAnimate;
         mutations.disconnect();
         if(observer){longTasks.push(...observer.takeRecords().map(e=>e.duration));observer.disconnect();}
         const sorted=samples.slice().sort((a,b)=>a-b);
@@ -214,7 +220,7 @@ try{
         return {samples:samples.length,durationMs:performance.now()-start,
           rafHz:sum?samples.length*1000/sum:null,p50Ms:quantile(.5),p95Ms:quantile(.95),p99Ms:quantile(.99),
           over25Ms:samples.filter(x=>x>25).length,over50Ms:samples.filter(x=>x>50).length,
-          longestMs:quantile(1),longTasks:observer?longTasks:null,placementChanges};
+          longestMs:quantile(1),longTasks:observer?longTasks:null,placementChanges,reorderAnimations};
       };
     });
     let dragFrames;
@@ -231,6 +237,7 @@ try{
     }finally{dragFrames=await page.evaluate(()=>window.__stopDragFrameProbe());}
     assert.ok(dragFrames.samples>=20,'drag frame probe produced too few samples');
     assert.ok(dragFrames.placementChanges>=1,'probe did not exercise real grid reordering');
+    assert.ok(dragFrames.reorderAnimations>=1,'same-page motion did not animate displaced tiles');
     assert.ok(Number.isFinite(dragFrames.rafHz)&&dragFrames.p95Ms>0,'invalid frame metrics');
     console.log('DESKTOP_DRAG_FRAMES '+JSON.stringify({width,dpr:3,initialSlotOrder,...dragFrames}));
     await touch('touchCancel');

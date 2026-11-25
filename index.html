@@ -665,6 +665,7 @@
       var dragGeometry = null;
       var dragResizeObserver = null;
       var dragMutationObserver = null;
+      var dragReorderAnimations = new Map();
       var edgeCooldownTimer = null;
 
       var activePageIndex = 0;
@@ -1361,6 +1362,7 @@
         if (dragMutationObserver) dragMutationObserver.disconnect();
         dragResizeObserver = null;
         dragMutationObserver = null;
+        stopDragReorderAnimations();
         invalidateDragGeometry();
       }
       function getDragBounds() {
@@ -1374,7 +1376,7 @@
         if (dragGeometry && dragGeometry.container === container) return dragGeometry;
         var entries = Array.from(container.children).filter(function (child) {
           return child !== placeholder && child !== dragEl;
-        }).map(function (el) { return { el: el, rect: el.getBoundingClientRect() }; });
+        }).map(function (el) { return { el: el, rect: getDragTileRect(el) }; });
         dragGeometry = {
           container: container,
           entries: entries,
@@ -1388,10 +1390,68 @@
         return !!slot && cx >= slot.left - margin && cx <= slot.right + margin &&
           cy >= slot.top - margin && cy <= slot.bottom + margin;
       }
+      // Keep collision coordinates independent of the visual reorder animation.
+      // Individual translate leaves existing tile transforms and sizing intact.
+      function getDragTileRect(el) {
+        var rect = el.getBoundingClientRect();
+        if (!dragReorderAnimations.has(el)) return rect;
+        var translate = window.getComputedStyle(el).translate;
+        if (!translate || translate === 'none') return rect;
+        var parts = translate.split(/\s+/);
+        var x = parseFloat(parts[0]);
+        var y = parts.length > 1 ? parseFloat(parts[1]) : 0;
+        if (!Number.isFinite(x) || !Number.isFinite(y)) return rect;
+        // Also works in a scaled desktop phone shell.
+        x *= el.offsetWidth ? rect.width / el.offsetWidth : 1;
+        y *= el.offsetHeight ? rect.height / el.offsetHeight : 1;
+        return { left: rect.left - x, right: rect.right - x,
+          top: rect.top - y, bottom: rect.bottom - y, width: rect.width, height: rect.height };
+      }
+      function stopDragReorderAnimations() {
+        dragReorderAnimations.forEach(function (animation) { animation.cancel(); });
+        dragReorderAnimations.clear();
+      }
+      function canAnimateDragReorder() {
+        return typeof window !== 'undefined' && typeof CSS !== 'undefined' &&
+          CSS.supports('translate', '1px 1px') &&
+          !(window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches);
+      }
       function placeDragPlaceholder(container, sibling) {
         if (placeholder.parentNode === container && nextPlaceableSibling(placeholder) === sibling) return false;
+        var before = [];
+        if (placeholder.parentNode === container && canAnimateDragReorder()) {
+          before = Array.from(container.children).filter(function (el) {
+            return el !== placeholder && el !== dragEl && typeof el.animate === 'function';
+          }).map(function (el) { return { el: el, rect: el.getBoundingClientRect() }; });
+        }
+        // Sample the displayed positions before canceling prior motion, so a
+        // rapid reversal starts from the current visual position, not a jump.
+        stopDragReorderAnimations();
         container.insertBefore(placeholder, sibling);
         invalidateDragGeometry();
+        if (before.length) {
+          // Read all destination positions first; only then start animations.
+          var moves = before.map(function (entry) {
+            var rect = entry.el.getBoundingClientRect();
+            var sx = entry.el.offsetWidth ? rect.width / entry.el.offsetWidth : 1;
+            var sy = entry.el.offsetHeight ? rect.height / entry.el.offsetHeight : 1;
+            return { el: entry.el, dx: (entry.rect.left - rect.left) / (sx || 1),
+              dy: (entry.rect.top - rect.top) / (sy || 1) };
+          });
+          moves.forEach(function (move) {
+            if (Math.abs(move.dx) < 1 && Math.abs(move.dy) < 1) return;
+            try {
+              var animation = move.el.animate([
+                { translate: move.dx + 'px ' + move.dy + 'px' },
+                { translate: '0px 0px' }
+              ], { duration: 180, easing: 'cubic-bezier(0.2, 0.8, 0.2, 1)' });
+              dragReorderAnimations.set(move.el, animation);
+              animation.onfinish = animation.oncancel = function () {
+                if (dragReorderAnimations.get(move.el) === animation) dragReorderAnimations.delete(move.el);
+              };
+            } catch (_) { /* Unsupported animation: retain correct final layout. */ }
+          });
+        }
         return true;
       }
 

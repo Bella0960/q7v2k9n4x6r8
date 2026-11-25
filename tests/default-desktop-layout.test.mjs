@@ -423,7 +423,7 @@ test('drag geometry cache reuses stable measurements and invalidates on real pla
     node.parentNode = this;
   } };
   placeholder.parentNode = grid;
-  const ctx = { dragBounds: null, dragGeometry: null, placeholder, dragEl,
+  const ctx = { dragBounds: null, dragGeometry: null, dragReorderAnimations: new Map(), placeholder, dragEl,
     homeScreen: { getBoundingClientRect: rect }, dockBar: { getBoundingClientRect: rect },
     nextPlaceableSibling(el) { return grid.children.slice(grid.children.indexOf(el)+1).find(x => x !== dragEl && x !== placeholder) || null; } };
   runInNewContext(index.slice(start,end) + '\nthis.api = { getDragBounds, getDragGeometry, invalidateDragGeometry, placeDragPlaceholder };', ctx);
@@ -460,4 +460,39 @@ test('desktop and Dock drag slot hysteresis prevents boundary jitter without loc
   for (const [x,y] of [[14,60],[86,60],[50,24],[50,96]]) assert.equal(inside(slot,x,y,5),false);
   assert.match(index,/isPointInDragSlot\(dockGeometry\.slot, cx, cy, 5\)/);
   assert.match(index,/isPointInDragSlot\(geometry\.slot, cx, cy, 5\)/);
+});
+
+
+test('reorder visual animation preserves final hit geometry and cancels without leaking', () => {
+  const start = index.indexOf('      function getDragTileRect(');
+  const end = index.indexOf('      function setDragAvatarPosition(', start);
+  assert.ok(start >= 0 && end > start);
+  const active = new Map(), calls = [];
+  let x = 0, visualOffset = 0;
+  const placeholder = {}, dragEl = {};
+  const tile = { offsetWidth: 40, offsetHeight: 40,
+    getBoundingClientRect() { return {left:x+visualOffset, right:x+visualOffset+40, top:10, bottom:50, width:40, height:40}; },
+    animate(frames,options) {
+      calls.push({frames,options});
+      visualOffset=parseFloat(frames[0].translate);
+      return {cancel(){visualOffset=0; if(this.oncancel)this.oncancel();}};
+    } };
+  const grid={children:[placeholder,tile],insertBefore(){this.children=[tile,placeholder];x=40;}};
+  placeholder.parentNode=grid;
+  const ctx={dragReorderAnimations:active,placeholder,dragEl,
+    window:{getComputedStyle(){return {translate:visualOffset+'px 0px'}},matchMedia(){return {matches:false}}},
+    CSS:{supports(){return true}},nextPlaceableSibling(){return tile},invalidateDragGeometry(){}};
+  runInNewContext(index.slice(start,end),ctx);
+  assert.equal(ctx.placeDragPlaceholder(grid,null),true);
+  assert.equal(calls.length,1);
+  assert.equal(calls[0].frames[0].translate,'-40px 0px');
+  assert.equal(calls[0].options.duration,180);
+  assert.equal(tile.getBoundingClientRect().left,0);
+  assert.equal(ctx.getDragTileRect(tile).left,40,'hit testing must use the final slot, not the animated visual');
+  ctx.stopDragReorderAnimations();
+  assert.equal(active.size,0);
+  assert.equal(visualOffset,0);
+  assert.equal(ctx.getDragTileRect(tile).left,40);
+  ctx.window.matchMedia=()=>({matches:true});
+  assert.equal(ctx.canAnimateDragReorder(),false);
 });

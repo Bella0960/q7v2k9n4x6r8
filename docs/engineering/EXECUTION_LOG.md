@@ -658,3 +658,5 @@ On the next turn/session, read this file and the current `AGENTS.md` first. Cont
 - 独立 Node 22 mock harness（复制新缓存函数，不是完整仓库测试）2/2 通过：100 次稳定查询无额外 rect 读取、占位移动失效、滚动/resize/observer 失效与清理。已补真实 Chromium 375/390/430 DPR3 稳定槽位高频触摸 rect 读取计数；尚未执行。
 
 - 2026-11-25 第二轮：参考原生 Launcher 的稳定目标/手势渲染分离原则（尚未在线核查第三方最新源码，不引入外部代码或依赖），桌面与 Dock 采用 5 CSS px 槽位迟滞；补 VM 边界断言以及原生 CDP 触摸往返测量 rAF P50/P95/P99、>25/50ms 帧间隔、Long Task、占位真实变化。指标须在同硬件比较；rAF 不是屏幕实际 FPS。当前尚未执行完整 Chromium、真机或性能阈值验收。保持原 #496 隔离整合要求。
+
+- 2026-11-25 第三轮：同容器真实换位使用 180ms WAAPI individual translate（FLIP），读取旧视觉位置、取消旧动画、一次占位写入、批量读取终点、再启动新动画；碰撞读取逻辑消除动画位移，快速反向不中断到错误格子，跨容器不做过渡，结束/取消清理全部动画。支持 reduced motion 与无 API 回退。新增 VM 真实函数行为覆盖、Chromium 实际动画计数门禁。完整运行、帧率和线上 QA 仍未验证。
