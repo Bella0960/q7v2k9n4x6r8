@@ -84,3 +84,15 @@ test('terminal journal keeps role-owned public statements, excludes same-puzzle 
  assert.equal(j.read({roleId:'outside'}).length,1);assert.deepEqual(j.read({roleId:'outside',excludePuzzleId:'rain-window'}),[]);
  j.permit({fragmentId:m[1].id,targetRoleId:'outside',channel:'game',allowed:false});assert.deepEqual(j.read({roleId:'outside'}),[]);
 });
+
+test('private journal checkpoint restores authoritative records and permission state across same-account sessions',()=>{
+ const f=fixture({humanHost:true,count:3});f.role('r1',{kind:'ask',factId:'weather'});f.move({kind:'answer',verdict:'no'});f.role('r2',{kind:'guess',text:'可能是清洁工作'});f.move({kind:'judge',correct:true});
+ const ctx={accountId:'a',sessionId:'s',roleIds:['r1','r2','outside']},j=createGameJournal({getContext:()=>ctx});
+ j.recordSavedMatch({schema:1,board:f.lifetime.checkpoint()});const m=j.read({roleId:'r1'});j.permit({fragmentId:m[0].id,targetRoleId:'outside',channel:'game',allowed:true});j.setRecall({fragmentId:m[1].id,enabled:false});
+ const snapshot=j.checkpoint();const open=(s,c={...ctx,sessionId:'new'})=>createGameJournal({getContext:()=>c,snapshot:s});
+ const restored=open(snapshot);assert.deepEqual(restored.list(),j.list());assert.deepEqual(restored.read({roleId:'outside'}),j.read({roleId:'outside'}));assert.deepEqual(restored.manage({roleId:'r1'}),j.manage({roleId:'r1'}));assert.deepEqual(restored.read({roleId:'outside',excludePuzzleId:'rain-window'}),[]);
+ assert.throws(()=>open(snapshot,{...ctx,accountId:'other'}),/JOURNAL_INVALID_CHECKPOINT/);
+ const bad=JSON.parse(JSON.stringify(snapshot));bad.matches.push(bad.matches[0]);assert.throws(()=>open(bad),/JOURNAL_INVALID_CHECKPOINT/);
+ const forged=JSON.parse(JSON.stringify(snapshot));forged.grants.push(JSON.stringify([m[1].id,'outside','daily']));assert.throws(()=>open(forged),/JOURNAL_INVALID_CHECKPOINT/);
+ const reduced=open(snapshot,{...ctx,roleIds:['r1','r2']});assert.equal(reduced.manage({roleId:'r1'}).items.every(x=>x.grants.length===0),true);
+});

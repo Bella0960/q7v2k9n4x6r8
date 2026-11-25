@@ -44,3 +44,10 @@ test('authorized memory request excludes current mystery and never reads daily c
  const v=f.view('turtle');v.game.puzzle={id:'rain-window'};
  const result=await f.make('turtle').askRole(v,{signal:new AbortController().signal});assert.equal(result.kind,'ask');assert.equal(seen[0].excludePuzzleId,'rain-window');assert.equal(f.sources[0].memory,'授权游戏记忆');assert.equal(f.dailyReads(),0);
 });
+
+test('game recall is explicit even without protocol memory placeholder and revocation blocks request',async()=>{
+ const f=fixture();f.services.readGameMemory=async()=> '已授权的棋局历史';await f.make('gomoku').decideRole(f.view(),new AbortController().signal);
+ assert.ok(f.calls[0].messages[0].content.includes('已授权的棋局历史'));
+ const g=fixture();let memory='授权事实';g.services.readGameMemory=async()=>memory;g.services.charge=async()=>{memory='';return true;};
+ await assert.rejects(g.make('gomoku').decideRole(g.view(),new AbortController().signal),/MEMORY_CHANGED/);assert.equal(g.calls.length,0);
+});
