@@ -696,8 +696,30 @@ try {
     assert.equal(await chat.locator('#chat-input').inputValue(),'桌面听歌时保留输入');
     assert.equal(await chat.locator('[data-group-listening-audio]').count(),0);
     await chat.waitForFunction(async()=>!(await navigator.locks.query()).held.some(l=>l.name==='maomao-native-music-playback-v1'));
+    // A new real session must be revoked when its current stable catalog ID
+    // is removed in the sibling music window. Keep the original audio records.
+    await chat.locator('#plus-action-btn').click();
+    await chat.locator('[data-plus-section="group"]').click();
+    await entry.click();
+    await trackRow(firstId).check();
+    await dialog.locator('[data-glisten-start]').click();
+    await chat.waitForFunction(()=>{const a=document.querySelector('[data-group-listening-audio]');return a&&!a.paused;});
+    await strip.getByRole('button',{name:'打开一起听歌详情'}).click();
+    await library.evaluate(id=>{
+      const rows=JSON.parse(localStorage.getItem('music_local_tracks'));
+      localStorage.setItem('music_local_tracks',JSON.stringify(rows.filter(t=>t.id!==id)));
+    },firstId);
+    await chat.locator('[data-group-listening-audio]').waitFor({state:'detached'});
+    await strip.waitFor({state:'hidden'});await dialog.waitFor({state:'hidden'});
+    await chat.waitForFunction(async()=>!(await navigator.locks.query()).held.some(l=>l.name==='maomao-native-music-playback-v1'));
+    assert.equal(await chat.locator('#chat-input').inputValue(),'桌面听歌时保留输入');
+    // Restoring the catalog is not permission to restart stale audio.
+    await library.evaluate(rows=>localStorage.setItem('music_local_tracks',JSON.stringify(rows)),tracks);
+    await chat.waitForFunction(()=>window.MAOMusicCatalogAdapter.listTracks().tracks?.length===2);
+    assert.equal(await chat.locator('[data-group-listening-audio]').count(),0);
+    await strip.waitFor({state:'hidden'});
     assert.deepEqual(desktopErrors,[]);
-    console.log('PASS Chromium desktop 1280px: real group picker, stale catalog, valid replacement, draft and resource cleanup');
+    console.log('PASS Chromium desktop 1280px: real group picker, stale catalog, valid replacement, draft, current deletion and resource cleanup');
   } finally {await desktop.close();}
   console.log('PASS all 375/390/430px browser checks (screenshots in ' + shots + ')');
 } catch (error) {
