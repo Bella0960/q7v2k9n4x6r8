@@ -471,7 +471,16 @@ try {
         const previousSource=await chat.evaluate(()=>document.querySelector('[data-group-listening-audio]').src);
         await dialog.getByRole('button',{name:'下一首'}).click();
         await chat.waitForFunction(old=>{const a=document.querySelector('[data-group-listening-audio]');return a&&!a.paused&&a.src!==old;},previousSource);
-        await dialog.locator('[data-glisten-end]').click();
+        // A removed participant invalidates the actual mounted view, including the audio DOM.
+        await page.evaluate(()=>{const groups=JSON.parse(localStorage.getItem('phone_groups'));groups[0].members=[];localStorage.setItem('phone_groups',JSON.stringify(groups));});
+        await chat.locator('[data-group-listening-audio]').waitFor({state:'detached'});
+        await strip.waitFor({state:'hidden'});await dialog.waitFor({state:'hidden'});
+        await chat.waitForFunction(async()=>!(await navigator.locks.query()).held.some(l=>l.name==='maomao-native-music-playback-v1'));
+        await page.evaluate(()=>{const groups=JSON.parse(localStorage.getItem('phone_groups'));groups[0].members=[{id:'listen-role',name:'测试成员'}];localStorage.setItem('phone_groups',JSON.stringify(groups));});
+        await chat.locator('#plus-action-btn').click();await chat.locator('[data-plus-section="group"]').click();await entry.click();
+        await dialog.locator('[data-glisten-track]').first().check();await dialog.locator('[data-glisten-start]').click();
+        await chat.waitForFunction(()=>{const a=document.querySelector('[data-group-listening-audio]');return a&&!a.paused;});
+        await strip.getByRole('button',{name:'打开一起听歌详情'}).click();await dialog.locator('[data-glisten-end]').click();
         await strip.waitFor({state:'hidden'});assert.equal(await chat.locator('[data-group-listening-audio]').count(),0);
         await chat.reload();
         await entry.waitFor({state:'attached'});

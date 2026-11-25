@@ -110,7 +110,7 @@
       body.append(search,list,paging);foot.append(count,confirm);draw();
     }
     async function confirmSelection(){
-      if(!scope()||!selected.size)return;
+      if(!scope()||!dialog.open||mode!=='picker'||!selected.size)return;
       const ids=[...selected];if(ids.some(id=>!get(id))){warn('TRACK_UNAVAILABLE');return;}
       if(!ensureSession())return;const s=snapshot();if(!s)return;
       const picked=api.selectTrack(s,ids[0]);if(!picked.ok){warn(picked.code);return;}
@@ -151,7 +151,7 @@
       paintCover(cover,coverUrl);words.append(el('strong','',track?.name||'歌曲不可用'),el('small','',track?.artist||''));now.append(cover,words);
       const seek=el('input','glisten-seek');seek.type='range';seek.min='0';seek.step='0.1';seek.setAttribute('aria-label','播放进度');seek.dataset.glistenSeek='1';
       let dragging=false;seek.addEventListener('pointerdown',()=>{dragging=true;seek.dataset.dragging='1';});for(const ev of ['pointerup','pointercancel','blur'])seek.addEventListener(ev,()=>{dragging=false;delete seek.dataset.dragging;});
-      seek.onchange=()=>{const live=snapshot();if(live&&api){const r=api.seek(live,Number(seek.value));if(!r.ok)warn(r.code);render();}if(dragging)delete seek.dataset.dragging;};
+      seek.onchange=()=>{const live=snapshot();if(seek.isConnected&&live&&api&&live.sessionId===s.sessionId&&live.trackId===s.trackId&&live.revision===s.revision){const r=api.seek(live,Number(seek.value));if(!r.ok)warn(r.code);render();}if(dragging)delete seek.dataset.dragging;};
       const times=el('div','glisten-times');times.append(el('span'),el('span'));
       const controls=el('div','glisten-controls'),prev=makeIcon('prev','上一首',()=>adjacent(-1)),playBtn=makeIcon(s.playing||s.status==='loading'?'pause':'play',s.playing||s.status==='loading'?'暂停':'播放',()=>void togglePlay()),next=makeIcon('next','下一首',()=>adjacent(1));playBtn.classList.add('glisten-main');prev.disabled=s.queue.indexOf(s.trackId)<=0;next.disabled=s.queue.indexOf(s.trackId)>=s.queue.length-1;controls.append(prev,playBtn,next);
       const people=el('div','glisten-members'),f=scope();
@@ -163,7 +163,8 @@
         });btn.dataset.glistenMember=id;btn.setAttribute('aria-pressed',String(joined));btn.disabled=s.status==='loading';people.append(btn);
       }
       const queue=el('div','glisten-queue');
-      for(const id of s.queue){const t=get(id);const row=button(t?.name||'歌曲不可用','glisten-queue-item',()=>void changeTrack(id));row.dataset.glistenQueue=id;row.disabled=!t;row.setAttribute('aria-current',id===s.trackId?'true':'false');queue.append(row);}
+      const catalogResult=catalog.listTracks(),queueTracks=new Map((catalogResult?.ok?catalogResult.tracks:[]).map(t=>[t.id,t]));
+      for(const id of s.queue){const t=queueTracks.get(id);const row=button(t?.name||'歌曲不可用','glisten-queue-item',()=>void changeTrack(id));row.dataset.glistenQueue=id;row.disabled=!t;row.setAttribute('aria-current',id===s.trackId?'true':'false');queue.append(row);}
       const edit=button('重新选歌','glisten-secondary',openPicker),end=button('结束一起听歌','glisten-end',()=>{
         const live=snapshot();if(live&&api){const r=api.end(live);if(!r.ok){warn(r.code);return;}}disposeSession();if(dialog.open)dialog.close();render();syncTimer();
       });end.dataset.glistenEnd='1';
@@ -178,9 +179,11 @@
     function render(){
       if(dead)return;
       if(!scope()){destroy();return;}
-      const s=snapshot();if(!s||!s.trackId||s.status==='ended'){strip.hidden=true;clearCover();if(mode==='detail'&&dialog.open)dialog.close();lastKey='';return;}
-      strip.hidden=false;const track=get(s.trackId);const key=s.sessionId+':'+s.revision;
+      const s=snapshot();if(!s||s.status==='ended'){if(api)disposeSession();strip.hidden=true;clearCover();if(mode==='detail'&&dialog.open)dialog.close();lastKey='';syncTimer();return;}
+      if(!s.trackId){strip.hidden=true;lastKey='';return;}
+      strip.hidden=false;const key=s.sessionId+':'+s.revision;
       if(key!==lastKey){
+        const track=get(s.trackId);
         strip.querySelector('strong').textContent=track?.name||'歌曲不可用';
         strip.querySelector('small').textContent=labels[s.status]||'一起听歌';
         toggle.innerHTML=icon(s.playing||s.status==='loading'?'pause':'play');toggle.setAttribute('aria-label',s.playing||s.status==='loading'?'暂停':'播放');
