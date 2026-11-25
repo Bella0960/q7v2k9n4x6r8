@@ -118,7 +118,7 @@ export function mountLudoPage(root,{win=root?.ownerDocument?.defaultView,makeRoo
   async function submit(){
     if(disposed||!active||chat.hidden||input.disabled||!input.value?.trim())return;
     const stamp=epoch,text=input.value,replyToSeatId=reply.value||null;input.value='';
-    try{const result=await host.sendChat({messageId:String(++messageSequence),text,replyToSeatId});
+    try{const result=await host.sendChat({messageId:typeof win.crypto?.randomUUID==='function'?win.crypto.randomUUID():String(++messageSequence),text,replyToSeatId});
       if(disposed||stamp!==epoch||!active)return;
       chatNote.textContent=result.reason==='MODEL_UNAVAILABLE'?'消息已发送，当前没有可用模型回复。':'';
     }catch{if(!disposed&&stamp===epoch&&active)chatNote.textContent='发言或回复未完成，请查看聊天记录。';}
@@ -131,5 +131,20 @@ export function mountLudoPage(root,{win=root?.ownerDocument?.defaultView,makeRoo
   function destroy(){if(disposed)return;disposed=true;clearPrivate();active=null;host.destroy();for(const remove of listeners.splice(0))remove();wrap.remove();}
   listen(win,'pagehide',destroy);
   void reload();
-  return Object.freeze({reload,destroy});
+  async function restoreMatch(saved){
+    if(disposed||active||starting||resuming||!picker)throw Error('LUDO_PAGE_BUSY');
+    if(saved?.board?.gameId!=='ludo'||!Array.isArray(saved.board.seats))throw Error('LUDO_INVALID_MATCH');
+    const copy=JSON.parse(JSON.stringify(saved)),context=picker,stamp=epoch;
+    starting=true;start.disabled=refresh.disabled=true;
+    active={labels:new Map(context.roleLabels.map(s=>['role:'+s.id,s.name])),count:copy.board.seats.length,mode:copy.board.mode,seats:[]};
+    try{
+      const v=await host.restoreMatch(copy,{expectedIdentity:{accountId:context.accountId,sessionId:context.sessionId}});
+      if(disposed||epoch!==stamp||!active)throw Error('LUDO_PAGE_STALE');
+      resetPicker();boxes.clear();showGame(v);resume.hidden=v.phase==='finished'||v.turnSeatId==='user';input.disabled=send.disabled=v.phase==='finished';
+      const messages=await host.readChat();if(disposed||epoch!==stamp||!active)throw Error('LUDO_PAGE_STALE');renderMessages(messages);
+      return v;
+    }catch(error){host.end();throw error;}
+    finally{starting=false;refresh.disabled=false;syncSelection();}
+  }
+  return Object.freeze({reload,destroy,saveMatch:()=>host.saveMatch(),restoreMatch,archiveMatch:j=>host.archiveMatch(j)});
 }

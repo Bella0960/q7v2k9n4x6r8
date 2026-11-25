@@ -33,7 +33,7 @@ export function mountGomokuPage(root,{win=root?.ownerDocument?.defaultView,makeR
   function clearChat(){messages.replaceChildren();target.replaceChildren();input.value='';chatNote.textContent='';chat.open=false;chat.hidden=true;}
   function renderMessages(items){if(!active||chat.hidden||disposed)return;messages.replaceChildren(...items.map(m=>{const n=el('div','mao-gomoku__message');n.append(el('small','',label(m.sender.seatId)),el('p','',m.text));return n;}));messages.scrollTop=messages.scrollHeight;}
   function showChat(v){chat.hidden=false;target.replaceChildren();const o=el('option','','所有棋友');o.value='';target.append(o);target.value='';for(const s of v.seats.filter(s=>s.kind==='role')){const o=el('option','',label(s.seatId));o.value=s.seatId;target.append(o);}input.disabled=send.disabled=v.phase==='finished';chatNote.textContent=discussion.generateRole?'':'当前未接入聊天模型。';}
-  async function submit(){if(disposed||!active||chat.hidden||input.disabled||!input.value.trim())return;const stamp=epoch,text=input.value,replyToSeatId=target.value||null;input.value='';try{const result=await host.sendChat({messageId:String(++msgSeq),text,replyToSeatId});if(!disposed&&active&&stamp===epoch)chatNote.textContent=result.reason==='MODEL_UNAVAILABLE'?'已发送，当前没有可用模型。':result.reason==='SPEECH_LIMIT'?'已达到本局生成次数上限。':'';}catch{if(!disposed&&active&&stamp===epoch)chatNote.textContent='发言未完成，请查看记录。';}}
+  async function submit(){if(disposed||!active||chat.hidden||input.disabled||!input.value.trim())return;const stamp=epoch,text=input.value,replyToSeatId=target.value||null;input.value='';try{const result=await host.sendChat({messageId:typeof win.crypto?.randomUUID==='function'?win.crypto.randomUUID():String(++msgSeq),text,replyToSeatId});if(!disposed&&active&&stamp===epoch)chatNote.textContent=result.reason==='MODEL_UNAVAILABLE'?'已发送，当前没有可用模型。':result.reason==='SPEECH_LIMIT'?'已达到本局生成次数上限。':'';}catch{if(!disposed&&active&&stamp===epoch)chatNote.textContent='发言未完成，请查看记录。';}}
   input.addEventListener('keydown',e=>{if(e.key==='Enter'&&!e.isComposing){e.preventDefault();void submit();}});
   next.hidden=true;footer.append(rules,autoButton,next,pause,end);game.append(board,meta,chat,footer);wrap.append(setup,game,note);root.replaceChildren(wrap);
   const label=id=>id==='user'?'我':active?.labels.get(id)??'棋友';
@@ -99,5 +99,20 @@ export function mountGomokuPage(root,{win=root?.ownerDocument?.defaultView,makeR
   listen(win,'storage',inactive);listen(win,'offline',inactive);listen(doc,'visibilitychange',()=>{if(doc.hidden)inactive();});
   function destroy(){if(disposed)return;disposed=true;stopAuto();invalidate();clearChat();active=null;host.destroy();for(const remove of listeners.splice(0))remove();wrap.remove();}
   listen(win,'pagehide',destroy);void reload();
-  return Object.freeze({reload,destroy});
+  async function restoreMatch(saved){
+    if(disposed||active||starting||advancing||!picker)throw Error('GOMOKU_PAGE_BUSY');
+    if(saved?.board?.gameId!=='gomoku'||!Array.isArray(saved.board.seats))throw Error('GOMOKU_INVALID_MATCH');
+    const copy=JSON.parse(JSON.stringify(saved)),c=picker,stamp=epoch;
+    const watch=copy.board.seats.find(s=>s.seatId==='user')?.mode==='observer';
+    starting=true;start.disabled=refresh.disabled=true;stopped=false;
+    active={watch,difficulty:copy.difficulty,labels:new Map(c.roleLabels.map(r=>['role:'+r.id,r.name]))};
+    try{
+      const v=await host.restoreMatch(copy,{expectedIdentity:{accountId:c.accountId,sessionId:c.sessionId}});
+      if(disposed||stamp!==epoch||!active)throw Error('GOMOKU_PAGE_STALE');
+      clearPicker();setup.hidden=true;game.hidden=false;showChat(v);autoButton.hidden=!watch||v.phase==='finished';next.hidden=v.phase==='finished'||v.turnSeatId==='user';
+      const items=await host.readChat();if(disposed||stamp!==epoch||!active)throw Error('GOMOKU_PAGE_STALE');renderMessages(items);return v;
+    }catch(error){host.end();throw error;}
+    finally{starting=false;refresh.disabled=false;sync();}
+  }
+  return Object.freeze({reload,destroy,saveMatch:()=>host.saveMatch(),restoreMatch,archiveMatch:j=>host.archiveMatch(j)});
 }
