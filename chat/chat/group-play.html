@@ -6,7 +6,7 @@
 <title>群聊玩法 · 小手机</title>
 <script src="../../shared/js/font-loader.js?v=20261022v1"></script>
 <script src="../../shared/js/native-feel.js"></script>
-<script src="../../shared/js/phone/group-admin-policy.js?v=20261125g2"></script>
+<script src="../../shared/js/phone/group-admin-policy.js?v=20261125g3"></script>
 <script src="../../shared/js/phone/group-write-guard.js?v=20261125g9"></script>
 <script src="../../shared/js/phone/group-portraits.js?v=20261125g4"></script>
 <style>
@@ -340,6 +340,8 @@ body{font-family:"Source Han Sans SC","Noto Sans SC","PingFang SC",system-ui,san
       if(!persist('头衔已保存'))return;
       renderSelfTitle();renderOwner();
     });
+    var adminPolicy=window.MAOGroupAdminPolicy;
+    function canManage(action,target){return !!adminPolicy&&adminPolicy.userCanManage(group,action,target);}
     function renderOwner(){
       var select=document.getElementById('ownerSelect');
       var ownerName=document.getElementById('ownerName');
@@ -351,13 +353,14 @@ body{font-family:"Source Han Sans SC","Noto Sans SC","PingFang SC",system-ui,san
       ownerDesc.textContent=owner?'群主 · '+(owner.title||'成员'):'当前由你管理群聊';
       ownerAvatar.innerHTML=owner?(owner.avatar?'<img src="'+escapeHtml(owner.avatar)+'" alt="">':escapeHtml((owner.nickname||owner.name||'群').slice(0,1))):'我';
       select.innerHTML='<option value="__user">我自己（不转让）</option>'+members.map(function(m){
-        return '<option value="'+escapeHtml(String(m.id))+'">'+escapeHtml(m.nickname||m.name||'未命名成员')+(m.isAdmin?' · 管理员':'')+'</option>';
+        return '<option value="'+escapeHtml(String(m.id))+'">'+escapeHtml(m.nickname||m.name||'未命名成员')+(adminPolicy&&adminPolicy.isAdmin(m)?' · 管理员':'')+'</option>';
       }).join('');
       select.value=members.some(function(m){return String(m.id)===String(group.ownerId);})?String(group.ownerId):'__user';
       var transferBtn=document.getElementById('transferOwnerBtn');
       var currentOwnerId=String(group.ownerId||'__user');
       transferBtn.textContent=String(select.value)===currentOwnerId?'当前群主':(select.value==='__user'?'转让群主给我':'确认转让群主');
-      transferBtn.disabled=String(select.value)===currentOwnerId;
+      select.disabled=writeBlocked||!adminPolicy||!adminPolicy.userOwns(group);
+       transferBtn.disabled=select.disabled||String(select.value)===currentOwnerId||!canManage('transfer',String(select.value));
       transferBtn.style.opacity=transferBtn.disabled?'.58':'1';
       transferBtn.style.cursor=transferBtn.disabled?'default':'pointer';
     }
@@ -366,7 +369,7 @@ body{font-family:"Source Han Sans SC","Noto Sans SC","PingFang SC",system-ui,san
       var isCurrent=String(this.value)===currentOwnerId;
       var button=document.getElementById('transferOwnerBtn');
       button.textContent=isCurrent?'当前群主':(this.value==='__user'?'转让群主给我':'确认转让群主');
-      button.disabled=isCurrent;
+      button.disabled=writeBlocked||isCurrent||!canManage('transfer',String(this.value));
       button.style.opacity=isCurrent?'.58':'1';
       button.style.cursor=isCurrent?'default':'pointer';
     });
@@ -391,7 +394,7 @@ body{font-family:"Source Han Sans SC","Noto Sans SC","PingFang SC",system-ui,san
     var expandedMembers={};
     var CHEVRON_SVG='<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="m6 9 6 6 6-6"/></svg>';
     function memberSummary(member){
-      var identity=String(member.id)===String(group.ownerId||'__user')?'群主':member.isAdmin?'管理员':'普通成员';
+      var identity=String(member.id)===String(group.ownerId||'__user')?'群主':adminPolicy&&adminPolicy.isAdmin(member)?'管理员':'普通成员';
       return escapeHtml(identity)+' · 角色 · '+escapeHtml(member.name||'未命名角色')+(member.nickname?' · 群昵称 · '+escapeHtml(member.nickname):'')+(member.title?' · '+escapeHtml(member.title):'');
     }
     function renderMembers(){
@@ -416,10 +419,10 @@ body{font-family:"Source Han Sans SC","Noto Sans SC","PingFang SC",system-ui,san
               '<span class="member-heading"><span class="member-name">'+escapeHtml(member.nickname||member.name||'未命名成员')+'</span><span class="member-id">'+memberSummary(member)+'</span></span>'+
               '<span class="chevron">'+CHEVRON_SVG+'</span>'+
             '</button>'+
-            '<button type="button" class="remove" data-remove-member="'+escapeHtml(id)+'">移出群聊</button>'+
+            (canManage('remove',id)?'<button type="button" class="remove" data-remove-member="'+escapeHtml(id)+'">移出群聊</button>':'')+
           '</div>'+
           '<div class="member-access">'+
-            '<label class="check-label admin-control"><span>'+(String(group.ownerId||'__user')===id?'群主身份':member.isAdmin?'已设为管理员':'设为管理员')+'</span><span class="switch"><input type="checkbox" aria-label="管理员" data-member-field="isAdmin" '+(member.isAdmin||String(group.ownerId||'__user')===id?'checked':'')+(String(group.ownerId||'__user')===id?' disabled':'')+'><span class="track"></span></span></label>'+
+            '<label class="check-label admin-control"><span>'+(String(group.ownerId||'__user')===id?'群主身份':adminPolicy&&adminPolicy.isAdmin(member)?'已设为管理员':'设为管理员')+'</span><span class="switch"><input type="checkbox" aria-label="管理员" data-member-field="isAdmin" '+((adminPolicy&&adminPolicy.isAdmin(member))||String(group.ownerId||'__user')===id?'checked':'')+(!canManage('admin',id)?' disabled':'')+'><span class="track"></span></span></label>'+
             '<div class="field"><label>专属头衔</label><input type="text" maxlength="20" data-member-field="title" value="'+escapeHtml(member.title||'')+'" placeholder="未设置"></div>'+
           '</div>'+
           '<div class="member-body">'+
@@ -437,7 +440,7 @@ body{font-family:"Source Han Sans SC","Noto Sans SC","PingFang SC",system-ui,san
           '</div></details></div>'+
           '<div class="member-options">'+
 
-            '<label class="check-label"><input type="checkbox" data-member-field="muted" '+(member.muted?'checked':'')+'> 禁言</label>'+
+            '<label class="check-label"><input type="checkbox" data-member-field="muted" '+(adminPolicy&&adminPolicy.isMuted(member)?'checked':'')+(!canManage('mute',id)?' disabled':'')+'> 禁言</label>'+
           '</div>'+
           '<div class="schedule"><div class="schedule-head"><span>个人活跃时间</span><span>仅作息感知开启时生效</span></div><div class="time-fields">'+
             '<div class="field"><label>开始活跃</label><input type="time" data-member-field="activeFrom" value="'+escapeHtml(member.activeFrom||'08:00')+'"></div>'+
@@ -581,13 +584,15 @@ body{font-family:"Source Han Sans SC","Noto Sans SC","PingFang SC",system-ui,san
     });
     document.getElementById('transferOwnerBtn').addEventListener('click',function(){
       var nextOwnerId=document.getElementById('ownerSelect').value||'__user';
+      if(writeBlocked||!canManage('transfer',String(nextOwnerId))){notify('仅群主可以转让给有效成员');return;}
       var oldOwner=String(group.ownerId||'__user');
       if(nextOwnerId===oldOwner){notify('这位成员已经是群主');return;}
-      var nextOwner=(group.members||[]).find(function(m){return String(m.id)===String(nextOwnerId);});
+      var nextOwner=adminPolicy.member(group,String(nextOwnerId));
+      if(!nextOwner)return;
       var nextName=nextOwner?(nextOwner.nickname||nextOwner.name||'群成员'):'你自己';
       if(!confirm('确定将群主转让给「'+nextName+'」吗？'))return;
       group.ownerId=nextOwner?String(nextOwner.id):'__user';
-      if(nextOwner)nextOwner.isAdmin=true;
+      if(nextOwner){nextOwner.isAdmin=true;nextOwner.memberRole='admin';}
       if(!persist('群主已更新'))return;
       renderMembers();renderOwner();
     });
@@ -595,11 +600,17 @@ body{font-family:"Source Han Sans SC","Noto Sans SC","PingFang SC",system-ui,san
       var input=event.target.closest('[data-member-field]');
       if(!input)return;
       var card=input.closest('[data-member-id]');
-      var member=(group.members||[]).find(function(m){return String(m.id)===String(card.getAttribute('data-member-id'));});
+      var member=card&&adminPolicy&&adminPolicy.member(group,String(card.getAttribute('data-member-id')));
       if(!member)return;
       var field=input.getAttribute('data-member-field');
-      if(field==='isAdmin'&&String(group.ownerId||'__user')===String(member.id)){renderMembers();return;}
-      if(input.type==='checkbox')member[field]=input.checked;
+      if(writeBlocked)return;
+      if(field==='isAdmin'){
+        if(!canManage('admin',String(member.id))){notify('仅群主可以任免管理员');renderMembers();return;}
+        member.isAdmin=input.checked;member.memberRole=input.checked?'admin':'member';
+      }else if(field==='muted'){
+        if(!canManage('mute',String(member.id))){notify('当前无权禁言该成员');renderMembers();return;}
+        member.muted=input.checked;member.isMuted=input.checked;member.mutedUntil=0;
+      }else if(input.type==='checkbox')member[field]=input.checked;
       else if(field==='talkativeness')member.talkativeness=Math.max(0,Math.min(1,Number(input.value)||0));
       else if(field==='replyThreshold')member.replyThreshold=Math.max(30,Math.min(85,parseInt(input.value,10)||55));
       else if(field==='interests'||field==='interestTags'||field==='expertiseTags'||field==='backgroundTags'){
@@ -630,9 +641,9 @@ body{font-family:"Source Han Sans SC","Noto Sans SC","PingFang SC",system-ui,san
       var button=event.target.closest('[data-remove-member]');
       if(!button)return;
       var id=button.getAttribute('data-remove-member');
+      if(writeBlocked||!canManage('remove',id)){notify('当前无权移除该成员');return;}
       if(!confirm('确定将这位角色移出群聊？已有聊天记录会保留。'))return;
       group.members=(group.members||[]).filter(function(m){return String(m.id)!==String(id);});
-      if(String(group.ownerId)===String(id))group.ownerId='__user';
       if(window.MAOGroupPortraits)window.MAOGroupPortraits.forgetMember(group,String(id));
       delete expandedMembers[String(id)];
       if(!persist('已移出群聊'))return;
