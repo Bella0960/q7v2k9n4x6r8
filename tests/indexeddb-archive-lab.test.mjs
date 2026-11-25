@@ -45,3 +45,23 @@ test('corrupt rows and foreign partition data cannot be decoded',()=>{
  assert.equal(decodeRow(row,p,10).payload.text,'test');
  for(const patch of [{partition:'wrong'},{sequence:11},{id:''},{encoded:'null'},{encoded:'{"x":1e400}'},{encoded:'{'}])rejects(()=>decodeRow({...row,...patch},p,10),'CORRUPT_RECORD');
 });
+
+const transactionInspection={};
+new Function('window',source.replace('open,normalizeScope,prepareBatch,version:VERSION','open,normalizeScope,prepareBatch,beginTransaction,acknowledgeFailure,version:VERSION'))(transactionInspection);
+const {beginTransaction,acknowledgeFailure}=transactionInspection.MaoArchiveLab;
+test('strict durability requested; only unsupported options TypeError permits fallback',()=>{
+ const calls=[];
+ const db={transaction(...args){calls.push(args);if(args.length===3)throw new TypeError('unsupported');return 'tx'}};
+ assert.equal(beginTransaction(db,'readwrite'),'tx');
+ assert.equal(calls[0][2].durability,'strict');assert.equal(calls.length,2);assert.equal(calls[1].length,2);
+ const err=new Error('QuotaExceededError');let n=0;
+ assert.throws(()=>beginTransaction({transaction(){n++;throw err}},'readwrite'),e=>e===err);assert.equal(n,1);
+ beginTransaction(db,'readonly');assert.equal(calls[2].length,2);
+});
+test('committed but withheld acknowledgement is not reported as rollback',()=>{
+ const err=new Error('SCOPE_DENIED');
+ assert.equal(acknowledgeFailure('readwrite',false,err),err);
+ const result=acknowledgeFailure('readwrite',true,err);
+ assert.equal(result.code,'COMMITTED_ACK_WITHHELD');assert.equal(result.committed,true);
+ assert.equal(acknowledgeFailure('readonly',true,err),err);
+});
