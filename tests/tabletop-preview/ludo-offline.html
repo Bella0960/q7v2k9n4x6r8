@@ -36,6 +36,54 @@
 .mao-ludo__event{font-size:12px;color:#555;line-height:1.5;min-height:1.5em;margin:8px 0 0;overflow-wrap:anywhere}
 .mao-ludo__notice{min-height:1.45em;margin:6px 0 0}
 
+/* Approved compact monochrome playing surface; scoped to this board only. */
+.mao-ludo{padding:0;max-width:480px;font-size:13px}
+.mao-ludo__status{font-size:18px;font-weight:600;color:#222;background:#f5f5f5;padding:10px 11px;border-radius:11px;margin:0 0 8px}
+.mao-ludo__roster{display:grid;grid-template-columns:repeat(auto-fit,minmax(68px,1fr));gap:5px;margin:0 0 10px}
+.mao-ludo__player{display:flex;align-items:center;gap:4px;min-height:36px;padding:6px;font-size:10px;border:1px solid #ededed;border-radius:8px;overflow-wrap:anywhere}
+.mao-ludo__player::before{content:"";width:7px;height:7px;border-radius:50%;background:var(--seat-bg);border:1px solid var(--seat-border);flex:0 0 7px}
+.mao-ludo__active{background:#f4f4f4;border-color:#555}
+.mao-ludo__slot-0{--seat-bg:#262626;--seat-border:#323232;--seat-ink:#fff;--seat-panel:#efeff0;--route:#d9d9dc;--route-ink:#555}
+.mao-ludo__slot-1{--seat-bg:#e5e9e5;--seat-border:#7a8a7b;--seat-ink:#354638;--seat-panel:#f2f4f1;--route:#edf0ec;--route-ink:#829183}
+.mao-ludo__slot-2{--seat-bg:#e1e5e9;--seat-border:#75828e;--seat-ink:#334653;--seat-panel:#f1f3f5;--route:#edf0f3;--route-ink:#7c8792}
+.mao-ludo__slot-3{--seat-bg:#eee8e1;--seat-border:#978778;--seat-ink:#4d4138;--seat-panel:#f6f3ef;--route:#f4efe9;--route-ink:#968879}
+.mao-ludo__board{position:relative;isolation:isolate;padding:5px;gap:1px;border-radius:14px;border-color:#e4e4e6;background:#fafafa;box-shadow:0 2px 8px #00000005}
+.mao-ludo__base{grid-column:2/6;grid-row:2/6;z-index:0;border:1px solid #e2e2e3;border-radius:9px;background:var(--seat-panel);pointer-events:none}
+.mao-ludo__base.mao-ludo__slot-1{grid-column:11/15}.mao-ludo__base.mao-ludo__slot-2{grid-column:11/15;grid-row:11/15}.mao-ludo__base.mao-ludo__slot-3{grid-row:11/15}
+.mao-ludo__center{grid-column:7/10;grid-row:7/10;z-index:0;display:grid;place-items:center;background:white;border:1px solid #d9d9dc;border-radius:50%;color:#555;font-size:9px;margin:5px;pointer-events:none}
+.mao-ludo__cell{position:relative;z-index:1;border-radius:4px}
+.mao-ludo__track,.mao-ludo__start,.mao-ludo__home,.mao-ludo__finished{background:var(--route);border:1px solid #d8d8db}
+.mao-ludo__track:empty::after,.mao-ludo__home:empty::after{content:"";width:26%;height:26%;background:#fff;border:1px solid #d1d1d3;border-radius:50%}
+.mao-ludo__start{border-color:var(--seat-border)}
+.mao-ludo__start:empty::after{content:"起";width:auto;height:auto;border:0;background:none;font-size:9px;color:var(--route-ink)}
+.mao-ludo__hangar{border:1px solid #dcdcdf;background:#ffffffc9;border-radius:50%;margin:1px}
+.mao-ludo__track.flight-shortcut-from,.mao-ludo__track.flight-shortcut-to{border-color:var(--route-ink);border-style:dashed}
+.mao-ludo__track.flight-shortcut-from:empty::after,.mao-ludo__track.flight-shortcut-to:empty::after,.mao-ludo__track.flight-supply:empty::after,.mao-ludo__track.flight-wind:empty::after{width:auto;height:auto;border:0;background:none;font-size:9px;color:#555}
+.mao-ludo__track.flight-shortcut-from:empty::after{content:"飞"}.mao-ludo__track.flight-shortcut-to:empty::after{content:"达"}
+.mao-ludo__track.flight-supply:empty::after{content:"补"}.mao-ludo__track.flight-wind:empty::after{content:"风"}
+.mao-ludo__cell.flight-destination{outline:2px dashed #555;outline-offset:-2px;z-index:2}
+.mao-ludo__piece.is-my-plane{background:#262626;color:#fff;outline:1px solid #fff;outline-offset:-2px}
+.mao-ludo__piece.flight-shielded{border:2px double #777}
+.mao-ludo__controls{margin:8px 0;gap:6px;align-items:center}
+.flight-dice-box{display:flex;align-items:center;flex-direction:column;gap:3px;flex:0 0 57px}
+.flight-dice-owner{font-size:10px;color:#555;overflow-wrap:anywhere;text-align:center;max-width:70px}
+.mao-ludo__die{width:46px;height:46px;border-radius:10px;padding:0;position:relative;font-size:0;box-shadow:0 2px 3px #00000008}
+.mao-ludo__die::before{content:"";position:absolute;width:5px;height:5px;background:#252525;border-radius:50%;top:50%;left:50%;transform:translate(-50%,-50%)}
+.mao-ludo__die[aria-label="尚未掷骰"]::before{background:#bbb}
+.mao-ludo__die[aria-label="骰子 2 点"]::before{background:transparent;box-shadow:-10px -10px #252525,10px 10px #252525}
+.mao-ludo__die[aria-label="骰子 3 点"]::before{box-shadow:-10px -10px #252525,10px 10px #252525}
+.mao-ludo__die[aria-label="骰子 4 点"]::before{background:transparent;box-shadow:-10px -10px #252525,10px -10px #252525,-10px 10px #252525,10px 10px #252525}
+.mao-ludo__die[aria-label="骰子 5 点"]::before{box-shadow:-10px -10px #252525,10px -10px #252525,-10px 10px #252525,10px 10px #252525}
+.mao-ludo__die[aria-label="骰子 6 点"]::before{background:transparent;box-shadow:-10px -10px #252525,10px -10px #252525,-10px 0 #252525,10px 0 #252525,-10px 10px #252525,10px 10px #252525}
+.mao-ludo button.mao-ludo__action{flex-direction:column;font-size:11px;white-space:normal}
+.flight-route-detail{display:block;color:#777;font-size:9px;line-height:1.3}
+.flight-hand{flex:1 0 100%;background:#f7f7f8;border-radius:10px;padding:0 10px}
+.flight-hand-title{font-size:11px;padding:10px 0;cursor:pointer}
+.flight-hand-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:6px;padding-bottom:8px}
+.flight-wait{flex:1;color:#777;font-size:12px}
+.mao-ludo__event{background:#f7f7f8;color:#444;border-radius:8px;padding:7px 9px;margin:8px 0 2px;min-height:0;font-size:11px}
+.mao-ludo__notice{min-height:0;margin:0}.mao-ludo__notice:not(:empty){margin-top:5px}
+
 </style>
 <style>
 *{box-sizing:border-box}body{margin:0;background:#fff;color:#222;font:14px/1.5 system-ui,sans-serif}main{max-width:430px;margin:auto;padding:22px 14px}
@@ -915,6 +963,7 @@ return {createRoomSpeechRunner};
 })();
 modules["ludo-board-view.js"]=(()=>{
 const {buildLudoBoard}=modules["ludo-board.js"];
+const {LUDO_RULES_V1:rules}=modules["ludo-rules.js"];
 
 // Mountable user board; the host owns verified session, dispatch and rendering.
 // Include ludo-board.css in the host. No account, storage, network or route access.
@@ -925,14 +974,16 @@ function createLudoBoardView(root,{onMove,labelForSeat}={}){
   let actionButtons=[],chips=new Map(),dieNode=null,animations=[];
   function element(tag,cls,text){const e=doc.createElement(tag);if(cls)e.className=cls;if(text!==undefined)e.textContent=text;return e;}
   const host=element('section','mao-ludo');host.setAttribute('aria-label','飞行棋');root.replaceChildren(host);
-  const title=element('h2','mao-ludo__title','飞行棋'),status=element('p','mao-ludo__status'),eventLine=element('p','mao-ludo__event'),roster=element('div','mao-ludo__roster'),board=element('div','mao-ludo__board'),controls=element('div','mao-ludo__controls'),notice=element('p','mao-ludo__notice');
-  status.setAttribute('aria-live','polite');notice.setAttribute('role','status');board.setAttribute('aria-label','游戏棋盘');host.append(title,status,roster,board,controls,eventLine,notice);
+  const status=element('p','mao-ludo__status'),eventLine=element('p','mao-ludo__event'),roster=element('div','mao-ludo__roster'),board=element('div','mao-ludo__board'),controls=element('div','mao-ludo__controls'),notice=element('p','mao-ludo__notice');
+  status.setAttribute('aria-live','polite');notice.setAttribute('role','status');board.setAttribute('aria-label','游戏棋盘');host.append(status,roster,board,controls,eventLine,notice);
   const label=id=>{const p=model.players.find(p=>p.seatId===id);return id==='user'?'我':String(labelForSeat?.(id)??p?.label??'玩家');};
   const key=m=>JSON.stringify([m.roomId,m.revision]);
   const locked=()=>pending||accepted===key(model);
   function button(text,cls,action,disabled=false){const b=element('button',cls,text);b.type='button';b.disabled=disabled;actionButtons.push(b);const at=key(model);b.addEventListener('click',()=>{if(!destroyed&&model&&key(model)===at)void submit(action);});return b;}
   async function submit(move){
-    if(destroyed||!model||locked()||!(move.kind==='roll'?model.canRoll:model.choices.includes(move.plane)))return;
+    if(destroyed||!model||locked())return;
+    const legal=move.kind==='roll'?model.canRoll:move.kind==='cruise'?model.canCruise:move.kind==='choose'&&(move.card?model.cardMoves.some(m=>m.plane===move.plane&&m.card===move.card):model.choices.includes(move.plane));
+    if(!legal)return;
     const sent=model;pending=true;errorText='';syncControls();
     try{await onMove({roomId:sent.roomId,revision:sent.revision,seatId:'user',move:{...move}});if(!destroyed)accepted=key(sent);}
     catch{if(!destroyed&&key(model)===key(sent))errorText='操作未完成，请重试。';}
@@ -951,11 +1002,13 @@ function createLudoBoardView(root,{onMove,labelForSeat}={}){
   function eventText(last){
     if(!last)return '本局已开始。';
     const who=label(last.seatId);
-    if(last.kind==='roll')return who+' 掷出 '+last.die+' 点'+(last.skipped?'，没有可移动的飞机，跳过本回合。':'。');
+    if(last.kind==='roll')return who+(last.cruise?' 稳定巡航 ':' 掷出 ')+last.die+' 点'+(last.skipped?'，没有可移动的飞机，跳过本回合。':'。');
     if(last.kind!=='move')return '';
     const effects=Array.isArray(last.effects)?last.effects:[];
-    const terms={launch:'起飞',jump:'同色跳格',flight:'飞行捷径',bounce:'终点反弹',finish:'抵达终点'};
+    const terms={launch:'起飞',jump:'同色跳格',flight:'飞行捷径',bounce:'终点反弹',finish:'抵达终点',wind:'顺风加速',supply:'补给站',blocked:'护航抵挡'};
     const details=effects.filter(e=>Object.hasOwn(terms,e)).map(e=>terms[e]);
+    if(last.card)details.unshift(last.card==='boost'?'加速卡':'护航卡');
+    if(last.gained)details.push(last.gained==='boost'?'获得加速卡':'获得护航卡');
     if(last.captures?.length)details.push('撞回 '+last.captures.length+' 架对手机');
     return who+' 的 '+(last.plane+1)+' 号飞机'+(details.length?'：'+details.join('、'):'完成移动')+'。';
   }
@@ -963,27 +1016,63 @@ function createLudoBoardView(root,{onMove,labelForSeat}={}){
     actionButtons=[];chips=new Map();
     const b=model;const busy=locked();
     status.textContent=b.phase==='finished'?`${label(b.winners[0])} 获胜`:b.turnSeatId==='user'?(b.canRoll?'轮到我掷骰':'选择要移动的飞机'):`轮到${label(b.turnSeatId)}`;
+    const target=b.mode==='adventure'?2:4;
     roster.replaceChildren(...b.players.map(p=>{
       const active=b.phase==='playing'&&b.turnSeatId===p.seatId;
-      const item=element('span','mao-ludo__player mao-ludo__slot-'+p.slot+(active?' mao-ludo__active':''),p.label+' · '+label(p.seatId)+' '+p.finished+'/4');
+      const item=element('span','mao-ludo__player mao-ludo__slot-'+p.slot+(active?' mao-ludo__active':''),label(p.seatId)+' '+p.finished+'/'+target);
       if(active)item.setAttribute('aria-current','true');
       return item;
     }));
     eventLine.textContent=eventText(b.last);
     const groups=new Map();for(const p of b.pieces){const group=groups.get(p.cellKey)??[];group.push(p);groups.set(p.cellKey,group);}
-    board.replaceChildren(...b.cells.map(c=>{
+    const own=b.players.find(p=>p.seatId===b.selfSeatId);
+    const destinations=new Set([...b.normalMoves,...b.cardMoves].map(m=>m.to<rules.trackLength
+      ?b.cells.find(c=>c.zone==='track'&&c.square===(own.slot*13+m.to)%rules.trackLength)
+      :b.cells.find(c=>c.slot===own.slot&&c.progress===m.to)).filter(Boolean).map(c=>c.x+':'+c.y));
+    const bases=b.players.map(p=>{
+      const base=element('div','mao-ludo__base mao-ludo__slot-'+p.slot);
+      base.setAttribute('aria-hidden','true');return base;
+    });
+    board.replaceChildren(...bases,element('div','mao-ludo__center','终点'),...b.cells.map(c=>{
       const tile=element('div',`mao-ludo__cell mao-ludo__${c.zone} mao-ludo__slot-${c.slot}`);tile.style.gridColumn=String(c.x+1);tile.style.gridRow=String(c.y+1);
-      if(c.zone==='track'&&c.square%13===0)tile.classList.add('mao-ludo__start');
+      if(c.zone==='track'){
+        if(c.square%13===0)tile.classList.add('mao-ludo__start');
+        if(b.players.some(p=>(p.slot*13+rules.flightFrom)%rules.trackLength===c.square))tile.classList.add('flight-shortcut-from');
+        if(b.players.some(p=>(p.slot*13+rules.flightTo)%rules.trackLength===c.square))tile.classList.add('flight-shortcut-to');
+        if(b.specialSquares[c.square]==='supply')tile.classList.add('flight-supply');
+        if(b.specialSquares[c.square]==='wind')tile.classList.add('flight-wind');
+      }
+      if(destinations.has(c.x+':'+c.y))tile.classList.add('flight-destination');
       const pieces=groups.get(`${c.x}:${c.y}`)??[];
       if(pieces.length>1)tile.classList.add('mao-ludo__stack');
       if(!pieces.length){tile.setAttribute('aria-hidden','true');return tile;}
-      for(const p of pieces){const text=`${b.players.find(x=>x.slot===p.slot).label}${p.plane+1}`,cls=`mao-ludo__piece mao-ludo__slot-${p.slot}`;
+      for(const p of pieces){const text=`${p.seatId==='user'?'我':b.players.find(x=>x.slot===p.slot).label}${p.plane+1}`,cls=`mao-ludo__piece mao-ludo__slot-${p.slot}${p.seatId==='user'?' is-my-plane':''}${p.shield?' flight-shielded':''}`;
         const chip=p.selectable?button(text,cls,{kind:'choose',plane:p.plane},busy):element('span',cls,text);chip.setAttribute('aria-label',`${label(p.seatId)}的${p.plane+1}号飞机`);chips.set(pieceKey(p),chip);tile.append(chip);}
       return tile;
     }));
-    dieNode=element('span','mao-ludo__die',b.die===null?'—':String(b.die));dieNode.setAttribute('aria-label',b.die===null?'尚未掷骰':'骰子 '+b.die+' 点');controls.replaceChildren(dieNode);
+    dieNode=element('span','mao-ludo__die',b.die===null?'—':String(b.die));dieNode.setAttribute('aria-label',b.die===null?'尚未掷骰':'骰子 '+b.die+' 点');const diceBox=element('div','flight-dice-box');
+    diceBox.append(dieNode,element('span','flight-dice-owner',b.last?.seatId?label(b.last.seatId)+'的骰子':label(b.turnSeatId)+'的骰子'));
+    controls.replaceChildren(diceBox);
     if(b.canRoll)controls.append(button('掷骰子','mao-ludo__action',{kind:'roll'},busy));
-    for(const p of b.choices)controls.append(button(`${p+1}号飞机`,'mao-ludo__action',{kind:'choose',plane:p},busy));
+    if(b.canCruise)controls.append(button('稳定巡航 · 3点','mao-ludo__action flight-cruise',{kind:'cruise'},busy));
+    for(const p of b.choices){
+      const route=b.normalMoves.find(m=>m.plane===p);
+      const control=button(`${p+1}号飞机`,'mao-ludo__action',{kind:'choose',plane:p},busy);
+      if(route){
+        const terms={launch:'起飞',jump:'跳格',flight:'捷径',wind:'顺风',supply:'补给',finish:'抵达',bounce:'反弹'};
+        const text=(route.effects??[]).map(e=>terms[e]).filter(Boolean).join(' · ');
+        control.append(element('small','flight-route-detail',text||'前进至 '+(route.to+1)));
+      }
+      controls.append(control);
+    }
+    if(b.cardMoves.length){
+      const hand=element('details','flight-hand');
+      hand.append(element('summary','flight-hand-title',`道具 · 加速 ${b.cards?.boost??0} / 护航 ${b.cards?.shield??0}`));
+      const grid=element('div','flight-hand-grid');
+      for(const m of b.cardMoves)grid.append(button(`${m.card==='boost'?'加速':'护航'} · ${m.plane+1}号`,'mao-ludo__action flight-card',{kind:'choose',plane:m.plane,card:m.card},busy));
+      hand.append(grid);controls.append(hand);
+    }
+    if(!b.canRoll&&!b.choices.length)controls.append(element('span','flight-wait',b.phase==='finished'?'本局已结束':'棋友行动中'));
     syncControls();
   }
   function render(view){

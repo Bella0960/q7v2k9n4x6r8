@@ -27,3 +27,51 @@
 .mao-ludo__action{flex:1 1 62px;font-size:12px;min-width:44px;min-height:44px;padding:0 8px}
 .mao-ludo__event{font-size:12px;color:#555;line-height:1.5;min-height:1.5em;margin:8px 0 0;overflow-wrap:anywhere}
 .mao-ludo__notice{min-height:1.45em;margin:6px 0 0}
+
+/* Approved compact monochrome playing surface; scoped to this board only. */
+.mao-ludo{padding:0;max-width:480px;font-size:13px}
+.mao-ludo__status{font-size:18px;font-weight:600;color:#222;background:#f5f5f5;padding:10px 11px;border-radius:11px;margin:0 0 8px}
+.mao-ludo__roster{display:grid;grid-template-columns:repeat(auto-fit,minmax(68px,1fr));gap:5px;margin:0 0 10px}
+.mao-ludo__player{display:flex;align-items:center;gap:4px;min-height:36px;padding:6px;font-size:10px;border:1px solid #ededed;border-radius:8px;overflow-wrap:anywhere}
+.mao-ludo__player::before{content:"";width:7px;height:7px;border-radius:50%;background:var(--seat-bg);border:1px solid var(--seat-border);flex:0 0 7px}
+.mao-ludo__active{background:#f4f4f4;border-color:#555}
+.mao-ludo__slot-0{--seat-bg:#262626;--seat-border:#323232;--seat-ink:#fff;--seat-panel:#efeff0;--route:#d9d9dc;--route-ink:#555}
+.mao-ludo__slot-1{--seat-bg:#e5e9e5;--seat-border:#7a8a7b;--seat-ink:#354638;--seat-panel:#f2f4f1;--route:#edf0ec;--route-ink:#829183}
+.mao-ludo__slot-2{--seat-bg:#e1e5e9;--seat-border:#75828e;--seat-ink:#334653;--seat-panel:#f1f3f5;--route:#edf0f3;--route-ink:#7c8792}
+.mao-ludo__slot-3{--seat-bg:#eee8e1;--seat-border:#978778;--seat-ink:#4d4138;--seat-panel:#f6f3ef;--route:#f4efe9;--route-ink:#968879}
+.mao-ludo__board{position:relative;isolation:isolate;padding:5px;gap:1px;border-radius:14px;border-color:#e4e4e6;background:#fafafa;box-shadow:0 2px 8px #00000005}
+.mao-ludo__base{grid-column:2/6;grid-row:2/6;z-index:0;border:1px solid #e2e2e3;border-radius:9px;background:var(--seat-panel);pointer-events:none}
+.mao-ludo__base.mao-ludo__slot-1{grid-column:11/15}.mao-ludo__base.mao-ludo__slot-2{grid-column:11/15;grid-row:11/15}.mao-ludo__base.mao-ludo__slot-3{grid-row:11/15}
+.mao-ludo__center{grid-column:7/10;grid-row:7/10;z-index:0;display:grid;place-items:center;background:white;border:1px solid #d9d9dc;border-radius:50%;color:#555;font-size:9px;margin:5px;pointer-events:none}
+.mao-ludo__cell{position:relative;z-index:1;border-radius:4px}
+.mao-ludo__track,.mao-ludo__start,.mao-ludo__home,.mao-ludo__finished{background:var(--route);border:1px solid #d8d8db}
+.mao-ludo__track:empty::after,.mao-ludo__home:empty::after{content:"";width:26%;height:26%;background:#fff;border:1px solid #d1d1d3;border-radius:50%}
+.mao-ludo__start{border-color:var(--seat-border)}
+.mao-ludo__start:empty::after{content:"起";width:auto;height:auto;border:0;background:none;font-size:9px;color:var(--route-ink)}
+.mao-ludo__hangar{border:1px solid #dcdcdf;background:#ffffffc9;border-radius:50%;margin:1px}
+.mao-ludo__track.flight-shortcut-from,.mao-ludo__track.flight-shortcut-to{border-color:var(--route-ink);border-style:dashed}
+.mao-ludo__track.flight-shortcut-from:empty::after,.mao-ludo__track.flight-shortcut-to:empty::after,.mao-ludo__track.flight-supply:empty::after,.mao-ludo__track.flight-wind:empty::after{width:auto;height:auto;border:0;background:none;font-size:9px;color:#555}
+.mao-ludo__track.flight-shortcut-from:empty::after{content:"飞"}.mao-ludo__track.flight-shortcut-to:empty::after{content:"达"}
+.mao-ludo__track.flight-supply:empty::after{content:"补"}.mao-ludo__track.flight-wind:empty::after{content:"风"}
+.mao-ludo__cell.flight-destination{outline:2px dashed #555;outline-offset:-2px;z-index:2}
+.mao-ludo__piece.is-my-plane{background:#262626;color:#fff;outline:1px solid #fff;outline-offset:-2px}
+.mao-ludo__piece.flight-shielded{border:2px double #777}
+.mao-ludo__controls{margin:8px 0;gap:6px;align-items:center}
+.flight-dice-box{display:flex;align-items:center;flex-direction:column;gap:3px;flex:0 0 57px}
+.flight-dice-owner{font-size:10px;color:#555;overflow-wrap:anywhere;text-align:center;max-width:70px}
+.mao-ludo__die{width:46px;height:46px;border-radius:10px;padding:0;position:relative;font-size:0;box-shadow:0 2px 3px #00000008}
+.mao-ludo__die::before{content:"";position:absolute;width:5px;height:5px;background:#252525;border-radius:50%;top:50%;left:50%;transform:translate(-50%,-50%)}
+.mao-ludo__die[aria-label="尚未掷骰"]::before{background:#bbb}
+.mao-ludo__die[aria-label="骰子 2 点"]::before{background:transparent;box-shadow:-10px -10px #252525,10px 10px #252525}
+.mao-ludo__die[aria-label="骰子 3 点"]::before{box-shadow:-10px -10px #252525,10px 10px #252525}
+.mao-ludo__die[aria-label="骰子 4 点"]::before{background:transparent;box-shadow:-10px -10px #252525,10px -10px #252525,-10px 10px #252525,10px 10px #252525}
+.mao-ludo__die[aria-label="骰子 5 点"]::before{box-shadow:-10px -10px #252525,10px -10px #252525,-10px 10px #252525,10px 10px #252525}
+.mao-ludo__die[aria-label="骰子 6 点"]::before{background:transparent;box-shadow:-10px -10px #252525,10px -10px #252525,-10px 0 #252525,10px 0 #252525,-10px 10px #252525,10px 10px #252525}
+.mao-ludo button.mao-ludo__action{flex-direction:column;font-size:11px;white-space:normal}
+.flight-route-detail{display:block;color:#777;font-size:9px;line-height:1.3}
+.flight-hand{flex:1 0 100%;background:#f7f7f8;border-radius:10px;padding:0 10px}
+.flight-hand-title{font-size:11px;padding:10px 0;cursor:pointer}
+.flight-hand-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:6px;padding-bottom:8px}
+.flight-wait{flex:1;color:#777;font-size:12px}
+.mao-ludo__event{background:#f7f7f8;color:#444;border-radius:8px;padding:7px 9px;margin:8px 0 2px;min-height:0;font-size:11px}
+.mao-ludo__notice{min-height:0;margin:0}.mao-ludo__notice:not(:empty){margin-top:5px}

@@ -119,3 +119,42 @@ test('a mounted board refuses a different room until the host explicitly replace
   assert.throws(()=>host.render({...view,roomId:'different-room'}),/LUDO_BOARD_ROOM_CHANGED/);
   assert.equal(all(root,'mao-ludo__action')[0].textContent,'掷骰子');host.destroy();
 });
+
+test('quick board exposes actual cruise and card moves, compact score and owner labels',async()=>{
+  const ctx={accountId:'a',sessionId:'s',roleIds:['r1']};
+  const d=createRoomDispatcher({getContext:()=>ctx,spec:{roomId:'quick',gameId:'ludo'},rules:createLudoRules({mode:'adventure',rollDie:()=>6})});
+  d.dispatch('user',d.token('user'),{type:'invite',roleId:'r1'});d.dispatch('user',d.token('user'),{type:'start'});
+  const root=makeRoot(),calls=[];
+  const host=createLudoBoardView(root,{onMove:async a=>{calls.push(a.move);act(d,'user',a.move);host.render(d.view('user'));}});
+  host.render(d.view('user'));
+  assert.equal(all(root,'mao-ludo__title').length,0);
+  assert.equal(all(root,'flight-hand').length,0);
+  assert.ok(all(root,'mao-ludo__player').every(p=>p.textContent.endsWith('/2')));
+  assert.equal(all(root,'flight-dice-owner')[0].textContent,'我的骰子');
+  assert.ok(all(root,'is-my-plane').every(p=>p.textContent.startsWith('我')));
+  assert.equal(all(root,'flight-shortcut-from').length,2);
+  assert.equal(all(root,'flight-supply').length,4);
+  all(root,'flight-cruise')[0].click();await tick();
+  assert.deepEqual(calls[0],{kind:'cruise'});assert.equal(d.view('user').game.die,3);
+  assert.ok(all(root,'flight-destination').length>0);
+  assert.equal(all(root,'flight-hand').length,1);
+  const boost=all(root,'flight-card').find(b=>b.textContent==='加速 · 1号');
+  assert.ok(boost);boost.click();await tick();
+  assert.deepEqual(calls[1],{kind:'choose',plane:0,card:'boost'});
+  assert.equal(d.view('user').game.players[0].cards.boost,0);
+  assert.equal(all(root,'flight-hand').length,0);
+  host.destroy();
+});
+test('quick board shield control commits legal card choice, never stale replay',async()=>{
+  const ctx={accountId:'a',sessionId:'s',roleIds:['r1']};
+  const d=createRoomDispatcher({getContext:()=>ctx,spec:{roomId:'quick',gameId:'ludo'},rules:createLudoRules({mode:'adventure',rollDie:()=>3})});
+  d.dispatch('user',d.token('user'),{type:'invite',roleId:'r1'});d.dispatch('user',d.token('user'),{type:'start'});
+  const root=makeRoot(),calls=[];
+  const host=createLudoBoardView(root,{onMove:async a=>{calls.push(a.move);act(d,'user',a.move);host.render(d.view('user'));}});
+  host.render(d.view('user'));all(root,'mao-ludo__action')[0].click();await tick();
+  const shield=all(root,'flight-card').find(b=>b.textContent==='护航 · 1号');
+  assert.ok(shield);shield.click();shield.click();await tick();shield.click();
+  assert.equal(calls.length,2);assert.deepEqual(calls[1],{kind:'choose',plane:0,card:'shield'});
+  assert.equal(d.view('user').game.players[0].planes[0].shield,true);
+  assert.equal(all(root,'flight-shielded').length,1);host.destroy();
+});
