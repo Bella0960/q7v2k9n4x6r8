@@ -7530,14 +7530,14 @@
                     });
                 return !!(saved&&saved.ok);
             }
-            function discardStaleGroupTurn(){
+            function discardStaleGroupTurn(notify){
                 inflightSnapshot=null;
                 const loading=document.getElementById(statusId);if(loading)loading.remove();
                 streamNodes.forEach(node=>{if(node&&node.parentNode)node.parentNode.removeChild(node);});streamNodes=[];
                 if(_vl)_vl.streaming=false;
                 if(chatTitleEl)chatTitleEl.textContent=originalTitleText;
                 aiSending=false;
-                if(!groupPageExited)showToast('群资料或聊天记录已变化，本轮回复已取消，请重新发送');
+                if(!groupPageExited&&notify!==false)showToast('群资料或聊天记录已变化，本轮回复已取消，请重新发送');
             }
 
             // R4 渲染回调：交给 PhoneStream 每帧节流调用（正则清洗 + DOM 写入 + 滚动）
@@ -7673,30 +7673,37 @@
                 pinToBottom();
             }
 
-            // QA owner-opt-in: inspect EXACT final messages before the HTTP POST.
-            // Lock the send during the preview, so no second user bubble is added.
+            // Compose the exact outbound payload before the opt-in preview.
+            // If music changes during that asynchronous preview, cancel rather
+            // than silently send a payload the user has not inspected.
+            function buildOutboundApiMessages() {
+                if (isGroupChat && groupReplyPick && groupListeningView && window.MAOGroupListeningContext) {
+                    const candidate = window.MAOGroupListeningContext.appendToMessages(apiMessages, {
+                        groupId: String(currentRoleId), roleId: String(groupReplyPick.id),
+                        readSnapshot: () => groupListeningView.getSnapshot(),
+                        hasRole: id => !!getRoleById(id)
+                    });
+                    if (candidate !== apiMessages && auditFinalMessages(candidate).ok &&
+                        (!regexSystemHead || String(candidate[0].content).startsWith(roleIdentityHead + '\n\n' + regexSystemHead))) {
+                        return candidate;
+                    }
+                }
+                return apiMessages;
+            }
             aiSending = true;
+            if(!groupTurnCurrent()){discardStaleGroupTurn();return;}
+            const outboundApiMessages = buildOutboundApiMessages();
+            if(!groupTurnCurrent()){discardStaleGroupTurn();return;}
             if (window.MAOMAOPromptDiagnostic &&
                 window.MAOMAOPromptDiagnostic.isEnabled()) {
-                await window.MAOMAOPromptDiagnostic.beforeSend(apiMessages);
-            }
-
-            // 流式请求：核心引擎已抽离至 shared/js/phone/phone_stream.js
-            //（三段式超时 / SSE 半包解析 / 残留收尾 / rAF 节流 / 中断保文，全部内聚在模块内）
-            // 永不 reject：结果对象 { ok, fullText, error }，fullText 中断时 = 已收到的部分
-            if(!groupTurnCurrent()){discardStaleGroupTurn();return;}
-            // Optional music metadata is read AFTER the asynchronous diagnostic.
-            // Preserve the already validated canonical messages when unavailable.
-            let outboundApiMessages = apiMessages;
-            if (isGroupChat && groupReplyPick && groupListeningView && window.MAOGroupListeningContext) {
-                const candidate = window.MAOGroupListeningContext.appendToMessages(apiMessages, {
-                    groupId: String(currentRoleId), roleId: String(groupReplyPick.id),
-                    readSnapshot: () => groupListeningView.getSnapshot(),
-                    hasRole: id => !!getRoleById(id)
-                });
-                if (candidate !== apiMessages && auditFinalMessages(candidate).ok &&
-                    (!regexSystemHead || String(candidate[0].content).startsWith(roleIdentityHead + '\n\n' + regexSystemHead))) {
-                    outboundApiMessages = candidate;
+                const reviewedPayload = JSON.stringify(outboundApiMessages);
+                await window.MAOMAOPromptDiagnostic.beforeSend(outboundApiMessages);
+                if(!groupTurnCurrent()){discardStaleGroupTurn();return;}
+                if (JSON.stringify(buildOutboundApiMessages()) !== reviewedPayload ||
+                    JSON.stringify(outboundApiMessages) !== reviewedPayload) {
+                    discardStaleGroupTurn(false);
+                    stopForMissingRoleSource('music-context-updated', '诊断期间听歌状态已变化，本轮未发送');
+                    return;
                 }
             }
             if(!groupTurnCurrent()){discardStaleGroupTurn();return;}
