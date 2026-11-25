@@ -13,7 +13,7 @@
     var groupMembers = Array.isArray(options.groupMembers) ? options.groupMembers : [];
     // The model represents ONE selected speaker. Other characters' past lines
     // are participants' input, never this speaker's own assistant history.
-    // Without a speakerId, keep the previous mapping for legacy callers.
+    // Without a verified speaker ID, no historical line is assigned to the assistant.
     var selectedSpeakerId = isGroupChat && options.speakerId != null
       ? String(options.speakerId).trim() : '';
     var selectedSpeakerName = isGroupChat ? String(options.speakerName || '').trim() : '';
@@ -31,38 +31,24 @@
     function groupSpeakerPrefix(message) {
       if (!isGroupChat) return '';
       var member = memberForMessage(message);
-      // Stable memberId takes priority over an obsolete or incorrect saved nickname.
-      var speakerName = String(member && (member.nickname || member.name) ||
-        message && message.name || '').trim();
-      return '【群成员' + (speakerName ? ' ' + speakerName : '') + '】\n';
+      var id = member ? String(member.id) : '';
+      var name = String(member && (member.nickname || member.name) || message && message.name || '').trim();
+      return '【身份】' + JSON.stringify({type:id?'AI_ROLE':'UNKNOWN',id:id,name:name}) + '\n' +
+        '【群成员' + (name ? ' ' + name : '') + '】\n';
+    }
+
+    function groupUserPrefix(message) {
+      if (!isGroupChat) return '';
+      var actor = message && (message.memberId || message.roleId || message.byAI === true)
+        ? {type:'UNKNOWN',id:''} : {type:'USER_SELF',id:'me'};
+      return '【身份】' + JSON.stringify(actor) + '\n';
     }
 
     function historyRoleForGroupMember(message) {
-      if (!isGroupChat || !selectedSpeakerId) return 'assistant';
-      var memberId = message && message.memberId == null ? '' :
-        String(message && message.memberId || '').trim();
-      if (memberId) return memberId === selectedSpeakerId ? 'assistant' : 'user';
-      // Legacy messages sometimes had a name but no memberId. Match only the
-      // SELECTED member's known aliases; unknown speakers cannot impersonate it.
-      var chosen = groupMembers.find(function (member) {
-        return member && String(member.id) === selectedSpeakerId;
-      });
-      var name = String(message && message.name || '').trim();
-      if (!name) return 'user';
-      var aliases = [selectedSpeakerName];
-      if (chosen) aliases.push(String(chosen.nickname || ''), String(chosen.name || ''));
-      var matchesSelected = aliases.some(function (alias) {
-        return alias && alias.trim() === name;
-      });
-      if (!matchesSelected) return 'user';
-      // Names are not identifiers: an ambiguous legacy nickname must never
-      // turn another person's old line into this role's first-person memory.
-      var ambiguous = groupMembers.some(function (member) {
-        return member && String(member.id) !== selectedSpeakerId &&
-          (String(member.nickname || '').trim() === name ||
-            String(member.name || '').trim() === name);
-      });
-      return ambiguous ? 'user' : 'assistant';
+      if (!isGroupChat) return 'assistant';
+      var member = memberForMessage(message);
+      return selectedSpeakerId && member && String(member.id) === selectedSpeakerId
+        ? 'assistant' : 'user';
     }
 
     // 多气泡回复逐条落库后，同一 turnId 的连续 assistant 消息要合并回一条，
@@ -98,7 +84,7 @@
         apiMessages.push({
           role: stickerRole,
           content: isGroupChat && (m.role === 'received' || m.role === 'assistant')
-            ? groupSpeakerPrefix(m) + stickerContent : stickerContent
+            ? groupSpeakerPrefix(m) + stickerContent : groupUserPrefix(m) + stickerContent
         });
         if (stickerRole === 'assistant' && m.turnId) lastAssistantTurnId = String(m.turnId);
         return;
@@ -128,7 +114,7 @@
       if (!content) return;
 
       if (m.role === 'sent' || m.role === 'user') {
-        var userContent = content;
+        var userContent = groupUserPrefix(m) + content;
         // Only an explicitly hydrated current-turn image is sent as multimodal data.
         // Legacy image messages stay textual unless the caller deliberately resolves them.
         var visionDataUrl = String(m.visionDataUrl || '');
@@ -138,7 +124,7 @@
           var visionIndex = Math.max(0, parseInt(m.visionIndex, 10) || 0);
           var visionLabel = visionIndex ? '\n[本轮图片编号：' + visionIndex + ']' : '';
           userContent = [
-            { type: 'text', text: (content || '[用户分享了一张图片]') + visionLabel },
+            { type: 'text', text: groupUserPrefix(m) + (content || '[用户分享了一张图片]') + visionLabel },
             { type: 'image_url', image_url: { url: visionDataUrl, detail: 'auto' } }
           ];
         }
@@ -163,7 +149,7 @@
     // Legacy guard: some retry states end with an assistant message.
     var lastCheck = apiMessages[apiMessages.length - 1];
     if (lastCheck && lastCheck.role === 'assistant') {
-      apiMessages.push({ role: 'user', content: '(继续)' });
+      apiMessages.push({ role: 'user', content: isGroupChat ? '【系统续接，不是用户发言】(继续)' : '(继续)' });
     }
 
     return apiMessages;

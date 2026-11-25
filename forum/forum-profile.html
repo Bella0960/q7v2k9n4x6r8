@@ -231,17 +231,18 @@
     e.target.value = '';
   });
 
+  function isOwn(c) { return !!c && c.owner === 'me' && !c.residentId && !c.roleId && c.source !== 'forum-ai' && c.generatedBy !== 'community-ai'; }
   const posts = JSON.parse(localStorage.getItem('forum_posts') || '[]');
   const pad = n => String(n).padStart(3, '0');
 
-  const myPosts = posts.filter(p => p.owner === 'me' || p.name === '我');
+  const myPosts = posts.filter(isOwn);
   const favPosts = posts.filter(p => p.liked);
   const myComments = [];
   posts.forEach(p => {
     const arr = Array.isArray(p.comments) ? p.comments : [];
-    arr.forEach(c => { if (c.name === '我' || c.owner === 'me') myComments.push(c); });
+    arr.forEach(c => { if (isOwn(c)) myComments.push(c); });
     arr.forEach(c => {
-      if (Array.isArray(c.replies)) c.replies.forEach(r => { if (r.name === '我' || r.owner === 'me') myComments.push(r); });
+      if (Array.isArray(c.replies)) c.replies.forEach(r => { if (isOwn(r)) myComments.push(r); });
     });
   });
 

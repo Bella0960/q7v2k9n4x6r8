@@ -911,9 +911,9 @@ test('group model context retains speaker identity and excludes group-private pa
     groupMembers: [{ id: 'role-a', name: '小林', nickname: '林林' }]
   });
   assert.deepEqual(JSON.parse(JSON.stringify(mapped)), [
-    { role: 'assistant', content: '【群成员 林林】\n我刚到。' },
-    { role: 'assistant', content: '【群成员 阿岚】\n我也到了。' },
-    { role: 'user', content: '那我们开始吧。' }
+    { role: 'user', content: '【身份】{"type":"AI_ROLE","id":"role-a","name":"林林"}\n【群成员 林林】\n我刚到。' },
+    { role: 'user', content: '【身份】{"type":"UNKNOWN","id":"","name":"阿岚"}\n【群成员 阿岚】\n我也到了。' },
+    { role: 'user', content: '【身份】{"type":"USER_SELF","id":"me"}\n那我们开始吧。' }
   ]);
   assert.equal(mapped.some((item) => item.content.includes('只属于私聊')), false);
 });
@@ -924,7 +924,7 @@ test('offline group context keeps narration text so the shared scene remains con
     { role: 'assistant', name: '小林', text: '<narratage>门被推开了。</narratage>我到了。' },
     { role: 'user', text: '先坐一会儿。' }
   ], null, { isGroupChat: true, groupMode: 'offline' });
-  assert.equal(mapped[0].content, '【群成员 小林】\n门被推开了。我到了。');
+  assert.equal(mapped[0].content, '【身份】{"type":"UNKNOWN","id":"","name":"小林"}\n【群成员 小林】\n门被推开了。我到了。');
 });
 
 test('group chat wiring includes mention dispatch, paced replies, duplicate protection and shared-history modes', () => {

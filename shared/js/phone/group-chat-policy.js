@@ -115,15 +115,7 @@
       var reply = messages[j];
       if (!reply || reply.type || (reply.role !== 'assistant' && reply.role !== 'received')) continue;
       var speakerId = asId(reply.memberId);
-      if (!speakerId && reply.name) {
-        var matched = memberList.find(function (member) {
-          return memberAliases(member).some(function (alias) {
-            return alias.toLocaleLowerCase() === String(reply.name).trim().toLocaleLowerCase();
-          });
-        });
-        if (matched) speakerId = asId(matched.id);
-      }
-      if (speakerId) spoken[speakerId] = true;
+      if (speakerId && memberList.some(function (member) { return member && asId(member.id) === speakerId; })) spoken[speakerId] = true;
     }
 
     var availableIds = Object.create(null);

@@ -792,10 +792,10 @@ function mergeForumPosts(stored,seedPosts,previousSeedSets){
       cover.innerHTML = `<img src="${post.img}" style="width:100%;display:block">`;
     } else if (cover) cover.style.display = 'none';
     const avatarEl = document.getElementById('pAvatar');
-    const ownPost = post.owner === 'me' || post.tag === 'me' || String(post.id || '').indexOf('user_') === 0;
+    const ownPost = isOwn(post);
     avatarEl.style.background = avatarBackground(post, ownPost);
     avatarEl.innerHTML = avatarContent(post, ownPost);
-    const tagHtml = post.tag === 'ai' ? '<span class="p-tag">AI</span>' : post.tag === 'me' ? '<span class="p-tag">ME</span>' : (post.role ? '<span class="p-tag">' + esc(post.role) + '</span>' : '');
+    const tagHtml = post.tag === 'ai' ? '<span class="p-tag">AI</span>' : ownPost ? '<span class="p-tag">ME</span>' : (post.role ? '<span class="p-tag">' + esc(post.role) + '</span>' : '');
     document.getElementById('pName').innerHTML = esc(post.name) + tagHtml;
     document.getElementById('pTime').textContent = safeTime(post.time);
     const title = postTitle(), body = postBody();
@@ -862,7 +862,7 @@ function mergeForumPosts(stored,seedPosts,previousSeedSets){
     }
   }
 
-  function isOwn(c) { return !!c && c.owner === 'me' && !c.residentId && !c.roleId && c.source !== 'forum-ai'; }
+  function isOwn(c) { return !!c && c.owner === 'me' && !c.residentId && !c.roleId && c.source !== 'forum-ai' && c.generatedBy !== 'community-ai'; }
   function forumActor(c) {
     c=c||{};
     if(isOwn(c))return {type:'USER_SELF',id:'me',name:c.name||'我'};

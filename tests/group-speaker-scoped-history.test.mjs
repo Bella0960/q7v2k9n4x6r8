@@ -44,18 +44,19 @@ test('multi-bubble turns merge only for the selected speaker, not other group me
   ];
   const forA=map(history,'a',members,'小林');
   assert.deepEqual(forA.map(x=>x.role),['assistant','user','user','user']);
-  assert.equal(forA[0].content, '【群成员 小林】\n我刚到\n\n你们在哪儿');
+  assert.equal(forA[0].content, '【身份】{"type":"AI_ROLE","id":"a","name":"小林"}\n【群成员 小林】\n我刚到\n\n你们在哪儿');
   assert.deepEqual(forA.slice(1,3).map(x=>x.content),[
-    '【群成员 阿池】\n在门口','【群成员 阿池】\n进来吧'
+    '【身份】{"type":"AI_ROLE","id":"b","name":"阿池"}\n【群成员 阿池】\n在门口','【身份】{"type":"AI_ROLE","id":"b","name":"阿池"}\n【群成员 阿池】\n进来吧'
   ]);
   const forB=map(history,'b',members,'阿池');
   assert.deepEqual(forB.map(x=>x.role),['user','user','assistant','user']);
-  assert.equal(forB[2].content,'【群成员 阿池】\n在门口\n\n进来吧');
+  assert.equal(forB[2].content,'【身份】{"type":"AI_ROLE","id":"b","name":"阿池"}\n【群成员 阿池】\n在门口\n\n进来吧');
 });
 
-test('older messages match a unique saved alias only; duplicate names are not trusted', () => {
+test('legacy names never establish speaker identity, even when unique', () => {
   const old=[{role:'received',name:'小林',text:'旧消息'}];
-  assert.equal(map(old,'a',members,'小林')[0].role,'assistant');
+  assert.equal(map(old,'a',members,'小林')[0].role,'user');
+  assert.match(map(old,'a',members,'小林')[0].content,/"type":"UNKNOWN"/);
   assert.equal(map(old,'b',members,'阿池')[0].role,'user');
   assert.equal(map(old,'a',[...members,{id:'c',name:'小林'}],'小林')[0].role,'user');
   assert.equal(map([{role:'assistant',name:'小林',memberId:'b',text:'写错姓名'}],'a',members,'小林')[0].role,'user');
@@ -88,7 +89,7 @@ test('group page passes selected speakerId to mapping and preserves it for the t
   assert.match(detail,/var tmpStreamMsg = \{ role: 'assistant', text: tmpText,[\s\S]*?memberId: groupReplyPick/);
 });
 
-test('single-chat and legacy callers without speakerId keep their previous history semantics', () => {
+test('single-chat semantics remain intact; unscoped group history never impersonates the assistant', () => {
   const history=[{role:'user',text:'你好'},{role:'assistant',text:'好'}];
   const normal=sandbox.ChatContextPolicy.mapHistoryToApiMessages(history, String, {});
   assert.equal(normal[1].role,'assistant');
@@ -97,5 +98,15 @@ test('single-chat and legacy callers without speakerId keep their previous histo
     {role:'assistant',memberId:'a',text:'甲'},
     {role:'assistant',memberId:'b',text:'乙'}
   ], String, {isGroupChat:true,groupMembers:members});
-  assert.deepEqual(JSON.parse(JSON.stringify(legacyGroup)).map(x=>x.role),['assistant','assistant','user']);
+  assert.deepEqual(JSON.parse(JSON.stringify(legacyGroup)).map(x=>x.role),['user','user']);
+});
+
+test('human, NPC-like group aliases and unknown legacy speakers are explicitly distinct',()=>{
+ const history=[{role:'user',text:'用户的话'},{role:'assistant',memberId:'b',name:'我',text:'角色的话'},{role:'assistant',name:'我',text:'旧数据'},{role:'sent',memberId:'b',text:'冲突数据'}];
+ const result=map(history,'a',[{id:'a',name:'甲'},{id:'b',name:'我'}]);
+ assert.match(result[0].content,/"type":"USER_SELF"/);
+ assert.match(result[1].content,/"type":"AI_ROLE","id":"b"/);
+ assert.match(result[2].content,/"type":"UNKNOWN"/);
+ assert.match(result[3].content,/"type":"UNKNOWN"/);
+ assert.ok(result.every(x=>x.role==='user'));
 });

@@ -103,6 +103,7 @@
   function pTitle(p){ return p.title || p.content || ''; }
   const sortT = (a,b) => (typeof b.time==='number'?b.time:(b.created||0)) - (typeof a.time==='number'?a.time:(a.created||0));
 
+  function isOwn(c) { return !!c && c.owner === 'me' && !c.residentId && !c.roleId && c.source !== 'forum-ai' && c.generatedBy !== 'community-ai'; }
   const posts = JSON.parse(localStorage.getItem('forum_posts') || '[]');
   const tab = new URLSearchParams(location.search).get('tab') || 'posts';
 
@@ -119,7 +120,7 @@
 
   let rows = [];
   if (tab === 'posts') {
-    rows = posts.filter(p => p.owner === 'me' || p.name === '我').sort(sortT)
+    rows = posts.filter(isOwn).sort(sortT)
       .map((p, i) => ({ id: p.id, main: pTitle(p), sub: pTime(p) + ' · ♥ ' + (p.likes || 0) }));
   } else if (tab === 'fav') {
     rows = posts.filter(p => p.liked).sort(sortT)
@@ -128,9 +129,9 @@
     const mine = [];
     posts.forEach(p => {
       const arr = Array.isArray(p.comments) ? p.comments : [];
-      arr.forEach(c => { if (c.name === '我' || c.owner === 'me') mine.push({ p: p, text: c.text, time: c.time }); });
+      arr.forEach(c => { if (isOwn(c)) mine.push({ p: p, text: c.text, time: c.time }); });
       arr.forEach(c => {
-        if (Array.isArray(c.replies)) c.replies.forEach(r => { if (r.name === '我' || r.owner === 'me') mine.push({ p: p, text: r.text, time: r.time }); });
+        if (Array.isArray(c.replies)) c.replies.forEach(r => { if (isOwn(r)) mine.push({ p: p, text: r.text, time: r.time }); });
       });
     });
     mine.sort((a,b) => (typeof b.time==='number'?b.time:0) - (typeof a.time==='number'?a.time:0));
