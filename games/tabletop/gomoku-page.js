@@ -1,7 +1,7 @@
 import {createBrowserRoomVerifier} from './account-room-context.js';
 import {createGomokuPageHost} from './gomoku-page-host.js';
 
-export function mountGomokuPage(root,{win=root?.ownerDocument?.defaultView,makeRoomId=()=>win.crypto.randomUUID(),decideRole=null,pace=null,discussion={}}={}){
+export function mountGomokuPage(root,{win=root?.ownerDocument?.defaultView,makeRoomId=()=>win.crypto.randomUUID(),decideRole=null,pace=null,discussion={},onFinished=()=>{}}={}){
   if(!root?.ownerDocument||!win?.document||typeof makeRoomId!=='function')throw Error('GOMOKU_INVALID_PAGE');
   const doc=root.ownerDocument,verify=createBrowserRoomVerifier(win,{includeRoleLabels:true});
   const el=(tag,cls,text)=>{const n=doc.createElement(tag);if(cls)n.className=cls;if(text!==undefined)n.textContent=text;return n;};
@@ -57,7 +57,7 @@ export function mountGomokuPage(root,{win=root?.ownerDocument?.defaultView,makeR
     }
     sync();
   }
-  const host=createGomokuPageHost(board,{win,labelForSeat:label,decideRole,pace:gamePace,discussion:{...discussion,onChange:renderMessages},onView:v=>{
+  const host=createGomokuPageHost(board,{win,labelForSeat:label,decideRole,onFinished,pace:gamePace,discussion:{...discussion,onChange:renderMessages},onView:v=>{
     if(!active)return;
     active.view=v;if(v.phase==='finished')input.disabled=send.disabled=true;
     meta.textContent=(active.watch?'观战':'对弈')+' · '+(active.difficulty==='hard'?'困难':active.difficulty==='easy'?'简单':'普通')+' · '+v.seats.filter(s=>s.mode==='observer').length+'位旁观';

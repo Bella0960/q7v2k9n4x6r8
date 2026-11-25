@@ -6,12 +6,13 @@ import {createLudoDiscussion,ludoEventPriority} from './ludo-discussion.js';
 
 // Opt-in page controller. The host must load the canonical account scope and
 // PhoneStorage first. No fixture identities, storage writes or route registration.
-export function createLudoPageHost(root,{win=root?.ownerDocument?.defaultView,onStatus=()=>{},pace=()=>{},rollDie,discussion={},decideRole=null,labelForSeat=()=>undefined}={}){
+export function createLudoPageHost(root,{win=root?.ownerDocument?.defaultView,onStatus=()=>{},onFinished=()=>{},pace=()=>{},rollDie,discussion={},decideRole=null,labelForSeat=()=>undefined}={}){
   const fail=code=>{throw Error(code);};
   if(!root?.ownerDocument||!win?.document||typeof onStatus!=='function'||typeof pace!=='function'||typeof labelForSeat!=='function'||!discussion||typeof discussion!=='object'||(decideRole!==null&&typeof decideRole!=='function')||(rollDie!==undefined&&typeof rollDie!=='function'))fail('LUDO_INVALID_PAGE_HOST');
   let entry=null,destroyed=false,busy=false,epoch=0;
   const listeners=[];
   function listen(target,name,fn){target.addEventListener(name,fn);listeners.push(()=>target.removeEventListener(name,fn));}
+  function notifyFinished(){const e=entry;if(!destroyed&&!busy&&e?.board&&e.terminal){try{onFinished({roomId:e.roomId,revision:e.revision});}catch{}}}
   function report(state){onStatus(state);}
   function check(e,stamp){if(destroyed||entry!==e||stamp!==epoch)fail('LUDO_PAGE_STALE');}
   function clear(e){e?.board?.destroy();if(e){e.board=null;e.revision=-1;}root.replaceChildren();}
@@ -40,7 +41,7 @@ export function createLudoPageHost(root,{win=root?.ownerDocument?.defaultView,on
     if(!e.board)e.board=createLudoBoardView(root,{onMove:action=>move(e,action),labelForSeat:id=>/^bot:[1-3]$/.test(id)?'普通棋手 '+id.slice(4):labelForSeat(id)});
     const priority=ludoEventPriority(view);
     if(e.revision>=0&&view.revision===e.revision+1&&priority&&priority>=ludoEventPriority(e.eventView))e.eventView=view;
-    e.board.render(view);e.revision=view.revision;
+    e.board.render(view);e.revision=view.revision;e.terminal=view.phase==='finished';
     if(view.phase==='finished'){e.eventView=null;e.discussion?.stop();}
   }
   function flushEvent(e,stamp){
@@ -68,7 +69,7 @@ export function createLudoPageHost(root,{win=root?.ownerDocument?.defaultView,on
       if(next.phase==='playing'&&next.turnSeatId!=='user')await runRoles(e,stamp);
       else {if(next.phase==='playing')flushEvent(e,stamp);report(next.phase==='finished'?'finished':'ready');}
     }catch(error){if(entry===e&&stamp===epoch){pause('paused');if(e.session.status()==='disposed')end();}throw error;}
-    finally{busy=false;}
+    finally{busy=false;notifyFinished();}
   }
   async function start({roomId,roleIds=[],playerCount=Math.max(2,roleIds?.length+1),mode='classic',expectedIdentity=null}={}){
     if(destroyed||busy||entry)fail('LUDO_PAGE_BUSY');
@@ -91,7 +92,7 @@ export function createLudoPageHost(root,{win=root?.ownerDocument?.defaultView,on
       publish(e,view,stamp);report('ready');
       return view;
     }catch(error){if(entry===e)end();throw error;}
-    finally{busy=false;}
+    finally{busy=false;notifyFinished();}
   }
   // Internal restore hook for the future verified repository, not a file-import
   // or user-editable state entry. Optional chat is bound to the same board revision.
@@ -112,7 +113,7 @@ export function createLudoPageHost(root,{win=root?.ownerDocument?.defaultView,on
       publish(e,view,stamp);report(view.phase==='finished'?'finished':view.turnSeatId==='user'?'ready':'yield');
       return view;
     }catch(error){if(entry===e)end();throw error;}
-    finally{busy=false;}
+    finally{busy=false;notifyFinished();}
   }
   async function checkpoint(){
     const e=entry,stamp=epoch;
@@ -150,7 +151,7 @@ export function createLudoPageHost(root,{win=root?.ownerDocument?.defaultView,on
       if(view.phase==='playing'&&view.turnSeatId!=='user')return await runRoles(e,stamp);
       const state=view.phase==='finished'?'finished':'ready';report(state);return {status:state,actions:0};
     }catch(error){if(entry===e&&stamp===epoch){pause('paused');if(e.session.status()==='disposed')end();}throw error;}
-    finally{busy=false;}
+    finally{busy=false;notifyFinished();}
   }
   root.replaceChildren();
   function chat(){if(destroyed||!entry?.board||!entry.discussion)fail('LUDO_DISCUSSION_NOT_ACTIVE');return entry.discussion;}

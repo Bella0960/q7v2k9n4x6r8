@@ -76,7 +76,11 @@ export function mountTabletopHall(root,{win=root?.ownerDocument?.defaultView,gam
          }
          return lines.join('\n');
        }}):{};
-     page=mounts[id](container,{...gameOptions[id],...modelOptions,win});current={kind:'game',id,page};
+     page=mounts[id](container,{...gameOptions[id],...modelOptions,win,onFinished:event=>{
+       if(disposed||needsRefresh||current?.page!==page||!event||typeof event.roomId!=='string'||!Number.isSafeInteger(event.revision))return;
+       const key=JSON.stringify([event.roomId,event.revision]);if(current.archived===key||current.attempted===key)return;
+       current.terminal={...event,key};drainFinish();
+     }});current={kind:'game',id,page};
      if(saved){
        // Wait for the page's own scoped roster verification. A duplicate
        // reload cancels the initial picker request instead of bypassing it.
@@ -84,7 +88,7 @@ export function mountTabletopHall(root,{win=root?.ownerDocument?.defaultView,gam
      }
      note.textContent='';
    }catch{if(!disposed&&stamp===epoch){page?.destroy();showHome();note.textContent='无法进入游戏，请重新验证账号。';}}
-   finally{busy=false;}
+   finally{busy=false;drainFinish();}
  }
  async function save(){
    const e=current,stamp=epoch;if(disposed||busy||needsRefresh||e?.kind!=='game')return;
@@ -94,14 +98,20 @@ export function mountTabletopHall(root,{win=root?.ownerDocument?.defaultView,gam
      // One temporary slot per game. Explicit replacement confirmation.
      if(saves.has(e.id)&&saves.get(e.id).board.roomId!==saved.board.roomId&&replaceArmed!==saved.board.roomId){replaceArmed=saved.board.roomId;note.textContent='该游戏已有暂存对局，再点一次暂存将替换它。';return;}
      saves.set(e.id,JSON.parse(JSON.stringify(saved)));replaceArmed=null;exitArmed=false;note.textContent='已暂存到当前大厅会话，关闭页面后不会保留。';
-   }catch{if(!disposed&&stamp===epoch)note.textContent='暂存未完成，请等待当前回合结束后重试。';}finally{busy=false;}
+   }catch{if(!disposed&&stamp===epoch)note.textContent='暂存未完成，请等待当前回合结束后重试。';}finally{busy=false;drainFinish();}
  }
- async function archive(){
+ function drainFinish(){
+   const e=current;if(disposed||busy||needsRefresh||e?.kind!=='game'||!e.terminal||e.attempted===e.terminal.key||e.archived===e.terminal.key)return;
+   e.attempted=e.terminal.key;void archive(e.terminal);
+ }
+ async function archive(expected=null){
    const e=current,stamp=epoch;if(disposed||busy||needsRefresh||e?.kind!=='game')return;
    busy=true;try{
-     await verified(stamp);const saved=await e.page.saveMatch();check(stamp);await verified(stamp);if(current!==e||saved.board.accountId!==context.accountId)fail('TABLETOP_HALL_STALE');const result=journal.recordSavedMatch(saved);check(stamp);
-     note.textContent=result.duplicate?'本局已归档，无需重复记录。':'已记入本次会话的游戏手账。';
-   }catch{if(!disposed&&stamp===epoch)note.textContent='仅可归档已结束且当前可验证的对局。';}finally{busy=false;}
+     await verified(stamp);const saved=await e.page.saveMatch();check(stamp);await verified(stamp);if(current!==e||saved.board.accountId!==context.accountId)fail('TABLETOP_HALL_STALE');if(expected&&(saved.board.roomId!==expected.roomId||saved.board.startRevision+saved.board.moves.length!==expected.revision))fail('TABLETOP_HALL_STALE');
+     const result=journal.recordSavedMatch(saved);check(stamp);
+     e.archived=JSON.stringify([saved.board.roomId,saved.board.startRevision+saved.board.moves.length]);
+     note.textContent=result.duplicate?'本局已归档，无需重复记录。':'已自动或手动记入本次会话的游戏手账。';
+   }catch{if(!disposed&&stamp===epoch)note.textContent=expected?'自动归档未完成，请点击归档重试。':'仅可归档已结束且当前可验证的对局。';}finally{busy=false;drainFinish();}
  }
  async function openJournal(){
    if(disposed||busy||needsRefresh||current)return;busy=true;const stamp=++epoch;
@@ -131,7 +141,7 @@ export function mountTabletopHall(root,{win=root?.ownerDocument?.defaultView,gam
  async function recover(){
    if(disposed||busy||!needsRefresh)return;busy=true;const stamp=epoch;
    try{await verified(stamp);check(stamp);needsRefresh=false;reverify.hidden=true;main.hidden=toolbar.hidden=false;if(!current)showHome();note.textContent=current?'账号已验证，请继续当前游戏。':'';}
-   catch{if(!disposed&&stamp===epoch){if(!context){removeCurrent();purge();showHome();}note.textContent='账号验证未完成，请重试。';}}finally{busy=false;}
+   catch{if(!disposed&&stamp===epoch){if(!context){removeCurrent();purge();showHome();}note.textContent='账号验证未完成，请重试。';}}finally{busy=false;drainFinish();}
  }
  function destroy(){if(disposed)return;disposed=true;epoch++;checking?.abort();removeCurrent();purge();for(const f of listeners.splice(0))f();wrap.remove();}
  listen(win,'storage',invalidate);listen(win,'offline',invalidate);listen(doc,'visibilitychange',()=>{if(doc.hidden)invalidate();});listen(win,'pagehide',destroy);

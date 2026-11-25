@@ -3,7 +3,7 @@ import {createLudoPageHost} from './ludo-page-host.js';
 
 // Production mountable surface. Route activation is separate and must load
 // the authenticated account scope before PhoneStorage. No fixture fallback.
-export function mountLudoPage(root,{win=root?.ownerDocument?.defaultView,makeRoomId=()=>win.crypto.randomUUID(),pace=()=>{},discussion={},decideRole=null}={}){
+export function mountLudoPage(root,{win=root?.ownerDocument?.defaultView,makeRoomId=()=>win.crypto.randomUUID(),pace=()=>{},discussion={},decideRole=null,onFinished=()=>{}}={}){
   if(!root?.ownerDocument||!win?.document||typeof makeRoomId!=='function')throw Error('LUDO_PAGE_INVALID_ROOT');
   const doc=root.ownerDocument,verify=createBrowserRoomVerifier(win,{includeRoleLabels:true});
   const el=(tag,cls,text)=>{const n=doc.createElement(tag);if(cls)n.className=cls;if(text!==undefined)n.textContent=text;return n;};
@@ -50,7 +50,7 @@ export function mountLudoPage(root,{win=root?.ownerDocument?.defaultView,makeRoo
   function clearPrivate(){epoch++;checking?.abort();checking=null;resetPicker();clearChat();}
   function paused(){clearPrivate();chat.hidden=true;resume.hidden=false;note.textContent='本局已暂停，请验证账号后继续。';}
   function idle(){clearPrivate();active=null;game.hidden=true;setup.hidden=false;chat.hidden=true;resume.hidden=true;note.textContent='请重新读取角色后开始。';}
-  const host=createLudoPageHost(board,{win,pace,decideRole,labelForSeat:label,discussion:{...discussion,onChange:renderMessages},onStatus(state){
+  const host=createLudoPageHost(board,{win,pace,decideRole,onFinished,labelForSeat:label,discussion:{...discussion,onChange:renderMessages},onStatus(state){
     if(disposed)return;
     if(state==='paused'){paused();return;}
     if(state==='idle'){idle();return;}

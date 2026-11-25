@@ -5,7 +5,7 @@ import {createTurtleRules,createTurtleRulesFromMode,TURTLE_VERDICTS} from './tur
 import {createTurtleTurnDriver} from './turtle-turn-driver.js';
 
 // Opt-in project page. No live route until canonical account integration.
-export function mountTurtlePage(root,{win=root?.ownerDocument?.defaultView,makeRoomId=()=>win.crypto.randomUUID(),askRole=null,judgeRole=null,allowPlayerText=null,pace=()=>{}}={}){
+export function mountTurtlePage(root,{win=root?.ownerDocument?.defaultView,makeRoomId=()=>win.crypto.randomUUID(),askRole=null,judgeRole=null,allowPlayerText=null,pace=()=>{},onFinished=()=>{}}={}){
  const fail=code=>{throw Error(code);};
  if(!root?.ownerDocument||!win?.document||typeof makeRoomId!=='function')fail('TURTLE_PAGE_INVALID');
  const doc=root.ownerDocument,verify=createBrowserRoomVerifier(win,{includeRoleLabels:true}),puzzles=listTurtlePuzzles();
@@ -55,6 +55,7 @@ export function mountTurtlePage(root,{win=root?.ownerDocument?.defaultView,makeR
    }catch{if(!disposed&&epoch===stamp)note.textContent='账号或角色名单未通过验证。';}
    finally{if(checking===ac){checking=null;refresh.disabled=false;}}
  }
+ function notifyFinished(){if(!disposed&&!busy&&!paused&&active&&view?.phase==='finished'){try{onFinished({roomId:active.roomId,revision:view.revision});}catch{}}}
  function render(e,v,stamp){
    check(e,stamp);if(v?.gameId!=='turtle'||v.roomId!==e.roomId||v.selfSeatId!=='user'||!v.game||!['playing','finished'].includes(v.phase))fail('TURTLE_PAGE_VIEW');
    view=v;const g=v.game,finished=v.phase==='finished',legal=new Set(g.legalKinds);
@@ -93,7 +94,7 @@ export function mountTurtlePage(root,{win=root?.ownerDocument?.defaultView,makeR
      const v=await send({type:'start'});clearPicker();setup.hidden=true;game.hidden=false;render(e,v,stamp);note.textContent='';
      if(v.game.activeSeatId!=='user')await run(e,stamp);
    }catch{if(!disposed&&active===e&&epoch===stamp){finish();note.textContent='无法开局，请重新读取角色。';}}
-   finally{busy=false;refresh.disabled=false;}
+   finally{busy=false;refresh.disabled=false;notifyFinished();}
  }
  async function act(move){
    const e=active,stamp=epoch;if(disposed||busy||paused||!view?.game.legalKinds.includes(move.kind)||!e)return false;busy=true;
@@ -107,13 +108,13 @@ export function mountTurtlePage(root,{win=root?.ownerDocument?.defaultView,makeR
      if(e.session.status()==='disposed')finish();
      else if(['TURTLE_DUPLICATE_QUESTION','TURTLE_INCONSISTENT_ANSWER','TURTLE_INVALID_PLAYER_ACTION'].includes(error.message))note.textContent='问题已问过或当前操作不适用。';
      else{note.textContent='当前推理未完成，请继续或暂停。';resume.hidden=false;}
-   }return false;}finally{busy=false;}
+   }return false;}finally{busy=false;notifyFinished();}
  }
  async function submitText(kind){const value=input.value.trim();if(!value)return;if(await act({kind,text:value}))input.value='';}
  async function advance(){
    const e=active;if(disposed||busy||!e)return;busy=true;paused=false;const stamp=epoch;e.stamp=stamp;
    try{const v=await e.session.viewUser();check(e,stamp);render(e,v,stamp);if(v.phase==='playing'&&v.game.activeSeatId!=='user')await run(e,stamp);else note.textContent='';}
-   catch{if(!disposed&&active===e&&epoch===stamp){if(e.session.status()==='disposed')finish();else{note.textContent='暂时无法继续，请重试。';resume.hidden=false;}}}finally{busy=false;}
+   catch{if(!disposed&&active===e&&epoch===stamp){if(e.session.status()==='disposed')finish();else{note.textContent='暂时无法继续，请重试。';resume.hidden=false;}}}finally{busy=false;notifyFinished();}
  }
  function suspend(){if(!active)return;epoch++;paused=true;active.driver.stop();wipe();resume.hidden=false;pause.hidden=true;note.textContent='本局已暂停，继续前重新验证账号。';}
  function finish(){const e=active;active=null;epoch++;paused=false;e?.driver?.dispose();e?.session.dispose();wipe();invalidate();game.hidden=true;setup.hidden=false;note.textContent='';refresh.disabled=false;}
@@ -138,7 +139,7 @@ export function mountTurtlePage(root,{win=root?.ownerDocument?.defaultView,makeR
      e={roomId:copy.roomId,session,driver:null,stamp,labels:new Map(c.roleLabels.map(r=>['role:'+r.id,r.name]))};active=e;paused=false;
      e.driver=createTurtleTurnDriver({session,askRole,judgeRole,allowPlayerText,pace,onView:v=>render(e,v,e.stamp)});
      const v=await session.viewUser();check(e,stamp);clearPicker();setup.hidden=true;game.hidden=false;render(e,v,stamp);note.textContent='';return v;
-   }catch(error){if(active===e)finish();throw error;}finally{busy=false;}
+   }catch(error){if(active===e)finish();throw error;}finally{busy=false;notifyFinished();}
  }
  async function archiveMatch(journal){
    if(typeof journal?.recordSavedMatch!=='function')fail('TURTLE_INVALID_JOURNAL');

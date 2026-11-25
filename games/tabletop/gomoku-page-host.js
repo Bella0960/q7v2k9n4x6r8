@@ -5,12 +5,13 @@ import {createGomokuBoardView} from './gomoku-board-view.js';
 import {createGomokuDiscussion} from './gomoku-discussion.js';
 
 // Production-mountable controller; no account bypass or new route.
-export function createGomokuPageHost(root,{win=root?.ownerDocument?.defaultView,labelForSeat=()=>'',onStatus=()=>{},onView=()=>{},onDecision=()=>{},decideRole=null,pace=()=>{},discussion={}}={}){
+export function createGomokuPageHost(root,{win=root?.ownerDocument?.defaultView,labelForSeat=()=>'',onStatus=()=>{},onFinished=()=>{},onView=()=>{},onDecision=()=>{},decideRole=null,pace=()=>{},discussion={}}={}){
   const fail=code=>{throw Error(code);};
   if(!root?.ownerDocument||!win?.document||![labelForSeat,onStatus,onView,onDecision,pace].every(f=>typeof f==='function')||(decideRole!==null&&typeof decideRole!=='function'))fail('GOMOKU_INVALID_HOST');
   let entry=null,epoch=0,busy=false,destroyed=false;
   const listeners=[];
   function listen(t,n,f){t.addEventListener(n,f);listeners.push(()=>t.removeEventListener(n,f));}
+  function notifyFinished(){const e=entry;if(!destroyed&&!busy&&e?.board&&e.terminal){try{onFinished({roomId:e.roomId,revision:e.revision});}catch{}}}
   function report(s){try{onStatus(s);}catch{}}
   function check(e,stamp){if(destroyed||entry!==e||epoch!==stamp)fail('GOMOKU_PAGE_STALE');}
   function clear(e){e?.board?.destroy();if(e){e.board=null;e.revision=-1;}root.replaceChildren();}
@@ -24,7 +25,7 @@ export function createGomokuPageHost(root,{win=root?.ownerDocument?.defaultView,
     if(e.board&&e.revision===v.revision)return;
     if(!e.board)e.board=createGomokuBoardView(root,{labelForSeat,onMove:a=>move(e,a),onError:()=>{}});
     const committed=e.revision>=0&&v.revision===e.revision+1;
-    e.board.render(v);e.revision=v.revision;if(v.phase==='finished')e.discussion?.stop();else if(committed&&e.discussion)void e.discussion.react(v).catch(()=>{});
+    e.board.render(v);e.revision=v.revision;e.terminal=v.phase==='finished';if(v.phase==='finished')e.discussion?.stop();else if(committed&&e.discussion)void e.discussion.react(v).catch(()=>{});
     try{onView(v);}catch{}
   }
   async function run(e,stamp){
@@ -40,7 +41,7 @@ export function createGomokuPageHost(root,{win=root?.ownerDocument?.defaultView,
       const commit=await e.session.prepareUserAction();check(e,stamp);
       const next=await commit({type:'move',move:a.move});check(e,stamp);publish(e,next,stamp);
       if(next.phase==='playing'&&next.turnSeatId!=='user')await run(e,stamp);else report(next.phase==='finished'?'finished':'ready');
-    }catch(error){if(entry===e&&epoch===stamp){pause();if(e.session.status()==='disposed')end();}throw error;}finally{busy=false;}
+    }catch(error){if(entry===e&&epoch===stamp){pause();if(e.session.status()==='disposed')end();}throw error;}finally{busy=false;notifyFinished();}
   }
   async function start({roomId,opponents=[],observers=[],watch=false,blackFirst=true,difficulty='normal',expectedIdentity=null}={}){
     if(destroyed||busy||entry)fail('GOMOKU_PAGE_BUSY');
@@ -62,7 +63,7 @@ export function createGomokuPageHost(root,{win=root?.ownerDocument?.defaultView,
       const v=await send({type:'start'});e.discussion=createGomokuDiscussion({...discussion,session,view:v,onChange:m=>{if(entry===e&&e.board&&!destroyed)discussion.onChange?.(m);}});publish(e,v,stamp);
       report(v.turnSeatId==='user'?'ready':'yield');
       return v;
-    }catch(error){if(entry===e)end();throw error;}finally{busy=false;}
+    }catch(error){if(entry===e)end();throw error;}finally{busy=false;notifyFinished();}
   }
   // Trusted repository integration hooks; not an arbitrary file import.
   async function saveMatch(){
@@ -89,14 +90,14 @@ export function createGomokuPageHost(root,{win=root?.ownerDocument?.defaultView,
       entry=e;report('opening');const v=await session.viewUser();check(e,stamp);
       e.discussion=createGomokuDiscussion({...discussion,session,view:v,checkpoint:copy.chat,onChange:m=>{if(entry===e&&e.board&&!destroyed)discussion.onChange?.(m);}});
       publish(e,v,stamp);report(v.phase==='finished'?'finished':v.turnSeatId==='user'?'ready':'yield');return v;
-    }catch(error){if(entry===e)end();throw error;}finally{busy=false;}
+    }catch(error){if(entry===e)end();throw error;}finally{busy=false;notifyFinished();}
   }
   async function resume(){
     const e=entry,stamp=epoch;if(destroyed||busy||!e)fail('GOMOKU_PAGE_BUSY');busy=true;
     try{const v=await e.session.viewUser();check(e,stamp);publish(e,v,stamp);
       if(v.phase==='playing'&&v.turnSeatId!=='user')return await run(e,stamp);
       const status=v.phase==='finished'?'finished':'user';report(status==='user'?'ready':status);return {status,actions:0};
-    }catch(error){if(entry===e&&stamp===epoch){pause();if(e.session.status()==='disposed')end();}throw error;}finally{busy=false;}
+    }catch(error){if(entry===e&&stamp===epoch){pause();if(e.session.status()==='disposed')end();}throw error;}finally{busy=false;notifyFinished();}
   }
   root.replaceChildren();
   function chat(){if(!entry?.board||!entry.discussion||destroyed)fail('GOMOKU_CHAT_INACTIVE');return entry.discussion;}

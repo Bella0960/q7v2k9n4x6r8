@@ -4,7 +4,7 @@ import {createWerewolfRules,createWerewolfRulesFromMode,WEREWOLF_LINEUPS} from '
 import {createWerewolfTurnDriver} from './werewolf-turn-driver.js';
 
 // Internal mount; canonical account and provider integration required before route activation.
-export function mountWerewolfPage(root,{win=root?.ownerDocument?.defaultView,makeRoomId=()=>win.crypto.randomUUID(),randomIndex,decideRole=null,decideBot=null,allowSpeech=null,pace=()=>{}}={}){
+export function mountWerewolfPage(root,{win=root?.ownerDocument?.defaultView,makeRoomId=()=>win.crypto.randomUUID(),randomIndex,decideRole=null,decideBot=null,allowSpeech=null,pace=()=>{},onFinished=()=>{}}={}){
  const fail=code=>{throw Error(code);};
  if(!root?.ownerDocument||!win?.document||typeof makeRoomId!=='function')fail('WOLF_PAGE_INVALID');
  const doc=root.ownerDocument,verify=createBrowserRoomVerifier(win,{includeRoleLabels:true});
@@ -53,6 +53,7 @@ export function mountWerewolfPage(root,{win=root?.ownerDocument?.defaultView,mak
      sync();note.textContent=c.roleIds.length?'':'暂无可邀请角色。';
    }catch{if(!disposed&&stamp===epoch)note.textContent='账号或角色名单验证失败。';}finally{if(checking===ac){checking=null;refresh.disabled=false;}}
  }
+ function notifyFinished(){if(!disposed&&!busy&&!paused&&active&&view?.phase==='finished'){try{onFinished({roomId:active.roomId,revision:view.revision});}catch{}}}
  function render(e,v,stamp){
    check(e,stamp);if(v?.gameId!=='werewolf'||v.roomId!==e.roomId||v.selfSeatId!=='user'||!v.game||!['playing','finished'].includes(v.phase))fail('WOLF_PAGE_VIEW');
    view=v;const g=v.game,done=v.phase==='finished',night=g.stage==='night',legal=g.legalKinds;
@@ -93,7 +94,7 @@ export function mountWerewolfPage(root,{win=root?.ownerDocument?.defaultView,mak
      const v=await send({type:'start'});clearPicker();setup.hidden=true;game.hidden=false;render(e,v,stamp);note.textContent='';
      if(!v.game.legalKinds.length)await run(e,stamp);
    }catch{if(!disposed&&active===e&&stamp===epoch){if(game.hidden)finish();else resume.hidden=false;note.textContent='本局暂时无法继续，请重试。';}}
-   finally{busy=false;}
+   finally{busy=false;notifyFinished();}
  }
  async function act(move){
    const e=active,stamp=epoch;if(disposed||busy||paused||!e||!view?.game.legalKinds.includes(move.kind))return false;busy=true;let committed=false;
@@ -101,12 +102,12 @@ export function mountWerewolfPage(root,{win=root?.ownerDocument?.defaultView,mak
      const old=view,v=await e.session.viewUser();check(e,stamp);if(v.revision!==old.revision||!v.game.legalKinds.includes(move.kind))fail('WOLF_PAGE_STALE');
      const commit=await e.session.prepareUserAction();check(e,stamp);const next=await commit({type:'move',move});check(e,stamp);committed=true;render(e,next,stamp);note.textContent='';
      if(next.phase==='playing'&&!next.game.legalKinds.length)await run(e,stamp);return true;
-   }catch{if(!disposed&&active===e&&epoch===stamp){if(e.session.status()==='disposed')finish();else{note.textContent='操作未完成，请检查当前回合或继续。';resume.hidden=false;}}return committed;}finally{busy=false;}
+   }catch{if(!disposed&&active===e&&epoch===stamp){if(e.session.status()==='disposed')finish();else{note.textContent='操作未完成，请检查当前回合或继续。';resume.hidden=false;}}return committed;}finally{busy=false;notifyFinished();}
  }
  async function advance(){
    const e=active;if(disposed||busy||!e)return;busy=true;paused=false;const stamp=epoch;e.stamp=stamp;
    try{const v=await e.session.viewUser();check(e,stamp);render(e,v,stamp);if(v.phase==='playing'&&!v.game.legalKinds.length)await run(e,stamp);else note.textContent='';}
-   catch{if(!disposed&&active===e&&epoch===stamp){if(e.session.status()==='disposed')finish();else{note.textContent='无法继续，请重试。';resume.hidden=false;}}}finally{busy=false;}
+   catch{if(!disposed&&active===e&&epoch===stamp){if(e.session.status()==='disposed')finish();else{note.textContent='无法继续，请重试。';resume.hidden=false;}}}finally{busy=false;notifyFinished();}
  }
  function suspend(){if(!active)return;epoch++;paused=true;active.driver?.stop();wipe();resume.hidden=false;pause.hidden=true;note.textContent='已暂停，继续前重新验证账号。';}
  function finish(){const e=active;active=null;epoch++;paused=false;e?.driver?.dispose();e?.session.dispose();wipe();invalidate();game.hidden=true;setup.hidden=false;note.textContent='';refresh.disabled=false;}
@@ -130,7 +131,7 @@ export function mountWerewolfPage(root,{win=root?.ownerDocument?.defaultView,mak
      e={roomId:copy.roomId,session,driver:null,stamp,labels:new Map(c.roleLabels.map(r=>['role:'+r.id,r.name]))};active=e;paused=false;
      e.driver=createWerewolfTurnDriver({session,decideRole,decideBot,allowSpeech,pace,onView:v=>render(e,v,e.stamp)});
      const v=await session.viewUser();check(e,stamp);clearPicker();setup.hidden=true;game.hidden=false;render(e,v,stamp);note.textContent='';return v;
-   }catch(error){if(active===e)finish();throw error;}finally{busy=false;}
+   }catch(error){if(active===e)finish();throw error;}finally{busy=false;notifyFinished();}
  }
  async function archiveMatch(journal){
    if(typeof journal?.recordSavedMatch!=='function')fail('WOLF_INVALID_JOURNAL');
