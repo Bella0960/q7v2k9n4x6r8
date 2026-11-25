@@ -10,7 +10,7 @@
 <script src="../../shared/js/phone/phone_storage.js"></script>
 <script src="../../shared/js/phone/storage/media-repository.js?v=20261107v2"></script>
 <script src="../../shared/js/phone/group-portraits.js?v=20261125g4"></script>
-<script src="../../shared/js/phone/group-write-guard.js?v=20261125g3"></script>
+<script src="../../shared/js/phone/group-write-guard.js?v=20261125g6"></script>
 <style>
   * { box-sizing: border-box; margin: 0; padding: 0; -webkit-tap-highlight-color: transparent; }
   body {
@@ -2031,17 +2031,18 @@
     var GP_ALIAS_KEY = 'chat_group_alias_' + roleId;
     var GP_NOTICE_KEY = 'chat_group_notice_' + roleId;
 
-    var groupReadSnapshots=new WeakMap();
+    var groupReadSnapshots=new WeakMap(),groupPageScope=null,renderedGroup=null,aliasSnapshot=null,noticeSnapshot=null,avatarSelection=null;
+    try{groupPageScope=window.MAOGroupWriteGuard.read(String(roleId));}catch(error){}
     function loadCurrentGroup() {
       try{
         var snapshot=window.MAOGroupWriteGuard.read(String(roleId));
-        if(!snapshot)return null;
+        if(!snapshot||!groupPageScope||snapshot.account!==groupPageScope.account)return null;
         groupReadSnapshots.set(snapshot.group,snapshot);
         return snapshot.group;
       }catch(error){return null;}
     }
     function saveCurrentGroup(group) {
-      if(!group||!window.MAOGroupWriteGuard)return false;
+      if(!group||!groupPageScope||!window.MAOGroupWriteGuard||window.MAOGroupWriteGuard.account()!==groupPageScope.account)return false;
       var result=window.MAOGroupWriteGuard.commit(groupReadSnapshots.get(group),group);
       if(result.ok)groupReadSnapshots.set(group,result.expected);
       return result.ok;
@@ -2131,6 +2132,7 @@
     function renderGroupInfo() {
       var g = loadCurrentGroup();
       if (!g) return;
+      renderedGroup=g;
       gpNameText.textContent = g.name || '群聊';
       var members = Array.isArray(g.members) ? g.members : [];
       gpMetaSub.textContent = '成员 · ' + members.length + '人';
@@ -2138,13 +2140,13 @@
       renderGroupAvatar(gpAvatarEdit, g);
       gpNameInput.value = g.name || '';
       // 群备注
-      var alias = '';
-      try { alias = localStorage.getItem(GP_ALIAS_KEY) || ''; } catch (e) {}
+      aliasSnapshot=window.MAOGroupWriteGuard.readPreference(groupReadSnapshots.get(g),'alias');
+      var alias=aliasSnapshot&&aliasSnapshot.raw||'';
       gpAliasInput.value = alias;
       gpAliasSub.textContent = alias ? alias : '给这个群一个专属称呼';
       // 群公告
-      var notice = '';
-      try { notice = localStorage.getItem(GP_NOTICE_KEY) || ''; } catch (e) {}
+      noticeSnapshot=window.MAOGroupWriteGuard.readPreference(groupReadSnapshots.get(g),'notice');
+      var notice=noticeSnapshot&&noticeSnapshot.raw||'';
       gpNoticeInput.value = notice;
       gpNoticeSub.textContent = notice ? (notice.length > 18 ? notice.slice(0, 18) + '…' : notice) : '未设置公告';
       // 成员列表
@@ -2162,8 +2164,8 @@
         btn.addEventListener('click', function () {
           var row = btn.closest('.gp-member-row');
           var mid = row.getAttribute('data-mid');
-          var g2 = loadCurrentGroup();
-          if (!g2 || !Array.isArray(g2.members) || !g2.members.some(function(m){return m&&String(m.id)===mid;})) return;
+          var g2 = renderedGroup;
+          if (!g2 || !Array.isArray(g2.members) || g2.members.filter(function(m){return m&&String(m.id)===mid;}).length!==1) return;
           if (mid==='__user') return;
           if (!confirm('确定移除该成员？聊天记录会保留。')) return;
           g2.members = g2.members.filter(function (m) { return String(m.id) !== String(mid); });
@@ -2189,6 +2191,8 @@
       action.addEventListener('click', function () {
         var willOpen = !card.classList.contains('is-open');
         if (willOpen) {
+          if(!loadCurrentGroup()){showToast('群资料或账号已变化，请重新进入');return;}
+          renderGroupInfo();
           // 收起其他面板
           document.querySelectorAll('.alias-card.is-open').forEach(function (c) {
             if (c.id !== cardId) c.classList.remove('is-open');
@@ -2226,7 +2230,8 @@
           renderInviteCandidates();
           return;
         }
-        var target = readRolePool().filter(function (r) { return String(r.id) === String(rid); })[0];
+        var targets=readRolePool().filter(function(r){return r&&r.id!=null&&String(r.id)===String(rid);});
+        var target=targets.length===1&&rid!=='__user'?targets[0]:null;
         if (!target) { showToast('角色不存在，邀请失败'); renderInviteCandidates(); return; }
         g.members.push(defaultGroupMember(target));
         if (!saveCurrentGroup(g)) {
@@ -2242,13 +2247,15 @@
 
     // 群头像上传（压缩 200px）
     document.getElementById('gpAvatarEditBtn').addEventListener('click', function () {
+      avatarSelection=loadCurrentGroup();
+      if(!avatarSelection){showToast('群资料不可用，请重新进入');return;}
       gpAvatarInput.click();
     });
     gpAvatarInput.addEventListener('change', function () {
       var file = gpAvatarInput.files[0];
       if (!file) return;
-      var avatarAccount=window.MAOGroupWriteGuard.account();
-      var avatarGroup=String(roleId);
+      var g=avatarSelection;avatarSelection=null;
+      if(!g){showToast('群资料不可用，请重新选择');return;}
       var reader = new FileReader();
       reader.onload = function (ev) {
         var img = new Image();
@@ -2260,9 +2267,7 @@
             canvas.height = 200;
             canvas.getContext('2d').drawImage(img, (img.width - side) / 2, (img.height - side) / 2, side, side, 0, 0, 200, 200);
             var dataUrl = canvas.toDataURL('image/jpeg', 0.72);
-            if(window.MAOGroupWriteGuard.account()!==avatarAccount||String(roleId)!==avatarGroup)return;
-            var g = loadCurrentGroup();
-            if (!g) return;
+            if(!window.MAOGroupWriteGuard.matches(groupReadSnapshots.get(g))){showToast('群资料已变化，请重新选择头像');return;}
             g.avatar = dataUrl;
             if (saveCurrentGroup(g)) {
               renderGroupInfo();
@@ -2285,8 +2290,8 @@
     document.getElementById('gpInfoSaveBtn').addEventListener('click', function () {
       var name = gpNameInput.value.trim();
       if (!name) { showToast('群名称不能为空'); return; }
-      var g = loadCurrentGroup();
-      if (!g) return;
+      var g=renderedGroup;
+      if(!g){showToast('群资料不可用，请重新进入');return;}
       g.name = name;
       if (saveCurrentGroup(g)) {
         renderGroupInfo();
@@ -2300,7 +2305,7 @@
     // 保存群备注
     document.getElementById('gpAliasSaveBtn').addEventListener('click', function () {
       var val = gpAliasInput.value.trim();
-      try { localStorage.setItem(GP_ALIAS_KEY, val); } catch (e) { showToast('保存失败，请重试'); return; }
+      if(!window.MAOGroupWriteGuard.writePreference(aliasSnapshot,val).ok){showToast('群备注已变化或保存失败，请重新打开');return;}
       renderGroupInfo();
       document.getElementById('gpAliasCard').classList.remove('is-open');
       showToast('群备注已保存');
@@ -2309,7 +2314,7 @@
     // 保存群公告
     document.getElementById('gpNoticeSaveBtn').addEventListener('click', function () {
       var val = gpNoticeInput.value.trim();
-      try { localStorage.setItem(GP_NOTICE_KEY, val); } catch (e) { showToast('保存失败，请重试'); return; }
+      if(!window.MAOGroupWriteGuard.writePreference(noticeSnapshot,val).ok){showToast('群公告已变化或保存失败，请重新打开');return;}
       renderGroupInfo();
       document.getElementById('gpNoticeCard').classList.remove('is-open');
       showToast('群公告已发布');
