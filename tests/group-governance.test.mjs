@@ -587,9 +587,37 @@ test('group turns fence requests, writes, followups and deferred actions against
 test('group integration pages and precache use one canonical script revision',()=>{
   const sw=load('sw.js');
   const pages=['chat/chat/chat.html','chat/chat/chat-detail.html','chat/chat/chat-settings.html','chat/chat/group-play.html'];
-  const expected={"group-governance.js":"20261125scope2","group-memory-events.js":"20261125public1","chat-context-policy.js":"20261125public1","chat-history-atomic.js":"20261125scope1","wallpaper-store.js":"20261125group2","group-turn-effects.js":"20261125scope1","group-private-receipt-recovery.js":"20261125scope1","group-settings-home.js":"20261125scope3","group-write-guard.js":"20261125g10","group-portraits.js":"20261125scope1"};
+  const expected={"group-governance.js":"20261125scope2","group-memory-events.js":"20261125public1","chat-context-policy.js":"20261125public1","chat-history-atomic.js":"20261125scope1","wallpaper-store.js":"20261125group2","group-turn-effects.js":"20261125scope1","group-private-receipt-recovery.js":"20261125scope1","group-settings-home.js":"20261125scope4","group-write-guard.js":"20261125g10","group-portraits.js":"20261125scope1"};
   for(const [name,rev] of Object.entries(expected)){
     assert.ok(sw.includes(name+'?v='+rev),name+' precache');
     for(const page of pages){const html=load(page);for(const match of html.matchAll(/<script[^>]+src="([^"]+)"/g)){if(match[1].includes('/'+name+'?v='))assert.ok(match[1].endsWith(name+'?v='+rev),page+' '+name);}}
   }
+});
+
+
+test('group creation and member invitation recheck exact selected role identity',()=>{
+  const chat=load('chat/chat/chat.html'),home=load('shared/js/group-settings-home.js'),guard=load('shared/js/phone/group-write-guard.js');
+  const adapter=chat.slice(chat.indexOf('      function creationRoles('),chat.indexOf('      function renderMembers()',chat.indexOf('      function creationRoles(')));
+  const inviteAdapter=home.slice(home.indexOf('    function inviteCandidates('),home.indexOf('    function selectMembers(',home.indexOf('    function inviteCandidates(')));
+  const A='MAO-AAAAAAAAAAAA',B='MAO-BBBBBBBBBBBB';
+  function setup(){
+    const state={id:A,ready:true,writes:0,quota:false},roles=[{id:'r1',name:'甲',avatar:'a'},{id:'r2',name:'乙',avatar:'b'}];
+    const map=new Map([['ai_custom_characters',JSON.stringify(roles)],['phone_groups',JSON.stringify([{id:'g1',name:'old',members:[{id:'r1'}]}])]]);
+    const w={document:{querySelector:q=>({content:q.includes('role')?'member':state.id})},location:{hostname:'preview.mao520.com'},get __MAO_ACCOUNT_SCOPE__(){return {accountId:state.id,role:'member',ready:state.ready}},localStorage:{getItem:k=>map.get(k)??null,setItem(k,v){state.writes++;if(state.quota)throw Error('quota');map.set(k,v)}}};
+    new Function('window',guard)(w);
+    const api=new Function('window','localStorage',adapter+';return {creationRoles,uniqueCreationRoles,createSelectedGroup};')(w,w.localStorage);
+    const invites=new Function(inviteAdapter+';return {inviteCandidates,currentInvitationRole};')();
+    return {state,roles,map,api,invites,create(ids=['r1'],shown=roles){return api.createSelectedGroup(A,shown,ids,'群聊',99)},rows:()=>JSON.parse(map.get('phone_groups'))};
+  }
+  {const h=setup();assert.equal(h.create(['r1','r2']).ok,true);assert.equal(h.rows()[0].name,'old');assert.equal(h.rows()[1].members.length,2);}
+  for(const change of [h=>{h.state.id=B},h=>{h.state.ready=false},h=>h.map.set('ai_custom_characters','[]'),h=>h.map.set('ai_custom_characters','{bad'),h=>h.map.set('ai_custom_characters',JSON.stringify([{id:'r1',name:'edited'}])),h=>h.map.set('ai_custom_characters',JSON.stringify([...h.roles,{id:'r1'}])),h=>h.map.set('ai_custom_characters',JSON.stringify([...h.roles,{id:'g99'}])),h=>h.map.set('phone_groups','{bad'),h=>h.map.set('phone_groups','[{"id":"g99"}]')]){
+    const h=setup();change(h);assert.equal(h.create().ok,false);assert.equal(h.state.writes,0);
+  }
+  {const h=setup();assert.equal(h.create(['r1','r1']).ok,false);assert.equal(h.state.writes,0);}
+  {const h=setup(),rows=[{id:'__user',name:'user'}];h.map.set('ai_custom_characters',JSON.stringify(rows));assert.equal(h.create(['__user'],rows).ok,false);assert.equal(h.state.writes,0);}
+  {const h=setup();h.state.quota=true;assert.equal(h.create().ok,false);assert.equal(h.rows().length,1);}
+  {const h=setup();h.map.set('ai_custom_characters',JSON.stringify([h.roles[0],{id:'r2',name:'edited'}]));assert.equal(h.create().ok,true);}
+  {const h=setup(),g={id:'g1',members:[{id:'r1'}]};assert.deepEqual(h.invites.inviteCandidates([...h.roles,{id:'r2'},{id:'__user'},{id:'g1'},{id:'r3'}],g).map(x=>x.id),['r3']);const current={group:g};assert.equal(h.invites.currentInvitationRole('r2',current,h.roles,[]),null);assert.equal(h.invites.currentInvitationRole('r2',current,h.roles,[{id:'r2',name:'edited'}]),null);assert.equal(h.invites.currentInvitationRole('r2',current,h.roles,h.roles).id,'r2');}
+  assert.ok(chat.includes('group-write-guard.js?v=20261125g10'));
+  assert.ok(home.includes('currentInvitationRole(String(id),current,selectedAction,pool)'));
 });
