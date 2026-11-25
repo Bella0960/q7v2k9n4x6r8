@@ -894,6 +894,11 @@
             currentLayout.pages[pageIndex].splice(settingsIndex >= 0 ? settingsIndex + 1 : currentLayout.pages[pageIndex].length, 0, id);
           }
         } else {
+          // A hidden but still indexed app would be re-added by restoreLayout's
+          // remaining-app pass and later persisted on an unrelated drag.
+          // Account switches reload the document; authorized owners get the
+          // original tile from HTML. This is desktop isolation, not auth.
+          tile.remove();
           currentLayout.pages = (currentLayout.pages || []).map(function (page) {
             return page.filter(function (item) { return item !== id; });
           });

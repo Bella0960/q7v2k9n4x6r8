@@ -556,3 +556,35 @@ test('release settles a pending page flip, uses latest input and persists exactl
   assert.equal(ctx.isDragging,false);
   assert.equal(ctx.dragEl,null);
 });
+
+
+test('creator-only shortcut cannot reenter ordinary layout via remaining-app restoration', () => {
+  const code=index.match(/\(function configureCreatorAdminShortcut\(\) \{[\s\S]*?\n      \}\)\(\);/)?.[0];
+  assert.ok(code);
+  for(const role of [null,'member','super_admin']){
+    const id='app_admin_center';
+    const tile={hidden:true,removed:false,remove(){this.removed=true;}};
+    const layout={pages:[['app_settings','app_music'],['app_forum',id]],dock:['app_chat'],removed:['clock',id]};
+    let saved;
+    const doc={querySelector(selector){
+      if(selector==='meta[name="mao-account-role"]')return role?{content:role}:null;
+      if(selector==='[data-drag="'+id+'"]')return tile;
+      return null;
+    }};
+    runInNewContext(code,{document:doc,currentLayout:layout,saveLayout(x){saved=JSON.parse(JSON.stringify(x));}});
+    assert.ok(saved);
+    assert.deepEqual(saved.dock,['app_chat']);
+    assert.deepEqual(saved.pages[0],['app_settings','app_music']);
+    assert.deepEqual(saved.removed,['clock']);
+    if(role==='super_admin'){
+      assert.equal(tile.hidden,false);
+      assert.equal(tile.removed,false);
+      assert.equal(saved.pages.flat().filter(x=>x===id).length,1);
+    }else{
+      assert.equal(tile.removed,true);
+      assert.equal(saved.pages.flat().includes(id),false);
+      assert.equal(saved.dock.includes(id),false);
+      assert.equal(saved.removed.includes(id),false);
+    }
+  }
+});

@@ -438,6 +438,11 @@ try{
         assert.equal(loaded.fontLoaded,true,'custom font was not decoded');
         assert.equal(loaded.photos,setup.widgetCount,'photo fixture did not restore');
         const heavyLayout=await readLayout(hp);
+        // Static synthetic page has no super-admin role. Its live and persisted
+        // inventory must agree before any gesture, with no creator-only entry.
+        const initialDomInventory=await hp.evaluate(()=>Array.from(document.querySelectorAll('.desktop-grid > [data-drag], #dockBar > [data-drag], #itemShelf > [data-drag]')).map(el=>el.dataset.drag).sort());
+        assert.equal(await hp.locator('[data-drag="app_admin_center"]').count(),0,'ordinary desktop retained a creator-only tile');
+        assert.deepEqual(initialDomInventory,[...heavyLayout.pages.flat(),...heavyLayout.dock,...heavyLayout.removed].sort(),'initial restored inventory differs from storage');
         const hc=await heavy.newCDPSession(hp);
         const ht=(type,x,y)=>hc.send('Input.dispatchTouchEvent',{type,touchPoints:type==='touchEnd'||type==='touchCancel'?[]:[{x,y,id:1}]});
         const inventory=l=>[...l.pages.flat(),...l.dock,...l.removed].sort();
