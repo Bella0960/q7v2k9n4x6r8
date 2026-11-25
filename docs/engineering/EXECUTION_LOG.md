@@ -663,3 +663,10 @@ On the next turn/session, read this file and the current `AGENTS.md` first. Cont
 - `7cbbea3ecc94ed21342ce8056100f9c3401586af`：PhoneStorage.reviewMemoryRevision 由操作、原记录快照与用户确认上下文内部推导合法版本转换，不接受任意新列表；账号与角色校验、原文保留、唯一父记录/单活动子版本/循环/状态检查，修订及逐级撤销、精确读回、容量拒绝。普通保存保护保持；不新增存储键或迁移数据。不是跨标签原子 CAS，也不是服务端身份授权。
 - `2134dcd484ca0eb0c3db05c0955628d48328a7da`：MemoryRecall 修订/撤销接口委托专用存储方法，旧模块未更新时拒绝操作，不回退通用保存。未启用记忆库页面修订按钮；仍需检查全部直接写入和读取路径、缓存版本一致性、显式清空、备份回滚再接入。
 - tests/memory-review-write-boundary.test.mjs（`8e47fad2d9515ef53cba73b323f738632721a27d`、`35bcbb5506cc01a2bb419d8e2cd1e3f7cb1f2e23`）：初次夹具错误将默认头像初始化写入映射为记忆写入，纠正逐键模拟存储后实际候选源码16/16合成断言通过。未执行完整 Node CLI/Vite/Chromium/真机或真实备份恢复，不操作真实用户数据。容量仍300，不申请迁移或发布。后续沿#541统一直接写入路径和修订状态兼容，完成安全验收后再接页面。未合并、未部署。
+
+## 2026-11-26 · ARCH-001 / DATA-008 · 集中整合第五批：手动整理与记忆仓储写入保护
+- 已复核 main 最新 RELEASE_POLICY/AGENTS 与工程、聊天、存储及视觉规范；#299 HEAD cf440666a47f5443385c2937cb14faa698d3e46a，#541 起始 HEAD 1f70c08a2216b307d6c15c5cb7cadf076034f4c8。线上 QA 回执无法访问，NOT VERIFIED；不申请部署。
+- `9ab078a12b691bc7fab64c9df4dc7522ea39e26a`：MemoryRecall.appendReviewCandidates 支持 manual-summary / merge-candidate，只追加待确认记录，批内验证、容量拒绝、源快照复核、保存读回；合并提案保留原记录 ID，手动总结保留来源条数（尚未实现唯一原文坐标）。不引入新存储键、API 调用或数据迁移。
+- `7d37392a1b292e5252f7cc50ae964452d114a7f4`、`80b762969c9ebe6535a66f52216487da9c99ade7`：现有 memory.html 手动总结及智能合并接入追加式候选接口，删除旧自动确认、原记忆整类删除行为，校验账号/角色/历史或记忆快照；去重预览按当前角色与快照复核，排除修订链并显示写入失败。无共享模块时不直接写 localStorage。合并分分类提交，非整个多分类原子事务；去重仍为显式用户选择的删除，不是无损整理。超过输入长度的总结要求缩小范围，不改变原文。
+- `b59ef4d265ea45c484edfb7108c917787c648d9b`：MemoryRepository 读写通过 PhoneStorage.result.getMemories/saveMemories，拒绝错误数组和未就绪适配器；remove 通过受保护空数组保存，避免旧副本回流；合并导入保留无 ID 的现有旧条目，阻止修订链被通用仓储改写。其他通用 setData/rawSet、显式 clearConversationMemory、主聊天旧兜底路径与所有消费者仍须独立收敛。
+- `1b3812e7020e52c120fae41474bdb75de05ea8e8`：tests/memory-review-candidate-writers.test.mjs 真实候选代码合成夹具11/11通过（含页面源码契约断言，非完整页面交互）；内联脚本语法编译通过。完整 Node CLI/Vite/Chromium、手机页面、真实模型、真实备份恢复、跨标签原子性均 NOT VERIFIED。未启用修订按钮；300条容量限制未变。未合并、未部署。后续继续统一公共 App 写入、主聊天兜底、修订 UI 安全接入和数据保护验收；扩容迁移须遵照已批准的数据迁移规则。
