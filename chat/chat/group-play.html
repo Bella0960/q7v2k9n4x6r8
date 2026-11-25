@@ -261,48 +261,64 @@ body{background:#e7e7e9;color:var(--ink);font-family:-apple-system,BlinkMacSyste
       return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[ch];
     });
   }
-  function readArray(key){
-    try{var value=JSON.parse(localStorage.getItem(key)||'[]');return Array.isArray(value)?value:[];}catch(e){return [];}
+  var guard=window.MAOGroupWriteGuard, governance=window.GroupGovernance;
+  var groupBase=guard&&guard.read(groupId), writeBlocked=false;
+  function currentSnapshot(){
+    return !writeBlocked&&!!groupBase&&guard.matches(groupBase);
   }
   function notify(message){
     var el=document.getElementById('toast');
     el.textContent=message;el.classList.add('show');
     clearTimeout(toastTimer);toastTimer=setTimeout(function(){el.classList.remove('show');},1600);
   }
-  function findGroup(){
-    return readArray('phone_groups').find(function(g){return g&&String(g.id)===String(groupId);})||null;
-  }
-  var group=findGroup();
-  if(!group || String(group.id).charAt(0)!=='g'||!window.GroupGovernance?.userIsInGroup(group)){
+  var group=groupBase&&groupBase.group;
+  if(!group || String(group.id).charAt(0)!=='g'||!governance?.userIsInGroup(group)||!Array.isArray(group.members)||group.members.some(function(m){return !m||m.id==null||String(m.id)==='__user';})||new Set(group.members.map(function(m){return String(m.id);})).size!==group.members.length){
     document.getElementById('mainContent').innerHTML='<div class="error">没有找到这条群聊记录。<br>可能群聊已经被解散，或链接已失效。</div>';
     document.getElementById('groupTitle').textContent='群聊不存在';
   }else{
-    if(!group.settings||typeof group.settings!=='object')group.settings={};
     var defaults={scheduleEnabled:false,memorySharing:false,spectatorMode:false,allowRoleActions:false,allowRoleInvitations:true,allowPrivateMessages:true,autoTalkEnabled:false,relationshipDynamicsEnabled:true,followUpEnabled:false};
-    Object.keys(defaults).forEach(function(key){if(typeof group.settings[key]!=='boolean')group.settings[key]=defaults[key];});
-    var autoRounds=Number(group.settings.autoTalkRounds);
-    if([0,1,2].indexOf(autoRounds)===-1)group.settings.autoTalkRounds=1;
-    if(group.settings.chatMode!=='online'&&group.settings.chatMode!=='offline')group.settings.chatMode='online';
-    document.getElementById('groupTitle').textContent=group.name||'未命名群聊';
-    function persist(message){
-      var groups=readArray('phone_groups');
-      var found=false;
-      for(var i=0;i<groups.length;i++){
-        if(String(groups[i]&&groups[i].id)===String(group.id)){groups[i]=group;found=true;break;}
-      }
-      if(!found){notify('群聊已不存在，保存失败');return false;}
-      try{var encoded=JSON.stringify(groups);localStorage.setItem('phone_groups',encoded);if(localStorage.getItem('phone_groups')!==encoded)return false;if(message)notify(message);return true;}
-      catch(e){notify('保存失败：本地存储空间不足');return false;}
+    function normalizeForDisplay(g){
+      if(!g.settings||typeof g.settings!=='object'||Array.isArray(g.settings))g.settings={};
+      Object.keys(defaults).forEach(function(key){if(typeof g.settings[key]!=='boolean')g.settings[key]=defaults[key];});
+      var autoRounds=Number(g.settings.autoTalkRounds);
+      if([0,1,2].indexOf(autoRounds)===-1)g.settings.autoTalkRounds=1;
+      if(g.settings.chatMode!=='online'&&g.settings.chatMode!=='offline')g.settings.chatMode='online';
+      if(!g.ownerId)g.ownerId='__user';
+      return g;
     }
-    if (!group.ownerId) group.ownerId='__user';
+    normalizeForDisplay(group);
+    document.getElementById('groupTitle').textContent=group.name||'未命名群聊';
+    function rejectWrite(){
+      writeBlocked=true;
+      notify('群资料已变化或保存失败，请重新进入后重试');
+      // Freeze every mutating control, including controls rebuilt after a failed action.
+      Promise.resolve().then(function(){
+        document.querySelectorAll('[data-setting],#groupChatMode,#autoTalkRounds,#ownerSelect,#transferOwnerBtn,[data-member-field],[data-relationship-field],[data-remove-member],#leaveGroupBtn').forEach(function(el){el.disabled=true;});
+      });
+      return false;
+    }
+    function mayEdit(){
+      if(!currentSnapshot())return rejectWrite();
+      if(governance.rank(group,'__user')<3){notify('仅当前群主可修改群管理设置');return false;}
+      return true;
+    }
+    function persist(message){
+      if(!currentSnapshot()){group=normalizeForDisplay(JSON.parse(groupBase.serialized));return rejectWrite();}
+      var result=guard.commit(groupBase,group);
+      if(!result.ok){group=normalizeForDisplay(JSON.parse(groupBase.serialized));return rejectWrite();}
+      groupBase=result.expected;
+      if(message)notify(message);
+      return true;
+    }
     function renderSettings(){
       document.querySelectorAll('[data-setting]').forEach(function(input){
         input.checked=!!group.settings[input.getAttribute('data-setting')];
+        input.disabled=writeBlocked||governance.rank(group,'__user')<3;
       });
       var roundsSelect=document.getElementById('autoTalkRounds');
-      if(roundsSelect)roundsSelect.value=String(group.settings.autoTalkRounds);
+      if(roundsSelect){roundsSelect.value=String(group.settings.autoTalkRounds);roundsSelect.disabled=writeBlocked||governance.rank(group,'__user')<3;}
       var modeSelect=document.getElementById('groupChatMode');
-      if(modeSelect)modeSelect.value=group.settings.chatMode;
+      if(modeSelect){modeSelect.value=group.settings.chatMode;modeSelect.disabled=writeBlocked||governance.rank(group,'__user')<3;}
     }
     function renderOwner(){
       var select=document.getElementById('ownerSelect');
@@ -321,8 +337,8 @@ body{background:#e7e7e9;color:var(--ink);font-family:-apple-system,BlinkMacSyste
       var transferBtn=document.getElementById('transferOwnerBtn');
       var currentOwnerId=String(group.ownerId||'__user');
       transferBtn.textContent=String(select.value)===currentOwnerId?'当前群主':(select.value==='__user'?'转让群主给我':'确认转让群主');
-      select.disabled=currentOwnerId!=='__user';
-      transferBtn.disabled=currentOwnerId!=='__user'||String(select.value)===currentOwnerId;
+      select.disabled=writeBlocked||governance.rank(group,'__user')<3;
+      transferBtn.disabled=select.disabled||String(select.value)===currentOwnerId;
       transferBtn.style.opacity=transferBtn.disabled?'.58':'1';
       transferBtn.style.cursor=transferBtn.disabled?'default':'pointer';
     }
@@ -337,21 +353,25 @@ body{background:#e7e7e9;color:var(--ink);font-family:-apple-system,BlinkMacSyste
     });
     document.querySelectorAll('[data-setting]').forEach(function(input){
       input.addEventListener('change',function(){
-        group.settings[input.getAttribute('data-setting')]=!!input.checked;
-        if(input.getAttribute('data-setting')==='followUpEnabled'&&!input.checked){
-          try{localStorage.removeItem('chat_followup_state_group_'+groupId);}catch(e){}
+        if(!mayEdit()){renderSettings();return;}
+        var field=input.getAttribute('data-setting');
+        group.settings[field]=!!input.checked;
+        if(!persist('设置已保存')){renderSettings();return;}
+        if(field==='followUpEnabled'&&!input.checked&&currentSnapshot()){
+          try{localStorage.removeItem('chat_followup_state_group_'+groupId);}catch(e){notify('设置已保存，接话状态清理失败');}
         }
-        persist('设置已保存');
       });
     });
     document.getElementById('groupChatMode').addEventListener('change',function(){
+      if(!mayEdit()){renderSettings();return;}
       group.settings.chatMode=this.value==='offline'?'offline':'online';
-      persist(group.settings.chatMode==='offline'?'已切换为线下群聊':'已切换为线上群聊');
+      if(!persist(group.settings.chatMode==='offline'?'已切换为线下群聊':'已切换为线上群聊'))renderSettings();
     });
     document.getElementById('autoTalkRounds').addEventListener('change',function(){
+      if(!mayEdit()){renderSettings();return;}
       var rounds=parseInt(this.value,10);
       group.settings.autoTalkRounds=[0,1,2].indexOf(rounds)!==-1?rounds:1;
-      persist('自动接话次数已保存');
+      if(!persist('自动接话次数已保存'))renderSettings();
     });
     var expandedMembers={};
     var CHEVRON_SVG='<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="m6 9 6 6 6-6"/></svg>';
@@ -466,8 +486,10 @@ body{background:#e7e7e9;color:var(--ink);font-family:-apple-system,BlinkMacSyste
       var list=document.getElementById('relationshipsList');
       var members=Array.isArray(group.members)?group.members:[];
       if(members.length<2){list.innerHTML='<div class="empty">至少邀请两位角色入群，才能设置他们之间的关系。</div>';return;}
+      // Relationship display may synthesize legacy defaults, but it must never persist them.
+      var originalGroup=group;group=JSON.parse(JSON.stringify(group));
       var rows=[],migrated=false;
-      for(var i=0;i<members.length;i++){
+      try{for(var i=0;i<members.length;i++){
         for(var j=i+1;j<members.length;j++){
           var a=members[i],b=members[j],pair=ensureRelationshipPair(a,b),rel=pair.record;
           migrated=migrated||pair.changed;
@@ -481,7 +503,7 @@ body{background:#e7e7e9;color:var(--ink);font-family:-apple-system,BlinkMacSyste
         }
       }
       list.innerHTML=rows.join('');
-      if(migrated)persist();
+      }finally{group=originalGroup;}
     }
     function groupMemberName(member){return String((member&&(member.nickname||member.name))||'未命名成员');}
     document.getElementById('relationshipsList').addEventListener('click',function(event){
@@ -515,12 +537,14 @@ body{background:#e7e7e9;color:var(--ink);font-family:-apple-system,BlinkMacSyste
       var directionCard=input.closest('[data-relationship-direction]');
       if(!card||!directionCard)return;
       var key=card.getAttribute('data-relationship-key');
+      if(!mayEdit()){renderRelationships();return;}
       var ids;
       try{ids=JSON.parse(key);}catch(e){return;}
       var fromId=String(directionCard.getAttribute('data-relationship-direction')||'');
-      var from=(group.members||[]).find(function(member){return String(member.id)===fromId;});
-      var to=(group.members||[]).find(function(member){return String(member.id)!==fromId&&(String(member.id)===String(ids[0])||String(member.id)===String(ids[1]));});
-      if(!from||!to)return;
+      if(!Array.isArray(ids)||ids.length!==2||ids[0]===ids[1]||!ids.includes(fromId)||relationshipKey(ids[0],ids[1])!==key)return;
+      var from=governance.findMember(group,fromId);
+      var toId=ids[0]===fromId?ids[1]:ids[0],to=governance.findMember(group,toId);
+      if(!from||!to||String(from.id)!==fromId||String(to.id)!==toId)return;
       var pair=ensureRelationshipPair(from,to),direction=pair.record.directions[fromId];
       var field=input.getAttribute('data-relationship-field');
       if(field==='intimacy'||field==='trust'){direction[field]=Math.max(0,Math.min(100,parseInt(input.value,10)||0));if(field==='trust')direction.trustRecoveryDebt=0;}
@@ -538,24 +562,27 @@ body{background:#e7e7e9;color:var(--ink);font-family:-apple-system,BlinkMacSyste
       renderRelationships();
     });
     document.getElementById('transferOwnerBtn').addEventListener('click',function(){
+      if(!mayEdit())return;
       var nextOwnerId=document.getElementById('ownerSelect').value||'__user';
       var oldOwner=String(group.ownerId||'__user');
       if(oldOwner!=='__user'){notify('只有当前群主才能转让群主身份');return;}
       if(nextOwnerId===oldOwner){notify('这位成员已经是群主');return;}
-      var nextOwner=(group.members||[]).find(function(m){return String(m.id)===String(nextOwnerId);});
-      var nextName=nextOwner?(nextOwner.nickname||nextOwner.name||'群成员'):'你自己';
+      var nextOwner=governance.findMember(group,nextOwnerId);
+      if(!nextOwner||String(nextOwner.id)!==nextOwnerId){notify('没有找到唯一的目标成员');return;}
+      var nextName=nextOwner.nickname||nextOwner.name||'群成员';
       if(!confirm('确定将群主转让给「'+nextName+'」吗？转让后你不能自行收回群主权限。'))return;
       group.ownerId=nextOwner?String(nextOwner.id):'__user';
       if(nextOwner){nextOwner.isAdmin=true;nextOwner.memberRole='owner';}
       persist('群主已更新');
-      renderMembers();renderOwner();
+      renderSettings();renderMembers();renderOwner();renderRelationships();
     });
     document.getElementById('membersList').addEventListener('change',function(event){
       var input=event.target.closest('[data-member-field]');
       if(!input)return;
-      var card=input.closest('[data-member-id]');
-      var member=(group.members||[]).find(function(m){return String(m.id)===String(card.getAttribute('data-member-id'));});
-      if(!member)return;
+      if(!mayEdit()){renderMembers();return;}
+      var card=input.closest('[data-member-id]'),memberId=card&&String(card.getAttribute('data-member-id'));
+      var member=memberId&&governance.findMember(group,memberId);
+      if(!member||String(member.id)!==memberId)return;
       var field=input.getAttribute('data-member-field');
       if((field==='isAdmin'||field==='muted')&&window.GroupGovernance){
         var action=field==='isAdmin'?(input.checked?'promote':'demote'):(input.checked?'mute':'unmute');
@@ -600,7 +627,9 @@ body{background:#e7e7e9;color:var(--ink);font-family:-apple-system,BlinkMacSyste
       }
       var button=event.target.closest('[data-remove-member]');
       if(!button)return;
-      var id=button.getAttribute('data-remove-member');
+      if(!mayEdit())return;
+      var id=button.getAttribute('data-remove-member'),target=governance.findMember(group,id);
+      if(!target||String(target.id)!==id)return;
       if(!confirm('确定将这位角色移出群聊？已有聊天记录会保留。'))return;
       var removed=window.GroupGovernance?window.GroupGovernance.apply({
         group:group,actorId:'__user',action:'remove',target:String(id),save:function(){return persist();}
@@ -610,13 +639,22 @@ body{background:#e7e7e9;color:var(--ink);font-family:-apple-system,BlinkMacSyste
       notify('已移出群聊');renderMembers();renderOwner();renderRelationships();
     });
     document.getElementById('leaveGroupBtn').addEventListener('click',function(){
+      if(!currentSnapshot()){rejectWrite();return;}
       if(!window.GroupGovernance){notify('群管理模块未加载');return;}
       if(!confirm('确定退出「'+String(group.name||'群聊')+'」？原有聊天记录会保留。'))return;
       var result=window.GroupGovernance.leave({group:group,save:function(){return persist();}});
       if(!result.ok){notify(result.message||'退群没有成功');return;}
       location.href='chat.html';
     });
-    renderSettings();renderMembers();renderOwner();renderRelationships();
+    // The legacy controls and the new home share the same storage, not independent copies.
+    function restrictLegacyFields(){
+      var owner=governance.rank(group,'__user')>=3;
+      document.querySelectorAll('[data-member-field],[data-relationship-field],[data-remove-member]').forEach(function(el){el.disabled=writeBlocked||!owner;});
+    }
+    var legacyFieldsObserver=new MutationObserver(restrictLegacyFields);
+    legacyFieldsObserver.observe(document.getElementById('membersList'),{childList:true,subtree:true});
+    legacyFieldsObserver.observe(document.getElementById('relationshipsList'),{childList:true,subtree:true});
+    renderSettings();renderMembers();renderOwner();renderRelationships();restrictLegacyFields();
   }
   document.getElementById('backBtn').addEventListener('click',function(){
     var advanced=params.get('panel')==='advanced'||params.has('category');
