@@ -90,7 +90,7 @@
       if (value) return value;
       var legacy = readLegacy(key);
       if (!legacy) return '';
-      writeDB(key, legacy).catch(function () {});
+      if (!groupBackgroundKey(key)) writeDB(key, legacy).catch(function () {});
       return legacy;
     }).catch(function () {
       return readLegacy(key);
@@ -112,6 +112,77 @@
       }
     });
   }
+
+  // Group backgrounds retain existing DB schema and keys.
+  function groupBackgroundKey(key){return typeof key==='string'&&/^chat_bg_g.+$/.test(key);}
+  function scopeCurrent(check){try{return typeof check==='function'&&check()===true;}catch(error){return false;}}
+  function recordValue(record){return JSON.stringify(record===undefined?null:record);}
+  function snapshotGroupBackground(key,check){
+    if(!groupBackgroundKey(key)||!scopeCurrent(check))return Promise.reject(new Error('群资料已变化'));
+    return openDB().then(function(db){
+      if(!scopeCurrent(check))throw new Error('群资料已变化');
+      var legacy=window.localStorage.getItem(key);
+      if(!scopeCurrent(check))throw new Error('群资料已变化');
+      return new Promise(function(resolve,reject){
+        var tx=db.transaction(STORE_NAME,'readonly'),request=tx.objectStore(STORE_NAME).get(key),record;
+        request.onsuccess=function(){record=request.result;};
+        request.onerror=function(){reject(request.error||new Error('群背景读取失败'));};
+        tx.onabort=function(){reject(tx.error||new Error('群背景读取取消'));};
+        tx.onerror=function(){reject(tx.error||new Error('群背景读取失败'));};
+        tx.oncomplete=function(){
+          try{
+            if(!scopeCurrent(check)||window.localStorage.getItem(key)!==legacy||!scopeCurrent(check))throw new Error('群背景或账号已变化');
+            resolve(Object.freeze({key:key,record:recordValue(record),image:typeof record==='string'?record:(record&&record.dataUrl)||'',legacy:legacy}));
+          }catch(error){reject(error);}
+        };
+      });
+    });
+  }
+  function readGroupBackground(key,check){
+    return snapshotGroupBackground(key,check).then(function(s){return scopeCurrent(check)?s.image||s.legacy||'':'';}).catch(function(){
+      if(!groupBackgroundKey(key)||!scopeCurrent(check))return '';
+      try{var value=window.localStorage.getItem(key);return scopeCurrent(check)?value||'':'';}catch(error){return '';}
+    });
+  }
+  function changeGroupBackground(snapshot,dataUrl,check){
+    if(!snapshot||!groupBackgroundKey(snapshot.key)||typeof snapshot.record!=='string'||!scopeCurrent(check)||
+       (dataUrl!==null&&(typeof dataUrl!=='string'||!/^data:image\//i.test(dataUrl))))return Promise.reject(new Error('群资料或图片无效'));
+    return openDB().then(function(db){
+      if(!scopeCurrent(check))throw new Error('群资料已变化');
+      return new Promise(function(resolve,reject){
+        var key=snapshot.key,tx=db.transaction(STORE_NAME,'readwrite'),store=tx.objectStore(STORE_NAME),reason=null;
+        function valid(){return scopeCurrent(check)&&window.localStorage.getItem(key)===snapshot.legacy&&scopeCurrent(check);}
+        function cancel(message){reason=new Error(message);try{tx.abort();}catch(error){reject(reason);}}
+        tx.onabort=function(){reject(reason||tx.error||new Error('群背景操作已取消'));};
+        tx.onerror=function(){reject(reason||tx.error||new Error('群背景保存失败'));};
+        tx.oncomplete=function(){
+          try{
+            if(!valid())throw new Error('群背景结果待确认，请重新进入');
+            // Separate legacy store: never erase a changed legacy value.
+            if(snapshot.legacy!==null){
+              window.localStorage.removeItem(key);
+              if(!scopeCurrent(check)||window.localStorage.getItem(key)!==null)throw new Error('旧背景清理未确认，请重新进入');
+            }
+            if(!scopeCurrent(check))throw new Error('账号或群资料已变化');
+            resolve(true);
+          }catch(error){reject(error);}
+        };
+        var request=store.get(key);
+        request.onsuccess=function(){
+          try{
+            if(!valid()||recordValue(request.result)!==snapshot.record){cancel('群背景已变化，请重新选择');return;}
+            var mutation=dataUrl===null?store.delete(key):store.put({dataUrl:dataUrl,updatedAt:Date.now()},key);
+            mutation.onsuccess=function(){try{if(!valid())cancel('群资料已变化');}catch(error){cancel('无法确认群资料');}};
+          }catch(error){cancel('群背景操作失败');}
+        };
+      });
+    });
+  }
+  function saveGroupBackground(snapshot,dataUrl,check){
+    if(typeof dataUrl!=='string')return Promise.reject(new Error('图片无效'));
+    return changeGroupBackground(snapshot,dataUrl,check);
+  }
+  function resetGroupBackground(snapshot,check){return changeGroupBackground(snapshot,null,check);}
 
   function removeByKey(key) {
     key = String(key || WALLPAPER_KEY);
@@ -215,6 +286,10 @@
     key: WALLPAPER_KEY,
     getByKey: getByKey,
     saveByKey: saveByKey,
-    removeByKey: removeByKey
+    removeByKey: removeByKey,
+    readGroupBackground: readGroupBackground,
+    snapshotGroupBackground: snapshotGroupBackground,
+    saveGroupBackground: saveGroupBackground,
+    resetGroupBackground: resetGroupBackground
   };
 })(window, document);
