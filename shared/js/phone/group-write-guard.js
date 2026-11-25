@@ -27,7 +27,22 @@
       return remove?{ok:true}:{ok:true,expected:{id:expected.id,account:expected.account,serialized:JSON.stringify(next)}};
     }catch(error){return {ok:false,reason:'storage'};}
   }
+  function create(expectedAccount,next){
+    try{
+      var owner=account();
+      if(typeof expectedAccount!=='string'||!scopeAllowed(owner)||owner!==expectedAccount)return {ok:false,reason:'scope'};
+      if(!next||typeof next.id!=='string'||next.id.charAt(0)!=='g'||next.id.length<2)return {ok:false,reason:'invalid'};
+      var raw=global.localStorage.getItem('phone_groups'),groups=JSON.parse(raw===null?'[]':raw);
+      if(!Array.isArray(groups))return {ok:false,reason:'invalid'};
+      if(groups.some(function(g){return g&&String(g.id)===next.id;}))return {ok:false,reason:'duplicate'};
+      var encoded=JSON.stringify(groups.concat([next]));
+      if(account()!==owner||global.localStorage.getItem('phone_groups')!==raw)return {ok:false,reason:'stale'};
+      global.localStorage.setItem('phone_groups',encoded);
+      if(account()!==owner||global.localStorage.getItem('phone_groups')!==encoded)return {ok:false,reason:'unconfirmed'};
+      return {ok:true};
+    }catch(error){return {ok:false,reason:'storage'};}
+  }
   function commit(expected,next){return change(expected,next,false);}
   function remove(expected){return change(expected,null,true);}
-  global.MAOGroupWriteGuard={read:read,commit:commit,remove:remove,account:account};
+  global.MAOGroupWriteGuard={read:read,create:create,commit:commit,remove:remove,account:account};
 })(window);
