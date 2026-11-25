@@ -5,8 +5,7 @@
 
   function cleanText(value) {
     return String(value == null ? '' : value)
-      .replace(/<think>[\s\S]*?<\/think>/gi, ' ')
-      .replace(/<narratage>[\s\S]*?<\/narratage>/gi, ' ')
+      .replace(/<(think|reasoning|analysis|narratage)\b[^>]*>[\s\S]*?(?:<\/\1\s*>|$)/gi, ' ')
       .replace(/<[^>]*>/g, ' ')
       .replace(/\[(?:记住|心声|图片|红包|转账):[^\]]*\]/g, ' ')
       .replace(/\s{2,}/g, ' ').trim();
