@@ -10,6 +10,11 @@ const start = page.indexOf('  async function sendComment() {');
 const end = page.indexOf('\n\n  function sharePost()', start);
 assert.ok(start >= 0 && end > start, 'forum sendComment() source must remain discoverable');
 const sendSource = page.slice(start, end);
+// All isolated VM scenarios execute the same identity helpers as the page.
+const identityStart = page.indexOf('  function isOwn(c)');
+const identityEnd = page.indexOf('  function getMyForumAvatar()', identityStart);
+assert.ok(identityStart >= 0 && identityEnd > identityStart);
+const identitySource = page.slice(identityStart, identityEnd);
 
 function setup({ selectedIndex = 1, allowSave = true } = {}) {
   let finishUpload;
@@ -46,6 +51,7 @@ function setup({ selectedIndex = 1, allowSave = true } = {}) {
   const controller = vm.runInNewContext(`
     let replyToIdx = ${selectedIndex};
     function cancelReply() { replyToIdx = -1; }
+    ${identitySource}
     ${sendSource}
     ({
       send: sendComment,
@@ -127,10 +133,11 @@ assert.ok(aiStart >= 0 && aiEnd > aiStart,
   'forum AI reply source must remain discoverable');
 const aiReplySource = page.slice(aiStart, aiEnd);
 
-function setupAIReply({ allowSave = true, targetPresent = true } = {}) {
+function setupAIReply({ allowSave = true, targetPresent = true, nested = false } = {}) {
   let finishAI;
   const pendingAI = new Promise(resolve => { finishAI = resolve; });
-  const target = { id: 'original-comment', name: '乙', text: '想听回复', replies: [] };
+  const submittedComment = { id: 'user-comment', name: '乙', owner: 'me', text: '想听回复', replies: [] };
+  const target = nested ? { id: 'original-comment', name: '我', owner: 'community', residentId: 'npc-anchor', text: '路人的留言', replies: [submittedComment] } : submittedComment;
   const post = { comments: targetPresent ? [target] : [], mediaAssetIds: [] };
   const status = { textContent: '' };
   const writes = [], renders = [], requests = [];
@@ -156,6 +163,7 @@ function setupAIReply({ allowSave = true, targetPresent = true } = {}) {
     setTimeout() {}
   };
   const controller = vm.runInNewContext(`
+    ${identitySource}
     ${aiReplySource}
     ({
       generate: generateRepliesToUserComment,
@@ -163,7 +171,7 @@ function setupAIReply({ allowSave = true, targetPresent = true } = {}) {
     });
   `, sandbox, { filename: 'forum-detail-ai-reply.js' });
   return {
-    target, post, status, writes, renders, requests, controller,
+    target, submittedComment, post, status, writes, renders, requests, controller,
     finishAI: (replies = [{ residentId: 'r1', text: '我来接话' }]) => finishAI({
       ok: true,
       data: { replies }
@@ -173,7 +181,7 @@ function setupAIReply({ allowSave = true, targetPresent = true } = {}) {
 
 test('AI reply is discarded when the original comment is deleted during generation', async () => {
   const h = setupAIReply();
-  const pending = h.controller.generate(h.target, '你好', []);
+  const pending = h.controller.generate(h.target, '你好', [], h.submittedComment);
   h.post.comments.splice(0, 1);
   h.finishAI();
   await pending;
@@ -185,7 +193,7 @@ test('AI reply is discarded when the original comment is deleted during generati
 
 test('valid AI replies still save and report success', async () => {
   const h = setupAIReply();
-  const pending = h.controller.generate(h.target, '你好', []);
+  const pending = h.controller.generate(h.target, '你好', [], h.submittedComment);
   h.finishAI();
   await pending;
   assert.equal(h.target.replies.length, 1);
@@ -196,7 +204,7 @@ test('valid AI replies still save and report success', async () => {
 
 test('AI response from another post cannot mutate the previous discussion', async () => {
   const h = setupAIReply();
-  const pending = h.controller.generate(h.target, '你好', []);
+  const pending = h.controller.generate(h.target, '你好', [], h.submittedComment);
   h.controller.setCurrentPost({ comments: [], mediaAssetIds: [] });
   h.finishAI();
   await pending;
@@ -207,7 +215,7 @@ test('AI response from another post cannot mutate the previous discussion', asyn
 
 test('AI reply save failure rolls back and reports the failure', async () => {
   const h = setupAIReply({ allowSave: false });
-  const pending = h.controller.generate(h.target, '你好', []);
+  const pending = h.controller.generate(h.target, '你好', [], h.submittedComment);
   h.finishAI();
   await pending;
   assert.equal(h.target.replies.length, 0);
@@ -217,7 +225,7 @@ test('AI reply save failure rolls back and reports the failure', async () => {
 
 test('already deleted comments do not start a new AI call', async () => {
   const h = setupAIReply({ targetPresent: false });
-  await h.controller.generate(h.target, '你好', []);
+  await h.controller.generate(h.target, '你好', [], h.submittedComment);
   assert.equal(h.requests.length, 0);
   assert.equal(h.writes.length, 0);
 });
@@ -225,7 +233,7 @@ test('already deleted comments do not start a new AI call', async () => {
 
 test('empty AI result does not write or report a successful reply', async () => {
   const h = setupAIReply();
-  const pending = h.controller.generate(h.target, '你好', []);
+  const pending = h.controller.generate(h.target, '你好', [], h.submittedComment);
   h.finishAI([]);
   await pending;
   assert.equal(h.target.replies.length, 0);
@@ -236,7 +244,7 @@ test('empty AI result does not write or report a successful reply', async () => 
 
 test('malformed AI entry after a valid reply does not lose the valid reply', async () => {
   const h = setupAIReply();
-  const pending = h.controller.generate(h.target, '你好', []);
+  const pending = h.controller.generate(h.target, '你好', [], h.submittedComment);
   h.finishAI([{ residentId: 'r1', text: '有效回复' }, null]);
   await pending;
   assert.equal(h.target.replies.length, 1);
@@ -247,7 +255,7 @@ test('malformed AI entry after a valid reply does not lose the valid reply', asy
 
 test('blank and malformed AI-only replies do not mutate the original thread', async () => {
   const h = setupAIReply();
-  const pending = h.controller.generate(h.target, '你好', []);
+  const pending = h.controller.generate(h.target, '你好', [], h.submittedComment);
   h.finishAI([null, { residentId: 'r1', text: '   ' }]);
   await pending;
   assert.equal(h.target.replies.length, 0);
@@ -295,6 +303,7 @@ function setupInitialAI({ allowSave = true } = {}) {
     setTimeout() {}
   };
   const controller = vm.runInNewContext(`
+    ${identitySource}
     ${initialSource}
     ({
       run: generateInitialAIComments,
@@ -556,7 +565,43 @@ test('makeDetailAIComment ignores invalid nested AI rows without losing valid re
 
 test('invalid AI main or nested entries cannot crash comment parsing', () => {
   assert.equal(makeActualAIComment(null, 0), null);
-  const result = makeActualAIComment({ text: '正常主评论', replies: [false, 42, [], undefined] }, 1);
+  assert.equal(makeActualAIComment({ text: '缺少身份' }, 1), null);
+  const result = makeActualAIComment({ residentId: 'main-r', text: '正常主评论', replies: [false, 42, [], undefined] }, 1);
   assert.equal(result.text, '正常主评论');
   assert.deepEqual(Array.from(result.replies), []);
+});
+
+test('NPC anchor named 我 is not confused with the actual submitted user reply', async () => {
+  const h = setupAIReply({ nested: true });
+  const pending = h.controller.generate(h.target, '你好', [], h.submittedComment);
+  assert.equal(h.requests.length, 1);
+  assert.match(h.requests[0][0], /"type":"NPC","id":"npc-anchor"/);
+  assert.match(h.requests[0][0], /"type":"USER_SELF","id":"me"/);
+  h.finishAI([{ residentId: 'r1', text: '有效回复', replyTo: '冒用的昵称' }]);
+  await pending;
+  assert.equal(h.target.replies.length, 2);
+  const generated = h.target.replies[1];
+  assert.equal(generated.replyTo, '乙');
+  assert.equal(generated.replyToType, 'USER_SELF');
+  assert.equal(generated.replyToActorId, 'me');
+  assert.equal(generated.replyToCommentId, h.submittedComment.id);
+  assert.equal(h.writes.length, 1);
+});
+test('AI cannot append replies after the actual nested user comment is deleted', async () => {
+  const h = setupAIReply({ nested: true });
+  const pending = h.controller.generate(h.target, '你好', [], h.submittedComment);
+  h.target.replies.splice(0, 1);
+  h.finishAI();
+  await pending;
+  assert.equal(h.target.replies.length, 0);
+  assert.equal(h.writes.length, 0);
+  assert.match(h.status.textContent, /原评论已删除/);
+});
+test('NPC named 我 cannot initiate the human-only reply generation path', async () => {
+  const h = setupAIReply({ nested: true });
+  const pending = h.controller.generate(h.target, '你好', [], h.target);
+  h.finishAI();
+  await pending;
+  assert.equal(h.requests.length, 0);
+  assert.equal(h.writes.length, 0);
 });
