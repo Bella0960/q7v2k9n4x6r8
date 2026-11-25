@@ -5760,6 +5760,9 @@
         }
 
         async function sendMsgTurn(opts) {
+            const callTurn=opts&&groupCallReceiptBindings.get(opts);
+            const callCurrent=()=>!callTurn||callTurn.current();
+            if(!callCurrent())return;
             const turnGroup=isGroupChat?readGroupScope():null;
             if(isGroupChat&&!turnGroup)return;
             if(turnGroup){currentGroup=turnGroup.group;groupObjectBaselines.set(currentGroup,turnGroup);}
@@ -5885,7 +5888,7 @@
                     return;
                 }
                 let blockedHistory = loadMessages();
-                const blockedQuote = pendingQuote ? {
+                const blockedQuote = !callTurn && pendingQuote ? {
                     mid: pendingQuote.mid, text: pendingQuote.text,
                     fromRole: pendingQuote.fromRole, authorName: pendingQuote.authorName
                 } : null;
@@ -5893,17 +5896,16 @@
                 ensureMid(blockedMsg);
                 blockedHistory.push(blockedMsg);
                 // P0：用户消息必须真正落库后才生效；写失败就终止，保留输入与引用。
-                if (!await appendChatSafely([blockedMsg])) {
+                if (!await appendChatSafely([blockedMsg],callTurn?callCurrent:undefined)) {
                     if (previousGroupUserSend) lastGroupUserSend = previousGroupUserSend;
                     groupAutoFollowupToken = previousGroupAutoFollowupToken;
                     return;
                 }
+                if(callTurn){callTurn.userMid=blockedMsg.mid;if(!callCurrent())return;}
                 if (isGroupChat && !silent) groupAutoFollowupToken += 1;
                 if (blockedQuote && typeof window.clearQuote === 'function') window.clearQuote();
                 if (_vl) vlRefresh(); else appendMessageToDOM(blockedMsg);
-                input.value = '';
-                input.style.height = 'auto';
-                updateSendBtnState();
+                if(!callTurn){input.value = '';input.style.height = 'auto';updateSendBtnState();}
                 if (typeof SoundSystem !== 'undefined') SoundSystem.play('send');
                 scrollToBottom(true);
                 return;
@@ -5928,7 +5930,7 @@
                         if (typeof showToast === 'function') showToast('这条群消息刚刚发送过了');
                         return;
                     }
-                    const quoteSnapshot = (!silent && pendingQuote) ? {
+                    const quoteSnapshot = (!callTurn && !silent && pendingQuote) ? {
                         mid: pendingQuote.mid, text: pendingQuote.text,
                         fromRole: pendingQuote.fromRole, authorName: pendingQuote.authorName
                     } : null;
@@ -5941,7 +5943,7 @@
                     historyList.push(userMsg);
 
                     // 先单独确认用户消息已落库；只有成功后才清空输入与引用。
-                    userSaved = await appendChatSafely([userMsg]);
+                    userSaved = await appendChatSafely([userMsg],callTurn?callCurrent:undefined);
                     if (!userSaved) {
                         // P0：用户消息没有真正落库 → 立即终止本次发送。
                         // 不写 system_error、不渲染任何气泡，输入框原文与引用状态保持原样。
@@ -5950,12 +5952,11 @@
                         groupAutoFollowupToken = previousGroupAutoFollowupToken;
                         return;
                     }
+                    if(callTurn){callTurn.userMid=userMsg.mid;if(!callCurrent())return;}
                     if (isGroupChat && !silent) groupAutoFollowupToken += 1;
                     if (quoteSnapshot && typeof window.clearQuote === 'function') window.clearQuote();
                     if (!silent) {
-                        input.value = '';
-                        input.style.height = 'auto';
-                        updateSendBtnState();
+                        if(!callTurn){input.value = '';input.style.height = 'auto';updateSendBtnState();}
                         if (typeof SoundSystem !== 'undefined') SoundSystem.play('send');
                     }
                 }
@@ -5969,7 +5970,7 @@
                 if (!_isRepeatedSystemError(historyList, errMsg.text)) {
                     historyList.push(errMsg);
                     // 第二次写入同样以读回结果为准；失败则不保留、不渲染无名错误记录。
-                    const errSaved = await appendChatSafely([errMsg]);
+                    const errSaved = await appendChatSafely([errMsg],callTurn?callCurrent:undefined);
                     if (!errSaved) historyList.pop();
                     if (_vl) {
                         vlRefresh();
@@ -6019,7 +6020,7 @@
             if (!isRegen) {
                 if (!contextOnly) {
                     const blockedNow = isBlocked(aliasRoleId);
-                    const quoteSnapshot = (!silent && pendingQuote) ? {
+                    const quoteSnapshot = (!callTurn && !silent && pendingQuote) ? {
                         mid: pendingQuote.mid, text: pendingQuote.text,
                         fromRole: pendingQuote.fromRole, authorName: pendingQuote.authorName
                     } : null;
@@ -6038,7 +6039,7 @@
                     if (blockedNow) userMsg.sendFailed = true;
                     historyList.push(userMsg);
                     // P0: append under the shared conversation lock, preserving another tab's new messages.
-                    if (!await appendChatSafely([userMsg])) {
+                    if (!await appendChatSafely([userMsg],callTurn?callCurrent:undefined)) {
                         historyList.pop();
                         if (previousGroupUserSend) lastGroupUserSend = previousGroupUserSend;
                         groupAutoFollowupToken = previousGroupAutoFollowupToken;
@@ -6053,14 +6054,13 @@
                         if (typeof showToast === 'function') showToast('消息已保存，但会话更新未确认，请重新进入聊天');
                         return;
                     }
+                    if(callTurn){callTurn.userMid=userMsg.mid;if(!callCurrent())return;}
                     sourceGateUser = { mid: userMsg.mid, time: userMsg.time };
                     if (isGroupChat && !silent) groupAutoFollowupToken += 1;
                     if (quoteSnapshot && typeof window.clearQuote === 'function') window.clearQuote();
                     if (!silent) {
                         if (_vl) vlRefresh(); else appendMessageToDOM(userMsg);
-                        input.value = '';
-                        input.style.height = 'auto';
-                        updateSendBtnState();
+                        if(!callTurn){input.value = '';input.style.height = 'auto';updateSendBtnState();}
                         if (typeof SoundSystem !== 'undefined') SoundSystem.play('send');
                     }
                     // 拉黑状态下：消息已显示为红色感叹号，不调用 API，直接结束
@@ -7504,7 +7504,7 @@
             let groupReplyVisible = false;
             function groupTurnCurrent(allowExit){
                 if(!isGroupChat)return true;
-                try{return (!groupPageExited||allowExit===true)&&!!turnGroup&&groupGuard.account()===groupPageAccount&&groupGuard.matches(turnGroup)&&!!groupReplyPick&&currentGroupSpeaker(String(groupReplyPick.id),allowExit===true)&&groupSpeakerBaseline!==null&&JSON.stringify(getRoleById(groupReplyPick.id))===groupSpeakerBaseline&&groupLoreCurrent()&&_chatHistoryBaselines.has(historyList)&&localStorage.getItem(storageKey)===_chatHistoryBaselines.get(historyList)&&groupGuard.account()===groupPageAccount;}catch(error){return false;}
+                try{return callCurrent()&&(!groupPageExited||allowExit===true)&&!!turnGroup&&groupGuard.account()===groupPageAccount&&groupGuard.matches(turnGroup)&&!!groupReplyPick&&currentGroupSpeaker(String(groupReplyPick.id),allowExit===true)&&groupSpeakerBaseline!==null&&JSON.stringify(getRoleById(groupReplyPick.id))===groupSpeakerBaseline&&groupLoreCurrent()&&_chatHistoryBaselines.has(historyList)&&localStorage.getItem(storageKey)===_chatHistoryBaselines.get(historyList)&&groupGuard.account()===groupPageAccount;}catch(error){return false;}
             }
             async function persistInterruptedGroupReply(received,allowExit,emptyTip){
                 // The only permitted post-pagehide write is this captured public
@@ -7951,7 +7951,7 @@
             // An invitation may only appear after the AI reply has actually persisted.
             // If the helper is unavailable, hidden actions fail closed.
             var groupTurnEffects = window.GroupTurnEffects
-                ? window.GroupTurnEffects.create(isGroupChat?function(){return !groupPageExited&&currentGroupSpeaker(String(groupReplyPick&&groupReplyPick.id||''));}:undefined) : null;
+                ? window.GroupTurnEffects.create(isGroupChat?function(){return callCurrent()&&!groupPageExited&&currentGroupSpeaker(String(groupReplyPick&&groupReplyPick.id||''));}:undefined) : null;
             var groupTurnFinalized = false;
             var groupAutoRevealReceipt = null;
             try {
@@ -8177,7 +8177,7 @@
                         (parsedTransferDecision.amounts && parsedTransferDecision.amounts.length)) {
                         // 正文按角色气泡偏好拆分；表情与图库图片仍保留在同一回复回合中。
                         groupReplyVisible = !!fullText || aiStickerMessages.length > 0 || aiRoleGalleryMessages.length > 0;
-                        replyMessages.forEach(function (message) { historyList.push(message); });
+                        replyMessages.forEach(function (message) { if(callTurn)ensureMid(message);historyList.push(message); });
                         aiStickerMessages.forEach(function (stickerMessage) { historyList.push(stickerMessage); });
                         aiRoleGalleryMessages.forEach(function (galleryMessage) { historyList.push(galleryMessage); });
                         window.__groupPrivateCardPending = false;
@@ -8245,6 +8245,7 @@
                                     : '群邀请未成功保存，请检查本地存储');
                             }
                         }
+                        if(callTurn&&replySaved&&callCurrent())replyMessages.forEach(function(message){if(message.mid&&!message.silent&&!message.isError&&(!message.type||message.type==='text'))callTurn.replyMids.push(message.mid);});
                         var replySaveFailed = !replySaved;
                         if (replySaved && autoMomentContent && momentTurnCurrent(autoMomentsRoleId) &&
                             String(currentCharacter.id) === autoMomentsRoleId &&
@@ -8575,7 +8576,18 @@
             if (canContinueGroupTalk && !groupPageExited && readGroupScope()) {
                 var followupToken=++groupAutoFollowupToken, followupDelay=getGroupReplyDelayMs();
                 var followupScope=readGroupScope(),followupRaw=localStorage.getItem(storageKey);
-                // Release the send mutex before a queued follow-up begins.
+                // Calls retain the existing sender mutex through their bounded
+                // follow-ups, so every committed bubble belongs to the same receipt.
+                if(callTurn){
+                    if(groupAutoDepth>=callTurn.maxFollowups||!callCurrent())return;
+                    await new Promise(resolve=>setTimeout(resolve,followupDelay));
+                    if(!callCurrent()||followupToken!==groupAutoFollowupToken||groupPageExited||!groupGuard.matches(followupScope)||groupGuard.account()!==groupPageAccount||localStorage.getItem(storageKey)!==followupRaw)return;
+                    const next={contextOnly:true,silent:true,groupFollowup:true,groupAutoDepth:groupAutoDepth+1,manualContinue:isManualContinue};
+                    groupCallReceiptBindings.set(next,callTurn);
+                    await sendMsgTurn(next);
+                    return;
+                }
+                // Release the send mutex before a queued ordinary follow-up begins.
                 setTimeout(function(){
                     if(followupToken!==groupAutoFollowupToken||groupPageExited||singleChatSendPending||!groupGuard.matches(followupScope)||groupGuard.account()!==groupPageAccount||localStorage.getItem(storageKey)!==followupRaw)return;
                     void sendMsg({contextOnly:true,silent:true,groupFollowup:true,groupAutoDepth:groupAutoDepth+1,manualContinue:isManualContinue});
@@ -8585,6 +8597,22 @@
 
         // 暴露给 chat-extras.js：重玩/重新生成
         window.sendMsg = sendMsg;
+        // Private binding: a normal sendMsg options object cannot opt into the
+        // group-call path by adding fields. The overlay uses this dedicated API.
+        const groupCallReceiptBindings=new WeakMap();
+        window.sendGroupCallMessage=async function(text,token,isCurrent){
+            if(!isGroupChat||!token||typeof isCurrent!=='function'||typeof text!=='string'||!text.trim())return null;
+            const scope=readGroupScope();
+            if(!scope||token.accountId!==scope.account||token.groupId!==String(currentRoleId))return null;
+            const callTurn={userMid:'',replyMids:[],maxFollowups:scope.group.members.length+2,
+                current:function(){try{return !groupPageExited&&groupGuard.account()===scope.account&&groupGuard.matches(scope)&&String(currentRoleId)===token.groupId&&isCurrent(token)===true;}catch{return false;}}};
+            if(!callTurn.current())return null;
+            const options={text:text.trim()};
+            groupCallReceiptBindings.set(options,callTurn);
+            try{await sendMsg(options);}catch(error){/* only confirmed saved IDs are returned */}
+            if(!callTurn.current()||!callTurn.userMid)return null;
+            return Object.freeze({accountId:scope.account,groupId:token.groupId,userMid:callTurn.userMid,replyMids:Object.freeze(callTurn.replyMids.slice())});
+        };
         window.addEventListener('maomao:followup-message', function (event) {
             var detail = event && event.detail ? event.detail : null;
             if (!detail || String(detail.contactId) !== String(currentRoleId)) return;

@@ -108,9 +108,9 @@ test('corrupt history and unavailable locks refuse all writes', async () => {
 
 
 test('all three primary user-send routes use the shared lock, never a stale whole-history save', () => {
-    assert.match(detail, /if \(!await appendChatSafely\(\[blockedMsg\]\)\)/);
-    assert.match(detail, /userSaved = await appendChatSafely\(\[userMsg\]\)/);
-    assert.match(detail, /if \(!await appendChatSafely\(\[userMsg\]\)\)/);
+    assert.match(detail, /if \(!await appendChatSafely\(\[blockedMsg\],callTurn\?callCurrent:undefined\)\)/);
+    assert.match(detail, /userSaved = await appendChatSafely\(\[userMsg\],callTurn\?callCurrent:undefined\)/);
+    assert.match(detail, /if \(!await appendChatSafely\(\[userMsg\],callTurn\?callCurrent:undefined\)\)/);
     assert.match(detail, /historyList = loadMessages\(\);[\s\S]*?messages committed snapshot|historyList = loadMessages\(\);/);
     assert.match(detail, /chat-history-atomic\.js\?v=20261125scope1/);
 });
