@@ -99,7 +99,10 @@ test('legacy floating sender is removed only for atmosphere; native submit stays
 test('atmosphere dark composer overrides legacy forced white and gray surfaces',()=>{
  const css=readFileSync(new URL('../shared/css/atmosphere-theme.css',import.meta.url),'utf8');
  const detail=readFileSync(new URL('../chat/chat/chat-detail.html',import.meta.url),'utf8');
- assert.match(detail,/form#chat-form \.input-capsule \{ margin-right: 48px !important;/);
+ assert.doesNotMatch(detail,/form#chat-form \.input-capsule \{ margin-right: 48px !important;/,'retired forced gutter must not return');
+ const capsuleRule=css.match(/\.phone-mockup\[data-chat-theme-preset="atmosphere"\] form#chat-form \.input-capsule\s*\{([^}]+)\}/);
+ assert.ok(capsuleRule);
+ assert.match(capsuleRule[1],/margin:0\s*!important/,'atmosphere explicitly releases the old gutter');
  assert.match(css,/\.phone-mockup\[data-chat-theme-preset="atmosphere"\] form#chat-form \.input-capsule\s*\{/);
  assert.match(css,/\.phone-mockup\[data-chat-theme-preset="atmosphere"\] form#chat-form \.send-icon-btn\s*\{/);
  assert.match(css,/\.phone-mockup\[data-chat-theme-preset="atmosphere"\] :is\(\.chat-stage,#chat-messages\)/);

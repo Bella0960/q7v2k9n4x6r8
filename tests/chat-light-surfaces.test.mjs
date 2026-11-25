@@ -122,3 +122,25 @@ test('composer buttons meet the mobile touch target and iMessage feature sheet i
  assert.match(css,/form#chat-form \.plus-action-btn,\s*body\.chat-light-detail[\s\S]*?form#chat-form \.send-icon-btn \{\s*flex-basis:44px !important;\s*width:44px !important;\s*min-width:44px !important;/);
  assert.match(css,/\.phone-mockup\[data-chat-theme-preset="imessage"\] \.plus-panel-sheet \{[\s\S]*?background:#fff !important;[\s\S]*?backdrop-filter:none !important;/);
 });
+
+test('WeChat defaults are green and white without replacing saved bubble choices',()=>{
+ const api=beauty({maomao_chat_theme_preset:'wechat'});
+ const base=api.resolve('one');
+ assert.equal(base.myBubbleBg,'#95EC69');
+ assert.equal(base.partnerBubbleBg,'#FFFFFF');
+ assert.equal(base.myBubbleColor,'#111111');
+ const custom=beauty({maomao_chat_theme_preset:'wechat',beauty_chat_global_v1:JSON.stringify({vars:{myBubbleBg:'#555555',myBubbleColor:'#FFFFFF'}}),beauty_chat_one:JSON.stringify({vars:{myBubbleBg:'#FF2D55',partnerBubbleBg:'#CCCCCC'}})});
+ assert.equal(custom.resolve('one').myBubbleBg,'#FF2D55');
+ assert.equal(custom.resolve('one').partnerBubbleBg,'#CCCCCC');
+ assert.equal(custom.resolve('two').myBubbleBg,'#555555');
+ assert.equal(custom.resolve('two').myBubbleColor,'#FFFFFF');
+ assert.equal(custom.resolve('two').partnerBubbleBg,'#FFFFFF');
+});
+test('WeChat contact stage keeps padding and background inside its guarded rule',()=>{
+ const css=read('shared/css/wechat-theme-refinements.css');
+ const rule=css.match(/\.phone-mockup\[data-chat-theme-preset="wechat"\] \.contact-stage\s*\{([^}]+)\}/);
+ assert.ok(rule);
+ assert.match(rule[1],/scrollbar-width:\s*none/);
+ assert.match(rule[1],/padding:\s*0 0 calc\(/);
+ assert.match(rule[1],/background:\s*#FFFFFF/);
+});

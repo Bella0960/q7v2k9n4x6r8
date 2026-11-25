@@ -169,6 +169,11 @@
         });
     }
     // Defaults for the page-wide iMessage theme; explicit bubble settings remain higher priority.
+    // WeChat supplies fallback colors only; saved global/role bubble choices still win.
+    var WECHAT_BUBBLE_DEFAULTS = {
+        myBubbleBg: '#95EC69', myBubbleOpacity: 100, myBubbleColor: '#111111',
+        partnerBubbleBg: '#FFFFFF', partnerBubbleOpacity: 100, partnerBubbleColor: '#111111'
+    };
     var IMESSAGE_BUBBLE_DEFAULTS = {
         myBubbleBg: '#007AFF', myBubbleOpacity: 100, myBubbleColor: '#FFFFFF',
         myBubbleRadius: '18px 18px 5px 18px', myBubbleRadiusTL: 18, myBubbleRadiusTR: 18,
@@ -391,7 +396,8 @@
         // bubble customizations are then layered over it, preserving the editor's purpose.
         var pageBubbleDefaults = activeThemePreset === 'imessage' ? IMESSAGE_BUBBLE_DEFAULTS :
             (activeThemePreset === 'silver-butterfly' ? SILVER_BUTTERFLY_BUBBLE_DEFAULTS :
-            (activeThemePreset === 'atmosphere' ? ATMOSPHERE_BUBBLE_DEFAULTS : null));
+            (activeThemePreset === 'atmosphere' ? ATMOSPHERE_BUBBLE_DEFAULTS :
+            (activeThemePreset === 'wechat' ? WECHAT_BUBBLE_DEFAULTS : null)));
         if (pageBubbleDefaults) {
             for (var themeKey in pageBubbleDefaults) {
                 if (themeKey in DEFAULTS) out[themeKey] = pageBubbleDefaults[themeKey];

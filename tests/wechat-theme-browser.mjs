@@ -177,12 +177,12 @@ try {
             const native = document.querySelector('.send-icon-btn');
             return shell?.getAttribute('data-chat-theme-preset') === 'default'
               && !floating
-              && native && getComputedStyle(native).borderRadius === '50%' && native.getClientRects().length > 0;
+              && native && getComputedStyle(native).backgroundColor === 'rgba(0, 0, 0, 0)' && native.getClientRects().length > 0;
           });
           const nativeSend = await page.locator('.send-icon-btn').evaluate(el => ({
-            radius: getComputedStyle(el).borderRadius
+            background: getComputedStyle(el).backgroundColor
           }));
-          assert.equal(nativeSend.radius, '50%', 'default theme restores the native round send control');
+          assert.equal(nativeSend.background, 'rgba(0, 0, 0, 0)', 'default theme restores the transparent native send control');
         }
         process.stdout.write('PASS WeChat ' + label + ' @ ' + width + 'px\n');
       }

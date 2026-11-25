@@ -448,7 +448,6 @@
 .phone-mockup[data-chat-theme-preset="wechat"] .contact-stage {
   position: relative;
   scrollbar-width: none;
-}
   padding: 0 0 calc(76px + env(safe-area-inset-bottom, 0px));
   background: #FFFFFF !important;
 }
