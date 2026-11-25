@@ -19,7 +19,8 @@ test('adapter loads after original settings handlers and delegates existing oper
   }
   assert.ok(html.includes('id="gpAvatarEditBtn"')); // original group icon control still exists in group info
   assert.match(js,/btn\('gp-shortcut','群内头像',openPortraits\)/);
-  assert.doesNotMatch(js, /\b(?:setItem|removeItem|saveCurrentGroup|saveByKey|fetch)\s*\(/);
+  assert.doesNotMatch(js, /\b(?:setItem|removeItem|saveByKey|fetch)\s*\(/);
+  assert.match(js,/if\(!saveCurrentGroup\(group\)\)/);
 });
 test('only the member strip collapses; no group name overlays cover', () => {
   assert.match(js,/inner\.append\(strip\)/);
@@ -173,4 +174,16 @@ test('portrait media ownership, isolated group, failed batch and stale selection
   assert.equal(await api.resolve(group,'r'),'');
   await api.save(api.snapshot('g1'),new Map([['r',null]]));
   assert.equal(JSON.parse(data)[0].portraitOverridesV1.entries.length,0);
+});
+
+test('group nickname is editable without global profile writes and back routes terminate',()=>{
+  const detail=read('chat/chat/chat-detail.html');
+  assert.match(js,/btn\('gp-own-name', '', openOwnName\)/);
+  assert.match(js,/group\.preferences\.myNickname=name/);
+  assert.match(js,/if\(!saveCurrentGroup\(group\)\)/);
+  assert.match(detail,/isGroupChat && currentGroup && currentGroup\.preferences/);
+  assert.match(detail,/const userName = groupNickname \|\|/);
+  assert.match(js,/location\.href='chat-detail\.html\?id='/);
+  assert.match(js,/&view=members&from=overview/);
+  assert.match(js,/viewParams\.get\('from'\)==='overview'/);
 });
