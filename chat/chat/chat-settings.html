@@ -10,7 +10,7 @@
 <script src="../../shared/js/phone/phone_storage.js"></script>
 <script src="../../shared/js/phone/storage/media-repository.js?v=20261107v2"></script>
 <script src="../../shared/js/phone/group-portraits.js?v=20261125g4"></script>
-<script src="../../shared/js/phone/group-write-guard.js?v=20261125g1"></script>
+<script src="../../shared/js/phone/group-write-guard.js?v=20261125g2"></script>
 <style>
   * { box-sizing: border-box; margin: 0; padding: 0; -webkit-tap-highlight-color: transparent; }
   body {
@@ -2316,25 +2316,36 @@
     });
 
     // 清理群记录（保留群本身，仅清空聊天记录）
+    function removeGroupKey(key,account){
+      try{
+        if(window.MAOGroupWriteGuard.account()!==account)return false;
+        localStorage.removeItem(key);
+        return window.MAOGroupWriteGuard.account()===account&&localStorage.getItem(key)===null;
+      }catch(error){return false;}
+    }
     document.getElementById('actionGpClearRecord').addEventListener('click', function () {
+      var group=loadCurrentGroup(),snapshot=group&&groupReadSnapshots.get(group);
+      if(!snapshot){showToast('群资料不可用，请重新进入');return;}
       if (!window.confirm('确定清理该群的全部聊天记录吗？清理后不可恢复。')) return;
-      try { localStorage.removeItem('chat_history_' + roleId); } catch (e) {}
+      var latest;
+      try{latest=window.MAOGroupWriteGuard.read(String(roleId));}catch(error){}
+      if(!latest||latest.account!==snapshot.account||latest.serialized!==snapshot.serialized){showToast('群资料已变化，请重新进入');return;}
+      if(!removeGroupKey('chat_history_'+roleId,snapshot.account)){showToast('清理未确认，请重试');return;}
+      refreshMeta();
       showToast('群记录已清理');
     });
 
-    // 解散群聊（置底卡片）
+    // 解散群聊：必须先确认目标群已移除，再清理其附属数据。
     document.getElementById('actionGpDismiss').addEventListener('click', function () {
+      var group=loadCurrentGroup(),snapshot=group&&groupReadSnapshots.get(group);
+      if(!snapshot){showToast('群资料不可用，请重新进入');return;}
       if (!window.confirm('解散群聊后将清空该群的聊天记录，且不可恢复。确定解散吗？')) return;
-      try {
-        var raw = localStorage.getItem('phone_groups');
-        var arr = raw ? JSON.parse(raw) : [];
-        if (Array.isArray(arr)) {
-          localStorage.setItem('phone_groups', JSON.stringify(arr.filter(function (g) { return String(g.id) !== String(roleId); })));
-        }
-      } catch (e) {}
-      try { localStorage.removeItem('chat_history_' + roleId); } catch (e) {}
-      try { localStorage.removeItem(GP_ALIAS_KEY); } catch (e) {}
-      try { localStorage.removeItem(GP_NOTICE_KEY); } catch (e) {}
+      var result=window.MAOGroupWriteGuard.remove(snapshot);
+      if(!result.ok){showToast('群聊解散未确认，未继续清理聊天记录');return;}
+      var keys=['chat_history_'+roleId,GP_ALIAS_KEY,GP_NOTICE_KEY];
+      for(var i=0;i<keys.length;i++){
+        if(!removeGroupKey(keys[i],snapshot.account)){showToast('群聊已移除，但附属资料未全部清理，请重新进入');return;}
+      }
       window.location.href = 'chat.html';
     });
 
