@@ -5400,7 +5400,10 @@
         }
         // 构造注入文本；加载记录与权重算法仍留在页面。纯文案规则走共享策略，加载失败则回退旧逻辑。
         function buildWeightedMemoryText(roleId, fallbackText) {
-            const mems = loadWeightMemories(roleId);
+            const allMemories = loadWeightMemories(roleId);
+            const mems = _storage && typeof _storage.selectActiveMemories === 'function'
+                ? _storage.selectActiveMemories(allMemories, String(roleId)).filter(function(m) { return typeof m === 'object' && m.content; }) : [];
+            if (Array.isArray(allMemories) && allMemories.some(function(m) { return m && ['superseded-fixed','superseded-confirmed','withdrawn'].includes(m.status); })) fallbackText = '';
             if (window.ChatContextPolicy && typeof window.ChatContextPolicy.buildWeightedMemoryInjectionText === 'function') {
                 return window.ChatContextPolicy.buildWeightedMemoryInjectionText(mems, fallbackText, memoryWeight);
             }
