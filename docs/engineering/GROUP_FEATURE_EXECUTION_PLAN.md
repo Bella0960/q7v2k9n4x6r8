@@ -64,3 +64,9 @@ M02 历史记录：M02 独立原型：`previews/group-listening-preview.html`，
 - 基线 0a472e7a80f0411bbd0a0bc948aa357f81e43961。复用原曲库、音频 Blob、封面资源引用；仅本地真实导入曲目；不修改原音乐播放器、存储键、数据库或聊天 UI。
 - 第六轮本地 Node v22.16.0 16/16，真实群权限守卫及模拟 Storage/IDB/DOM。新增 npm run test:group:music-catalog 与 npm run test:group:music-catalog:browser。真实浏览器未验收。
 - 下一执行位置仍为 M03：执行真实 IndexedDB / 双账号隔离与必要集成验证，通过后进入 M04；保留 QA 基线冲突，不部署。
+
+### M03 验收门禁接入
+
+- 新增 `tests/group-listening-catalog-browser.test.mjs`，让现行标准 QA 已有的 `node --test --test-concurrency=1` 自动发现真实 Chromium/IndexedDB 专项测试；保留独立 npm 测试命令。未修改公共工作流、发布脚本或既有安全门禁。
+- 本地 Node v22.16.0 对新增入口的语法检查、过滤测试发现检查通过（未执行浏览器断言）；冻结的三份核心文件与远端 Git blob 一致，沿用已确认的 16/16 单元测试证据。实际浏览器命令因缺少 Node Playwright 包返回 ERR_MODULE_NOT_FOUND，仍未完成真实 IndexedDB 验收。
+- 本轮线上 QA 版本与源码回执未能读取；保留上次 QA 基线冲突，未发出发布或重复验证请求。M03 不结项；M04 不进入产品集成。

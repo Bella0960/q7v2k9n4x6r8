@@ -828,3 +828,6 @@ Parent a68369643b594f1d91fb113fcf6f60c3f3166d5e. Fix outgoing virtual payment ca
 
 ### 2026-11-25 · #529 / GOV-004 / DATA-003 · GROUP-MUSIC-001 M03 integration candidate
 Parent 0a472e7a80f0411bbd0a0bc948aa357f81e43961. Add previously frozen read-only music catalog adapter and two regression scripts, register commands and update ledger. Prior Node v22.16.0 16/16 with actual updated group guard and simulated Storage/IDB/DOM. Real Chromium test prepared; not passed, earlier navigation restricted. No product route mount, old player edit, schema migration, release or merge. Current live receipt not accessible; QA run 45627498729 failed. Resume M03 real browser and integration validation.
+
+### 2026-11-25 · #529 / QA-001 / DATA-003 · M03 test discovery gate
+Parent a617b63972af6698499aa7819a8a8b8770c03154. Add browser.test.mjs entry that imports existing isolated browser test under node:test; existing standard QA automatically discovers the suite after provisioning Chromium. No workflow/release script/product modification. Local Node v22.16.0 syntax and filtered file discovery checked; real browser test not run (ERR_MODULE_NOT_FOUND playwright). Existing adapter/test blob hashes unchanged; prior 16/16 Node evidence retained. Live receipt unavailable; last verify failed baseline mismatch; no deployment/merge/verify request. M03 remains open.
