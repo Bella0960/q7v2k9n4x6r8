@@ -204,6 +204,95 @@
         sourceMemoryIds:[String(original.id)] }
     };
   }
+  // One list replacement, with original content and provenance retained.
+  // New lifecycle states are excluded by fixed/confirmed-only consumers.
+  // Only a user-facing, explicitly confirmed operation may invoke this API.
+  // No record is physically deleted, including when a correction is undone.
+  function reviewScope(options, roleId) {
+    try {
+      var account = global.__MAO_ACCOUNT_SCOPE__;
+      return validRoleId(roleId) && roleId.charAt(0) !== 'g' &&
+        options && options.confirmed === true && account && account.ready === true &&
+        typeof account.accountId === 'string' && !!account.accountId &&
+        options.accountId === account.accountId &&
+        typeof options.getCurrentRoleId === 'function' &&
+        String(options.getCurrentRoleId()) === roleId;
+    } catch (_) { return false; }
+  }
+  function reviewRecord(records, expected, roleId) {
+    if (!expected || typeof expected.id !== 'string' || !expected.id ||
+        String(expected.sourceRoleId || '') !== roleId || !ownedBy(expected,roleId)) return null;
+    var matches = records.filter(function (m) { return m && String(m.id) === expected.id; });
+    return matches.length === 1 && JSON.stringify(matches[0]) === JSON.stringify(expected) ? matches[0] : null;
+  }
+  function reviewActive(m) { return m && (m.status === 'confirmed' || m.status === 'fixed'); }
+  function reviewLinked(records, id) {
+    return records.some(function (m) {
+      return m && m.source === 'user-correction' && reviewActive(m) &&
+        Array.isArray(m.sourceMemoryIds) && m.sourceMemoryIds.indexOf(id) >= 0;
+    });
+  }
+  function revisionTransition(roleId, expected, replacement, options, undo) {
+    function fail(reason) { return {ok:false,reason:reason}; }
+    if (!reviewScope(options,roleId)) return fail('invalid-scope');
+    var before = readMutationSnapshot(roleId);
+    // No legacy-only writes or mock adapter in this new transaction: the
+    // existing primary list is the sole authority. Do not create a new key.
+    if (!before.ok || typeof before.primary !== 'string') return fail('primary-unavailable');
+    var records = before.list;
+    if (records.some(function(m) { return !m || typeof m !== 'object' || Array.isArray(m); })) return fail('invalid-existing-data');
+    var target = reviewRecord(records,expected,roleId);
+    if (!reviewActive(target)) return fail('stale-memory');
+    if (reviewLinked(records,target.id)) return fail('revision-conflict');
+    var next = records.slice(), targetIndex = records.indexOf(target), result;
+    if (undo) {
+      if (target.source !== 'user-correction' || !Array.isArray(target.sourceMemoryIds) ||
+          target.sourceMemoryIds.length !== 1) return fail('not-revision');
+      var parentId = target.sourceMemoryIds[0];
+      var parents = records.filter(function(m) { return String(m.id) === parentId; });
+      if (parents.length !== 1 || !ownedBy(parents[0],roleId) ||
+          String(parents[0].sourceRoleId || '') !== roleId) return fail('missing-parent');
+      var parent = parents[0], restored = parent.status === 'superseded-fixed' ? 'fixed' :
+        parent.status === 'superseded-confirmed' ? 'confirmed' : '';
+      if (!restored || records.some(function(m) {
+        return m !== target && m.source === 'user-correction' && reviewActive(m) &&
+          Array.isArray(m.sourceMemoryIds) && m.sourceMemoryIds.indexOf(parentId) >= 0;
+      })) return fail('revision-conflict');
+      next[records.indexOf(parent)] = Object.assign({},parent,{status:restored});
+      next[targetIndex] = Object.assign({},target,{status:'withdrawn'});
+      result = next[records.indexOf(parent)];
+    } else {
+      var plan = planMemoryCorrection(roleId,records,expected,replacement);
+      if (!plan.ok) return plan;
+      if (records.length >= 300) return fail('capacity');
+      var now = Date.now(), ids = new Set(records.map(function(m) { return String(m.id || ''); }));
+      var n = records.length, id;
+      do { id = 'mem_revision_' + now.toString(36) + '_' + (n++).toString(36); } while (ids.has(id));
+      next[targetIndex] = Object.assign({},target,{
+        status:target.status === 'fixed' ? 'superseded-fixed' : 'superseded-confirmed'
+      });
+      result = {
+        id:id, content:plan.candidate.content, category:plan.candidate.category,
+        importance:plan.candidate.importance, status:target.status,
+        source:'user-correction', sourceRoleId:roleId, sourceMemoryIds:[target.id],
+        createdAt:now, lastReinforcedAt:now, reinforcementCount:1
+      };
+      next.push(result);
+    }
+    if (!reviewScope(options,roleId) || !sameMutationSnapshot(before,readMutationSnapshot(roleId))) return fail('stale-memory');
+    // Existing synchronous primary writer; readback confirms the exact next
+    // list, not merely a truthy adapter result. This is not cross-tab CAS.
+    if (!saveMemories(roleId,next)) return fail('save-failed');
+    var after = readMutationSnapshot(roleId);
+    if (!after.ok || after.primary !== JSON.stringify(next)) return fail('readback-failed');
+    return {ok:true,memory:result};
+  }
+  function confirmMemoryCorrection(roleId, expected, replacement, options) {
+    return revisionTransition(roleId,expected,replacement,options,false);
+  }
+  function undoMemoryCorrection(roleId, expected, options) {
+    return revisionTransition(roleId,expected,null,options,true);
+  }
   function searchHistoryMessages(history, query, options) {
     options = options || {}; history = Array.isArray(history) ? history : [];
     var recent = Math.max(0, Number(options.excludeRecent) || 0);
@@ -551,6 +640,7 @@
     getMemories:getMemories, saveMemories:saveMemories, upsertMemory:upsertMemory,
     searchHistoryMessages:searchHistoryMessages, buildHistoricalRecallText:buildHistoricalRecallText,
     memoryValue:memoryValue, planMemoryCorrection:planMemoryCorrection, createHistoryIndex:createHistoryIndex,
-    createStoredHistorySession:createStoredHistorySession
+    createStoredHistorySession:createStoredHistorySession,
+    confirmMemoryCorrection:confirmMemoryCorrection, undoMemoryCorrection:undoMemoryCorrection
   };
 })(window);
