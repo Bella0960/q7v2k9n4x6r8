@@ -11,6 +11,7 @@
 <script src="../../shared/js/phone/storage/media-repository.js?v=20261107v2"></script>
 <script src="../../shared/js/phone/group-portraits.js?v=20261125g4"></script>
 <script src="../../shared/js/phone/group-write-guard.js?v=20261125g9"></script>
+<script src="../../shared/js/phone/group-admin-policy.js?v=20261125g3"></script>
 <style>
   * { box-sizing: border-box; margin: 0; padding: 0; -webkit-tap-highlight-color: transparent; }
   body {
@@ -2089,8 +2090,10 @@
         backgroundTags: []
       };
     }
+    function userCanManage(g,action,target){return !!window.MAOGroupAdminPolicy&&window.MAOGroupAdminPolicy.userCanManage(g,action,target);}
     function renderInviteCandidates() {
       if (!gpInvitePanel || !gpInviteCount) return;
+      if(!userCanManage(loadCurrentGroup(),'invite')){gpInviteCount.textContent='仅群主可邀请';gpInvitePanel.textContent='';return;}
       var roles = getInvitableRoles();
       gpInviteCount.textContent = roles.length ? roles.length + ' 位可邀请' : '暂无可邀请角色';
       if (!roles.length) {
@@ -2157,7 +2160,7 @@
         return '<div class="gp-member-row" data-mid="' + gpEscape(String(m.id)) + '">' +
           '<div class="gp-member-avatar">' + av + '</div>' +
           '<span class="gp-member-name">' + gpEscape(m.nickname || m.name || '成员') + '</span>' +
-          '<button type="button" class="gp-member-remove">移除</button>' +
+          (userCanManage(g,'remove',String(m.id))?'<button type="button" class="gp-member-remove">移除</button>':'') +
         '</div>';
       }).join('') : '<div style="color:#999;font-size:12px;padding:6px 2px;">暂无成员</div>';
       gpMembersList.querySelectorAll('.gp-member-remove').forEach(function (btn) {
@@ -2166,10 +2169,9 @@
           var mid = row.getAttribute('data-mid');
           var g2 = renderedGroup;
           if (!g2 || !Array.isArray(g2.members) || g2.members.filter(function(m){return m&&String(m.id)===mid;}).length!==1) return;
-          if (mid==='__user') return;
+          if(!userCanManage(g2,'remove',mid)){showToast('当前无权移除该成员');return;}
           if (!confirm('确定移除该成员？聊天记录会保留。')) return;
           g2.members = g2.members.filter(function (m) { return String(m.id) !== String(mid); });
-          if(String(g2.ownerId)===mid)g2.ownerId='__user';
           if(window.MAOGroupPortraits)window.MAOGroupPortraits.forgetMember(g2,mid);
           if (!saveCurrentGroup(g2)) {
             showToast('移除失败，请重试');
@@ -2224,6 +2226,7 @@
         var rid = btn.getAttribute('data-invite-role');
         var g = loadCurrentGroup();
         if (!g) { showToast('群聊已不存在，邀请失败'); return; }
+        if(!userCanManage(g,'invite')){showToast('仅群主可以邀请角色');return;}
         if (!Array.isArray(g.members)) g.members = [];
         if (g.members.some(function (m) { return String(m.id) === String(rid); })) {
           showToast('该角色已在群中');
