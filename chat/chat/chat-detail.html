@@ -8983,6 +8983,33 @@
         }
 
         // 可选会话：角色列表（排除当前会话与已隐藏会话）+ 群聊列表
+        function captureForwardTarget(id) {
+            try {
+                id=String(id||'');
+                const guard=window.MAOGroupWriteGuard,account=guard&&guard.account();
+                if(!id||id==='__user'||account===null||account===undefined)return null;
+                const roles=JSON.parse(localStorage.getItem('ai_custom_characters')||'[]');
+                const groups=JSON.parse(localStorage.getItem('phone_groups')||'[]');
+                if(!Array.isArray(roles)||!Array.isArray(groups))return null;
+                const roleRows=roles.filter(r=>r&&String(r.id)===id);
+                const groupRows=groups.filter(g=>g&&String(g.id)===id);
+                if(id.charAt(0)==='g'){
+                    if(roleRows.length||groupRows.length!==1)return null;
+                    const snapshot=guard.read(id);
+                    if(!snapshot||snapshot.account!==account||!window.GroupGovernance||
+                        !window.GroupGovernance.userIsInGroup(snapshot.group))return null;
+                    return {kind:'group',account:account,serialized:snapshot.serialized};
+                }
+                if(groupRows.length||roleRows.length!==1||guard.account()!==account)return null;
+                return {kind:'role',account:account,serialized:JSON.stringify(roleRows[0])};
+            }catch(error){return null;}
+        }
+
+        function forwardTargetCurrent(id,expected){
+            const fresh=captureForwardTarget(id);
+            return !!(expected&&fresh&&fresh.kind===expected.kind&&fresh.account===expected.account&&fresh.serialized===expected.serialized);
+        }
+
         function getForwardTargets() {
             var out = [];
             try {
@@ -8992,7 +9019,7 @@
                     roles.forEach(function (r) {
                         if (!r || r.id == null) return;
                         if (String(r.id) === String(aliasRoleId)) return;
-                        if (hidden.indexOf(String(r.id)) !== -1) return;
+                        if (hidden.indexOf(String(r.id)) !== -1 || !captureForwardTarget(String(r.id))) return;
                         out.push({ id: String(r.id), name: r.name || '角色', avatar: r.avatar || '' });
                     });
                 }
@@ -9002,7 +9029,7 @@
                 if (Array.isArray(groups)) {
                     groups.forEach(function (g) {
                         if (!g || !g.id) return;
-                        if (String(g.id) === String(aliasRoleId)) return;
+                        if (String(g.id) === String(aliasRoleId) || !captureForwardTarget(String(g.id))) return;
                         out.push({ id: String(g.id), name: g.name || '群聊', avatar: '' });
                     });
                 }
@@ -9070,7 +9097,29 @@
                 if (typeof showToast === 'function') showToast('目标会话或存储不可用，转发未完成');
                 return;
             }
-            var msg = resolved.message;
+            var msg = resolved&&resolved.message;
+            const targetSnapshot=captureForwardTarget(targetId);
+            const fromGroup=String(aliasRoleId||'').charAt(0)==='g';
+            const sourceGroup=fromGroup?readGroupScope():null;
+            const privateMarked=msg&&(msg.privateFromGroup||msg.privateGroupReceiptV1||msg.privateMessageId||msg.privateRoleId||msg.type==='group_private'||msg.type==='group_game_private'||(msg.visibility!=null&&msg.visibility!==''&&msg.visibility!=='public'));
+            const policy=window.ChatContextPolicy;
+            if(!msg||!targetSnapshot||String(targetId)===String(aliasRoleId)||privateMarked||
+               msg.type==='redpacket'||msg.type==='transfer'||
+               (fromGroup&&(!sourceGroup||!policy||typeof policy.groupPublicHistory!=='function'||policy.groupPublicHistory([msg],String(aliasRoleId)).length!==1))){
+                if(typeof showToast==='function')showToast('消息或目标会话不可安全转发');return;
+            }
+            let sourceRaw=null;
+            if(fromGroup){
+                try{
+                    sourceRaw=localStorage.getItem('chat_history_'+String(aliasRoleId));
+                    const rows=JSON.parse(sourceRaw);
+                    const matches=Array.isArray(rows)?rows.filter(row=>row&&msg.mid!=null&&String(row.mid)===String(msg.mid)):[];
+                    if(matches.length!==1||JSON.stringify(matches[0])!==JSON.stringify(msg))throw Error('stale');
+                }catch(error){if(typeof showToast==='function')showToast('原群消息已变化，请重新选择');return;}
+            }
+            function forwardCurrent(){
+                try{return forwardTargetCurrent(targetId,targetSnapshot)&&(!fromGroup||(!groupPageExited&&groupGuard.matches(sourceGroup)&&localStorage.getItem('chat_history_'+String(aliasRoleId))===sourceRaw));}catch(error){return false;}
+            }
             var fwd = {
                 role: 'user',
                 time: Date.now(),
@@ -9115,7 +9164,7 @@
             }
             ensureMid(fwd);
             // Read the target only after any media await, so intervening messages are included.
-            var saved = historyStorage.appendChatHistory(targetId, fwd);
+            var saved = forwardCurrent()?historyStorage.appendChatHistory(targetId, fwd):{ok:false,error:{code:'STALE_CONTEXT'}};
             if (!saved.ok) {
                 var unverified = saved.meta && saved.meta.writeMayHavePersisted;
                 if (linkedImageRef && !unverified) {
