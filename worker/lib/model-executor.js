@@ -104,7 +104,7 @@ function parseModelResult(content) {
 }
 
 export async function generateAutonomousMessages({
-  env = {}, snapshot, fetchImpl = fetch, initialContact = false, evaluatedAt = Date.now()
+  env = {}, snapshot, fetchImpl = fetch, initialContact = false, evaluatedAt = Date.now(), timeZone = 'UTC'
 } = {}) {
   const config = readAutonomyModelConfig(env);
   if (!config) return { ok: false, reason: 'model_not_configured' };
@@ -126,9 +126,18 @@ export async function generateAutonomousMessages({
     return { ok: false, reason: 'initial_contact_context_invalid' };
   }
 
+  let localTime;
+  try {
+    localTime = new Intl.DateTimeFormat('sv-SE', {
+      timeZone, dateStyle: 'short', timeStyle: 'short'
+    }).format(evaluatedAt);
+  } catch {
+    return { ok: false, reason: 'invalid_local_time' };
+  }
   const context = {
     initialContact: initialContact === true,
-    evaluatedAtUtc: new Date(evaluatedAt).toISOString(),
+    localTime,
+    timeZone,
     characterName: String(snapshot.character_name || '').slice(0, 80),
     persona: String(snapshot.persona_text || '').slice(0, 5000),
     recentMessages: recentMessages.map(item => ({

@@ -386,7 +386,7 @@ test('Workers AI runs under explicit selection without another API token or HTTP
     recent_messages_json: '[{"role":"user","content":"你今天忙吗？"}]'
   };
   const reply = await generateAutonomousMessages({
-    env, snapshot,
+    env, snapshot, timeZone: 'Asia/Shanghai', evaluatedAt: Date.UTC(2026, 10, 26, 23, 30),
     fetchImpl: async () => { throw new Error('Workers AI must not call external HTTP'); }
   });
   assert.equal(reply.ok, true);
@@ -397,6 +397,9 @@ test('Workers AI runs under explicit selection without another API token or HTTP
   assert.equal(calls[0].options.stream, false);
   assert.equal(calls[0].options.messages[0].role, 'system');
   assert.equal(calls[0].options.messages[1].role, 'user');
+  const context = JSON.parse(calls[0].options.messages[1].content);
+  assert.equal(context.timeZone, 'Asia/Shanghai');
+  assert.match(context.localTime, /2026-11-27.*07:30/);
   assert.ok(calls[0].options.messages[1].content.includes('你今天忙吗？'));
   assert.equal(JSON.stringify(calls).includes('AUTONOMY_MODEL_API_KEY'), false);
 });

@@ -262,13 +262,25 @@ export async function runCloudModelTick({
       continue;
     }
 
+    const scheduleSnapshot = store.getSchedulerGateSnapshot({ userId, characterId: claimed.character_id });
+    const roleLimit = scheduleSnapshot?.schedule?.dailyModelLimit;
+    if (roleLimit === 0) {
+      store.supersedeActivity({
+        id: claimed.id, expectedAttemptCount: attemptCount, expectedStatus: 'running', now: Number(clock())
+      });
+      summary.superseded += 1;
+      log(store, Number(clock()), 'autonomy_cloud_tick', 'superseded', 'role_model_limit_disabled', claimed);
+      continue;
+    }
+    const limits = Number.isSafeInteger(roleLimit) && roleLimit > 0
+      ? { ...budget, role: Math.min(budget.role, roleLimit) } : budget;
     // Zero provider calls without a persisted, read-back-verified reservation.
     let reserved = false;
     try {
       reserved = store.reserveCloudModelAttempt({
         activityId: claimed.id, attemptCount, accountId: task.user_id,
         characterId: claimed.character_id, deviceId: claimed.device_id,
-        now: Number(clock()), limits: budget, timeoutMs: modelConfig.timeoutMs
+        now: Number(clock()), limits, timeoutMs: modelConfig.timeoutMs
       }) === true;
     } catch {}
     if (!reserved) {
@@ -281,7 +293,8 @@ export async function runCloudModelTick({
       continue;
     }
     const generation = await generateAutonomousMessages({
-      env, snapshot, fetchImpl, initialContact: isInitialContact, evaluatedAt: Number(clock())
+      env, snapshot, fetchImpl, initialContact: isInitialContact, evaluatedAt: Number(clock()),
+      timeZone: scheduleSnapshot?.timeZone
     });
     if (!generation.ok) {
       const finishedAt = Number(clock());

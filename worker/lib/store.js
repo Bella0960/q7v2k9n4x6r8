@@ -1810,6 +1810,10 @@ ${this.outboundIntegrityCondition()}
           Number(this.getCharacterAutonomy(userId, characterId)?.enabled ?? 1) !== 1) {
         return null;
       }
+      const scheduleRow = this.getCharacterSchedule(userId, characterId);
+      const settings = scheduleRow ? JSON.parse(scheduleRow.schedule_json) : {};
+      const delayMs = Number.isSafeInteger(settings.contactDelayMinutes)
+        ? Math.max(minIdleMs, settings.contactDelayMinutes * 60000) : minIdleMs;
       const turn = Number(snapshot.last_user_message_at);
       const dedupeKey = ['cloud-contact-v1', userId, characterId, String(turn)]
         .map(encodeURIComponent).join(':');
@@ -1827,7 +1831,7 @@ ${this.outboundIntegrityCondition()}
       if (this.countPendingActivitiesForCharacter(userId, characterId) >= 5) return null;
       const result = this.enqueueActivity({
         id: crypto.randomUUID(), userId, deviceId, characterId, payload, dedupeKey,
-        kind: 'contact', scheduledAt: turn ? Math.max(now, turn + minIdleMs) : now + 120000,
+        kind: 'contact', scheduledAt: turn ? Math.max(now, turn + delayMs) : now + 120000,
         maxAttempts, now, requireActiveDevice: true
       });
       return result.inserted ? result.activity : null;

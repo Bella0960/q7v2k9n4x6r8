@@ -101,3 +101,24 @@ test('contact scheduling binds the latest consented turn and reuses its pending 
     assert.equal(store.enqueueCloudContactForSnapshot({...args,contextVersion:newer.contextVersion}),null);
   } finally {db.close();}
 });
+
+test('0020 rolls back schema and data on a failed migration receipt and retries cleanly', () => {
+  const db = new DatabaseSync(':memory:');
+  try {
+    const exec = (sql, ...params) => db.prepare(sql).all(...params);
+    applyMigrations(exec, now);
+    exec("INSERT INTO devices(id,secret_hash,user_id,created_at,last_seen_at) VALUES('fixture','synthetic','owner',?,?)", now, now);
+    const before = exec("SELECT type,name,sql FROM sqlite_master ORDER BY name");
+    const migration = [{ version: VERSION, sql: SQL }];
+    assert.throws(() => applyMigrations((sql,...params) => {
+      if (sql.startsWith('INSERT INTO schema_migrations') && params[0] === VERSION) throw Error('receipt write interrupted');
+      return exec(sql,...params);
+    }, now + 1, null, migration), /receipt write interrupted/);
+    assert.deepEqual(exec("SELECT type,name,sql FROM sqlite_master ORDER BY name"),before);
+    assert.equal(exec('SELECT COUNT(*) AS n FROM devices WHERE id=?','fixture')[0].n,1);
+    assert.deepEqual(applyMigrations(exec, now + 2, null, migration),[VERSION]);
+    assert.deepEqual(applyMigrations(exec, now + 3, null, migration),[]);
+    assert.equal(exec('SELECT COUNT(*) AS n FROM user_context_sharing')[0].n,0);
+    assert.equal(exec('PRAGMA integrity_check')[0].integrity_check,'ok');
+  } finally { db.close(); }
+});

@@ -495,6 +495,15 @@
                         <input id="cloudRoleAway" type="checkbox">
                         此角色当前设为外出
                     </label>
+                    <label class="cloud-field" for="cloudRoleDelay">
+                        <span>回复后最短等待（分钟）</span>
+                        <input id="cloudRoleDelay" type="number" min="30" max="1440" step="1" placeholder="沿用云端默认">
+                    </label>
+                    <label class="cloud-field" for="cloudRoleDailyLimit">
+                        <span>每日模型调用上限（次）</span>
+                        <input id="cloudRoleDailyLimit" type="number" min="0" max="100" step="1" placeholder="沿用云端额度">
+                    </label>
+                    <p class="cloud-hint">填 0 暂停此角色的云端模型调用。重试会计入额度，实际次数也受账号及全站额度限制。</p>
                     <button id="cloudRoleScheduleSave" class="cloud-button primary" type="button">保存时区与作息</button>
                     <p class="cloud-hint">时区和允许主动联系的起止时间为必填；忙碌与休息时段可选。未保存有效作息的角色不会进入云端调度。</p>
                 </div>

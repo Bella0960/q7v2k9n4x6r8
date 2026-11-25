@@ -186,11 +186,21 @@ function validateScheduleInput(body) {
   if (!schedule || typeof schedule !== 'object' || Array.isArray(schedule)) {
     throw new ApiError(400, 'INVALID_SCHEDULE', '必须提供角色作息对象');
   }
-  const allowed = ['active', 'busy', 'asleep', 'away'];
+  const allowed = ['active', 'busy', 'asleep', 'away', 'contactDelayMinutes', 'dailyModelLimit'];
   const normalizedSchedule = {};
   for (const key of Object.keys(schedule)) {
     if (!allowed.includes(key)) {
       throw new ApiError(400, 'INVALID_SCHEDULE', '角色作息包含未知状态');
+    }
+    if (key === 'contactDelayMinutes' || key === 'dailyModelLimit') {
+      const value = schedule[key];
+      const maximum = key === 'contactDelayMinutes' ? 1440 : 100;
+      const minimum = key === 'contactDelayMinutes' ? 30 : 0;
+      if (!Number.isSafeInteger(value) || value < minimum || value > maximum) {
+        throw new ApiError(400, 'INVALID_SCHEDULE', '联系频率或每日调用上限超出允许范围');
+      }
+      normalizedSchedule[key] = value;
+      continue;
     }
     if (key === 'away' && typeof schedule.away === 'boolean') {
       normalizedSchedule.away = schedule.away;
