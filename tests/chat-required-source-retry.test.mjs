@@ -13,7 +13,7 @@ const actualMark = detail.slice(markerStart, markerEnd);
 const actualStop = detail.slice(helperStart, helperEnd);
 const setup = new Function(
   'sourceGateUser', 'historyList', 'saveMessages', '_vl', 'vlRefresh',
-  'renderAllMessages', 'showToast', 'retryTarget',
+  'renderAllMessages', 'showToast', 'retryTarget', 'callCurrent',
   actualMark + '\n' + actualStop + '\nreturn stopForMissingRoleSource;'
 );
 
@@ -36,7 +36,7 @@ function fixture(opts={}) {
   const target=opts.newUser === false ? null : {mid:user.mid,time:user.time};
   const retry=opts.retry ? {mid:user.mid,time:user.time} : null;
   const stop=setup(target,list,onSave,null,()=>renderCount++,()=>renderCount++,
-    text=>notices.push(text),retry);
+    text=>notices.push(text),retry,()=>opts.callRevoked!==true);
   return {stop, list, user, previous, notices, get saved(){return saved;},
     get rendered(){return renderCount;}, get saves(){return saveCount;}};
 }
@@ -110,4 +110,15 @@ test('no old history or API config is mutated when the source is unavailable', (
   h.stop('worldbook-too-long','世界书过长');
   assert.deepEqual(h.saved[0],initial);
   assert.equal(h.saved.filter(x=>x.role==='user').length,1);
+});
+
+test('revoked call source failure leaves saved messages and retry UI untouched', () => {
+  const h=fixture({callRevoked:true});
+  const original=structuredClone(h.saved);
+  h.stop('protocol-read','人设协议读取失败');
+  assert.equal(h.saves,0);
+  assert.equal(h.rendered,0);
+  assert.deepEqual(h.saved,original);
+  assert.deepEqual(h.list,original);
+  assert.deepEqual(h.notices,[]);
 });
