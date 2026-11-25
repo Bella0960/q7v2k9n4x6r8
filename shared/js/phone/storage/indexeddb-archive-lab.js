@@ -22,33 +22,61 @@
   function partitionKey(s, lane) {
     return JSON.stringify([s.accountId,s.kind,s.conversationId,s.generation,s.domain,lane]);
   }
+  // Reject data that JSON would silently omit, coerce or truncate.
+  function validateJSON(value, ancestors = new Set(), depth = 0) {
+    if (depth > 128) fail('INVALID_PAYLOAD');
+    if (value === null || typeof value === 'string' || typeof value === 'boolean') return;
+    if (typeof value === 'number') {
+      if (!Number.isFinite(value) || Object.is(value,-0)) fail('INVALID_PAYLOAD');
+      return;
+    }
+    if (typeof value !== 'object' || ancestors.has(value)) fail('INVALID_PAYLOAD');
+    const array = Array.isArray(value), proto = Object.getPrototypeOf(value);
+    if (array ? proto !== Array.prototype : (proto !== Object.prototype && proto !== null)) fail('INVALID_PAYLOAD');
+    const keys = Reflect.ownKeys(value);
+    if (array && keys.length !== value.length + 1) fail('INVALID_PAYLOAD');
+    ancestors.add(value);
+    for (const key of keys) {
+      if (array && key === 'length') continue;
+      if (typeof key !== 'string' || (array && (!/^(0|[1-9][0-9]*)$/.test(key) || Number(key) >= value.length))) fail('INVALID_PAYLOAD');
+      const descriptor = Object.getOwnPropertyDescriptor(value,key);
+      if (!descriptor || !descriptor.enumerable || !Object.prototype.hasOwnProperty.call(descriptor,'value')) fail('INVALID_PAYLOAD');
+      validateJSON(descriptor.value,ancestors,depth+1);
+    }
+    ancestors.delete(value);
+  }
   function jsonRecord(value) {
     if (!value || typeof value !== 'object' || Array.isArray(value)) fail('INVALID_PAYLOAD');
-    // Require JSON data, not opaque browser objects which JSON.stringify silently discards.
+    validateJSON(value);
     let encoded;
-    try {
-      encoded = JSON.stringify(value, function(key,v) {
-        const original = this[key];
-        if (original && typeof original === 'object') {
-          const proto = Object.getPrototypeOf(original);
-          if (!Array.isArray(original) && proto !== Object.prototype && proto !== null) fail('INVALID_PAYLOAD');
-          if (Object.getOwnPropertySymbols(original).length) fail('INVALID_PAYLOAD');
-        }
-        if (original !== v) fail('INVALID_PAYLOAD');
-        if (v === undefined || typeof v === 'function' || typeof v === 'symbol' || typeof v === 'bigint' ||
-            (typeof v === 'number' && !Number.isFinite(v))) fail('INVALID_PAYLOAD');
-        return v;
-      });
-    } catch (_) { fail('INVALID_PAYLOAD'); }
+    try { encoded = JSON.stringify(value); } catch (_) { fail('INVALID_PAYLOAD'); }
     if (typeof encoded !== 'string' || encoded.length * 2 > MAX_BYTES) fail('PAYLOAD_TOO_LARGE');
-    const decoded = JSON.parse(encoded);
-    if (!decoded || typeof decoded !== 'object' || Array.isArray(decoded)) fail('INVALID_PAYLOAD');
     return encoded;
+  }
+  function validatePartition(state, partition, lane) {
+    if (!state || state.partition !== partition || !Number.isSafeInteger(state.count) || state.count < 0 || state.count >= Number.MAX_SAFE_INTEGER) fail('CORRUPT_PARTITION');
+    if (lane === 'shadow') {
+      if (!Number.isSafeInteger(state.total) || state.total < state.count ||
+          !Number.isSafeInteger(state.verifiedCount) || state.verifiedCount < 0 || state.verifiedCount > state.count ||
+          typeof state.sourceHash !== 'string' || !/^[a-f0-9]{64}$/.test(state.sourceHash) ||
+          !['copying','verified-shadow'].includes(state.status) ||
+          (state.status === 'verified-shadow' && (state.count !== state.total || state.verifiedCount !== state.total))) fail('CORRUPT_PARTITION');
+    } else if (!Number.isSafeInteger(state.revision) || state.revision < 0 || state.revision > state.count) fail('CORRUPT_PARTITION');
+    return state;
+  }
+  function decodeRow(row, partition, count) {
+    if (!row || row.partition !== partition || !Number.isSafeInteger(row.sequence) || row.sequence < 1 || row.sequence > count ||
+        typeof row.encoded !== 'string' || row.encoded.length * 2 > MAX_BYTES) fail('CORRUPT_RECORD');
+    let payload;
+    try { id(row.id); payload = JSON.parse(row.encoded); validateJSON(payload); }
+    catch (_) { fail('CORRUPT_RECORD'); }
+    if (!payload || typeof payload !== 'object' || Array.isArray(payload)) fail('CORRUPT_RECORD');
+    return {id:row.id,sequence:row.sequence,payload};
   }
   function prepareBatch(input) {
     if (!Array.isArray(input) || !input.length || input.length > MAX_BATCH) fail('INVALID_BATCH');
     const seen = new Set(); let bytes = 0;
-    return input.map(item => {
+    return Array.from(input, item => {
       if (!item) fail('INVALID_PAYLOAD');
       const recordId = id(item.id);
       if (seen.has(recordId)) fail('DUPLICATE_BATCH_ID');
@@ -79,6 +107,7 @@
       const req = factory.open(options.name, VERSION);
       let settled = false;
       req.onupgradeneeded = () => {
+        if (settled) { req.transaction.abort(); return; }
         const db = req.result;
         const records = db.createObjectStore('records',{keyPath:['partition','sequence']});
         records.createIndex('byId',['partition','id'],{unique:true});
@@ -122,13 +151,17 @@
           function append(input) {
             const batch = prepareBatch(input), partition = partitionKey(scope,'active-lab');
             return transaction('readwrite','append',async(records,meta,guard) => {
-              const state = await request(meta.get(partition)) || {partition,count:0,revision:0};
+              const oldState = await request(meta.get(partition));
+              const state = oldState ? validatePartition(oldState,partition,'active-lab') : {partition,count:0,revision:0};
+              if (state.count && !(await request(records.get([partition,state.count])))) fail('CORRUPT_PARTITION');
+              if (await request(records.get([partition,state.count+1]))) fail('CORRUPT_PARTITION');
               let added=0,duplicate=0;
               const keys=[];
               for(const row of batch) {
                 guard();
                 const old = await request(records.index('byId').get([partition,row.id]));
                 if(old) {
+                  decodeRow(old,partition,state.count);
                   if(old.encoded !== row.encoded) fail('IDEMPOTENCY_CONFLICT');
                   duplicate++; keys.push(old.sequence); continue;
                 }
@@ -149,8 +182,10 @@
             const lane=options.shadow===true?'shadow':'active-lab',partition=partitionKey(scope,lane);
             return transaction('readonly',lane==='shadow'?'shadow':'read',async(records,meta,guard)=>{
               const state=await request(meta.get(partition));
+              if(state) validatePartition(state,partition,lane);
               if(before===1||!state) return {items:[],nextBefore:null,count:state?state.count:0};
-              const items=[];
+              const items=[]; let bytes=0,more=false;
+              let expected=Math.min(state.count,before-1);
               await new Promise((resolve,reject)=>{
                 const req=records.openCursor(range.bound([partition,1],[partition,before],false,true),'prev');
                 req.onerror=()=>reject(req.error||new Error('CURSOR_FAILED'));
@@ -158,16 +193,17 @@
                   try {
                     guard();
                     const cursor=req.result;
-                    if(!cursor||items.length===limit+1) { resolve(); return; }
+                    if(!cursor) { if(expected>0) fail('CORRUPT_PARTITION'); resolve(); return; }
                     const row=cursor.value;
-                    items.push({id:row.id,sequence:row.sequence,payload:JSON.parse(row.encoded)});
-                    if(items.length===limit+1) {resolve();return;}
+                    if(row.sequence!==expected) fail('CORRUPT_PARTITION');
+                    const decoded=decodeRow(row,partition,state.count);
+                    const rowBytes=row.encoded.length*2;
+                    if(items.length>=limit || (items.length && bytes+rowBytes>MAX_BYTES)) {more=true;resolve();return;}
+                    items.push(decoded);bytes+=rowBytes;expected--;
                     cursor.continue();
                   }catch(e){reject(e);}
                 };
               });
-              const more=items.length>limit;
-              if(more) items.pop();
               return {items,nextBefore:more?items[items.length-1].sequence:null,count:state.count};
             });
           }
@@ -175,9 +211,13 @@
             recordId=id(recordId);
             const lane=options&&options.shadow===true?'shadow':'active-lab',partition=partitionKey(scope,lane);
             return transaction('readonly',lane==='shadow'?'shadow':'read',async(records,meta,guard)=>{
+              const state=await request(meta.get(partition));
+              if(state) validatePartition(state,partition,lane);
               const row=await request(records.index('byId').get([partition,recordId]));
               guard();
-              return row?{id:row.id,sequence:row.sequence,payload:JSON.parse(row.encoded)}:null;
+              if(!row)return null;
+              if(!state || row.id!==recordId)fail('CORRUPT_RECORD');
+              return decodeRow(row,partition,state.count);
             });
           }
           // Shadow-only: caller supplies an immutable legacy JSON snapshot, never a storage key.
@@ -196,7 +236,10 @@
             let state=await transaction('readwrite','shadow',async(records,meta,guard)=>{
               const old=await request(meta.get(partition));
               if(old) {
+                validatePartition(old,partition,'shadow');
                 if(old.sourceHash!==sourceHash||old.total!==rows.length) fail('SNAPSHOT_CHANGED');
+                // Invalidate an earlier verification marker before re-checking content.
+                if(old.status==='verified-shadow'){old.status='copying';old.verifiedCount=0;guard();await request(meta.put(old));}
                 return old;
               }
               const fresh={partition,count:0,verifiedCount:0,total:rows.length,sourceHash,status:'copying'};
@@ -215,7 +258,9 @@
               }
               state=await transaction('readwrite','shadow',async(records,meta,guard)=>{
                 const current=await request(meta.get(partition));
-                if(!current||current.sourceHash!==sourceHash)fail('SNAPSHOT_CHANGED');
+                validatePartition(current,partition,'shadow');
+                if(current.sourceHash!==sourceHash||current.total!==rows.length)fail('SNAPSHOT_CHANGED');
+                if(current.count<start)fail('CORRUPT_PARTITION');
                 // Concurrent copy of this exact snapshot may advance the checkpoint.
                 if(current.count!==start)return current;
                 for(let i=0;i<chunk.length;i++){
@@ -241,7 +286,8 @@
             return transaction('readwrite','shadow',async(records,meta,guard)=>{
               const current=await request(meta.get(partition));
               const actual=await request(records.count(range.bound([partition,1],[partition,Number.MAX_SAFE_INTEGER])));
-              if(!current||current.sourceHash!==sourceHash||current.count!==rows.length||actual!==rows.length)fail('SHADOW_VERIFY_FAILED');
+              validatePartition(current,partition,'shadow');
+              if(current.sourceHash!==sourceHash||current.total!==rows.length||current.count!==rows.length||actual!==rows.length)fail('SHADOW_VERIFY_FAILED');
               current.verifiedCount=actual;current.status='verified-shadow';
               guard();await request(meta.put(current));
               return {sourceHash,count:actual,status:current.status,active:false};
