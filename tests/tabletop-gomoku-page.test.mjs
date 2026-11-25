@@ -102,3 +102,11 @@ test('continuous watch is opt-in and stops before another batch after cancellati
   f.one('mao-gomoku__auto').click();const saved=count();
   await new Promise(r=>setTimeout(r,400));await wait();assert.equal(count(),saved);assert.equal(f.one('mao-gomoku__auto').textContent,'连续观战');f.page.destroy();
 });
+
+test('full page remount restores board and chat without repeating moves or message IDs',async()=>{
+ const f=fixture();await wait();f.choose('mao-gomoku__first','r1');f.one('mao-gomoku__start').click();await wait();
+ all(f.root,'mao-gomoku-board__cell')[112].click();await wait();f.one('mao-gomoku__input').value='第一条';f.one('mao-gomoku__send').click();await wait();const saved=await f.page.saveMatch();f.page.destroy();
+ const g=fixture();await wait();g.session('s2');await g.page.reload();const v=await g.page.restoreMatch(saved);
+ assert.equal(v.game.count,2);assert.equal(all(g.root,'mao-gomoku__message').length,1);
+ g.one('mao-gomoku__input').value='第二条';g.one('mao-gomoku__send').click();await wait();assert.equal(all(g.root,'mao-gomoku__message').length,2);g.page.destroy();
+});
