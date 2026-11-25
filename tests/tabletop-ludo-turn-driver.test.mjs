@@ -4,10 +4,10 @@ import {createLudoTurnDriver} from '../games/tabletop/ludo-turn-driver.js';
 import {createLudoRules} from '../games/tabletop/ludo-rules.js';
 import {createRoomLifetime} from '../games/tabletop/room-lifetime.js';
 import {createRoomDispatcher} from '../games/tabletop/room-dispatcher.js';
-function setup({dice=[3,6,2],n=2,...options}={}){
+function setup({dice=[3,6,2],n=2,bots=false,...options}={}){
   let ctx={accountId:'a',sessionId:'s',roleIds:['r1','r2','r3']},i=0;
   const room=createRoomLifetime({getContext:()=>ctx,createDispatcher:createRoomDispatcher,spec:{roomId:'drive',gameId:'ludo'},rules:createLudoRules({rollDie:()=>dice[i++%dice.length]})});
-  for(let j=1;j<n;j++)room.prepareUserAction()({type:'invite',roleId:'r'+j});
+  if(bots)room.prepareUserAction()({type:'fillBots',playerCount:n});else for(let j=1;j<n;j++)room.prepareUserAction()({type:'invite',roleId:'r'+j});
   room.prepareUserAction()({type:'start'});
   const views=[];
   const driver=createLudoTurnDriver({session:room,onView:v=>views.push(v),...options});
@@ -69,4 +69,17 @@ test('a cancelled pace can settle late without interfering with a fresh role run
   assert.deepEqual(await f.driver.runUntilUser(),{actions:1,status:'user'});
   rejectOld(Error('late pace rejection'));await new Promise(resolve=>setImmediate(resolve));
   assert.equal(f.rolls(),2);assert.equal(f.driver.status(),'idle');
+});
+
+test('ordinary Ludo seat uses its own optional model, never the saved-role provider',async()=>{
+ const calls=[],strategies=[],f=setup({bots:true,decide:()=>{throw Error('wrong provider');},decideBot:(v,signal)=>{calls.push(v);assert.equal(signal.aborted,false);return {move:{kind:'choose',plane:2}};},onStrategy:s=>strategies.push(s)});
+ f.room.prepareUserAction()({type:'move',move:{kind:'roll'}});
+ assert.equal((await f.driver.runUntilUser()).status,'user');assert.equal(calls.length,1);assert.equal(calls[0].selfSeatId,'bot:1');assert.ok(calls[0].seats.every(s=>!Object.hasOwn(s,'roleId')));
+ assert.equal(f.room.viewUser().game.players[1].planes[2].progress,2);assert.equal(strategies[0].source,'model');
+});
+test('stalled model is aborted; local choice continues and late response cannot change board',async()=>{
+ let release,signal;const strategies=[],f=setup({bots:true,timeoutMs:1,decideBot:(v,s)=>{signal=s;return new Promise(r=>{release=r;});},onStrategy:s=>strategies.push(s)});
+ f.room.prepareUserAction()({type:'move',move:{kind:'roll'}});
+ assert.equal((await f.driver.runUntilUser()).status,'user');assert.equal(signal.aborted,true);assert.equal(strategies[0].source,'local');
+ const before=f.room.viewUser();release({move:{kind:'choose',plane:3}});await Promise.resolve();assert.deepEqual(f.room.viewUser(),before);
 });
