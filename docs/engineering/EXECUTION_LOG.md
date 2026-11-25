@@ -662,3 +662,5 @@ On the next turn/session, read this file and the current `AGENTS.md` first. Cont
 - 2026-11-25 第三轮：同容器真实换位使用 180ms WAAPI individual translate（FLIP），读取旧视觉位置、取消旧动画、一次占位写入、批量读取终点、再启动新动画；碰撞读取逻辑消除动画位移，快速反向不中断到错误格子，跨容器不做过渡，结束/取消清理全部动画。支持 reduced motion 与无 API 回退。新增 VM 真实函数行为覆盖、Chromium 实际动画计数门禁。完整运行、帧率和线上 QA 仍未验证。
 
 - 2026-11-25 第四轮：边缘翻页改为单一可取消意图，进入 Dock、不可翻页方向、移出边缘立即取消，计时器执行前校验最新未绘制坐标；松手使用真实 changedTouches/mouseup 终点，跨页未完成先定位目标页，后台/隐藏/离开取消拖拽，退出编辑避免重复保存，同页落位不重建页码 DOM。增加边缘意图模拟及真实浏览器短暂触边后移回的回归。未运行完整 Node/Vite/Chromium；未覆盖其他 QA 请求或发布。
+
+- 第四轮补强：翻页动画未完成时松手，即使没有新坐标仍重算最终目标；更新旧 blur 回归断言以匹配新共用取消处理；补实际 endDrag 函数 VM 测试，验证 settle→flush→place→单次 save。前一提交 fd7e8f2b 的真实源码独立 JS mock 边缘测试 7 项断言通过，6 个经典内联脚本解析通过，两测试文件去掉 import 后解析通过（非完整 Node/浏览器执行）。

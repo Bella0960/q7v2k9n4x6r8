@@ -265,7 +265,8 @@ test('touchcancel restores original element without persisting a partially moved
   runInNewContext(match[0] + '\ncancelDrag();', harness);
   assert.equal(harness.isDragging, false);
   assert.deepEqual(counts, { placeholder: 1, ghost: 1, cleanup: 1, refresh: 1, writes: 0 });
-  assert.match(index, /window\.addEventListener\('blur', function \(\) \{[\s\S]*?if \(isDragging\) cancelDrag\(\)/);
+  assert.match(index, /function interruptHomeDrag\(\) \{[\s\S]*?if \(isDragging\) cancelDrag\(\)/);
+  assert.match(index, /window\.addEventListener\('blur', interruptHomeDrag\)/);
 });
 
 test('cancelled cross-page gesture navigates back without storing a drop', () => {
@@ -529,4 +530,29 @@ test('drop consumes final touch and mouse position and interruption is a cancell
   assert.match(index,/window\.addEventListener\('pagehide', interruptHomeDrag\)/);
   assert.match(index,/if \(document\.hidden\) interruptHomeDrag\(\)/);
   assert.match(index,/if \(isDragging\) \{ endDrag\(\); return; \}/);
+});
+
+
+test('release settles a pending page flip, uses latest input and persists exactly once', () => {
+  const start=index.indexOf('      function endDrag(finalPoint)');
+  const end=index.indexOf('      // ===== 事件监听',start);
+  assert.ok(start>=0&&end>start);
+  const order=[], calls=[];
+  const parent={id:'gridPage1',insertBefore(){order.push('place');}};
+  const source={classList:{remove(){}},style:{}};
+  const ph={parentNode:parent,remove(){order.push('remove-slot');}};
+  const ctx={isDragging:true,dragEl:source,placeholder:ph,dragClone:{remove(){order.push('remove-ghost');}},
+    dragOriginPage:0,edgeTimer:null,activePageIndex:1,latestDragPoint:{x:100,y:200},pendingDragPoint:null,
+    homeScreen:{clientWidth:390,scrollLeft:210,scrollTo(options){this.scrollLeft=options.left;order.push('settle');}},
+    invalidateDragGeometry(){order.push('invalidate');},
+    flushDragMove(){calls.push([ctx.pendingDragPoint.x,ctx.pendingDragPoint.y]);order.push('flush');},
+    resetDragMotion(){order.push('reset');},setElementAsDock(){throw Error('wrong parent');},setElementAsDesktop(){},
+    vibrate(){},cleanupEmptyTrailingPages(){order.push('cleanup');},persistCurrentDOM(){order.push('save');},
+    document:{body:{classList:{add(){}}}},setTimeout(){},clearTimeout(){}};
+  runInNewContext(index.slice(start,end),ctx);
+  ctx.endDrag({x:110,y:210});ctx.endDrag({x:120,y:220});
+  assert.deepEqual(calls,[[110,210]]);
+  assert.deepEqual(order,['settle','invalidate','flush','reset','place','remove-slot','remove-ghost','cleanup','save']);
+  assert.equal(ctx.isDragging,false);
+  assert.equal(ctx.dragEl,null);
 });

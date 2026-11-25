@@ -1525,7 +1525,7 @@
           cx >= rect.left - 10 && cx <= rect.right + 10;
       }
       function getDragEdgeSide(bounds, cx, cy, pageIndex, pageCount) {
-        if (pointOverDragDock(bounds.dock, cx, cy)) return null;
+        if (pageIndex < 0 || pageIndex >= pageCount || pointOverDragDock(bounds.dock, cx, cy)) return null;
         if (cy < bounds.home.top || cy > bounds.home.bottom) return null;
         if (cx < bounds.home.left + 42) return pageIndex > 0 ? 'left' : null;
         if (cx > bounds.home.right - 42) return pageIndex < MAX_PAGES - 1 ? 'right' : null;
@@ -1708,6 +1708,7 @@
         if (Math.abs(homeScreen.scrollLeft - activePageIndex * pageWidth) > 4) {
           homeScreen.scrollTo({ left: activePageIndex * pageWidth, behavior: 'instant' });
           invalidateDragGeometry();
+          if (latestDragPoint) pendingDragPoint = latestDragPoint;
         }
         if (finalPoint && Number.isFinite(finalPoint.x) && Number.isFinite(finalPoint.y) &&
             (!latestDragPoint || finalPoint.x !== latestDragPoint.x || finalPoint.y !== latestDragPoint.y)) {
