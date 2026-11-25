@@ -46,6 +46,8 @@ try {
     { stdio: ['ignore', 'pipe', 'pipe'] });
   await waitPreview(server);
   browser = await chromium.launch({ headless: true, args: ['--no-sandbox', '--autoplay-policy=no-user-gesture-required'] });
+  // Fixed, non-sensitive progress markers recognized by the existing QA runner.
+  console.log('SEALED_BROWSER_CHECKPOINT:0');
   for (const width of widths) {
     const context = await browser.newContext({
       viewport: { width, height: 844 }, isMobile: true, hasTouch: true,
@@ -569,6 +571,7 @@ try {
       }finally{await chat.close();}
       assert.deepEqual(pageErrors, [], 'no uncaught JS errors at ' + width);
       console.log('PASS Chromium ' + width + 'px: viewport, import Blob, reload, playback, cover, LRC, playlist');
+      console.log('SEALED_BROWSER_CHECKPOINT:'+width);
     } finally {
       await context.close();
     }
@@ -598,6 +601,7 @@ try {
       localStorage.removeItem('api_settings');
       return JSON.parse(localStorage.getItem('music_local_tracks'));
     });
+    console.log('SEALED_BROWSER_CHECKPOINT:500'); // desktop import/seed complete
     const chat=await desktop.newPage();
     chat.on('pageerror',err=>desktopErrors.push(err.message));
     await chat.goto(new URL('/chat/chat/chat-detail.html?id=g-listen-desktop',BASE).href);
@@ -616,12 +620,11 @@ try {
       assert.ok(geometry.overflow<=1,'desktop shell has no horizontal overflow');
     };
     await assertDialogLayout();
-    const items=dialog.locator('[data-glisten-track]');
-    assert.equal(await items.count(),2);
-    const firstId=await items.first().getAttribute('data-glisten-track');
-    const secondId=await items.nth(1).getAttribute('data-glisten-track');
+    await chat.waitForFunction(()=>document.querySelectorAll('#groupListeningDialog [data-glisten-track]').length===2);
+    const firstId=tracks[0].id,secondId=tracks[1].id;
     assert.ok(firstId&&secondId&&firstId!==secondId);
-    await items.first().check();
+    const trackRow=id=>dialog.locator('[data-glisten-track='+JSON.stringify(id)+']');
+    await trackRow(firstId).check();
     await chat.evaluate(()=>{const original=HTMLMediaElement.prototype.play;HTMLMediaElement.prototype.play=function(){if(this.dataset.groupListeningAudio)this.loop=true;return original.call(this);};});
     await dialog.locator('[data-glisten-start]').click();
     await strip.waitFor({state:'visible'});
@@ -636,7 +639,8 @@ try {
     await strip.getByRole('button',{name:'打开一起听歌详情'}).click();
     await assertDialogLayout();
     await dialog.getByRole('button',{name:'重新选歌'}).click();
-    await dialog.locator('[data-glisten-track]').nth(1).check();
+    await trackRow(secondId).check();
+    console.log('SEALED_BROWSER_CHECKPOINT:600'); // desktop initial playback and layout complete
     // Simulate a catalog update in the real sibling music document. Only
     // synthetic fixture metadata is altered; no real audio data is deleted.
     await library.evaluate(id=>{
@@ -644,19 +648,23 @@ try {
       localStorage.setItem('music_local_tracks',JSON.stringify(rows.filter(x=>x.id!==id)));
     },secondId);
     await dialog.locator('[data-glisten-start]').click();
-    await dialog.locator('[data-glisten-track]').waitFor({state:'visible'});
+    await trackRow(secondId).waitFor({state:'detached'});
+    await trackRow(firstId).waitFor({state:'visible'});
     assert.equal(await dialog.locator('[data-glisten-track]').count(),1,'stale selection removed in actual picker');
-    assert.equal(await dialog.locator('[data-glisten-track]').first().getAttribute('data-glisten-track'),firstId);
-    assert.equal(await dialog.locator('[data-glisten-track]').first().isChecked(),true);
+    assert.equal(await trackRow(firstId).isChecked(),true);
     assert.equal(await dialog.isVisible(),true,'changed queue must be confirmed again');
     assert.deepEqual(await chat.evaluate(()=>{const a=document.querySelector('[data-group-listening-audio]');return {src:a.src,paused:a.paused};}),{src:source,paused:false},'rejected stale queue does not stop the previous song');
+    console.log('SEALED_BROWSER_CHECKPOINT:700'); // stale selection rejected, source preserved
     await library.evaluate(rows=>localStorage.setItem('music_local_tracks',JSON.stringify(rows)),tracks);
+    await chat.waitForFunction(()=>window.MAOMusicCatalogAdapter.listTracks().tracks?.length===2);
     await dialog.getByRole('button',{name:'关闭',exact:true}).click();
     await strip.getByRole('button',{name:'打开一起听歌详情'}).click();
     await dialog.getByRole('button',{name:'重新选歌'}).click();
+    await trackRow(firstId).waitFor({state:'visible'});
+    await trackRow(secondId).waitFor({state:'visible'});
     assert.equal(await dialog.locator('[data-glisten-track]').count(),2,'restored catalog is selectable');
-    await dialog.locator('[data-glisten-track]').first().uncheck();
-    await dialog.locator('[data-glisten-track]').nth(1).check();
+    await trackRow(firstId).uncheck();
+    await trackRow(secondId).check();
     await dialog.locator('[data-glisten-start]').click();
     await chat.waitForFunction(old=>{const a=document.querySelector('[data-group-listening-audio]');return a&&!a.paused&&a.src!==old;},source);
     await chat.locator('#chat-input').fill('桌面听歌时保留输入');
