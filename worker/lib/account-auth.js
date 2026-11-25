@@ -112,7 +112,7 @@ function normalizedEmail(value) {
   return email;
 }
 
-function cookieValue(request) {
+export function cookieValue(request) {
   const raw = String(request.headers.get('cookie') || '');
   for (const item of raw.split(';')) {
     const point = item.indexOf('=');
@@ -409,6 +409,130 @@ export function createAccountAuth({ store, env = {}, now = () => Date.now() }) {
       return ok({ account: publicAccount(founder), qaSetupComplete: true, nextStep: 'qa_login' });
     }
     return await createSession(founder, request);
+  }
+
+
+  // Enrollment is separate from the active-account session path. A pending
+  // registrant receives no browser session and cannot use any protected app API.
+  function qaCoreEnrollmentReady() {
+    if (env.MAO_QA_ENROLLMENT_ENABLED !== 'true' || env.MAO_IDENTITY_MODE !== 'local') return false;
+    const founderId = isolatedQaAuthorityFounderId(env);
+    if (!founderId) return false;
+    const founder = store.getMaoAccountById(founderId);
+    return founder?.role === 'super_admin' && founder.status === 'active' &&
+      String(env.MAO_SUPER_ADMIN_BOOTSTRAP_SECRET || '').length >= 32 &&
+      String(env.DEVICE_SECRET_PEPPER || '').length >= 32;
+  }
+
+  async function qaEnrollment(request, path, method) {
+    const registering = path === '/api/accounts/enrollment/register';
+    const activating = path === '/api/accounts/enrollment/activate';
+    if (method !== 'POST' || (!registering && !activating) ||
+        env.MAO_QA_ENROLLMENT_ENABLED !== 'true') {
+      throw new ApiError(404, 'QA_ENROLLMENT_DISABLED', '独立测试账号注册未启用');
+    }
+    if (cookieValue(request) || request.headers.get('x-mao-account-context')) {
+      throw new ApiError(409, 'QA_ENROLLMENT_SESSION_PRESENT', '请先退出当前账号，再注册或验证新的待授权账号');
+    }
+    const body = await readJsonBody(request);
+    const allowed = registering
+      ? ['username','password','confirmPassword','qqEmail']
+      : ['identifier','password','inviteCode'];
+    if (Object.keys(body).some(key => !allowed.includes(key))) {
+      throw new ApiError(400, 'QA_ENROLLMENT_INVALID', '注册或邀请参数无效');
+    }
+
+    if (delegated) {
+      if (!usesExistingAccountAuthority(env) ||
+          env.MAO_QA_AUTHORITY_WORKER !== 'maomao-identity-core' ||
+          env.MAO_DELEGATED_SOCIAL_ENABLED !== 'true') {
+        throw new ApiError(503, 'QA_ENROLLMENT_DISABLED', '独立测试账号注册未就绪');
+      }
+      const proof = await probeExistingIdentityAuthority(env);
+      if (!proof.connected || !proof.initialized || !proof.configured ||
+          proof.qaIsolatedAuthority !== true || proof.qaEnrollmentReady !== true ||
+          proof.qaExpectedFounderId !== env.MAO_EXPECTED_FOUNDER_ID) {
+        throw new ApiError(503, 'QA_ENROLLMENT_DISABLED', '独立测试账号注册未就绪');
+      }
+      // Service binding only; never copy credentials into the preview DB.
+      // Preserve the trusted Cloudflare client IP for existing core rate limits.
+      const headers = {'content-type':'application/json', origin:'https://mao520.com'};
+      const ip = request.headers.get('cf-connecting-ip');
+      if (ip) headers['cf-connecting-ip'] = ip;
+      let response;
+      try {
+        response = await env.MAO_IDENTITY_AUTHORITY.fetch(new Request('https://mao520.com' + path, {
+          method:'POST', headers, body:JSON.stringify(body), redirect:'error'
+        }));
+      } catch {
+        throw new ApiError(503,'QA_ENROLLMENT_UNCONFIRMED','账号操作结果尚未确认，请先核对，不要重复注册');
+      }
+      let payload;
+      try { payload = await response.json(); } catch {}
+      if (!payload || typeof payload !== 'object' || Array.isArray(payload) ||
+          response.redirected || response.status >= 300 && response.status < 400 ||
+          payload.ok !== response.ok || response.headers.has('set-cookie')) {
+        throw new ApiError(503,'QA_ENROLLMENT_UNCONFIRMED','账号服务结果无法确认');
+      }
+      if (!response.ok) {
+        const code = String(payload.error?.code || '');
+        const allowedCodes = ['INVALID_USERNAME','INVALID_PASSWORD','PASSWORD_MISMATCH','INVALID_EMAIL',
+          'ACCOUNT_ALREADY_EXISTS','ACCOUNT_REGISTRATION_RATE_LIMITED','LOGIN_RATE_LIMITED',
+          'LOGIN_FAILED','INVALID_LOGIN','ACCOUNT_DISABLED','ACCOUNT_NOT_PENDING','INVALID_INVITE_CODE',
+          'INVITE_NOT_VALID_FOR_ACCOUNT','ACCOUNT_SESSION_REQUIRED','QA_ENROLLMENT_DISABLED',
+          'QA_ENROLLMENT_INVALID','ACCOUNT_SAVE_UNVERIFIED'];
+        if (!allowedCodes.includes(code) || ![400,401,403,409,429,503].includes(response.status)) {
+          throw new ApiError(503,'QA_ENROLLMENT_UNCONFIRMED','账号服务结果无法确认');
+        }
+        throw new ApiError(response.status,code,typeof payload.error?.message === 'string' ?
+          payload.error.message.slice(0,200) : '账号操作未完成');
+      }
+      const a = payload.account;
+      if (!a || !ACCOUNT_ID_RE.test(String(a.id || '')) || !USERNAME_RE.test(String(a.username || '')) ||
+          a.role !== 'user' || a.founderNumber != null || a.id === env.MAO_EXPECTED_FOUNDER_ID ||
+          a.status !== (registering ? 'pending_invite' : 'active') ||
+          response.status !== (registering ? 201 : 200)) {
+        throw new ApiError(503,'QA_ENROLLMENT_UNCONFIRMED','账号服务结果无法确认');
+      }
+      return json({ok:true, account:{id:a.id,username:a.username,role:'user',status:a.status},
+        ...(registering ? {nextStep:'invite_required'} : {authorized:true,loginRequired:true})}, response.status);
+    }
+
+    if (!qaCoreEnrollmentReady()) {
+      throw new ApiError(403,'QA_ENROLLMENT_DISABLED','独立测试账号注册未就绪');
+    }
+    if (registering) {
+      return register(new Request(request.url,{method:'POST',headers:request.headers,body:JSON.stringify(body)}));
+    }
+    const inviteCode = String(body.inviteCode || '').trim();
+    if (!INVITE_RE.test(inviteCode)) throw new ApiError(400,'INVALID_INVITE_CODE','邀请码格式不正确');
+    const account = await validateLocalCredentials(request,body);
+    if (account.role !== 'user' || account.status !== 'pending_invite') {
+      throw new ApiError(409,'ACCOUNT_NOT_PENDING','当前账号不需要邀请码授权');
+    }
+    // A short-lived internal session satisfies the existing transactional
+    // invite guard. Its random token is never exposed or accepted from clients.
+    const timestamp = now();
+    const sessionId = randomToken(12);
+    const tokenHash = await sha256Hex(randomToken(32));
+    const inviteHash = await sha256Hex('mao-invite|' + inviteCode);
+    if (!store.createMaoAccountSession({id:sessionId,accountId:account.id,tokenHash,
+        now:timestamp,expiresAt:timestamp+60000})) {
+      throw new ApiError(401,'ACCOUNT_SESSION_REQUIRED','待授权账号状态已变化');
+    }
+    try {
+      const accepted = store.redeemMaoInvite({tokenHash:inviteHash,accountId:account.id,sessionId,now:now()});
+      if (accepted !== true) {
+        throw new ApiError(403,'INVITE_NOT_VALID_FOR_ACCOUNT','邀请码无效、已使用、已过期或不属于当前账号');
+      }
+      const activated = store.getMaoAccountById(account.id);
+      if (!activated || activated.status !== 'active' || activated.role !== 'user') {
+        throw new ApiError(503,'ACCOUNT_SAVE_UNVERIFIED','账号授权结果未确认，请先尝试登录');
+      }
+      return ok({account:publicAccount(activated),authorized:true,loginRequired:true});
+    } finally {
+      store.revokeMaoAccountSession(sessionId,now());
+    }
   }
 
   async function register(request) {
@@ -1104,6 +1228,10 @@ export function createAccountAuth({ store, env = {}, now = () => Date.now() }) {
           qaExpectedFounderId: qaCoreFounder || undefined,
           identityAuthorityConnected: delegated ? authority.connected : undefined,
           identityAuthorityInitialized: delegated ? authority.initialized : undefined,
+          ...(env.MAO_QA_ENROLLMENT_ENABLED === 'true' ? {
+            qaEnrollmentReady: delegated ? Boolean(qaCoreReady && authority.initialized &&
+              authority.qaEnrollmentReady === true && env.MAO_DELEGATED_SOCIAL_ENABLED === 'true') : qaCoreEnrollmentReady()
+          } : {}),
           signInReady: !delegated || (
             authority.connected && authority.initialized && authority.configured &&
             typeof env.MAO_IDENTITY_AUTHORITY?.fetch === 'function' &&
@@ -1112,6 +1240,7 @@ export function createAccountAuth({ store, env = {}, now = () => Date.now() }) {
           )
         });
       }
+      if (path.startsWith('/api/accounts/enrollment/')) return await qaEnrollment(request,path,method);
       if (path === '/api/internal/identity/authenticate' && method === 'POST') return await issuerAuthenticate(request);
       if (path === '/api/internal/identity/status' && method === 'POST') return await issuerStatus(request);
       // Preview account settings are read from the central identity authority.

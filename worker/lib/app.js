@@ -1,4 +1,5 @@
 import { createAccountAuth } from './account-auth.js';
+import { createMaoSocial } from './mao-social.js';
 import {
   ApiError, fail, ok, readJsonBody
 } from './http.js';
@@ -482,6 +483,7 @@ export async function dispatchPendingOutboundPushes({
 
 export function createApp({ store, env = {}, now = () => Date.now(), fetchImpl = fetch }) {
   const accountAuth = createAccountAuth({ store, env, now });
+  const maoSocial = createMaoSocial({ store, accountAuth, env, now });
   const adminCloud = createAdminCloud({ store, env, now, requireAdmin: createAdminGuard(accountAuth) });
 
   async function authenticate(request) {
@@ -2015,6 +2017,8 @@ export function createApp({ store, env = {}, now = () => Date.now(), fetchImpl =
     const pageAccountId = String(request.headers.get('x-mao-account-context') || '').trim();
     const contextOptionalPaths = new Set([
       '/api/accounts/register',
+      '/api/accounts/enrollment/register',
+      '/api/accounts/enrollment/activate',
       '/api/accounts/login',
       '/api/accounts/logout',
       '/api/accounts/me',
@@ -2059,6 +2063,8 @@ export function createApp({ store, env = {}, now = () => Date.now(), fetchImpl =
       if (adminCloudResponse) return adminCloudResponse;
       const accountResponse = await accountAuth.handle(request, path, method);
       if (accountResponse) return accountResponse;
+      const socialResponse = await maoSocial.handle(request, path, method);
+      if (socialResponse) return socialResponse;
 
       if (path === '/api/health' && method === 'GET') {
         const counts = await store.counts();

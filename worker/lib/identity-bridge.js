@@ -244,7 +244,8 @@ export async function probeExistingIdentityAuthority(env) {
         // The private service-bound response was already validated above.
         // Admin operations require this exact proof, not merely connectivity.
         qaIsolatedAuthority: data.qaIsolatedAuthority === true,
-        qaExpectedFounderId: data.qaExpectedFounderId
+        qaExpectedFounderId: data.qaExpectedFounderId,
+        ...(data.qaEnrollmentReady === true ? {qaEnrollmentReady:true} : {})
       } : {})
     };
   } catch {
