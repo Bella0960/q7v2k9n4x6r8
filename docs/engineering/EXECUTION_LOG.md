@@ -333,3 +333,10 @@ On the next turn/session, read this file and the current `AGENTS.md` first. Cont
 - `planMemoryCorrection(roleId, records, expected, replacement)` 为纯预览：校验明确归属、唯一记录 ID、完整原快照及确认状态；返回 pending 提案与既有 sourceMemoryIds 来源关联，不写入、不自动废止原记录。真正的用户确认/替代投影/撤销须在后续明确审查事务与 UI 接入时实现，不将提案冒充完整纠错功能。尚无自动语义冲突判断或修订持久化。
 - `tests/memory-review-integrity.test.mjs`（`69382c181ab7947c98a822ffef980fa60e3883ea`）：读取分支实际源码的隔离 V8 合成夹具13/13通过，包括 AI待确认、精确去重、来源冲突、快照保护、容量/长度、纠错预览及角色隔离。Node CLI 全量、Vite、Chromium、真实用户确认界面、跨标签原子性、QA、真机 NOT VERIFIED。未操作真实数据，无额外 API 请求。
 - 影响：自动记忆标记不再直接作为已确认记录；超过600字符的输入返回明确失败码，旧调用 UI 可能只显示通用保存失败，需定向适配原文摘录及提示。整合前必须核对 #523/#536/#537/#538 与当前 QA 精确源码、存储与调用方安全回归；撤销本增量可回滚，未合并或部署。
+
+## 2026-11-26 · ARCH-001 / DATA-008 · 可撤销记忆修订事务与记忆库入口
+- 基于 #539 HEAD `863580a91ab7422d8cebc7b1fb8b86f60dc3e7bf` 的独立堆叠候选。读取当前 main 工程及视觉规范、#299 `cf440666a47f5443385c2937cb14faa698d3e46a` 账号和记忆调用链、#523/#534；未修改这些原 PR、账号、正式数据、部署配置。
+- `9fd10ff62e7a650f1a81926a280b8d6735b59c08`：新增 confirmMemoryCorrection/undoMemoryCorrection，明确用户确认、ready 账号 ID、当前角色、唯一原记录及精确快照校验。复用现有主存档列表与 sourceMemoryIds，新增向后兼容候选状态 superseded-fixed/superseded-confirmed/withdrawn；修订追加记录，原文/来源不删除，固定状态可恢复；撤销恢复直接父版本，撤销版本留存。拒绝未知状态/旧存档无明确归属、容量超限、缺父记录、过期快照、写入或读回失败。单列表替换与读回校验，不宣称跨标签 CAS 或完整原子事务。新状态是待集成验证的扩展契约，不对旧数据做批量迁移。
+- `5f610d12e9d557b0f15ec0bddf6f9bcdcf712bb7`：现有 memory.html 记忆库操作接入修订、撤销修订、取消提示与用户确认；使用既有按钮样式，未重新设计页面。修订链记录屏蔽普通删除/钉住，去重与合并候选过滤相关记录。账号/共享模块未就绪不展示修订入口。未执行真实手机交互验收。
+- `tests/memory-revision-transaction.test.mjs`（`618b376c4ed7645e259363a12b73f00d7804f337`）直接读取分支真实共享代码与页面事件处理器，隔离 V8 合成夹具16/16通过，包含连续修订/撤销、错误身份、过期记录、容量、失败读回、取消及防误删。未执行 Node CLI 全量、Vite、Chromium、真实数据、真实账号、QA 或真机。
+- 发布阻塞：#299 聊天旧写入 saveWeightMemories/trimMemoriesByWeight 及自动总结仍有独立写入；library/library.html 读取 getMemories 后直接取末五条，旧 PhoneContext 亦不完整过滤状态（#534 候选已处理其一）。必须协调现有 PR 完成所有活动记忆读取者状态过滤、修订链保护、主聊天无损写入与跨标签一致性、备份恢复兼容回归，才能启用修订功能。旧自由文本摘要可能含旧事实，也需处理。当前仅候选代码，不宣称全链路生效，未合并、未部署。撤销专项提交只能用于未启用候选，若已持久化新状态需专门兼容回滚方案，不能直接删除历史版本。
