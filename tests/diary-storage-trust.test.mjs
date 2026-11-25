@@ -453,3 +453,33 @@ test('manual person generation and automatic generation share a write lock',asyn
  finish('整理今天的植物观察记录，记录叶片变化。');await Promise.all([p,q]);
  assert.equal(sb.entries.length,1);assert.equal(sb.entries[0].noteType,'备忘');
 });
+
+test('reverse audit: ambiguous imported author never becomes user-owned',()=>{
+ const {sb}=makeSandbox({store:makeStore()});
+ assert.equal(sb.diaryAuthorKind({id:'damaged',author:{id:'roleB'}}),'unknown');
+ assert.equal(sb.diaryAuthorKind({id:'damaged',authorUnverified:true}),'unknown');
+ assert.equal(sb.diaryAuthorKind({id:'damaged',author:'  '}),'unknown');
+ const code=slice('  function importBackup(file){','  function openMenu()');
+ assert.match(code,/else if\(e.author!==undefined&&e.author!==null\)clean.authorUnverified=true/);
+});
+test('reverse audit: reader navigation uses the current filtered list',()=>{
+ const code=slice('  function readerEntries(){','  function openReader(');
+ const rows=[{id:'memo',noteType:'备忘'},{id:'diary',noteType:'日记'}];
+ const ctx=vm.createContext({currentView:'home',entries:rows,filteredEntries:()=>[rows[0]]});
+ vm.runInContext(code,ctx);assert.equal(ctx.readerEntries().length,1);
+ assert.equal(ctx.readerEntries()[0].id,'memo');
+});
+test('reverse audit: persisted diary blocks automatic paid requests even if cooldown key was not saved',async()=>{
+ const role={id:'roleA',name:'A',persona:'植物研究员，记录自然观察。'};
+ const store=makeStore(),entry={id:'d_char_a',date:'2026-11-25',createdAt:new Date().toISOString(),author:'roleA',noteType:'日记',content:'saved'};
+ const {sb}=makeSandbox({store,role,entries:[entry]});
+ let calls=0;sb.PhoneAPI.complete=()=>{calls++;return Promise.resolve('fixture')};
+ assert.equal(await sb.generatePersonRecord('roleA','日记',false),false);assert.equal(calls,0);
+});
+test('reverse audit: post-save render failure is not reported as a failed paid generation',async()=>{
+ const {sb}=makeSandbox({store:makeStore()});
+ sb.render=()=>{throw Error('UI fixture')};
+ assert.equal(await sb.generatePersonRecord('roleA','日记',true),true);
+ assert.equal(sb.entries.length,1);
+ assert.equal(JSON.parse(sb.localStorage.getItem('maomao_diary_entries_v1')).length,1);
+});
