@@ -48,7 +48,30 @@ try{
   assert.match(await page.locator('#importSummary').innerText(),/2/);
   await page.locator('#confirmBookImport').click();
   const book=page.locator('#shelfGrid .book-card').filter({hasText:'QA fixture'});
-  await book.waitFor();await book.click();
+  await book.waitFor();
+  await page.locator('.tab-item[data-route="home"]').click();
+  await page.locator('#homeGrid .book-card').filter({hasText:'QA fixture'}).click();
+  await page.locator('#bookDetailView[aria-hidden=false]').waitFor();
+  assert.match(await page.locator('#bookDetailName').innerText(),/QA fixture/);
+  assert.equal(await page.locator('[data-detail-chapter]').count(),2);
+  await page.locator('[data-detail-chapter="1"]').click();
+  await page.locator('#readerView[aria-hidden=false]').waitFor();
+  await page.waitForFunction(()=>location.hash.startsWith('#read-detail-')&&!location.hash.includes('?chapter='));
+  await page.locator('#readerBack').click();
+  await page.locator('#bookDetailView[aria-hidden=false]').waitFor();
+  assert.equal(await page.locator('#bookDetailRead').innerText(),'继续阅读');
+  await page.locator('[data-detail-chapter="0"]').click();
+  await page.locator('#readerView[aria-hidden=false]').waitFor();
+  await page.locator('#readerBack').click();
+  await page.locator('#bookDetailBack').click();
+  await page.locator('.tab-item[data-route="settings"]').click();
+  assert.equal(await page.locator('#writeRow').count(),0);
+  assert.equal(await page.locator('.import-help').evaluate(e=>e.open),false);
+  const fileChooser=page.waitForEvent('filechooser');
+  await page.locator('#importRow').click();
+  assert.ok(await fileChooser);
+  await page.locator('.tab-item[data-route="shelf"]').click();
+  await book.click();
   await page.locator('#readerView[aria-hidden=false]').waitFor();
   const openPrefs=async()=>{
    if(!await page.locator('#readerControls').evaluate(el=>el.classList.contains('is-open'))){
