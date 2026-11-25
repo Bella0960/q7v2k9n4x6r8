@@ -73,3 +73,23 @@ test('changed worldbook or protocol after debit blocks network; changed sources 
  g.win.PhoneAPI.complete=async()=>{agreement='协议二';return '{"move":{"kind":"place","x":7,"y":7}}';};
  await assert.rejects(g.make('gomoku').decideRole(g.view(),signal),/SOURCE_CHANGED/);
 });
+
+test('strict single fenced JSON is accepted; surrounding prose or multiple objects is not',async()=>{
+ const f=fixture(),signal=new AbortController().signal;
+ f.win.PhoneAPI.complete=async()=>String.fromCharCode(96,96,96)+'json\n{"move":{"kind":"place","x":7,"y":7}}\n'+String.fromCharCode(96,96,96);
+ assert.deepEqual(await f.make('gomoku').decideRole(f.view(),signal),{move:{kind:'place',x:7,y:7}});
+ f.win.PhoneAPI.complete=async()=> '说明：{"move":{"kind":"place","x":7,"y":7}}';
+ await assert.rejects(f.make('gomoku').decideRole(f.view(),signal),/BAD_JSON/);
+});
+test('names and recent public messages are available without peer dossiers; rename invalidates pending output',async()=>{
+ const f=fixture({answer:{text:'轮到你了'}}),v=f.view(),signal=new AbortController().signal;
+ v.messages=[{id:'m',senderSeatId:'user',kind:'user',text:'大家继续'}];
+ await f.make('gomoku').discussion.generateRole(v,{signal});
+ const p=JSON.parse(f.calls[0].messages[1].content);
+ assert.equal(p.seats[1].label,'同名');assert.equal(p.seats[2].label,'同名');assert.equal(p.seats[1].seatId,'role:r1');assert.equal(p.seats[2].seatId,'role:r2');assert.equal(p.seats[3].label,'普通棋友 1');
+ assert.ok(p.seats.every(x=>!Object.hasOwn(x,'roleId')));assert.equal(f.sources[0].recentMessages[0].text,'大家继续');
+ const g=fixture({answer:{text:'轮到你了'}}),read=g.win.PhoneStorage.result.getCharacters;
+ let changed=false;g.win.PhoneStorage.result.getCharacters=()=>{const x=read();return {...x,value:x.value.map(r=>changed&&r.id==='r2'?{...r,name:'新名称'}:r)};};
+ g.services.authorizePublicText=async()=>{changed=true;return true;};
+ await assert.rejects(g.make('gomoku').discussion.generateRole(g.view(),{signal}),/PARTICIPANTS_CHANGED/);
+});
