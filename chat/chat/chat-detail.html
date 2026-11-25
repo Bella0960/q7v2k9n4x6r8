@@ -49,6 +49,7 @@
     <script src="../../shared/js/phone/music-playback-controller.js?v=20261126m04c1"></script>
     <script src="../../shared/js/phone/group-listening-session.js?v=20261126m05"></script>
     <script src="../../shared/js/phone/group-listening-view.js?v=20261126m06"></script>
+    <script src="../../shared/js/phone/group-listening-context.js?v=20261126m07"></script>
     <link rel="stylesheet" href="../../shared/css/group-listening-view.css?v=20261126m06">
     <script src="../../shared/js/phone/group-portraits.js?v=20261125scope1"></script>
     <script src="../../shared/js/phone/group-game-session.js?v=20261116game11"></script>
@@ -7457,7 +7458,7 @@
                 return;
             }
             const finalRoleContract = window.MAOMAOChatRoleContext;
-            const finalPayloadAudit = finalRoleContract &&
+            const auditFinalMessages = messages => finalRoleContract &&
                 typeof finalRoleContract.validateFinalApiMessages === 'function'
                 ? finalRoleContract.validateFinalApiMessages({
                     role: latestSpeaker,
@@ -7469,8 +7470,9 @@
                     worldbook: worldbookText,
                     worldbookPolicyReady: !!(window.ChatContextPolicy &&
                         typeof window.ChatContextPolicy.buildWorldbookInjectionText === 'function'),
-                    messages: apiMessages
+                    messages: messages
                 }) : {ok:false,missing:['final-verifier']};
+            const finalPayloadAudit = auditFinalMessages(apiMessages);
             // The last barrier checks the actual messages passed to PhoneStream,
             // not only a preliminary systemPrompt assembled before other features.
             const missingRegex = regexSystemHead &&
@@ -7683,6 +7685,21 @@
             //（三段式超时 / SSE 半包解析 / 残留收尾 / rAF 节流 / 中断保文，全部内聚在模块内）
             // 永不 reject：结果对象 { ok, fullText, error }，fullText 中断时 = 已收到的部分
             if(!groupTurnCurrent()){discardStaleGroupTurn();return;}
+            // Optional music metadata is read AFTER the asynchronous diagnostic.
+            // Preserve the already validated canonical messages when unavailable.
+            let outboundApiMessages = apiMessages;
+            if (isGroupChat && groupReplyPick && groupListeningView && window.MAOGroupListeningContext) {
+                const candidate = window.MAOGroupListeningContext.appendToMessages(apiMessages, {
+                    groupId: String(currentRoleId), roleId: String(groupReplyPick.id),
+                    readSnapshot: () => groupListeningView.getSnapshot(),
+                    hasRole: id => !!getRoleById(id)
+                });
+                if (candidate !== apiMessages && auditFinalMessages(candidate).ok &&
+                    (!regexSystemHead || String(candidate[0].content).startsWith(roleIdentityHead + '\n\n' + regexSystemHead))) {
+                    outboundApiMessages = candidate;
+                }
+            }
+            if(!groupTurnCurrent()){discardStaleGroupTurn();return;}
             const chatResponseTimeoutMs = 60000;
             if(isGroupChat&&!isRegen&&!isManualContinue&&!momentsAction){
                 groupInterruptedSave=function(){
@@ -7695,7 +7712,7 @@
                     baseUrl: baseUrl,
                     apiKey: apiKey,
                     model: apiModel,
-                    messages: apiMessages,
+                    messages: outboundApiMessages,
                     fallbackModels: Array.isArray(config.fallbackModels) ? config.fallbackModels
                         : (apiModel === 'gemini-3-flash' ? ['gemini-2.5-flash'] : []),
                     temperature: config.temperature != null ? config.temperature : 0.7,

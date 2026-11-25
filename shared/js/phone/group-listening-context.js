@@ -1,5 +1,5 @@
 /* M07: read-only context projection. No API, storage write, lyrics, file data or player control.
- * Prepared independently; not mounted in the chat prompt until M06 acceptance.
+ * Mounted only at the existing final group-chat request boundary.
  */
 (function(root){
  'use strict';

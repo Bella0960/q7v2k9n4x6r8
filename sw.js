@@ -166,6 +166,7 @@ const APP_SHELL = [
   './shared/js/phone/music-playback-controller.js?v=20261126m04c1',
   './shared/js/phone/group-listening-session.js?v=20261126m05',
   './shared/js/phone/group-listening-view.js?v=20261126m06',
+  './shared/js/phone/group-listening-context.js?v=20261126m07',
   './shared/css/group-listening-view.css?v=20261126m06',
   './shared/js/phone/group-portraits.js?v=20261125scope1',
   './shared/js/phone/group-game-session.js?v=20261116game11',
