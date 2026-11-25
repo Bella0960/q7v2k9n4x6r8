@@ -1656,8 +1656,8 @@
         });
     }
     // Export requests do not prove the browser wrote a file. Releasing the
-    // point requires explicit user verification and a fresh exact match.
-    async function manageRecoveryPoint(action,exported) {
+    // point requires re-reading the selected archive and a fresh exact match.
+    async function manageRecoveryPoint(action,verified) {
         return withRecoveryLock(async function(isCurrent) {
             var rec=await rpReadSnapshot(RP_ROLE_PRE);
             if (!isCurrent()) throw new Error('account-changed');
@@ -1672,12 +1672,13 @@
                 if (!confirm('恢复档案可能含私人聊天与图片。已排除已知凭据键，但仍请妥善保管。它不是完整备份，暂不能直接导入。确定导出？')) return {state:'cancelled'};
                 if (!isCurrent()) throw new Error('account-changed');
                 downloadRecoveryArchive(archive);
-                return {state:'export-requested',record:rec,account:recoveryScope().account};
+                return {state:'export-requested'};
             }
             if (action==='release') {
-                if (!exported || exported.account !== recoveryScope().account ||
-                    !sameRecoveryPoint(rec,exported.record)) return {state:'export-required'};
-                if (!confirm('请先在文件管理器确认恢复档案已保存且可打开。释放后将删除本机这一个恢复点，不会自动恢复任何数据。确认已保存并释放？')) return {state:'cancelled'};
+                if (!verified || verified.account !== recoveryScope().account ||
+                    typeof verified.text !== 'string') return {state:'export-required'};
+                if (verified.text !== JSON.stringify(makeRecoveryArchive(rec))) return {state:'archive-mismatch'};
+                if (!confirm('已核对所选档案与当前恢复点一致。释放将删除本机这一个恢复点，不会自动恢复任何数据。档案不包含已排除的凭据。确定释放？')) return {state:'cancelled'};
                 if (!isCurrent()) throw new Error('account-changed');
                 return {state:await deleteExactRecoveryPoint(rec,isCurrent)?'released':'changed'};
             }
@@ -1974,21 +1975,23 @@
     // Recovery point management uses the existing data section and does not
     // inspect private text or media in the DOM.
     var recoveryStatus=$('recoveryPointStatus'), recoveryView=$('rowViewRecoveryPoint'),
-        recoveryExport=$('rowExportRecoveryPoint'), recoveryRelease=$('rowReleaseRecoveryPoint');
-    var recoveryExported=null, recoveryBusy=false;
-    async function runRecoveryAction(action) {
+        recoveryExport=$('rowExportRecoveryPoint'), recoveryRelease=$('rowReleaseRecoveryPoint'),
+        recoveryFile=$('recoveryPointFileInput');
+    var recoveryBusy=false;
+    async function runRecoveryAction(action,verified) {
         if (recoveryBusy || !recoveryStatus) return;
         recoveryBusy=true;
         try {
-            var result=await manageRecoveryPoint(action,recoveryExported);
+            var result=await manageRecoveryPoint(action,verified);
             if (result.state==='available') {
                 recoveryStatus.textContent='建立于 '+new Date(result.createdAt).toLocaleString()+
                     ' · 文字 '+result.counts.local+' 项 · '+(result.mediaCaptured?'媒体 '+result.counts.media+' 条':'旧恢复点未记录媒体');
-            } else if (result.state==='missing') {recoveryExported=null;recoveryStatus.textContent='当前没有待处理的恢复点';}
-            else if (result.state==='export-requested') {recoveryExported=result;recoveryStatus.textContent='已请求导出，请到文件管理器确认文件保存成功后再释放恢复点';}
-            else if (result.state==='export-required') {recoveryExported=null;recoveryStatus.textContent='请先导出当前恢复点并确认文件保存';}
-            else if (result.state==='released') {recoveryExported=null;recoveryStatus.textContent='已释放恢复点，可重新导入；本机业务数据未被恢复';}
-            else if (result.state==='changed') {recoveryExported=null;recoveryStatus.textContent='恢复点已变化或未能删除，请重新查看';}
+            } else if (result.state==='missing') {recoveryStatus.textContent='当前没有待处理的恢复点';}
+            else if (result.state==='export-requested') {recoveryStatus.textContent='已请求导出。释放时请重新选择已保存的档案，核对一致后才可释放';}
+            else if (result.state==='export-required') {recoveryStatus.textContent='请先导出并选择当前恢复点档案';}
+            else if (result.state==='archive-mismatch') {recoveryStatus.textContent='档案与当前恢复点不一致，原恢复点仍保留';}
+            else if (result.state==='released') {recoveryStatus.textContent='已释放恢复点，可重新导入；本机业务数据未被恢复';}
+            else if (result.state==='changed') {recoveryStatus.textContent='恢复点已变化或未能删除，请重新查看';}
         } catch(e) {
             recoveryStatus.textContent=e && e.message==='shared-lock-unavailable'?
                 '此浏览器无法安全释放恢复点，请更新浏览器。原恢复点仍保留。':
@@ -1997,7 +2000,26 @@
     }
     if(recoveryView) recoveryView.addEventListener('click',function(){runRecoveryAction('view');});
     if(recoveryExport) recoveryExport.addEventListener('click',function(){runRecoveryAction('export');});
-    if(recoveryRelease) recoveryRelease.addEventListener('click',function(){runRecoveryAction('release');});
+    if(recoveryRelease && recoveryFile) {
+        recoveryRelease.addEventListener('click',function(){if(!recoveryBusy)recoveryFile.click();});
+        recoveryFile.addEventListener('change',async function(){
+            var file=recoveryFile.files && recoveryFile.files[0];
+            recoveryFile.value='';
+            if(!file || recoveryBusy) return;
+            var verified;
+            try {
+                var scope=recoveryScope();
+                if(file.size>128*1024*1024 || typeof file.text!=='function') throw new Error('archive-unreadable');
+                recoveryBusy=true;
+                var content=await file.text();
+                if(recoveryScope().account!==scope.account) throw new Error('account-changed');
+                verified={account:scope.account,text:content};
+            } catch(_) {
+                recoveryStatus.textContent='档案无法完整读取或账号已变化，原恢复点仍保留';
+            } finally {recoveryBusy=false;}
+            if(verified) await runRecoveryAction('release',verified);
+        });
+    }
 
     // 绑定 DATA 分组入口
     var exp = $('rowExportData');
