@@ -230,7 +230,7 @@
     // Unknown senders and group messages cannot be promoted into a private factual memory.
     // Group IDs use the existing g-prefix conversation contract.
     if (boundRoleId.charAt(0) === 'g' || msgRole(m) === '未识别发言者') {
-      button.textContent = '此记录需在记忆整理中确认';
+      button.textContent = boundRoleId.charAt(0) === 'g' ? '群聊记录暂不支持直接转入记忆' : '发言身份不明，未加入记忆';
       button.disabled = true;
       return;
     }
@@ -241,7 +241,7 @@
       return;
     }
     var result = window.MemoryRecall.upsertMemory(boundRoleId, {
-      content:text, category:'detail', importance:3, status:'confirmed',
+      content:text, category:'detail', importance:3, status:msgRole(m) === '用户' ? 'confirmed' : 'pending',
       source:'chat-archive', sourceMessageTime:Number(m.time || m.timestamp) || Date.now(),
       sourceMessageIndex:index
     });
