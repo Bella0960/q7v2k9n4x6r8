@@ -458,7 +458,7 @@
         if (scheduledSourcesPromise) return scheduledSourcesPromise;
         var required = [
             ['shared/js/phone/rp-default-protocol.js?v=20261118v1', function () { return !!global.MAOMAO_RP_DEFAULT_PROTOCOL; }],
-            ['shared/js/phone/chat-context-policy.js?v=20261118historybudget1', function () { return !!global.ChatContextPolicy && typeof global.ChatContextPolicy.buildWorldbookInjectionText === 'function'; }],
+            ['shared/js/phone/chat-context-policy.js?v=20261125public1', function () { return !!global.ChatContextPolicy && typeof global.ChatContextPolicy.buildWorldbookInjectionText === 'function'; }],
             ['shared/js/phone/role-worldbook-bindings.js?v=20261119-qa1', function () { return !!global.RoleWorldbookBindings && typeof global.RoleWorldbookBindings.filterBooks === 'function'; }],
             ['shared/js/phone/chat-role-context.js?v=20261119source3', function () { return !!global.MAOMAOChatRoleContext && typeof global.MAOMAOChatRoleContext.buildSavedSourceEnvelope === 'function'; }],
             ['shared/js/phone/chat-scheduled-role-context.js?v=20261119scheduled1', function () { return !!global.ChatScheduledRoleContext && typeof global.ChatScheduledRoleContext.build === 'function'; }]
