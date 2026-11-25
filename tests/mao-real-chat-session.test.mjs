@@ -20,7 +20,7 @@ function session(fetch) {
     activeUrls.add('blob:private');
     ({api,stop});
   `, {
-    document, fetch, location:{search:''}, URLSearchParams,
+    document, fetch, AbortController, setTimeout, clearTimeout, location:{search:''}, URLSearchParams,
     URL:{revokeObjectURL(url){revoked.push(url);}}, discardRecording(){}
   });
   return {...api, nodes, revoked};
@@ -43,11 +43,35 @@ test('a transient failure can be retried, and a response arriving after close is
   const client = session(() => new Promise(resolve => {respond=resolve;}));
   const first = client.api('/api/social/e2ee/keys');
   respond(Response.json({ok:false}, {status:503}));
-  await assert.rejects(first);
+  await assert.rejects(first, error => error.retryable === true);
   assert.equal(client.nodes.get('log').textContent, '已解密消息');
 
   const retry = client.api('/api/social/e2ee/keys');
   client.stop();
   respond(Response.json({ok:true}));
   await assert.rejects(retry, /会话已关闭/);
+});
+
+test('visible online recovery retries initial setup or resumes the current conversation', () => {
+  const start = page.indexOf('function synchronize()');
+  const end = page.indexOf("\n$('back')", start);
+  assert.ok(start > 0 && end > start);
+  const calls = [];
+  const context = {
+    closed:false, device:null, document:{visibilityState:'visible'},
+    navigator:{onLine:false}, start(){calls.push('initialize');},
+    fetchMessages(){calls.push('sync');}
+  };
+  const sync = runInNewContext(page.slice(start, end) + '\nsynchronize', context);
+  sync();
+  context.navigator.onLine = true;
+  sync();
+  context.device = {};
+  sync();
+  context.document.visibilityState = 'hidden';
+  sync();
+  context.document.visibilityState = 'visible';
+  context.closed = true;
+  sync();
+  assert.deepEqual(calls, ['initialize', 'sync']);
 });

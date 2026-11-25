@@ -115,7 +115,7 @@ const ID=/^MAO-[A-Z0-9]{12,24}$/;
 const peer=new URLSearchParams(location.search).get('peer');
 let owner=null,device=null,peerKey=null,db=null,key=null,friendshipId=null;
 let cursor=0,seen=new Set(),polling=false,sending=false,closed=false,pending=null;
-let friendLabel='',timer=null,identityEpoch=0;
+let friendLabel='',timer=null,identityEpoch=0,starting=false;
 let pendingMedia=null,recording=null,recordingStopping=false,activeUrls=new Set();
 let activeVoicePlayers=new Set(),playingVoice=null,voicePlayed=new Set(),pendingVoiceWrap=null;
 const setStatus=(msg,error=false)=>{$('status').textContent=msg;$('status').classList.toggle('error',!!error);};
@@ -148,9 +148,16 @@ async function api(path,{method='GET',body}={}){
   const headers={accept:'application/json'};
   if(owner)headers['x-mao-account-context']=owner.id;
   if(body)headers['content-type']='application/json';
-  const res=await fetch(path,{method,headers,credentials:'same-origin',
-    cache:'no-store',redirect:'error',...(body?{body:JSON.stringify(body)}:{})});
-  const data=await res.json().catch(()=>null);
+  const controller=new AbortController();
+  const timeout=setTimeout(()=>controller.abort(),12000);
+  let res,data;
+  try{
+    res=await fetch(path,{method,headers,credentials:'same-origin',
+      cache:'no-store',redirect:'error',signal:controller.signal,...(body?{body:JSON.stringify(body)}:{})});
+    data=await res.json().catch(()=>null);
+  }catch{
+    throw Object.assign(new Error('聊天连接暂不可用，请检查网络'),{retryable:true});
+  }finally{clearTimeout(timeout);}
   if(closed||epoch!==identityEpoch)throw new Error('会话已关闭');
   if(!res.ok||data?.ok!==true){
     const code=data?.error?.code||'NETWORK_ERROR';
@@ -160,14 +167,19 @@ async function api(path,{method='GET',body}={}){
       'E2EE_KEY_CHANGED'].includes(code)){
       stop();setStatus('登录或好友关系已变化，请返回好友列表核对。',true);
     }
-    throw new Error(data?.error?.message||'聊天服务器暂不可用');
+    throw Object.assign(new Error(data?.error?.message||'聊天服务器暂不可用'),
+      {retryable:res.status>=500||res.status===429||controller.signal.aborted});
   }
   return data;
 }
 async function setupDevice(){
   if(!globalThis.crypto?.subtle||!globalThis.indexedDB||!globalThis.isSecureContext)
     throw new Error('该浏览器不支持网页加密存储，请使用更新的 HTTPS 浏览器。');
-  db=await openDeviceKeyStore();
+  if(!db){
+    const opened=await openDeviceKeyStore();
+    if(closed){opened.close();return;}
+    db=opened;
+  }
   let local=await loadDeviceIdentity(db,owner.id);
   const issued=await api('/api/social/e2ee/keys');
   if(issued.ownerAccountId!==owner.id)throw new Error('服务器返回的密钥所属账号不符');
@@ -177,6 +189,7 @@ async function setupDevice(){
   } else {
     if(!local){
       local=await createDeviceIdentity();
+      if(closed)return;
       await saveDeviceIdentity(db,owner.id,local);
     }
     const reg=await api('/api/social/e2ee/keys',{method:'POST',body:{publicKey:local.publicKey}});
@@ -725,6 +738,8 @@ $('voiceBtn').addEventListener('click',()=>{
 $('retryMedia').addEventListener('click',()=>{if(pendingMedia)transmitMedia();});
 
 async function start(){
+  if(closed||starting||device)return;
+  starting=true;
   try{
     if(!ID.test(peer))throw new Error('未选择有效的真人好友');
     const session=await api('/api/accounts/me');
@@ -739,10 +754,18 @@ async function start(){
     $('peerTitle').textContent=friendLabel;
     await setupDevice();
     await fetchMessages();
-    if(!closed)timer=setInterval(()=>{
-      if(document.visibilityState==='visible')fetchMessages();
-    },3000);
-  }catch(e){if(!closed)setStatus(e.message||'聊天初始化失败',true);}
+  }catch(e){
+    if(!closed){
+      if(!e.retryable)stop();
+      setStatus(e.message||'聊天初始化失败',true);
+    }
+  }
+  finally{starting=false;}
+}
+function synchronize(){
+  if(closed||document.visibilityState!=='visible'||navigator.onLine===false)return;
+  if(device)fetchMessages();
+  else start();
 }
 $('back').addEventListener('click',()=>{stop();location.assign('./real-friends.html');});
 $('compose').addEventListener('submit',async e=>{
@@ -774,14 +797,14 @@ $('compose').addEventListener('submit',async e=>{
   }catch(e){if(!closed)setStatus('消息未确认：'+(e.message||'发送失败'),true);}
   finally{sending=false;if(!closed)$('send').disabled=!key;}
 });
-document.addEventListener('visibilitychange',()=>{
-  if(document.visibilityState==='visible'&&!closed)fetchMessages();
-});
+document.addEventListener('visibilitychange',synchronize);
+window.addEventListener('online',synchronize);
 window.addEventListener('pagehide',stop);
 window.addEventListener('pageshow',event=>{
   if(event.persisted)location.reload();
 });
-start();
+timer=setInterval(synchronize,3000);
+synchronize();
 </script>
 </body>
 </html>
