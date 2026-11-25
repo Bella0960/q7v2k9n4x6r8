@@ -49,7 +49,7 @@ export function createGomokuPageHost(root,{win=root?.ownerDocument?.defaultView,
     busy=true;const stamp=++epoch;let e;
     try{
       const session=createBrowserRoomSession({win,spec:{roomId,gameId:'gomoku'},rules:createGomokuRules(),expectedIdentity});
-      e={roomId,session,board:null,revision:-1,driver:null,discussion:null,runStamp:stamp};
+      e={roomId,session,board:null,revision:-1,driver:null,discussion:null,difficulty,runStamp:stamp};
       e.driver=createGomokuTurnDriver({session,decide:decideRole,difficulty,maxActions:watch?8:1,pace,onView:v=>publish(e,v,e.runStamp),onDecision:d=>{if(entry===e&&e.board&&!destroyed)onDecision(d);}});
       entry=e;report('opening');await session.refresh();check(e,stamp);
       async function send(action){const commit=await session.prepareUserAction();check(e,stamp);const v=await commit(action);check(e,stamp);return v;}
@@ -62,6 +62,32 @@ export function createGomokuPageHost(root,{win=root?.ownerDocument?.defaultView,
       return v;
     }catch(error){if(entry===e)end();throw error;}finally{busy=false;}
   }
+  // Trusted repository integration hooks; not an arbitrary file import.
+  async function saveMatch(){
+    const e=entry,stamp=epoch;
+    if(destroyed||busy||!e?.board||!e.discussion)fail('GOMOKU_PAGE_BUSY');
+    busy=true;try{
+      const board=await e.session.checkpoint();check(e,stamp);
+      const chat=await e.discussion.save(board.startRevision+board.moves.length);check(e,stamp);
+      return {schema:1,board,chat,difficulty:e.difficulty};
+    }finally{busy=false;}
+  }
+  async function restoreMatch(saved,{expectedIdentity=null}={}){
+    if(destroyed||busy||entry)fail('GOMOKU_PAGE_BUSY');
+    if(!saved||Object.keys(saved).length!==4||saved.schema!==1||saved.board?.gameId!=='gomoku'||!saved.chat||
+      saved.board.roomId!==saved.chat.roomId||!Array.isArray(saved.board.moves)||saved.board.startRevision+saved.board.moves.length!==saved.chat.revision||
+      !['easy','normal','hard'].includes(saved.difficulty))fail('GOMOKU_INVALID_MATCH');
+    const copy=JSON.parse(JSON.stringify(saved)),stamp=++epoch;busy=true;let e;
+    try{
+      const session=createBrowserRoomSession({win,spec:{roomId:copy.board.roomId,gameId:'gomoku'},rules:createGomokuRules(),checkpoint:copy.board,expectedIdentity});
+      e={roomId:copy.board.roomId,session,board:null,revision:-1,driver:null,discussion:null,difficulty:copy.difficulty,runStamp:stamp};
+      const watch=copy.board.seats?.find(s=>s.seatId==='user')?.mode==='observer';
+      e.driver=createGomokuTurnDriver({session,decide:decideRole,difficulty:e.difficulty,maxActions:watch?8:1,pace,onView:v=>publish(e,v,e.runStamp),onDecision:d=>{if(entry===e&&e.board&&!destroyed)onDecision(d);}});
+      entry=e;report('opening');const v=await session.viewUser();check(e,stamp);
+      e.discussion=createGomokuDiscussion({...discussion,session,view:v,checkpoint:copy.chat,onChange:m=>{if(entry===e&&e.board&&!destroyed)discussion.onChange?.(m);}});
+      publish(e,v,stamp);report(v.phase==='finished'?'finished':v.turnSeatId==='user'?'ready':'yield');return v;
+    }catch(error){if(entry===e)end();throw error;}finally{busy=false;}
+  }
   async function resume(){
     const e=entry,stamp=epoch;if(destroyed||busy||!e)fail('GOMOKU_PAGE_BUSY');busy=true;
     try{const v=await e.session.viewUser();check(e,stamp);publish(e,v,stamp);
@@ -71,5 +97,5 @@ export function createGomokuPageHost(root,{win=root?.ownerDocument?.defaultView,
   }
   root.replaceChildren();
   function chat(){if(!entry?.board||!entry.discussion||destroyed)fail('GOMOKU_CHAT_INACTIVE');return entry.discussion;}
-  return Object.freeze({start,resume,end,destroy,pause,sendChat:m=>chat().send(m),readChat:()=>chat().read(),stopChat:()=>entry?.discussion?.stop(),status:()=>destroyed?'disposed':busy?'busy':entry?entry.board?'open':'paused':'idle'});
+  return Object.freeze({start,saveMatch,restoreMatch,resume,end,destroy,pause,sendChat:m=>chat().send(m),readChat:()=>chat().read(),stopChat:()=>entry?.discussion?.stop(),status:()=>destroyed?'disposed':busy?'busy':entry?entry.board?'open':'paused':'idle'});
 }

@@ -50,7 +50,8 @@ function validate(state,room){
   return ids;
 }
 export function createGomokuRules(){
-  return Object.freeze({gameId:'gomoku',
+  return Object.freeze({gameId:'gomoku',checkpointVersion:1,checkpointMode:'freestyle',
+    replayStep(args){return createGomokuRules().step(args);},
     init(room){const ids=players(room);return {schema:1,players:ids,board:Array(size*size).fill(0),count:0,last:null,winningLine:[]};},
     step({state,room,actorSeatId,move}){
       const ids=validate(state,room);
