@@ -13,6 +13,7 @@
     <script src="../../shared/js/phone/phone_storage.js"></script>
     <script src="../../shared/js/phone/storage/repository.js"></script>
     <script src="../../shared/js/phone/storage/media-repository.js?v=20261107v2"></script>
+    <script src="../../shared/js/phone/group-portraits.js?v=20261125g1"></script>
     <script src="../../shared/js/phone/role-avatar-library.js?v=20261113v1"></script>
     <script src="../../shared/js/phone/role-sticker-library.js?v=20261107v2"></script>
     <script src="../../shared/js/phone/chat-image-vision.js?v=20261113v1"></script>
@@ -3112,6 +3113,17 @@
         // 用户改头像后 localStorage 字符串变化，缓存自动失效，不丢正确性。
         let _chatPairAvatarUrl = '';
         let _myAvatarCache = { raw: null, avatar: '' };
+        function fillGroupPortrait(node,msg,isSent) {
+            var memberId=isSent?'__user':(msg&&msg.memberId!=null?String(msg.memberId):'');
+            var member=currentGroup&&Array.isArray(currentGroup.members)&&currentGroup.members.find(function(m){return m&&String(m.id)===memberId;});
+            var fallback=isSent?getMyAvatar():(member?member.avatar:currentCharacter.avatar);
+            fillAvatar(node,fallback,USER_SVG);
+            if(!isGroupChat||!currentGroup||!memberId||(!isSent&&!member)||!window.MAOGroupPortraits)return;
+            var group=currentGroup, id=String(group.id);
+            window.MAOGroupPortraits.resolve(group,memberId).then(function(url){
+                if(url&&currentGroup===group&&String(currentRoleId)===id&&node.isConnected)fillAvatar(node,url,USER_SVG);
+            });
+        }
         function getMyAvatar() {
             if (!isGroupChat && _chatPairAvatarUrl) return _chatPairAvatarUrl;
             try {
@@ -3897,7 +3909,7 @@
                             }
                             var extraAv = document.createElement('div');
                             extraAv.className = 'msg-avatar';
-                            fillAvatar(extraAv, currentCharacter.avatar, USER_SVG);
+                            if(isGroupChat)fillGroupPortrait(extraAv,msg,false);else fillAvatar(extraAv, currentCharacter.avatar, USER_SVG);
                             extraRow.appendChild(extraAv);
                             extraRow.appendChild(extraBubble);
                             _pendingExtras.push(extraRow);
@@ -3945,13 +3957,13 @@
             const avatar = document.createElement('div');
             avatar.className = 'msg-avatar';
             if (isSent) {
-                fillAvatar(avatar, getMyAvatar(), USER_SVG);
+                if(isGroupChat)fillGroupPortrait(avatar,msg,true);else fillAvatar(avatar, getMyAvatar(), USER_SVG);
             } else if (isError) {
                 avatar.textContent = '!';
                 avatar.style.backgroundColor = '#E5E5EA';
                 avatar.style.color = '#666666';
             } else {
-                fillAvatar(avatar, currentCharacter.avatar, USER_SVG);
+                if(isGroupChat)fillGroupPortrait(avatar,msg,false);else fillAvatar(avatar, currentCharacter.avatar, USER_SVG);
             }
 
             // 群聊：AI 成员回复在气泡上方显示成员名（逐条落库的后续气泡不重复显示）
