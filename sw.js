@@ -1,7 +1,7 @@
 /* 小手机 PWA Service Worker
  * 页面与静态资源均采用缓存优先+后台更新，断网/慢网时秒开。
  */
-const CACHE_NAME = 'phone-app-pwa-v311';
+const CACHE_NAME = 'phone-app-pwa-v312';
 const BUILD_RELEASE = '__MAOMAO_BUILD_RELEASE__';
 const BUILD_CORE_ASSETS = [];
 const FONT_ASSET_CACHE = 'maomao-font-assets-v1';
@@ -159,14 +159,14 @@ const APP_SHELL = [
   './shared/js/phone/group-chat-policy.js?v=20261118groupvoice1',
   './shared/js/phone/rp-default-protocol.js?v=20261120identity2',
   './shared/js/phone/chat-role-context.js?v=20261120identity2',
-  './shared/js/phone/chat-scheduled-role-context.js?v=20261119scheduled1',
+  './shared/js/phone/chat-scheduled-role-context.js?v=20261125public2',
   './shared/js/group-governance.js?v=20261125scope3',
   './shared/js/phone/group-write-guard.js?v=20261125g10',
   './shared/js/phone/group-portraits.js?v=20261125scope1',
   './shared/js/phone/group-game-session.js?v=20261116game11',
   './shared/js/phone/group-turn-effects.js?v=20261125scope1',
   './shared/js/phone/group-private-receipt-recovery.js?v=20261125scope1',
-  './shared/js/phone/group-memory-events.js?v=20261125public1',
+  './shared/js/phone/group-memory-events.js?v=20261125public2',
   './shared/js/phone/group-game-panel.js?v=20261116gpanel6',
   './shared/js/phone/group-game-chat-receipts.js?v=20261116receipt2',
   './shared/js/group-settings-layout.js?v=20261121group1',

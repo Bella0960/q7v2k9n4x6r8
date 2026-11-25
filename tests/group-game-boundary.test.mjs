@@ -337,7 +337,7 @@ test('PWA uses the updated game scripts and installs the entire feature bundle',
   const cacheVersion = Number((worker.match(/phone-app-pwa-v(\d+)/) || [])[1]) || 0;
   assert.ok(cacheVersion >= 210, 'secret-game privacy assets require PWA v209+');
   for (const name of ['group-game-session.js?v=20261116game11',
-    'group-memory-events.js?v=20261125public1']) {
+    'group-memory-events.js?v=20261125public2']) {
     assert.ok(worker.includes(name), name);
     assert.ok(detail.includes(name), name);
     assert.ok(settings.includes(name), name);
@@ -902,4 +902,16 @@ test('nested closing brackets in hidden directives never expose partial secrets'
     'the final saved group reply must validate the marker grammar too');
   assert.match(detail, /var privateTail=/,
     'nested directives must be dropped before they can queue private effects');
+});
+
+
+test('private and cross-group closed chains never enter public memory', () => {
+  const h=harness();
+  for(const flags of [{visibility:'private'},{privateFromGroup:true},{fromGroupId:'g2'},{privateGroupReceiptV1:{id:'fixture'}}]){
+    const event={role:'user',type:'group_chain',mid:'private-chain',chain:{closed:true,title:'PRIVATE_FIXTURE',entries:[{memberId:'r1',text:'fixture'}]},...flags};
+    h.storage.setItem('chat_history_g1',JSON.stringify([event]));
+    assert.equal(h.memory.recordChainClosure({group:group(),message:event}).ok,false);
+    assert.equal(h.memory.getPublicPrompt({groupId:'g1'}),'');
+  }
+  assert.equal(h.memories.size,0);
 });

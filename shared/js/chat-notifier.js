@@ -461,7 +461,7 @@
             ['shared/js/phone/chat-context-policy.js?v=20261125public1', function () { return !!global.ChatContextPolicy && typeof global.ChatContextPolicy.buildWorldbookInjectionText === 'function'; }],
             ['shared/js/phone/role-worldbook-bindings.js?v=20261119-qa1', function () { return !!global.RoleWorldbookBindings && typeof global.RoleWorldbookBindings.filterBooks === 'function'; }],
             ['shared/js/phone/chat-role-context.js?v=20261119source3', function () { return !!global.MAOMAOChatRoleContext && typeof global.MAOMAOChatRoleContext.buildSavedSourceEnvelope === 'function'; }],
-            ['shared/js/phone/chat-scheduled-role-context.js?v=20261119scheduled1', function () { return !!global.ChatScheduledRoleContext && typeof global.ChatScheduledRoleContext.build === 'function'; }]
+            ['shared/js/phone/chat-scheduled-role-context.js?v=20261125public2', function () { return !!global.ChatScheduledRoleContext && typeof global.ChatScheduledRoleContext.build === 'function'; }]
         ];
         scheduledSourcesPromise = required.reduce(function (promise, step) {
             return promise.then(function (ok) {
@@ -483,15 +483,22 @@
         if (!role || !global.ChatScheduledRoleContext) return { ok: false, code: 'missing-role' };
         var profile = safeJsonParse(safeGet('myProfile')) || {};
         var roleMemories = [];
+        var groupMemorySharing = !!(isGroup && conversation.settings && conversation.settings.memorySharing === true);
+        if(groupMemorySharing){
+            try {
+                var gameRaw=localStorage.getItem('phone_group_game_v1_'+String(conversation.id));
+                if(gameRaw!==null){var game=JSON.parse(gameRaw);if(!game||game.status!=='finished'&&game.status!=='cancelled')groupMemorySharing=false;}
+            }catch(error){groupMemorySharing=false;}
+        }
         try {
-            if (global.PhoneStorage && typeof global.PhoneStorage.getMemories === 'function')
+            if ((!isGroup || groupMemorySharing) && global.PhoneStorage && typeof global.PhoneStorage.getMemories === 'function')
                 roleMemories = global.PhoneStorage.getMemories(String(roleId)) || [];
         } catch (_) { return {ok:false,code:'memory-read'}; }
         if (!Array.isArray(roleMemories)) return {ok:false,code:'memory-invalid'};
         return global.ChatScheduledRoleContext.build({
             role: role, storage: localStorage, history: history,
             currentText: contextText, userName: String(profile.nickname || ''),
-            memories: roleMemories,
+            memories: roleMemories, groupMemorySharing:groupMemorySharing,
             groupId: isGroup ? String(conversation.id) : '',
             groupMembers: isGroup ? conversation.members : undefined,
             roleLoader: isGroup ? function (id) {
@@ -805,6 +812,11 @@
         };
     }
     function getFollowUpCandidate(scope, contact, history, now) {
+        if(scope==='group'){
+            var policy=global.ChatContextPolicy;
+            if(!policy||typeof policy.groupPublicHistory!=='function')return null;
+            history=policy.groupPublicHistory(history,String(contact.id));
+        }
         var messages = followUpMessages(history);
         if (messages.length < 2) return null;
         var last = messages[messages.length - 1];
@@ -1009,7 +1021,8 @@
                 var group = readGroups().find(function (item) { return item && String(item.id) === String(contact.id); });
                 if (!group || !group.settings || group.settings.followUpEnabled !== true) return false;
             }
-            var messages = followUpMessages(freshHistory);
+            var freshPublic=scope==='group' ? (global.ChatContextPolicy&&typeof global.ChatContextPolicy.groupPublicHistory==='function' ? global.ChatContextPolicy.groupPublicHistory(freshHistory,String(contact.id)) : []) : freshHistory;
+            var messages = followUpMessages(freshPublic);
             var last = messages[messages.length - 1];
             if (!last || Number(last.time || last.timestamp) !== candidate.lastAssistantAt ||
                 last.proactiveFollowUp === true) return false;

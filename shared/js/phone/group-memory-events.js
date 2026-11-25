@@ -67,7 +67,8 @@
       var matched=history.filter(function(m) {
         return m&&m.type==='group_chain'&&id(m.mid)===mid&&m.chain&&m.chain.closed===true;
       });
-      return matched.length===1?matched[0]:null;
+      if(matched.length!==1||!root.ChatContextPolicy||typeof root.ChatContextPolicy.groupPublicHistory!=='function')return null;
+      return root.ChatContextPolicy.groupPublicHistory(matched,gid).length===1?matched[0]:null;
     } catch(e){return null;}
   }
   function recordChainClosure(req){

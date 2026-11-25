@@ -49,7 +49,7 @@
     <script src="../../shared/js/phone/group-game-session.js?v=20261116game11"></script>
     <script src="../../shared/js/phone/group-turn-effects.js?v=20261125scope1"></script>
     <script src="../../shared/js/phone/group-private-receipt-recovery.js?v=20261125scope1"></script>
-    <script src="../../shared/js/phone/group-memory-events.js?v=20261125public1"></script>
+    <script src="../../shared/js/phone/group-memory-events.js?v=20261125public2"></script>
     <script src="../../shared/js/phone/group-game-chat-receipts.js?v=20261116receipt2"></script>
     <script src="../../shared/js/chat-notifier.js?v=20261119scheduled1"></script>
     <style>
@@ -6763,14 +6763,14 @@
                 if (groupSettings.allowPrivateMessages !== false && !groupGameActiveForPrompt) {
                     systemPrompt += '\n\n[群成员私聊能力]\n你可以偶尔向用户发起私聊，但不要每轮都触发，仅在出现适合单独说的话、想补充秘密或想私下安慰用户时使用。仅允许给自己发私聊：在本轮正常群聊回复末尾另起一行写 [群私聊:你的准确角色ID:私聊内容]。角色ID必须从群成员名单中选择，并且应当是本轮发言者自己的ID；私聊内容控制在1-3句，不要解释标记。标记会保存到你的单聊历史，并在群聊里弹出私聊小窗。每轮最多一条。';
                 }
-                const activePolls = historyList.filter(function (item) { return item && item.type === 'group_poll' && item.poll && !item.poll.closed; }).slice(-3);
+                const activePolls = modelHistoryList.filter(function (item) { return item && item.type === 'group_poll' && item.poll && !item.poll.closed; }).slice(-3);
                 if (activePolls.length) {
                     systemPrompt += '\n\n[当前群投票]\n' + activePolls.map(function (item) {
                         return '投票ID=' + ensureMid(item) + '；问题：' + String(item.poll.question || '') + '；选项：' + (item.poll.options || []).map(function (option, index) { return (index + 1) + '. ' + option; }).join('；');
                     }).join('\n');
                     systemPrompt += '\n如果你本轮想投票，请在台词末尾附加 [群投票:投票ID:选项序号]，序号从1开始。按你自己的立场选择，不要伪造其他成员的投票。';
                 }
-                const activeChains = historyList.filter(function (item) { return item && item.type === 'group_chain' && item.chain && !item.chain.closed; }).slice(-3);
+                const activeChains = modelHistoryList.filter(function (item) { return item && item.type === 'group_chain' && item.chain && !item.chain.closed; }).slice(-3);
                 if (activeChains.length) {
                     systemPrompt += '\n\n[当前群接龙]\n' + activeChains.map(function (item) {
                         return '接龙ID=' + ensureMid(item) + '；主题：' + String(item.chain.title || '') + '；已有内容：' + (item.chain.entries || []).map(function (entry) { return String(entry.name || '成员') + '：' + String(entry.text || ''); }).join('；');
