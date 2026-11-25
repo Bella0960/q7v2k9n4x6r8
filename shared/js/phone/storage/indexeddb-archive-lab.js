@@ -147,7 +147,7 @@
             const before=options.before===undefined||options.before===null?Number.MAX_SAFE_INTEGER:options.before;
             if(!Number.isSafeInteger(limit)||limit<1||limit>MAX_PAGE||!Number.isSafeInteger(before)||before<1) fail('INVALID_PAGE');
             const lane=options.shadow===true?'shadow':'active-lab',partition=partitionKey(scope,lane);
-            return transaction('readonly','read',async(records,meta,guard)=>{
+            return transaction('readonly',lane==='shadow'?'shadow':'read',async(records,meta,guard)=>{
               const state=await request(meta.get(partition));
               if(before===1||!state) return {items:[],nextBefore:null,count:state?state.count:0};
               const items=[];
@@ -173,8 +173,8 @@
           }
           function get(recordId,options) {
             recordId=id(recordId);
-            const partition=partitionKey(scope,options&&options.shadow===true?'shadow':'active-lab');
-            return transaction('readonly','read',async(records,meta,guard)=>{
+            const lane=options&&options.shadow===true?'shadow':'active-lab',partition=partitionKey(scope,lane);
+            return transaction('readonly',lane==='shadow'?'shadow':'read',async(records,meta,guard)=>{
               const row=await request(records.index('byId').get([partition,recordId]));
               guard();
               return row?{id:row.id,sequence:row.sequence,payload:JSON.parse(row.encoded)}:null;
