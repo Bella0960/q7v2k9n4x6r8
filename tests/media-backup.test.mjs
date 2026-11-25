@@ -144,6 +144,31 @@ function makeIDB(name, version, storeDefs) {
             };
         },
         transaction(storeName, mode) {
+            if (Array.isArray(storeName)) {
+                const names = Array.from(storeName);
+                const original = new Map(names.map(sn => [sn, data[sn].slice()]));
+                const parts = new Map(names.map(sn => [sn, db.transaction(sn, mode)]));
+                let stopped = false;
+                const tx = {
+                    error: null,
+                    objectStore(sn) {
+                        if (stopped || !parts.has(sn)) throw Error('transaction inactive');
+                        return parts.get(sn).objectStore();
+                    },
+                    abort() {
+                        if (stopped) return;
+                        stopped = true;
+                        original.forEach((rows,sn) => { data[sn] = rows; });
+                        if (tx.onabort) tx.onabort();
+                    },
+                    set oncomplete(cb) {
+                        Promise.resolve().then(() => Promise.resolve()).then(() => {
+                            if (!stopped) cb();
+                        });
+                    }
+                };
+                return tx;
+            }
             assert.ok(data[storeName] !== undefined, `store ${storeName} 不存在`);
             let oncompleteCb = null;
             let onsuccessCb = null;
