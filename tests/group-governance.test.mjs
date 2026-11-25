@@ -672,3 +672,22 @@ test('interrupted group reply retains only validated public prose and an error i
   assert.ok(html.includes('if(!result||(allowExit===true&&!result.hasText))return false;'));
   assert.ok(html.includes('if(isRegen){restoreFailedRegeneration();return;}'));
 });
+
+
+test('offer rejects a duplicate selected identity and reserved user id',()=>{
+ const h=harness();h.values.set('ai_custom_characters',JSON.stringify([...roles,roles[1]]));
+ assert.equal(h.api.offerNewGroupInvitation({inviterId:'c1',groupName:'fixture',memberIds:['c2']}).ok,false);
+ assert.equal(h.values.has('phone_group_invitations'),false);
+});
+test('offer preserves a concurrently inserted invitation',()=>{
+ const g=group();g.userMembership='left';const h=harness([g]);
+ const get=h.storage.getItem.bind(h.storage);let injected=false;
+ h.storage.getItem=k=>{const raw=get(k);if(k==='phone_group_invitations'&&!injected){injected=true;h.values.set(k,JSON.stringify([{id:'other',status:'pending'}]));}return raw;};
+ assert.equal(h.api.offerInvitation({groupId:'g1',inviterId:'c1'}).ok,false);
+ assert.equal(JSON.parse(get('phone_group_invitations'))[0].id,'other');
+});
+test('corrupt group list does not hide decline action',()=>{
+ const g=group();g.userMembership='left';const h=harness([g]);const offered=h.api.offerInvitation({groupId:'g1',inviterId:'c1'});assert.ok(offered.ok);
+ h.values.set('phone_groups','{broken');assert.equal(h.api.pendingInvitations()[0].id,offered.invitation.id);
+ assert.ok(h.api.resolveInvitation({id:offered.invitation.id,accept:false}).ok);
+});

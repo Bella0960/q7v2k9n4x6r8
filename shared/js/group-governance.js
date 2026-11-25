@@ -60,6 +60,7 @@
     if (!g || !g.id || !Array.isArray(g.members)) return fail('INVALID_GROUP', '群聊数据无效');
     if (!spec) return fail('UNKNOWN_ACTION', '没有这个群管理动作');
     var actorRank = rank(g, actor);
+    if(actor!=='__user'&&muted(find(g,actor)))return fail('MUTED','禁言成员不能执行群管理动作');
     if (actorRank < (spec.scope === 'owner' ? 3 : 2)) return fail('NO_PERMISSION', '没有群管理权限');
     if (actor !== '__user' && (!g.settings || g.settings.allowRoleActions !== true))
       return fail('DISABLED', '尚未开启角色自主群管理');
@@ -172,36 +173,45 @@
   function eligible(group, roleId) {
     var m = find(group, roleId);
     return !!(group && m && id(m.id) === id(roleId) &&
-      !joined(group) && (!group.settings || group.settings.allowRoleInvitations !== false));
+      !joined(group) && !muted(m) && (!group.settings || group.settings.allowRoleInvitations !== false));
   }
   function offerInvitation(req) {
     req = req || {};
-    var storage = req.storage || root.localStorage, all = read(storage, 'phone_groups'), inbox = read(storage, INVITATIONS);
-    if (!all || !inbox) return fail('INVALID_STORAGE', '群邀请存储不可用');
-    var g = all.find(function (x) { return x && id(x.id) === id(req.groupId); });
+    var scope=invitationScope();
+    if(scope===null||(Object.prototype.hasOwnProperty.call(req,'expectedAccount')&&req.expectedAccount!==scope))return fail('SCOPE_CHANGED','账号尚未就绪或已变化');
+    var storage=req.storage||root.localStorage, groups=invitationSnapshot(storage,'phone_groups'),box=invitationSnapshot(storage,INVITATIONS);
+    if(!groups||!box)return fail('INVALID_STORAGE','群邀请存储不可用');
+    var all=groups.list,inbox=box.list;
+    var matched=all.filter(function(x){return x&&id(x.id)===id(req.groupId);});
+    var g=matched.length===1?matched[0]:null;
     if (!eligible(g, req.inviterId)) return fail('INELIGIBLE', '当前不能发起这条群邀请');
     if (inbox.some(function (x) { return x && x.status === 'pending' && id(x.groupId) === id(g.id); }))
       return fail('DUPLICATE', '已有待处理的群邀请');
     var invitation = { id: 'gi_' + Date.now().toString(36) + '_' + Math.random().toString(36).slice(2, 10),
       groupId: id(g.id), inviterId: id(req.inviterId), status: 'pending', createdAt: Date.now() };
     inbox.push(invitation);
-    if (!write(storage, INVITATIONS, inbox.slice(-100))) return fail('SAVE_FAILED', '邀请保存失败');
+    if(inbox.length>100)return fail('INBOX_FULL','邀请记录已满，请先处理已有邀请');
+    if(!invitationWrite(storage,INVITATIONS,box.raw,JSON.stringify(inbox),scope,function(){return invitationMatches(storage,'phone_groups',groups.raw,scope);}))return fail('SAVE_FAILED','邀请保存失败或数据已变化');
     emit('invitation:offered', invitation);
     return { ok: true, invitation: invitation };
   }
   // AI can propose a new role-owned group without creating one before the user accepts.
   function offerNewGroupInvitation(req) {
     req = req || {};
-    var storage = req.storage || root.localStorage, all = read(storage, 'phone_groups'),
-      inbox = read(storage, INVITATIONS), roles = read(storage, 'ai_custom_characters');
-    if (!all || !inbox || !roles) return fail('INVALID_STORAGE', '群邀请所需数据无法读取');
-    var inviter = roles.find(function (r) { return r && id(r.id) === id(req.inviterId); });
+    var scope=invitationScope();
+    if(scope===null||(Object.prototype.hasOwnProperty.call(req,'expectedAccount')&&req.expectedAccount!==scope))return fail('SCOPE_CHANGED','账号尚未就绪或已变化');
+    var storage=req.storage||root.localStorage,groups=invitationSnapshot(storage,'phone_groups'),box=invitationSnapshot(storage,INVITATIONS),roleBox=invitationSnapshot(storage,'ai_custom_characters');
+    if(!groups||!box||!roleBox)return fail('INVALID_STORAGE','群邀请所需数据无法读取');
+    var all=groups.list,inbox=box.list,roles=roleBox.list;
+    var inviters=roles.filter(function(r){return r&&id(r.id)===id(req.inviterId)&&id(r.id)!=='__user';});
+    var inviter=inviters.length===1?inviters[0]:null;
     var title = id(req.groupName).replace(/[\r\n<>]/g, '').slice(0, 20);
     if (!inviter || !title) return fail('INVALID_PROPOSAL', '群邀请信息无效');
     var requested = Array.isArray(req.memberIds) ? req.memberIds.map(id).filter(Boolean).slice(0, 5) : [];
     var selected = roles.filter(function (r) {
       return r && r.id != null && (id(r.id) === id(inviter.id) || requested.indexOf(id(r.id)) >= 0);
     });
+    if(selected.some(function(r){return !id(r.id)||id(r.id)==='__user';})||new Set(selected.map(function(r){return id(r.id);})).size!==selected.length)return fail('ROLE_NOT_FOUND','角色身份不唯一');
     if (!selected.some(function (r) { return id(r.id) !== id(inviter.id); }))
       return fail('NEED_MEMBERS', '新群至少还需要一位已创建的角色');
     if (inbox.some(function (x) { return x && x.status === 'pending' && id(x.inviterId) === id(inviter.id); }))
@@ -211,7 +221,8 @@
         Date.now() - Number(x.createdAt || 0) < 24 * 60 * 60 * 1000;
     })) return fail('COOLDOWN', '请稍后再发新的群邀请');
     var gid = 'g' + Date.now().toString(36) + Math.random().toString(36).slice(2, 7);
-    if (all.some(function (g) { return g && id(g.id) === gid; })) return fail('DUPLICATE_GROUP', '群编号冲突');
+    if (all.some(function (g) { return g && id(g.id) === gid; })||roles.some(function(r){return r&&id(r.id)===gid;})||inbox.some(function(x){return x&&id(x.groupId)===gid;})) return fail('DUPLICATE_GROUP', '群编号冲突');
+    try{if(storage.getItem('chat_history_'+gid)!==null)return fail('DUPLICATE_GROUP','群编号与历史冲突');}catch(error){return fail('INVALID_STORAGE','群历史无法读取');}
     var draft = {
       id: gid, name: title, avatar: '', ownerId: id(inviter.id), userMembership: 'left',
       members: selected.map(function (role) {
@@ -222,14 +233,16 @@
     var invitation = { id: 'gi_' + Date.now().toString(36) + Math.random().toString(36).slice(2, 9),
       groupId: gid, inviterId: id(inviter.id), status: 'pending', createdAt: Date.now(), draftGroup: draft };
     inbox.push(invitation);
-    if (!write(storage, INVITATIONS, inbox.slice(-100))) return fail('SAVE_FAILED', '入群邀请未保存');
+    if(inbox.length>100)return fail('INBOX_FULL','邀请记录已满，请先处理已有邀请');
+    if(!invitationWrite(storage,INVITATIONS,box.raw,JSON.stringify(inbox),scope,function(){return invitationMatches(storage,'phone_groups',groups.raw,scope)&&invitationMatches(storage,'ai_custom_characters',roleBox.raw,scope)&&invitationMatches(storage,'chat_history_'+gid,null,scope);}))return fail('SAVE_FAILED','入群邀请未保存或数据已变化');
     emit('invitation:offered', { id: invitation.id, groupId: gid, inviterId: id(inviter.id), draft: true });
     return { ok: true, invitation: invitation };
   }
   function pendingInvitations(storage) {
     storage = storage || root.localStorage;
     var all = read(storage, 'phone_groups'), inbox = read(storage, INVITATIONS);
-    if (!all || !inbox) return [];
+    if(invitationScope()===null||!inbox)return [];
+    if(!all)return inbox.filter(function(x){return x&&x.id&&x.status==='pending';}).map(function(x){return {id:x.id,groupId:x.groupId,groupName:'群资料暂不可用（可拒绝邀请）',inviterId:x.inviterId,inviterName:'群成员'};});
     return inbox.filter(function (x) {
       if (!x || x.status !== 'pending') return false;
       if (x.draftGroup) return x.draftGroup.ownerId === x.inviterId &&

@@ -48,8 +48,9 @@
       var raw=global.localStorage.getItem('phone_groups'),groups=JSON.parse(raw===null?'[]':raw);
       if(!Array.isArray(groups))return {ok:false,reason:'invalid'};
       if(groups.some(function(g){return g&&String(g.id)===next.id;}))return {ok:false,reason:'duplicate'};
+      if(global.localStorage.getItem('chat_history_'+next.id)!==null)return {ok:false,reason:'history-conflict'};
       var encoded=JSON.stringify(groups.concat([next]));
-      if(account()!==owner||global.localStorage.getItem('phone_groups')!==raw||account()!==owner)return {ok:false,reason:'stale'};
+      if(account()!==owner||global.localStorage.getItem('phone_groups')!==raw||global.localStorage.getItem('chat_history_'+next.id)!==null||account()!==owner)return {ok:false,reason:'stale'};
       global.localStorage.setItem('phone_groups',encoded);
       if(account()!==owner||global.localStorage.getItem('phone_groups')!==encoded||account()!==owner)return {ok:false,reason:'unconfirmed'};
       return {ok:true};
@@ -64,7 +65,9 @@
       if(typeof speakerId!=='string'||!speakerId||speakerId==='__user')return false;
       var members=Array.isArray(fresh.group.members)?fresh.group.members:[];
       var found=members.filter(function(m){return m&&String(m.id)===speakerId;});
-      return found.length===1&&!found[0].muted;
+      if(found.length!==1)return false;
+      var m=found[0],flag=typeof m.muted==='boolean'?m.muted:m.isMuted===true;
+      return !(flag&&(!(Number(m.mutedUntil)>0)||Number(m.mutedUntil)>Date.now()));
     }catch(error){return false;}
   }
   function preferenceKey(expected,kind){
