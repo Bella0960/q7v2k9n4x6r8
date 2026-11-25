@@ -55,3 +55,21 @@ test('mount restore preserves pending judgement without regeneration or player a
  const v=await g.page.restoreMatch(saved);assert.equal(v.game.stage,'judging');assert.equal(calls,0);assert.equal(g.one('mao-turtle__solution').textContent,'');
  g.one('mao-turtle__resume').click();await wait();assert.equal(calls,1);assert.equal(all(g.root,'mao-turtle__entry').length,2);g.page.destroy();
 });
+
+test('ordinary moderator supports reference questions without model; restores pending free question privately',async()=>{
+ const f=fixture();await wait();assert.equal(f.one('mao-turtle__bots').value,'1');assert.equal(f.one('mao-turtle__start').disabled,false);
+ f.one('mao-turtle__host').value='bot:1';f.one('mao-turtle__start').click();await wait();assert.equal(f.one('mao-turtle__solution').textContent,'');
+ all(f.root,'mao-turtle__question')[0].click();await wait();assert.equal(all(f.root,'mao-turtle__entry').length,2);
+ f.one('mao-turtle__input').value='和清洁工作有关吗？';f.one('mao-turtle__ask').click();await wait();
+ const saved=await f.page.saveMatch();assert.equal(saved.board.seats.find(s=>s.kind==='bot').mode,'moderator');assert.ok(!JSON.stringify(saved).includes('solution'));f.page.destroy();
+ const seen=[],g=fixture({judgeBot:v=>{seen.push(v);return {kind:'answer',verdict:'yes'};},judgeRole:()=>{throw Error('wrong provider');}});
+ await wait();await g.page.restoreMatch(saved);assert.equal(seen.length,0);assert.equal(g.one('mao-turtle__solution').textContent,'');
+ g.one('mao-turtle__resume').click();await wait();assert.equal(seen.length,1);assert.equal(seen[0].selfSeatId,'bot:1');assert.ok(seen[0].game.solution);assert.equal(g.one('mao-turtle__solution').textContent,'');g.page.destroy();
+});
+test('ordinary player receives no solution; human moderator judges and restores',async()=>{
+ const seen=[],f=fixture({askBot:v=>{seen.push(v);return {kind:'guess',text:'可能是清洁工在洗窗户。'};},allowPlayerText:()=>true,askRole:()=>{throw Error('wrong provider');}});
+ await wait();f.one('mao-turtle__start').click();await wait();assert.equal(seen.length,1);assert.equal(seen[0].selfSeatId,'bot:1');assert.ok(!Object.hasOwn(seen[0].game,'solution'));assert.ok(!Object.hasOwn(seen[0].game,'moderatorFacts'));
+ assert.ok(f.one('mao-turtle__solution').textContent);all(f.root,'mao-turtle__verdict')[0].click();await wait();
+ assert.ok(f.one('mao-turtle__turn').textContent.includes('猜中谜底'));const saved=await f.page.saveMatch();assert.equal(saved.board.seats.filter(s=>s.kind==='role').length,0);f.page.destroy();
+ const g=fixture();await wait();const v=await g.page.restoreMatch(saved);assert.equal(v.phase,'finished');assert.equal(v.result.winnerSeatIds[0],'bot:1');g.page.destroy();
+});
