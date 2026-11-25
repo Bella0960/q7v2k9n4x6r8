@@ -168,7 +168,7 @@ function createWidgetManagerHarness(seed = {}) {
     getElementById(id) { return id === 'widgetList' ? list : null; },
     querySelector(selector) { return selector === '.page-note' ? note : null; },
     createElement() {
-      return { className: '', innerHTML: '', textContent: '',
+      return { className: '', innerHTML: '', textContent: '', dataset: {},
         appendChild() {}, addEventListener() {} };
     }
   };

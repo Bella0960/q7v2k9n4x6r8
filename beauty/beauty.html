@@ -472,6 +472,11 @@
   .theme-art-silver-butterfly .art-left{background:rgba(255,255,255,.82);border:1px solid rgba(215,215,221,.8)}
   .theme-art-silver-butterfly .art-right{background:#d5d5dc}
   .theme-art-silver-butterfly .art-bottom{background:#c9c9d0}
+  .theme-art-atmosphere{background:linear-gradient(180deg,#fafafa 30%,#e6e6e6)}
+  .theme-art-atmosphere .art-top{background:#9a9a9e}
+  .theme-art-atmosphere .art-left{background:transparent;border-bottom:1px solid #252525;border-radius:0;bottom:26px}
+  .theme-art-atmosphere .art-right{background:transparent;border-bottom:1px solid #252525;border-radius:0;bottom:14px}
+  .theme-art-atmosphere .art-bottom{background:#cfcfd3}
   .theme-choice-copy{display:flex;flex:1;min-width:0;flex-direction:column;align-items:flex-start;gap:4px}
   .theme-choice-index{font:9px/1.2 Arial,sans-serif;letter-spacing:1.25px;color:#999}
   .theme-choice-copy strong{font-size:15px;line-height:1.35;font-weight:600;color:#111}
@@ -982,6 +987,11 @@
         <button class="theme-choice" type="button" id="chatThemeWechatOption" data-theme-value="wechat" aria-pressed="false">
           <span class="theme-choice-art theme-art-wechat" aria-hidden="true"><i class="art-top"></i><i class="art-left"></i><i class="art-right"></i><i class="art-bottom"></i></span>
           <span class="theme-choice-copy"><span class="theme-choice-index">05 / WECHAT</span><strong>微信</strong><span class="theme-choice-desc">整套微信风格页面；消息气泡独立选择，不会随页面主题强制改变。</span></span>
+          <span class="theme-choice-mark" aria-hidden="true">✓</span>
+        </button>
+        <button class="theme-choice" type="button" id="chatThemeAtmosphereOption" data-theme-value="atmosphere" aria-pressed="false">
+          <span class="theme-choice-art theme-art-atmosphere" aria-hidden="true"><i class="art-top"></i><i class="art-left"></i><i class="art-right"></i><i class="art-bottom"></i></span>
+          <span class="theme-choice-copy"><span class="theme-choice-index">06 / MONOCHROME</span><strong>薄影</strong><span class="theme-choice-desc">轻薄文字、无底色消息与侧滑会话面板；支持深浅切换，保留独立气泡设置。</span></span>
           <span class="theme-choice-mark" aria-hidden="true">✓</span>
         </button>
       </div>
@@ -2465,7 +2475,8 @@ document.getElementById('importFile').addEventListener('change', function(e){
      [document.getElementById('chatThemeIMessageOption'), 'imessage'],
      [document.getElementById('chatThemeQQOption'), 'qq'],
      [document.getElementById('chatThemeSilverButterflyOption'), 'silver-butterfly'],
-     [document.getElementById('chatThemeWechatOption'), 'wechat']].forEach(function (pair) {
+     [document.getElementById('chatThemeWechatOption'), 'wechat'],
+     [document.getElementById('chatThemeAtmosphereOption'), 'atmosphere']].forEach(function (pair) {
       if (!pair[0]) return;
       var selected = current === pair[1];
       pair[0].classList.toggle('selected', selected);
@@ -2477,6 +2488,7 @@ document.getElementById('importFile').addEventListener('change', function(e){
       else if (current === 'qq') status.textContent = '当前全局主题：QQ 风格。浅灰暖调背景、白色对方气泡、绿色自己气泡、蓝色发送按钮。';
       else if (current === 'silver-butterfly') status.textContent = '当前全局主题：银蝶之境。聊天首页、聊天详情、联系人和动态将统一使用珍珠白玻璃主题。';
       else if (current === 'wechat') status.textContent = '当前全局主题：微信。聊天首页、单聊、通讯录和朋友圈统一切换；气泡在商城单独选择。';
+      else if (current === 'atmosphere') status.textContent = '当前全局主题：薄影。轻薄文字、无底色消息与侧滑会话面板，支持深浅切换；独立气泡设置仍然保留。';
       else status.textContent = '当前全局主题：默认聊天主题。原有气泡细节、CSS 预设与聊天记录均会保留。';
     }
   }
@@ -2492,7 +2504,7 @@ document.getElementById('importFile').addEventListener('change', function(e){
     }
     refreshChatThemeSelection();
     try { window.dispatchEvent(new CustomEvent('maomao:chat-theme-change', { detail: { theme: theme } })); } catch (e) {}
-    var msg = theme === 'wechat' ? '已应用微信页面主题' : (theme === 'silver-butterfly' ? '已应用银蝶之境主题' : (theme === 'imessage' ? '已应用 iMessage 短信主题' : (theme === 'qq' ? '已应用 QQ 风格主题' : '已恢复默认聊天主题')));
+    var msg = theme === 'wechat' ? '已应用微信页面主题' : (theme === 'silver-butterfly' ? '已应用银蝶之境主题' : (theme === 'imessage' ? '已应用 iMessage 短信主题' : (theme === 'qq' ? '已应用 QQ 风格主题' : (theme === 'atmosphere' ? '已应用薄影主题' : '已恢复默认聊天主题'))));
     if (typeof showToast === 'function') showToast(msg);
   }
   document.getElementById('chatThemeDefaultOption').addEventListener('click', function () { chooseChatTheme('default'); });
@@ -2500,6 +2512,7 @@ document.getElementById('importFile').addEventListener('change', function(e){
   document.getElementById('chatThemeQQOption').addEventListener('click', function () { chooseChatTheme('qq'); });
   document.getElementById('chatThemeSilverButterflyOption').addEventListener('click', function () { chooseChatTheme('silver-butterfly'); });
   document.getElementById('chatThemeWechatOption').addEventListener('click', function () { chooseChatTheme('wechat'); });
+  document.getElementById('chatThemeAtmosphereOption').addEventListener('click', function () { chooseChatTheme('atmosphere'); });
   window.addEventListener('pageshow', refreshChatThemeSelection);
 
   document.getElementById('beautyTabs').addEventListener('click', function (e) {

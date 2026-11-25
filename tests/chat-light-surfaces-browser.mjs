@@ -107,6 +107,11 @@ try {
         assert.ok(form.y <= plus.y && plus.y + plus.height <= form.y + form.height + 1, 'plus button stays inside the input row');
         assert.ok(plus.width >= 44, 'plus target must be at least 44px wide');
         assert.ok((await send.boundingBox()).width >= 44, 'send target must be at least 44px wide');
+        // Exercise the real dismiss control if the seeded history opens the memory prompt.
+        if (await page.locator('#sumOverlay').isVisible()) {
+          await page.locator('#sumDismiss').click();
+          await page.locator('#sumOverlay').waitFor({state:'hidden'});
+        }
         await page.locator('#plus-action-btn').click();
         await page.locator('.plus-panel-sheet').waitFor({ state: 'visible' });
         const panel = page.locator('.plus-panel-sheet');

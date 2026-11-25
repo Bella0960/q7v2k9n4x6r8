@@ -86,6 +86,11 @@
         background: #FFFFFF;
         border: 1px solid #E5E5E5;
         border-radius: 8px;
+        transition: border-color .2s ease, background-color .2s ease;
+      }
+      .widget-item.is-target { background: #F2F2F4; border-color: #111; }
+      @media (prefers-reduced-motion: reduce) {
+        .widget-item { transition: none; }
       }
       .w-glyph {
         flex: none;
@@ -214,6 +219,7 @@
         };
         var catalogById = {};
         CATALOG.forEach(function (widget) { catalogById[widget.id] = widget; });
+        var highlightDone = false;
         var noteEl = document.querySelector('.page-note');
         var originalNoteText = noteEl ? noteEl.textContent : '';
 
@@ -351,6 +357,7 @@
             var on = isOnDesktop(layout, w.id);
             var li = document.createElement('li');
             li.className = 'widget-item' + (on ? ' is-on' : '');
+            li.dataset.widget = w.id;
 
             var glyph = document.createElement('span');
             glyph.className = 'w-glyph';
@@ -384,6 +391,22 @@
             li.appendChild(btn);
             listEl.appendChild(li);
           });
+          if (!highlightDone) { highlightDone = true; highlightFromRoute(); }
+        }
+
+        function highlightFromRoute() {
+          if (typeof location === 'undefined' || typeof URLSearchParams === 'undefined') return;
+          var params = new URLSearchParams(location.search || '');
+          var id = params.get('widget');
+          if (!id || !Object.prototype.hasOwnProperty.call(catalogById, id)) return;
+          var target = listEl.querySelector('[data-widget="' + id + '"]');
+          if (!target) return;
+          var reduce = !!(window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches);
+          target.scrollIntoView({ block: 'center', behavior: reduce ? 'auto' : 'smooth' });
+          target.classList.add('is-target');
+          window.setTimeout(function () {
+            target.classList.remove('is-target');
+          }, 1600);
         }
 
         render();
