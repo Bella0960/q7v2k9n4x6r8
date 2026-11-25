@@ -710,3 +710,8 @@ On the next turn/session, read this file and the current `AGENTS.md` first. Cont
 - Strengthen enrollment readiness to require exact configured active founder and both core security secrets; clear activation password immediately. Add two real SQLite core/gateway createApp integration tests covering separate pending accounts, no cookie/mirror prior to authorization, wrong recipient and password, one-time code, revoked internal session, normal active login and social scope, disabled opt-in and forged founder/context. New candidate still requires actual public isolated test.
 
 - Readback review: preserve non-opt-in bootstrap JSON shape; integration test consumes existing invite.code response contract. No live mutation.
+
+
+## 2026-11-25 | REAL-FRIEND-001 — three enrollment regression harness repairs
+
+- Verify 45470649390 failed at gate 3: account-qa-bootstrap-route.test.mjs:193, :346 and qa-identity-bootstrap.test.mjs:117. Static readback identifies missing actual showQaEnrollment helper in VM fixture, missing default-false qaEnrollmentReady in stale-submit fixture, and bootstrap extraction extending into new function definitions. Exercise the real helper, maintain existing assertions, add explicit opt-in and negative readiness cases, use exact bootstrap boundary. No product permission relaxation. Prior migration verify 45469170848 green. Native core export failed HTTP 500; two read-only logical passes stable but persistence tool call blocked before completion. No verified backup or core deployment. Do not repeat blocked operation or publish raw account/session data.
