@@ -31,6 +31,8 @@ test('diary real mobile browser: separate user comments from role-authored diari
      return route.continue();
     });
     await page.addInitScript(()=>{
+     if(localStorage.getItem('diary_fixture_seeded'))return;
+     localStorage.setItem('diary_fixture_seeded','1');
      localStorage.setItem('char_peek_enabled','1');
      localStorage.setItem('maomao_diary_entries_v1',JSON.stringify([
       {id:'d_char_legacy',date:'2026-11-25',title:'Legacy role',content:'ROLE_PRIVATE_LEGACY',tags:[]},
@@ -58,6 +60,17 @@ test('diary real mobile browser: separate user comments from role-authored diari
      await page.locator('#readerMenuLayer').waitFor({state:'hidden'});
      await page.locator('#readerClose').click();
     }
+    await page.locator('[data-open-entry="d_role"]').click();
+    await page.locator('#readerMoreBtn').click();
+    assert.equal(await page.locator('#readerFavorite').innerText(),'收藏');
+    await page.locator('#readerPersonalRemark').click();
+    await page.locator('#personalRemarkInput').fill('PRIVATE_REMARK');
+    await page.locator('#personalRemarkSave').click();
+    await page.locator('.reader-personal-remark p').filter({hasText:'PRIVATE_REMARK'}).waitFor();
+    assert.equal(await page.locator('.reader-content').innerText(),'ROLE_PRIVATE');
+    assert.equal((await records()).find(e=>e.id==='d_role').personalRemark.text,'PRIVATE_REMARK');
+    assert.equal((await page.evaluate(()=>window.diaryCalls)).length,2);
+    await page.locator('#readerClose').click();
     await page.locator('[data-open-entry="d_user"]').click();
     await page.locator('#readerMoreBtn').click();
     await page.locator('#readerComment').click();
@@ -69,6 +82,14 @@ test('diary real mobile browser: separate user comments from role-authored diari
     const saved=await records();
     assert.deepEqual(saved.find(e=>e.id==='d_user').charComments.map(c=>c.characterId),['roleA','roleB']);
     assert.ok(saved.filter(e=>e.id!=='d_user').every(e=>!e.charComments?.length));
+    assert.equal(saved.find(e=>e.id==='d_role').personalRemark.text,'PRIVATE_REMARK');
+    assert.doesNotMatch(JSON.stringify(manual),/PRIVATE_REMARK/);
+    await page.evaluate(()=>localStorage.setItem('char_peek_enabled','0'));
+    await page.reload();
+    await page.locator('[data-open-entry="d_role"]').click();
+    await page.locator('.reader-personal-remark p').filter({hasText:'PRIVATE_REMARK'}).waitFor();
+    await page.locator('#readerMoreBtn').click();
+    assert.equal(await page.locator('#readerPersonalRemark').innerText(),'编辑备注');
    }finally{await page.close();}
   }
  }finally{await browser?.close();await new Promise(r=>server.close(r));}
