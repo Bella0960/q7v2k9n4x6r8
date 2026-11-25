@@ -66,7 +66,7 @@ export function mountTabletopHall(root,{win=root?.ownerDocument?.defaultView,gam
      // Use the existing game journal, never the general daily-memory reader.
      const modelOptions=modelServices?createTabletopModelOptions({...modelServices,win,identity:c,gameId:id,
        readGameMemory:async ({roleId,excludePuzzleId},{signal}={})=>{
-         check(stamp);if(signal?.aborted||needsRefresh||current?.id!==id||context.accountId!==c.accountId||context.sessionId!==c.sessionId)fail('TABLETOP_MEMORY_STALE');
+         if(disposed||doc.hidden||win.navigator?.onLine===false||signal?.aborted||needsRefresh||current?.page!==page||current?.id!==id||context?.accountId!==c.accountId||context?.sessionId!==c.sessionId)fail('TABLETOP_MEMORY_STALE');
          const items=journal.read({roleId,channel:'game',excludePuzzleId,limit:24});
          const lines=[];let used=0;
          for(const f of items.slice().reverse()){
