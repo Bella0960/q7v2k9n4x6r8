@@ -337,13 +337,13 @@ test('PWA uses the updated game scripts and installs the entire feature bundle',
   const cacheVersion = Number((worker.match(/phone-app-pwa-v(\d+)/) || [])[1]) || 0;
   assert.ok(cacheVersion >= 210, 'secret-game privacy assets require PWA v209+');
   for (const name of ['group-game-session.js?v=20261116game11',
-    'group-memory-events.js?v=20261116gme4']) {
+    'group-memory-events.js?v=20261125public1']) {
     assert.ok(worker.includes(name), name);
     assert.ok(detail.includes(name), name);
     assert.ok(settings.includes(name), name);
   }
   assert.ok(worker.includes('group-game-panel.js?v=20261116gpanel6'));
-  assert.ok(worker.includes('chat-context-policy.js?v=20261118historybudget1'));
+  assert.ok(worker.includes('chat-context-policy.js?v=20261125public1'));
 });
 
 test('corrupt game metadata fails closed for AI identity and all private routes', () => {
