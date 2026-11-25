@@ -22,7 +22,7 @@ export function mountTabletopHall(root,{win=root?.ownerDocument?.defaultView,gam
  const doc=root.ownerDocument,verify=createBrowserRoomVerifier(win,{includeRoleLabels:true});
  const el=(tag,cls='',text)=>{const n=doc.createElement(tag);n.className=cls;if(text!==undefined)n.textContent=text;return n;};
  const btn=(text,cls,fn)=>{const n=el('button',cls,text);n.type='button';n.addEventListener('click',fn);return n;};
- let disposed=false,epoch=0,context=null,journal=null,current=null,checking=null,busy=false,exitArmed=false,replaceArmed=null,needsRefresh=false;
+ let disposed=false,epoch=0,context=null,journal=null,current=null,checking=null,busy=false,exitArmed=false,exitSaveResult=null,replaceArmed=null,needsRefresh=false;
  const saves=new Map(),finishedSaves=new Set(),listeners=[];
  const wrap=el('section','mao-table-hall'),top=el('header','mao-table-hall__top'),title=el('h1','','多人游戏'),back=btn('返回游戏大厅','mao-table-link',()=>void exit());top.append(title,back);
  const main=el('div','mao-table-hall__main'),toolbar=el('div','mao-table-hall__tools'),note=el('p','mao-table-note');note.setAttribute('role','status');
@@ -143,10 +143,13 @@ export function mountTabletopHall(root,{win=root?.ownerDocument?.defaultView,gam
  }
  async function exit(){
    if(disposed||busy||needsRefresh)return;
-   if(current?.kind==='game'&&!exitArmed){
-     const e=current,stamp=epoch,result=await save({automatic:true});
+   if(current?.kind==='game'){
+     const e=current,stamp=epoch,previous=exitArmed?exitSaveResult:null,result=await save({automatic:true});
      if(disposed||stamp!==epoch||current!==e||needsRefresh)return;
-     exitArmed=true;
+     // A player or automatic turn may advance between the two return taps.
+     // Re-save at confirmation; if the status changed to failure, warn again.
+     if(previous!==null&&(result==='saved'||result===previous)){epoch++;showHome();return;}
+     exitArmed=true;exitSaveResult=result;
      note.textContent=result==='saved'?'本局已暂存到当前大厅会话，再点一次返回。':result==='other-match'?'已有另一局暂存，未覆盖。可手动暂存并确认替换，或再次返回放弃当前进度。':result==='conflict'?'进度冲突，已保留原暂存。再次返回将放弃当前未保存进度。':'当前未能暂存，可重试暂存或再次返回放弃未保存进度。';return;
    }
    if(current){epoch++;showHome();return;}

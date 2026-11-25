@@ -74,3 +74,10 @@ test('return from another match never silently replaces the existing slot',async
  await f.click('返回多人游戏');assert.ok(f.one('mao-table-note').textContent.includes('已有另一局暂存，未覆盖'));await f.click('返回多人游戏');
  await f.click('继续暂存');assert.equal(f.cls('mao-turtle__entry').length,2);f.page.destroy();
 });
+
+test('confirmation captures the newest progress, not the earlier return snapshot',async()=>{
+ const f=fixture();await f.click('海龟汤');f.pick();f.one('mao-turtle__host').value='role:r1';f.one('mao-turtle__start').click();await wait();
+ await f.click('返回多人游戏');assert.ok(f.one('mao-table-note').textContent.includes('本局已暂存'));
+ f.one('mao-turtle__question').click();await wait();assert.equal(f.cls('mao-turtle__entry').length,2);
+ await f.click('返回多人游戏');await f.click('继续暂存');assert.equal(f.cls('mao-turtle__entry').length,2);f.page.destroy();
+});
