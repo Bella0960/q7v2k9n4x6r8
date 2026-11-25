@@ -7,6 +7,7 @@
 <script src="../../shared/js/font-loader.js?v=20261022v1"></script>
 <script src="../../shared/js/native-feel.js"></script>
 <script src="../../shared/js/phone/group-admin-policy.js?v=20261125g1"></script>
+<script src="../../shared/js/phone/group-write-guard.js?v=20261125g1"></script>
 <style>
 *{box-sizing:border-box;margin:0;padding:0;-webkit-tap-highlight-color:transparent}
 :root{color-scheme:light;--ink:#111;--muted:#888;--line:#e9e9ed;--paper:#fff;--wash:#f7f7f9}
@@ -288,7 +289,9 @@ body{font-family:"Source Han Sans SC","Noto Sans SC","PingFang SC",system-ui,san
   function findGroup(){
     return readArray('phone_groups').find(function(g){return g&&String(g.id)===String(groupId);})||null;
   }
-  var group=findGroup();
+  var groupBase=null;
+  try{groupBase=window.MAOGroupWriteGuard.read(groupId);}catch(error){}
+  var group=groupBase&&groupBase.group;
   if(!group || String(group.id).charAt(0)!=='g'){
     document.getElementById('mainContent').innerHTML='<div class="error">没有找到这条群聊记录。<br>可能群聊已经被解散，或链接已失效。</div>';
     document.getElementById('groupTitle').textContent='群聊不存在';
@@ -300,15 +303,21 @@ body{font-family:"Source Han Sans SC","Noto Sans SC","PingFang SC",system-ui,san
     if([0,1,2].indexOf(autoRounds)===-1)group.settings.autoTalkRounds=1;
     if(group.settings.chatMode!=='online'&&group.settings.chatMode!=='offline')group.settings.chatMode='online';
     document.getElementById('groupTitle').textContent=group.name||'未命名群聊';
+    var writeBlocked=false;
     function persist(message){
-      var groups=readArray('phone_groups');
-      var found=false;
-      for(var i=0;i<groups.length;i++){
-        if(String(groups[i]&&groups[i].id)===String(group.id)){groups[i]=group;found=true;break;}
+      if(writeBlocked)return false;
+      var result=window.MAOGroupWriteGuard.commit(groupBase,group);
+      if(!result.ok){
+        writeBlocked=true;
+        document.querySelectorAll('#mainContent input,#mainContent select,#mainContent textarea,#mainContent button').forEach(function(control){control.disabled=true;});
+        notify('群资料已变化或保存失败，请返回后重新进入');
+        var reload=document.createElement('button');reload.type='button';reload.className='self-title-save';reload.textContent='重新读取群资料';reload.addEventListener('click',function(){location.reload();});
+        document.getElementById('mainContent').prepend(reload);
+        return false;
       }
-      if(!found){notify('群聊已不存在，保存失败');return false;}
-      try{localStorage.setItem('phone_groups',JSON.stringify(groups));if(message)notify(message);return true;}
-      catch(e){notify('保存失败：本地存储空间不足');return false;}
+      groupBase=result.expected;
+      if(message)notify(message);
+      return true;
     }
     if (!group.ownerId) group.ownerId='__user';
     function renderSettings(){
@@ -324,9 +333,9 @@ body{font-family:"Source Han Sans SC","Noto Sans SC","PingFang SC",system-ui,san
     document.getElementById('saveSelfGroupTitle').addEventListener('click',function(){
       var policy=window.MAOGroupAdminPolicy,value=policy&&policy.title(document.getElementById('selfGroupTitle').value);
       if(value==null){notify('头衔最多20个字符');return;}
-      var fresh=findGroup();if(!fresh){notify('群聊已不存在');return;}
-      var previous=group;group=fresh;group.selfTitle=value;
-      if(!persist('头衔已保存')){group=findGroup()||previous;}
+      if(writeBlocked)return;
+      group.selfTitle=value;
+      if(!persist('头衔已保存'))return;
       renderSelfTitle();renderOwner();
     });
     function renderOwner(){
@@ -492,6 +501,7 @@ body{font-family:"Source Han Sans SC","Noto Sans SC","PingFang SC",system-ui,san
     }
     var expandedRelationships={};
     function renderRelationships(){
+      if(activeView!=='relations'||writeBlocked)return;
       var list=document.getElementById('relationshipsList');
       var members=Array.isArray(group.members)?group.members:[];
       if(members.length<2){list.innerHTML='<div class="empty">至少邀请两位角色入群，才能设置他们之间的关系。</div>';return;}
@@ -510,7 +520,8 @@ body{font-family:"Source Han Sans SC","Noto Sans SC","PingFang SC",system-ui,san
         }
       }
       list.innerHTML=rows.join('');
-      if(migrated)persist();
+      // Compatibility normalization is saved only when the user edits a relationship.
+      // Entering a directory or viewing relationships never writes group data.
     }
     function groupMemberName(member){return String((member&&(member.nickname||member.name))||'未命名成员');}
     document.getElementById('relationshipsList').addEventListener('click',function(event){
@@ -563,7 +574,7 @@ body{font-family:"Source Han Sans SC","Noto Sans SC","PingFang SC",system-ui,san
           return {summary:summary,time:Number(old.time)||Date.now(),fromId:fromId,toId:String(to.id)};
         });
       }
-      persist('关系网已保存');
+      if(!persist('关系网已保存'))return;
       renderRelationships();
     });
     document.getElementById('transferOwnerBtn').addEventListener('click',function(){
@@ -575,7 +586,7 @@ body{font-family:"Source Han Sans SC","Noto Sans SC","PingFang SC",system-ui,san
       if(!confirm('确定将群主转让给「'+nextName+'」吗？'))return;
       group.ownerId=nextOwner?String(nextOwner.id):'__user';
       if(nextOwner)nextOwner.isAdmin=true;
-      persist('群主已更新');
+      if(!persist('群主已更新'))return;
       renderMembers();renderOwner();
     });
     document.getElementById('membersList').addEventListener('change',function(event){
@@ -599,11 +610,7 @@ body{font-family:"Source Han Sans SC","Noto Sans SC","PingFang SC",system-ui,san
         if(titleValue==null){notify('头衔最多20个字符');renderMembers();return;}
         member.title=titleValue;
       }else member[field]=input.value.trim();
-      if(!persist('成员资料已保存')){
-        var restored=findGroup();
-        if(restored)group=restored;
-        else {input.disabled=true;return;}
-      }
+      if(!persist('成员资料已保存'))return;
       renderMembers();renderOwner();renderRelationships();
     });
     document.getElementById('membersList').addEventListener('click',function(event){
@@ -625,7 +632,8 @@ body{font-family:"Source Han Sans SC","Noto Sans SC","PingFang SC",system-ui,san
       group.members=(group.members||[]).filter(function(m){return String(m.id)!==String(id);});
       if(String(group.ownerId)===String(id))group.ownerId='__user';
       delete expandedMembers[String(id)];
-      persist('已移出群聊');renderMembers();renderOwner();renderRelationships();
+      if(!persist('已移出群聊'))return;
+      renderMembers();renderOwner();renderRelationships();
     });
     renderSettings();renderMembers();renderOwner();renderSelfTitle();renderRelationships();
     var titles={menu:['群组管理','GROUP MANAGEMENT'],roles:['身份与头衔','ROLES / TITLES'],behavior:['群聊机制','BEHAVIOR'],relations:['成员关系','RELATIONSHIPS'],memory:['记忆空间','MEMORY']};
