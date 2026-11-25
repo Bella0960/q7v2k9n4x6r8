@@ -84,9 +84,7 @@ export function createBrowserRoomSession({win=globalThis.window,spec,rules}={}) 
   listen(win,'offline',inactive);
   listen(win,'storage',storage);
   listen(win.document,'visibilitychange',()=>{if(win.document.hidden) inactive();else recheck();});
-  async function prepare(getCallback) {
-    await refresh();guard();
-    const stamp=epoch,callback=getCallback();
+  function bindBrowser(callback,stamp) {
     return async payload=>{
       guard();if(stamp!==epoch) fail('STALE_BROWSER_CONTEXT');
       await refresh();guard();if(stamp!==epoch) fail('STALE_BROWSER_CONTEXT');
@@ -95,11 +93,23 @@ export function createBrowserRoomSession({win=globalThis.window,spec,rules}={}) 
       return result;
     };
   }
+  async function prepare(getCallback) {
+    await refresh();guard();
+    const stamp=epoch;
+    return bindBrowser(getCallback(),stamp);
+  }
+  async function prepareRoleTurn(roleId) {
+    await refresh();guard();
+    const stamp=epoch,turn=session.prepareRoleTurn(roleId);
+    guard();if(stamp!==epoch) fail('STALE_BROWSER_CONTEXT');
+    return Object.freeze({view:turn.view,commit:bindBrowser(turn.commit,stamp)});
+  }
   return Object.freeze({
     refresh,dispose,status:()=>disposed?'disposed':session.status(),
     lastError:()=>lastError?.message??null,
     async viewUser(){await refresh();guard();return session.viewUser();},
     prepareUserAction:()=>prepare(()=>session.prepareUserAction()),
-    prepareRoleMove:roleId=>prepare(()=>session.prepareRoleMove(roleId))
+    prepareRoleMove:roleId=>prepare(()=>session.prepareRoleMove(roleId)),
+    prepareRoleTurn
   });
 }

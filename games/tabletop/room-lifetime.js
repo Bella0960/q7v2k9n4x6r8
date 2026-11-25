@@ -37,21 +37,24 @@ export function createRoomLifetime({getContext,createDispatcher,spec,rules}) {
       return active.dispatch(actor,token,roleId === null ? payload : {type:'move',move:payload});
     };
   }
+  // Trusted scheduler only: pair a seat-specific view with the capability
+  // for that exact turn, before any asynchronous role generation starts.
+  function prepareRoleTurn(roleId) {
+    if (!validId(roleId)) fail('INVALID_ROLE_ID');
+    const c = scopedContext();
+    if (!c.roleIds.includes(roleId)) fail('ROLE_UNAVAILABLE');
+    const actor = 'role:'+roleId, v = current().view(actor);
+    const seat = v.seats.find(s=>s.seatId===actor && s.kind==='role' && s.roleId===roleId);
+    if (v.phase!=='playing' || !seat || seat.mode==='observer') fail('ROLE_CANNOT_MOVE');
+    // Sequential games must not schedule a role request before its turn.
+    if (['ludo','gomoku'].includes(v.gameId) && v.turnSeatId!==actor) fail('NOT_YOUR_TURN');
+    return Object.freeze({view:v,commit:prepare(actor,roleId)});
+  }
   return Object.freeze({
     viewUser: () => current().view('user'),
     prepareUserAction: () => prepare('user',null),
-    // Only the trusted role scheduler may call this method, never AI output.
-    prepareRoleMove(roleId) {
-      if (!validId(roleId)) fail('INVALID_ROLE_ID');
-      const c = scopedContext();
-      if (!c.roleIds.includes(roleId)) fail('ROLE_UNAVAILABLE');
-      const actor = 'role:'+roleId, v = current().view(actor);
-      const seat = v.seats.find(s=>s.seatId===actor && s.kind==='role' && s.roleId===roleId);
-      if (v.phase!=='playing' || !seat || seat.mode==='observer') fail('ROLE_CANNOT_MOVE');
-      // Sequential games must not schedule a role request before its turn.
-      if (['ludo','gomoku'].includes(v.gameId) && v.turnSeatId!==actor) fail('NOT_YOUR_TURN');
-      return prepare(actor,roleId);
-    },
+    prepareRoleTurn,
+    prepareRoleMove: roleId => prepareRoleTurn(roleId).commit,
     dispose
   });
 }
