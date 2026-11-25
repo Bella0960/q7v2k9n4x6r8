@@ -75,3 +75,18 @@ test('directory routes preserve all original controls and scoped subpages',()=>{
   assert.match(js,/&view=members/);
   assert.match(css,/\.gp-subpage-content/);
 });
+
+test('group portrait modal, media reference and chat member-ID routing',()=>{
+  const portraits=read('shared/js/phone/group-portraits.js');
+  const detail=read('chat/chat/chat-detail.html');
+  new vm.Script(portraits);
+  assert.match(js,/btn\('gp-shortcut','群内头像',openPortraits\)/);
+  assert.match(js,/dialog\.showModal\(\)/);
+  assert.match(js,/await api\.save\(state,changes\)/);
+  assert.match(portraits,/ownerId:JSON\.stringify\(\[s\.account,String\(s\.group\.id\),id\]\)/);
+  assert.match(portraits,/global\.localStorage\.setItem\('phone_groups',encoded\)/);
+  assert.doesNotMatch(portraits,/setItem\('(?:myProfile|ai_custom_characters)'/);
+  assert.match(portraits,/record\.accountId===account/);
+  assert.match(detail,/if\(isGroupChat\)fillGroupPortrait\(avatar,msg,true\)/);
+  assert.match(detail,/msg\.memberId!=null\?String\(msg\.memberId\)/);
+});
