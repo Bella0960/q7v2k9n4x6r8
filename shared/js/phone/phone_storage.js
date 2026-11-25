@@ -285,6 +285,7 @@
 
     // 记忆（按角色）
     function inspectMemoryList(contactId) {
+        if (typeof contactId === 'number' && Number.isFinite(contactId)) contactId = String(contactId);
         if (typeof contactId !== 'string' || !contactId.trim() ||
             ['__proto__','prototype','constructor'].indexOf(contactId) >= 0) return null;
         try {
