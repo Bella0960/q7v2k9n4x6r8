@@ -345,6 +345,152 @@ try{
     await page.waitForFunction(()=>document.querySelector('[data-drag="app_inspect"] .app-icon')?.style.backgroundImage.includes('data:image'));
     assert.deepEqual((await readLayout(page)).pages,baseline.pages,'preset modified desktop layout');
     pass('icon_preset_roundtrip_isolation_'+width);
+
+    // Heavy personalization runs separately from the existing normal profile.
+    // Only synthetic local assets are used; the real user account is never opened.
+    if(width===390){
+      step='heavy_personalization_'+width;
+      const heavy=await browser.newContext({viewport:{width,height},isMobile:true,hasTouch:true,deviceScaleFactor:3,serviceWorkers:'block',reducedMotion:'no-preference'});
+      try{
+        const hp=await heavy.newPage(), heavyErrors=[];
+        hp.on('pageerror',e=>heavyErrors.push(e.message));
+        await go(hp,'/index.html');
+        const fontBytes=await readFile('/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf');
+        assert.ok(fontBytes.length>0,'local synthetic font fixture missing');
+        const setup=await hp.evaluate(async encoded=>{
+          function texture(w,h,seed){
+            const canvas=document.createElement('canvas');canvas.width=w;canvas.height=h;
+            const ctx=canvas.getContext('2d'),pixels=ctx.createImageData(w,h);
+            let v=seed;
+            for(let i=0;i<pixels.data.length;i+=4){
+              v=(Math.imul(v,1664525)+1013904223)>>>0;
+              const shade=50+((v>>>24)%170);
+              pixels.data[i]=shade;pixels.data[i+1]=shade;pixels.data[i+2]=shade;pixels.data[i+3]=255;
+            }
+            ctx.putImageData(pixels,0,0);
+            return canvas.toDataURL('image/jpeg',.9);
+          }
+          const store=window.MAOMAOWallpaperStore;
+          const wallpaper=texture(1440,2560,123);
+          await store.save(wallpaper);
+          const widgetSlots=Array.from(document.querySelectorAll('#gridPage0 [data-upload][id]'));
+          for(let i=0;i<widgetSlots.length;i++){
+            const el=widgetSlots[i], owner=el.closest('[data-drag]').dataset.drag;
+            await store.saveByKey('home_widget_upload_v1_'+owner+'_'+el.id,texture(640,640,200+i));
+          }
+          const bytes=Uint8Array.from(atob(encoded),c=>c.charCodeAt(0));
+          await new Promise((resolve,reject)=>{
+            const req=indexedDB.open('maomao-font-presets',1);
+            req.onupgradeneeded=()=>{if(!req.result.objectStoreNames.contains('presets'))req.result.createObjectStore('presets',{keyPath:'id'});};
+            req.onerror=()=>reject(req.error);
+            req.onsuccess=()=>{
+              const db=req.result,tx=db.transaction('presets','readwrite');
+              tx.objectStore('presets').put({id:'qa-heavy-font',name:'QA local fixture',type:'file',format:'truetype',blob:new Blob([bytes],{type:'font/ttf'})});
+              tx.oncomplete=()=>{db.close();resolve();};
+              tx.onerror=tx.onabort=()=>{db.close();reject(tx.error||new Error('font fixture transaction failed'));};
+            };
+          });
+          localStorage.setItem('active_font_preset_id','qa-heavy-font');
+          localStorage.setItem('maomao_theme','liquid-glass');
+          localStorage.setItem('maomao_liquid_glass_settings',JSON.stringify({style:'clear',hue:180,tone:9,appearance:'light',blur:24,iconSize:'medium'}));
+          return {widgetCount:widgetSlots.length,wallpaperLength:wallpaper.length};
+        },fontBytes.toString('base64'));
+        assert.ok(setup.widgetCount>=2,'heavy profile needs multiple live widget photos');
+        await go(hp,'/index.html');
+        await hp.waitForFunction(()=>document.documentElement.getAttribute('data-home-wallpaper')==='custom' &&
+          document.documentElement.getAttribute('data-theme')==='liquid-glass' &&
+          document.querySelectorAll('#gridPage0 .maomao-liquid-glass-icon').length>=3 &&
+          !!document.getElementById('maomao-global-custom-font-style'),null,{timeout:20000});
+        const loaded=await hp.evaluate(async()=>{
+          const src=await window.MAOMAOWallpaperStore.get(), image=new Image();
+          image.src=src;await image.decode();
+          const faces=await document.fonts.load('14px "MAOMAOUserFont"','QA 123');
+          await document.fonts.ready;
+          return {width:image.naturalWidth,height:image.naturalHeight,
+            fontLoaded:faces.some(face=>face.status==='loaded'),
+            photos:Array.from(document.querySelectorAll('#gridPage0 [data-upload][id]')).filter(el=>el.style.backgroundImage.includes('data:image')).length,
+            glass:document.querySelectorAll('#gridPage0 .maomao-liquid-glass-icon').length};
+        });
+        assert.deepEqual([loaded.width,loaded.height],[1440,2560],'heavy test must retain HD wallpaper pixels');
+        assert.equal(loaded.fontLoaded,true,'custom font was not decoded');
+        assert.equal(loaded.photos,setup.widgetCount,'photo fixture did not restore');
+        const heavyLayout=await readLayout(hp);
+        const hc=await heavy.newCDPSession(hp);
+        const ht=(type,x,y)=>hc.send('Input.dispatchTouchEvent',{type,touchPoints:type==='touchEnd'||type==='touchCancel'?[]:[{x,y,id:1}]});
+        const inventory=l=>[...l.pages.flat(),...l.dock,...l.removed].sort();
+        const measure=async(label,commit)=>{
+          const point=await hp.evaluate(()=>{
+            const bounds=document.getElementById('homeScreen').getBoundingClientRect();
+            const tiles=Array.from(document.querySelectorAll('#gridPage0 .app-tile[data-drag]')).map(el=>{
+              const r=el.getBoundingClientRect();return {x:r.left+r.width/2,y:r.top+r.height/2,id:el.dataset.drag};
+            }).filter(p=>p.x>bounds.left+45&&p.x<bounds.right-45&&p.y>bounds.top+45&&p.y<bounds.bottom-45);
+            return tiles[0]||null;
+          });
+          assert.ok(point,'no visible drag source in heavy home grid');
+          await ht('touchStart',point.x,point.y);
+          await hp.waitForSelector('.drag-avatar',{timeout:3000});
+          const targets=await hp.evaluate(()=>{
+            const bounds=document.getElementById('homeScreen').getBoundingClientRect();
+            return Array.from(document.querySelectorAll('#gridPage0 .app-tile[data-drag]:not(.is-dragging-source)')).map(el=>{
+              const r=el.getBoundingClientRect();return {x:r.left+r.width*.55,y:r.top+r.height*.5};
+            }).filter(p=>p.x>bounds.left+45&&p.x<bounds.right-45&&p.y>bounds.top+24&&p.y<bounds.bottom-40).slice(0,6);
+          });
+          assert.ok(targets.length>=2,'heavy probe lacks visible neighbours');
+          await hp.evaluate(()=>{
+            const frames=[],tasks=[];let previous=null,frame,observer=null,changes=0;
+            const tick=t=>{if(previous!==null)frames.push(t-previous);previous=t;frame=requestAnimationFrame(tick);};
+            frame=requestAnimationFrame(tick);
+            const mutation=new MutationObserver(records=>{
+              for(const r of records)if(Array.from(r.addedNodes).some(n=>n.nodeType===1&&n.classList.contains('drag-placeholder')))changes++;
+            });
+            mutation.observe(document.getElementById('gridPage0'),{childList:true});
+            if(window.PerformanceObserver?.supportedEntryTypes?.includes('longtask')){
+              observer=new PerformanceObserver(list=>tasks.push(...list.getEntries().map(e=>e.duration)));
+              observer.observe({entryTypes:['longtask']});
+            }
+            window.__stopHeavyDragProbe=()=>{
+              cancelAnimationFrame(frame);mutation.disconnect();
+              if(observer){tasks.push(...observer.takeRecords().map(e=>e.duration));observer.disconnect();}
+              const sorted=frames.slice().sort((a,b)=>a-b);
+              const percentile=p=>sorted[Math.max(0,Math.ceil(sorted.length*p)-1)]??null;
+              delete window.__stopHeavyDragProbe;
+              return {samples:frames.length,p50Ms:percentile(.5),p95Ms:percentile(.95),p99Ms:percentile(.99),
+                over50Ms:frames.filter(x=>x>50).length,longTasks:observer?tasks:null,changes};
+            };
+          });
+          let result,from=point;
+          try{
+            for(let round=0;round<3;round++){
+              for(const to of round%2?targets.slice().reverse():targets){
+                for(let n=1;n<=4;n++){
+                  await ht('touchMove',from.x+(to.x-from.x)*n/4,from.y+(to.y-from.y)*n/4);
+                  await pause(16);
+                }
+                from=to;
+              }
+            }
+          }finally{result=await hp.evaluate(()=>window.__stopHeavyDragProbe());}
+          assert.ok(result.samples>=20&&result.changes>=1,'heavy probe did not exercise real reordering');
+          await ht(commit?'touchEnd':'touchCancel');
+          await hp.waitForFunction(()=>!document.querySelector('.drag-avatar,.drag-placeholder,.is-dragging-source')&&!document.body.classList.contains('home-dragging'));
+          const after=await readLayout(hp);
+          assert.deepEqual(inventory(after),inventory(heavyLayout),'heavy drag lost or duplicated layout item');
+          if(!commit)assert.deepEqual(after,heavyLayout,'cancel persisted a partial layout');
+          console.log('DESKTOP_HEAVY_DRAG '+JSON.stringify({label,width,dpr:3,...loaded,...result}));
+          return after;
+        };
+        await measure('hd-glass-font-normal',false);
+        await hc.send('Emulation.setCPUThrottlingRate',{rate:4});
+        let committed;
+        try{committed=await measure('hd-glass-font-cpu4x',true);}
+        finally{await hc.send('Emulation.setCPUThrottlingRate',{rate:1});}
+        await hc.detach();
+        await go(hp,'/index.html');
+        assert.deepEqual(await readLayout(hp),committed,'heavy drag layout did not persist after reload');
+        assert.deepEqual(heavyErrors,[],'heavy profile page errors');
+        pass('heavy_hd_glass_font_widget_drag_'+width);
+      }finally{await heavy.close();}
+    }
     step='reset_wallpaper_'+width;
     await go(page,'/settings/appearance.html');
     await page.locator('#resetWallpaperBtn').click();
