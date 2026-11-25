@@ -38,10 +38,13 @@
     var s=readGroup(groupId);
     if(!s||!s.account)throw Error('无法确认当前群聊或账号，请重新进入');
     if(s.group[FIELD]&&s.group[FIELD].accountId!==s.account)throw Error('头像资料归属不匹配');
+    s.expected={id:groupId,account:s.account,serialized:JSON.stringify(s.group)};
     return s;
   }
   function stillCurrent(s){
-    return scope()===s.account&&global.localStorage.getItem('phone_groups')===s.raw;
+    if(!s||!s.expected||scope()!==s.account)return false;
+    try{var current=readGroup(s.expected.id);return !!current&&current.account===s.account&&JSON.stringify(current.group)===s.expected.serialized;}
+    catch(error){return false;}
   }
   async function save(s,changes){
     if(!s||!s.account||!stillCurrent(s))throw Error('群聊资料已变化，请重新打开');
@@ -63,10 +66,12 @@
       next.set(id,result.value.assetId);
     }
     if(!stillCurrent(s))throw Error('群聊资料已变化，请重新打开');
-    s.group[FIELD]={accountId:s.account,entries:Array.from(next,function(x){return {memberId:x[0],assetId:x[1]};})};
-    var encoded=JSON.stringify(s.groups);
-    global.localStorage.setItem('phone_groups',encoded);
-    if(global.localStorage.getItem('phone_groups')!==encoded)throw Error('群聊头像保存未确认');
+    var updated=JSON.parse(s.expected.serialized);
+    updated[FIELD]={accountId:s.account,entries:Array.from(next,function(x){return {memberId:x[0],assetId:x[1]};})};
+    var guard=global.MAOGroupWriteGuard;
+    if(!guard||typeof guard.commit!=='function')throw Error('群资料保存保护暂不可用');
+    var result=guard.commit(s.expected,updated);
+    if(!result.ok)throw Error('群聊头像保存失败，请重新打开');
     cache.clear();
     return true;
   }
