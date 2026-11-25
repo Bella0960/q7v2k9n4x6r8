@@ -121,18 +121,58 @@
       return (cfg && cfg.vars && typeof cfg.vars === 'object') ? cfg.vars : null;
     } catch (e) { return null; }
   }
-  // Only explicit ordinary-bubble customizations may opt the legacy frosted
-  // bubble rule aside. Avatar, backdrop, theme preset, timestamp, payment /
-  // red-packet, layout and unknown fields must not raise the marker, otherwise
-  // the built-in frosted default would step down for a non-bubble setting.
+  // Legal ordinary-bubble fields, mirrored from the public ChatBeauty.DEFAULTS
+  // contract. Only a saved value for a field that exists in that contract may opt
+  // the legacy frosted bubble rule aside. Unknown/typo keys (e.g. myBubbleUnknown),
+  // wrong-type values, avatar/backdrop/preset/timestamp/payment/red-packet/layout
+  // fields must not raise the marker, otherwise the built-in frosted default steps
+  // down for a non-bubble setting.
+  var FALLBACK_BUBBLE_FIELDS = [
+    'myBubbleBg','myBubbleOpacity','myBubbleColor','myBubbleRadius','myBubbleRadiusTL',
+    'myBubbleRadiusTR','myBubbleRadiusBR','myBubbleRadiusBL','myBubbleBorderStyle',
+    'myBubbleLineHeight','myBubbleShadowVisible','myBubbleShadowColor','myBubbleShadowX',
+    'myBubbleShadowY','myBubbleShadowBlur','myBubbleShadowSpread','myBubbleBorderColor',
+    'myBubbleBorderWidth','myBubbleRadiusSize','myBubblePadding','myBubbleFontSize',
+    'myBubbleFontFamily','myBubbleTailSize','myBubbleTailX','myBubbleTailY',
+    'myBubbleTailShape','myBubbleTailColor','myBubbleDecorations','myBubbleAvatarPosition',
+    'myBubbleBadge','myBubbleBadgeColor','myBubbleBadgeX','myBubbleBadgeY',
+    'myBubbleBadgeAnchor','myBubbleBadgeSize',
+    'partnerBubbleBg','partnerBubbleOpacity','partnerBubbleColor','partnerBubbleRadius',
+    'partnerBubbleRadiusTL','partnerBubbleRadiusTR','partnerBubbleRadiusBR',
+    'partnerBubbleRadiusBL','partnerBubbleBorderStyle','partnerBubbleLineHeight',
+    'partnerBubbleShadowVisible','partnerBubbleShadowColor','partnerBubbleShadowX',
+    'partnerBubbleShadowY','partnerBubbleShadowBlur','partnerBubbleShadowSpread',
+    'partnerBubbleBorderColor','partnerBubbleBorderWidth','partnerBubbleRadiusSize',
+    'partnerBubblePadding','partnerBubbleFontSize','partnerBubbleFontFamily',
+    'partnerBubbleTailSize','partnerBubbleTailX','partnerBubbleTailY',
+    'partnerBubbleTailShape','partnerBubbleTailColor','partnerBubbleDecorations',
+    'partnerBubbleAvatarPosition','partnerBubbleBadge','partnerBubbleBadgeColor',
+    'partnerBubbleBadgeX','partnerBubbleBadgeY','partnerBubbleBadgeAnchor',
+    'partnerBubbleBadgeSize'
+  ];
+  function bubbleFieldSet() {
+    var set = Object.create(null);
+    var def = (global.ChatBeauty && global.ChatBeauty.DEFAULTS) || null;
+    if (def && typeof def === 'object') {
+      Object.keys(def).forEach(function (k) {
+        if (k.indexOf('myBubble') === 0 || k.indexOf('partnerBubble') === 0) set[k] = true;
+      });
+    }
+    if (!Object.keys(set).length) {
+      FALLBACK_BUBBLE_FIELDS.forEach(function (k) { set[k] = true; });
+    }
+    return set;
+  }
+  var BUBBLE_FIELDS = bubbleFieldSet();
   function hasMeaningfulValue(value) {
-    if (value === null || value === undefined || value === '') return false;
+    if (value === null || value === undefined) return false;
     if (Array.isArray(value)) return value.length > 0;
-    return true;
+    if (typeof value === 'object') return false; // plain object is not a valid bubble value
+    return value !== '';
   }
   function isBubbleVar(key, value) {
-    if (!hasMeaningfulValue(value)) return false;
-    return key.indexOf('myBubble') === 0 || key.indexOf('partnerBubble') === 0;
+    if (typeof key !== 'string' || !BUBBLE_FIELDS[key]) return false;
+    return hasMeaningfulValue(value);
   }
   function beautyVarsActive(vars) {
     if (!vars || typeof vars !== 'object' || Array.isArray(vars)) return false;
