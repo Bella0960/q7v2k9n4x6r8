@@ -26,8 +26,8 @@ test('diary real mobile browser: separate user comments from role-authored diari
     await page.route('**/*',route=>{
      const u=new URL(route.request().url());
      if(u.origin!==base)return route.abort();
-     if(u.pathname.endsWith('/phone_storage.js'))return route.fulfill({contentType:'application/javascript',body:'window.PhoneStorage={getCharacters:()=>[{id:"roleA",name:"Same name"},{id:"roleB",name:"Same name"}],getCurrentContactId:()=>"roleA"};'});
-     if(u.pathname.endsWith('/phone_api.js'))return route.fulfill({contentType:'application/javascript',body:'window.diaryCalls=[];window.PhoneAPI={complete:opts=>{window.diaryCalls.push(opts);return Promise.resolve(opts.system.includes("写自己的私人日记")?"A synthetic role diary of adequate length.":"Synthetic comment");}};'});
+     if(u.pathname.endsWith('/phone_storage.js'))return route.fulfill({contentType:'application/javascript',body:'window.PhoneStorage={getCharacters:()=>[{id:"roleA",name:"Same name",persona:"ROLE_A_PERSONA: studies plants",tone:"ROLE_A_TONE"},{id:"roleB",name:"Same name",persona:"ROLE_B_PERSONA: studies music",tone:"ROLE_B_TONE"}],getCurrentContactId:()=>"roleA"};'});
+     if(u.pathname.endsWith('/phone_api.js'))return route.fulfill({contentType:'application/javascript',body:'window.diaryCalls=[];window.PhoneAPI={complete:opts=>{window.diaryCalls.push(opts);return Promise.resolve(opts.system.includes("创作一篇自己的私人日记")?"A synthetic role diary of adequate length.":"Synthetic comment");}};'});
      return route.continue();
     });
     await page.addInitScript(()=>{
@@ -48,6 +48,7 @@ test('diary real mobile browser: separate user comments from role-authored diari
     assert.equal(calls.length,2);
     assert.ok(calls.some(c=>c.user.includes('USER_TEXT')));
     assert.ok(calls.every(c=>!c.user.includes('ROLE_PRIVATE')));
+    assert.ok(calls.every(c=>c.system.includes('ROLE_A_PERSONA')&&c.system.includes('ROLE_A_TONE')&&!c.system.includes('ROLE_B_PERSONA')));
     for(const id of ['d_role','d_char_legacy']){
      await page.locator('[data-open-entry="'+id+'"]').click();
      await page.locator('#readerMoreBtn').click();
@@ -63,6 +64,8 @@ test('diary real mobile browser: separate user comments from role-authored diari
     await page.locator('#annotationCharacter').selectOption('roleB');
     await page.locator('#annotationGenerate').click();
     await page.waitForFunction(()=>JSON.parse(localStorage.getItem('maomao_diary_entries_v1')).find(e=>e.id==='d_user')?.charComments?.length===2);
+    const manual=await page.evaluate(()=>window.diaryCalls.at(-1));
+    assert.match(manual.system,/ROLE_B_PERSONA/);assert.match(manual.system,/ROLE_B_TONE/);assert.doesNotMatch(manual.system,/ROLE_A_PERSONA/);
     const saved=await records();
     assert.deepEqual(saved.find(e=>e.id==='d_user').charComments.map(c=>c.characterId),['roleA','roleB']);
     assert.ok(saved.filter(e=>e.id!=='d_user').every(e=>!e.charComments?.length));
