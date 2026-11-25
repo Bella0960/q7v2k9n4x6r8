@@ -32,5 +32,19 @@
     if(action==='移除'||action==='禁言')return !!targetRole&&target!=='__user'&&target!==actor&&targetRole!=='owner'&&(r==='owner'||targetRole==='member');
     return false;
   }
-  global.MAOGroupAdminPolicy={member:member,role:role,title:title,can:can};
+  function findInviteRole(pool,target){
+    if(!Array.isArray(pool)||typeof target!=='string'||!target||target==='__user')return null;
+    var valid=pool.filter(function(r){return r&&r.id!=null&&String(r.id)&&String(r.id)!=='__user';});
+    var matches=valid.filter(function(r){return String(r.id)===target;});
+    if(matches.length>1)return null;
+    if(matches.length===0)matches=valid.filter(function(r){return String(r.name||'').trim()===target;});
+    if(matches.length!==1)return null;
+    var id=String(matches[0].id);
+    return valid.filter(function(r){return String(r.id)===id;}).length===1?matches[0]:null;
+  }
+  function defaultMember(r){
+    if(!r||r.id==null||!String(r.id)||String(r.id)==='__user')return null;
+    return {id:String(r.id),name:r.name||'未命名角色',avatar:r.avatar||'',nickname:'',title:'',isAdmin:false,muted:false,activeFrom:'08:00',activeTo:'23:00',talkativeness:0.5,replyThreshold:55,interests:[],interestTags:[],expertiseTags:[],backgroundTags:[]};
+  }
+  global.MAOGroupAdminPolicy={member:member,role:role,title:title,can:can,findInviteRole:findInviteRole,defaultMember:defaultMember};
 })(typeof window!=='undefined'?window:globalThis);
