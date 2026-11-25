@@ -112,8 +112,25 @@ test('group title permissions are based on member IDs and current role, not titl
  assert.equal(api.title('a\nb'),null);
  assert.equal(api.title('x'.repeat(21)),null);
  const detail=read('chat/chat/chat-detail.html'),play=read('chat/chat/group-play.html');
- assert.match(detail,/fresh=loadGroupById\(gid\)/);
+ assert.match(detail,/expected=window\.MAOGroupWriteGuard\.read\(gid\)/);
  assert.match(detail,/policy\.can\(fresh,actor,action,target\)/);
- assert.match(detail,/if\(!saveCurrentGroupObject\(\)\)/);
+ assert.match(detail,/if\(!saveCurrentGroupObject\(expected\)\)/);
  assert.match(play,/group\.selfTitle=value/);
+});
+
+test('write guard rejects stale and cross-account updates and verifies readback',()=>{
+  let data=JSON.stringify([{id:'g1',members:[]},{id:'g2',name:'other'}]),account='001',fail=false;
+  const context={document:{querySelector:()=>({content:account})},localStorage:{getItem:()=>data,setItem:(_key,value)=>{if(fail)throw Error('quota');data=value;}}};
+  context.window=context;
+  vm.runInNewContext(read('shared/js/phone/group-write-guard.js'),context);
+  const api=context.MAOGroupWriteGuard,old=api.read('g1'),fresh=api.read('g1');
+  assert.equal(api.commit(fresh,{...fresh.group,selfTitle:'新头衔'}).ok,true);
+  assert.equal(api.commit(old,{...old.group,name:'旧页面'}).reason,'stale');
+  assert.equal(JSON.parse(data)[0].selfTitle,'新头衔');
+  const snap=api.read('g1');account='002';
+  assert.equal(api.commit(snap,snap.group).reason,'scope');
+  account='001';fail=true;
+  assert.equal(api.commit(snap,snap.group).reason,'storage');
+  fail=false;data=JSON.stringify([{id:'g2'}]);
+  assert.equal(api.commit(snap,snap.group).reason,'stale');
 });
