@@ -337,6 +337,22 @@ try {
       try {
         await peer.goto(BASE,{waitUntil:'domcontentloaded'});
         await peer.waitForFunction(()=>typeof window.MAOMAOMusicPlayback?.getState==='function');
+        // Restore an index-only old record without granting this new tab write ownership.
+        const legacyCheck=await peer.evaluate(id=>{
+          const original=localStorage.getItem('music_state');
+          const idx=tracks.findIndex(t=>t.id===id);
+          if(idx<0)throw Error('imported track missing');
+          const raw=JSON.stringify({idx,time:0.6,playing:true});
+          try{
+            localStorage.setItem('music_state',raw);
+            loadState();
+            return {unchanged:localStorage.getItem('music_state')===raw,
+              trackId:window.MAOMAOMusicPlayback.getState().trackId,paused:window.audio.paused,
+              ownerWrite:musicSaveOwnedState()};
+          }finally{if(original===null)localStorage.removeItem('music_state');else localStorage.setItem('music_state',original);}
+        },trackId);
+        assert.deepEqual(legacyCheck,{unchanged:true,trackId,paused:true,ownerWrite:false});
+
         assert.equal(await page.evaluate(()=>{window.audio.loop=true;return playTrack(tracks[currentIdx].id);}),true);
         const activeShared=await page.evaluate(()=>localStorage.getItem('music_playback_state_v1'));
         const denied=await peer.evaluate(async id=>{

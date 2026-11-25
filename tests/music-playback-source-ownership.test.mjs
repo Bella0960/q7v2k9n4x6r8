@@ -4,6 +4,7 @@ import {readFileSync} from 'node:fs';
 const page=readFileSync(new URL('../music/music.html',import.meta.url),'utf8');
 const moduleSource=readFileSync(new URL('../shared/js/phone/music-playback-controller.js',import.meta.url),'utf8');
 const helpers=page.slice(page.indexOf('  const musicController = window.MAOMusicPlaybackController.create('),page.indexOf('  // ===== IndexedDB：audio store'));
+const restore=page.slice(page.indexOf('  function loadState()'),page.indexOf("  window.addEventListener('pagehide', function() {\n    musicPauseNative"));
 const player=page.slice(page.indexOf('  async function playTrack(trackId)'),page.indexOf('  // 音频事件：进度更新'));
 assert.ok(helpers.includes('function musicPlaybackMessage') && player.includes('async function togglePlay'));
 function fakeLocks(){
@@ -15,22 +16,23 @@ function fakeLocks(){
    held=true;try{return await callback({name});}finally{held=false;}
  },get held(){return held;}};
 }
-function fixture(locks=fakeLocks(),initialScope='test-account'){
+function fixture(locks=fakeLocks(),initialScope='test-account',initialProgress=null){
  const tracks=[{id:'a',name:'A',artist:'a',source:'local'},{id:'b',name:'B',artist:'b',source:'local'},{id:'c',name:'C',artist:'c',source:'local'}];
  const revokes=[],saved=[],events=[],toasts=[],elements=new Map();
  let nextUrl=0,read=async id=>({id}),start=async()=>{audio.paused=false},scope=initialScope;
  const audio={src:'',paused:true,ended:false,currentTime:0,duration:12,pause(){this.paused=true},removeAttribute(k){if(k==='src')this.src=''},load(){this.currentTime=0;this.ended=false;this.paused=true},play(){return start()},addEventListener(){},removeEventListener(){}};
  const document={getElementById(id){if(!elements.has(id))elements.set(id,{style:{}});return elements.get(id)}};
- const store={getItem(){return null},setItem(){},};
+ const values=new Map();if(initialProgress!==null)values.set('music_state',JSON.stringify(initialProgress));
+ const store={getItem(k){return values.get(k)??null},setItem(k,v){values.set(k,String(v));}};
  const env={window:{audio,isShuffle:false},tracks,document,URL:{createObjectURL:()=> 'blob:'+ ++nextUrl,revokeObjectURL:url=>revokes.push(url)},getAudioBlob:id=>read(id),getTrackById:id=>tracks.find(t=>t.id===id),toast:m=>toasts.push(m),updatePlayIcon(){},renderAlbum(){},updateHeartIcon(){},closeImportSheet(){},renderTrackLyrics(){},musicDisplayArtist:t=>t.artist,readRecentIds:()=>[],saveRecentIds(){},localStorage:store,musicWarnOnce(){},showNP(){},musicApplyCurrentCover:async()=>{},musicEmitPlayback:type=>events.push({type,paused:audio.paused}),navigator:{},setTimeout(){}};
  env.window.MAOGroupWriteGuard={account:()=>scope};env.window.URL=env.URL;env.window.navigator={locks};
  new Function('window',moduleSource)(env.window);
  const api=new Function('e',`const {window,tracks,document,URL,getAudioBlob,getTrackById,toast,updatePlayIcon,renderAlbum,updateHeartIcon,closeImportSheet,renderTrackLyrics,musicDisplayArtist,readRecentIds,saveRecentIds,localStorage,musicWarnOnce,showNP,musicApplyCurrentCover,musicEmitPlayback,navigator,setTimeout}=e;
  let currentIdx=0,playing=false;
- function saveState(){e.saved(tracks[currentIdx].id)}
- `+helpers+player+`
- return {playTrack,togglePlay,musicPauseNative,musicDiscardAudioSource,controller:musicController,state:()=>({id:tracks[currentIdx].id,source:musicController.getState().trackId,pending:musicController.getState().pending,playing,confirmed:musicHasConfirmedSource(tracks[currentIdx])})};`)({...env,saved:id=>saved.push(id)});
- return {api,audio,revokes,saved,events,toasts,read(fn){read=fn},start(fn){start=fn},scope(value){scope=value},factory:env.window.MAOMusicPlaybackController};
+ function saveState(){e.saved(tracks[currentIdx].id);localStorage.setItem('music_state',JSON.stringify({id:tracks[currentIdx].id,idx:currentIdx,time:window.audio.currentTime,playing}));return true;}
+ `+helpers+player+restore+`
+ return {playTrack,togglePlay,loadState,musicSaveOwnedState,musicPauseNative,musicDiscardAudioSource,controller:musicController,state:()=>({id:tracks[currentIdx].id,source:musicController.getState().trackId,pending:musicController.getState().pending,playing,confirmed:musicHasConfirmedSource(tracks[currentIdx])})};`)({...env,saved:id=>saved.push(id)});
+ return {api,audio,revokes,saved,events,toasts,store,read(fn){read=fn},start(fn){start=fn},scope(value){scope=value},factory:env.window.MAOMusicPlaybackController};
 }
 test('failed native switch cannot label rejected bytes as previous track; retry reopens original',async()=>{
  const h=fixture();assert.equal(await h.api.playTrack('a'),true);
@@ -123,4 +125,25 @@ test('cancel pending lock cannot start native audio later',async()=>{
  const pending=h.api.playTrack('a');for(let i=0;i<40&&!grant;i++)await Promise.resolve();
  assert.equal(typeof grant,'function');await h.api.togglePlay();grant();
  assert.equal(await pending,false);assert.equal(calls,0);assert.equal(h.audio.src,'');
+});
+
+test('legacy index restore is read-only until confirmed playback and keeps the saved time',async()=>{
+ const legacy={idx:1,time:7,playing:true};const h=fixture(fakeLocks(),'test-account',legacy);
+ h.api.loadState();assert.equal(h.api.state().id,'b');assert.equal(h.audio.paused,true);
+ assert.equal(h.store.getItem('music_state'),JSON.stringify(legacy));assert.deepEqual(h.saved,[]);
+ assert.equal(h.api.musicSaveOwnedState(),false);
+ await h.api.togglePlay();assert.equal(h.audio.currentTime,7);
+ assert.equal(JSON.parse(h.store.getItem('music_state')).id,'b');assert.equal(JSON.parse(h.store.getItem('music_state')).time,7);
+ h.api.controller.dispose();
+});
+test('unknown stable ID must not restore a different song from an old index',async()=>{
+ const original={id:'deleted',idx:1,time:7};const h=fixture(fakeLocks(),'test-account',original);
+ h.api.loadState();assert.equal(h.api.state().id,'a');assert.equal(h.store.getItem('music_state'),JSON.stringify(original));
+ await h.api.togglePlay();assert.equal(h.audio.currentTime,0);assert.equal(h.api.state().id,'a');h.api.controller.dispose();
+});
+test('paused non-owner may not persist progress even if its source is still loaded',async()=>{
+ const locks=fakeLocks(),a=fixture(locks),b=fixture(locks);
+ await a.api.playTrack('a');await a.api.togglePlay();const previous=a.store.getItem('music_state');
+ await b.api.playTrack('b');assert.equal(a.api.musicSaveOwnedState(),false);
+ assert.equal(a.store.getItem('music_state'),previous);b.api.controller.dispose();
 });

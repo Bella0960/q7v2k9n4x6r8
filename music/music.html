@@ -1214,7 +1214,7 @@
     var state = { version: 1, type: type, trackId: t.id, title: t.name,
       artist: t.artist, currentTime: confirmed ? window.audio.currentTime || 0 : 0,
       duration: confirmed && Number.isFinite(window.audio.duration) ? window.audio.duration : 0,
-      playing: confirmed && !window.audio.paused && !window.audio.ended,
+      playing: confirmed && musicController.hasLease() && !window.audio.paused && !window.audio.ended,
       source: t.source === 'local' ? 'local' : 'remote', updatedAt: Date.now(),
       origin: 'native-audio-player', roleJoined: false };
     // 数据源只表示本机真实音频播放；不会对角色/好友宣称已经听到或同步。
@@ -1234,7 +1234,7 @@
       var t = tracks[currentIdx];
       var confirmed = musicHasConfirmedSource(t);
       return t ? { trackId: t.id, title: t.name, artist: t.artist,
-        playing: confirmed && !window.audio.paused && !window.audio.ended,
+        playing: confirmed && musicController.hasLease() && !window.audio.paused && !window.audio.ended,
         currentTime: confirmed ? window.audio.currentTime || 0 : 0 } : null;
     },
     subscribe: function (handler) {
@@ -1282,6 +1282,16 @@
   });
   function musicHasConfirmedSource(track) {
     return !!(track && musicController.getState().trackId === track.id);
+  }
+  // A legacy index is usable only when the record has no stable track ID.
+  function musicSavedTrack(saved) {
+    if (!saved || typeof saved !== 'object') return null;
+    if (saved.id != null && saved.id !== '') return getTrackById(saved.id);
+    return Number.isInteger(saved.idx) && saved.idx >= 0 ? tracks[saved.idx] || null : null;
+  }
+  function musicSaveOwnedState() {
+    if (!musicController.isScopeCurrent() || !musicController.hasLease() || !musicHasConfirmedSource(tracks[currentIdx])) return false;
+    return saveState();
   }
   function musicDiscardAudioSource() { musicController.release(); }
   function musicPauseNative() {
@@ -1713,7 +1723,7 @@
       if(localStorage.getItem('music_played_count')!==String(played))throw new Error('Playback count not persisted'); }
     catch (err) { musicWarnOnce('music-played-count','播放已开始，播放次数暂未保存'); }
     // 保存断点
-    saveState();
+    musicSaveOwnedState();
     showNP();
     musicApplyCurrentCover().catch(function () { toast('封面读取失败'); });
     musicEmitPlayback('play');
@@ -1749,14 +1759,14 @@
         var resumeTime = 0;
         try {
           var saved = JSON.parse(localStorage.getItem('music_state') || 'null');
-          if (saved && String(saved.id) === String(selected.id))
-            resumeTime = Math.max(0, Number(saved.time) || 0);
+          if (musicSavedTrack(saved) === selected && Number.isFinite(Number(saved.time)))
+            resumeTime = Math.max(0, Number(saved.time));
         } catch (err) {}
         const started = await playTrack(selected.id);
         if (started && musicHasConfirmedSource(selected) && !musicController.getState().pending && !window.audio.paused && resumeTime > 0 && Number.isFinite(window.audio.duration)) {
           try {
             if (musicController.seek(Math.min(resumeTime, Math.max(0, window.audio.duration - 0.1))).ok) {
-              saveState();
+              musicSaveOwnedState();
               musicEmitPlayback('seek');
             }
           } catch (err) { toast('当前音频无法恢复原播放进度'); }
@@ -1810,7 +1820,7 @@
       }
     }
     // 保存断点（每 5 秒存一次）
-    if (musicController.hasLease() && Math.floor(window.audio.currentTime) % 5 === 0) saveState();
+    if (Math.floor(window.audio.currentTime) % 5 === 0) musicSaveOwnedState();
   });
 
   // 点击"词"按钮切换歌词显示
@@ -2636,10 +2646,8 @@
     try {
       var s = JSON.parse(localStorage.getItem('music_state') || 'null');
       if (!s) return;
-      // 按 id 找（新格式优先），找不到再 fallback 到 idx（旧格式）
-      var t = null;
-      if (s.id) t = getTrackById(s.id);
-      if (!t && typeof s.idx === 'number' && tracks[s.idx]) t = tracks[s.idx];
+      // Stable IDs never fall back to an unrelated current index.
+      var t = musicSavedTrack(s);
       if (!t) return;
       currentIdx = tracks.indexOf(t);
       document.getElementById('miniName').textContent = t.name;
@@ -2650,8 +2658,7 @@
       // Reload restores metadata only; both source kinds reopen on explicit play.
       updateHeartIcon();
       renderAlbum();
-      // 立即把旧格式升级成新格式（存 id）
-      if (!s.id) saveState();
+      // Read-only restore. Upgrade the old record only after confirmed playback.
     } catch(e) {}
   }
 
