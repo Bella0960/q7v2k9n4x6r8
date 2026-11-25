@@ -5,7 +5,7 @@ const fail = code => { throw new Error(code); };
 const validId = v => typeof v === 'string' && v.length > 0 && v.length <= 256 && v.trim() === v;
 function scopeSnapshot(readScope) {
   const s = readScope();
-  if (!s || s.ready !== true || !/^MAO-[A-Z0-9]{12,24}$/.test(s.accountId) ||
+  if (!s || s.ready !== true || typeof s.accountId !== 'string' || !/^MAO-[A-Z0-9]{12,24}$/.test(s.accountId) ||
       s.pageAccountId !== s.accountId || !['user','super_admin'].includes(s.role)) fail('ACCOUNT_SCOPE_UNREADY');
   return {accountId:s.accountId,role:s.role};
 }
@@ -39,7 +39,7 @@ export async function verifyRoomContext({request,readScope,readScopedRoster,sign
   const roster=await readScopedRoster({accountId:initial.accountId,sessionId});
   check();
   if (!roster || roster.accountId!==initial.accountId || roster.sessionId!==sessionId ||
-      !Array.isArray(roster.roleIds) || !roster.roleIds.every(validId)) fail('ROSTER_UNVERIFIED');
+      !Array.isArray(roster.roleIds) || !Array.from(roster.roleIds).every(validId)) fail('ROSTER_UNVERIFIED');
   const roleIds=Object.freeze([...new Set(roster.roleIds)]);
   // Detect observable login changes across the asynchronous roster read.
   await account();
