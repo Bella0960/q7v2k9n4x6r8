@@ -116,7 +116,7 @@ async function main() {
     browser = await chromium.launch({ channel: 'msedge', headless: true });
     browserLabel = 'msedge';
   } catch (err) {
-    browser = await chromium.launch({ headless: true });
+    browser = await chromium.launch({ headless: true, ...(process.env.CHROMIUM_PATH?{executablePath:process.env.CHROMIUM_PATH}:{}) });
     browserLabel = 'bundled-chromium (msedge 不可用，已回退)';
   }
   console.log('[browser]', browserLabel);

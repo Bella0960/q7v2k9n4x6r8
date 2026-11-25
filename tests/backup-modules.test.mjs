@@ -9,25 +9,25 @@ const html=readFileSync(new URL('../settings/settings.html',import.meta.url),'ut
 const injection='    // 新功能使用 MAOMAOBackupRegistry.register()';
 assert.ok(backupSource.includes(injection),'test hook must match the real settings backup script');
 
-function makeLocalStorage(initial={}) {
+function makeLocalStorage(initial={},writeHook=null) {
   const storage=Object.assign(Object.create(null),initial);
   Object.defineProperties(storage,{
     getItem:{value(k){return Object.hasOwn(this,k)?this[k]:null}},
-    setItem:{value(k,v){this[k]=String(v)}},
+    setItem:{value(k,v){if(!writeHook||writeHook(k,v)!==false)this[k]=String(v)}},
     removeItem:{value(k){delete this[k]}},
     clear:{value(){for(const k of Object.keys(this))delete this[k]}},
     key:{value(i){return Object.keys(this)[i]||null}},
   });
   return storage;
 }
-function browser(initial={}) {
-  const storage=makeLocalStorage(initial);
+function browser(initial={},writeHook=null) {
+  const storage=makeLocalStorage(initial,writeHook);
   const win={};
   const ctx={window:win,document:{getElementById:()=>null},localStorage:storage,
     console,Date,Promise,Blob,setTimeout,clearTimeout,URL,confirm:()=>true};
   runInNewContext(registrySource,ctx,{filename:'backup-modules.js'});
   const source=backupSource.replace(injection,
-    '    window.__probe = { snapshot, validateBackup, restoreScoped, restoreStore, backupTargets, neverBackupKey };\n'+injection);
+    '    window.__probe = { snapshot, validateBackup, restoreScoped, restore, restoreStore, backupTargets, neverBackupKey, restoreIncoming, verifyRestore };\n'+injection);
   runInNewContext(source,ctx,{filename:'backup.js'});
   return {reg:win.MAOMAOBackupRegistry,tools:win.__probe,storage};
 }
@@ -204,4 +204,58 @@ test('real forum, chat and theme storage keys round-trip separately without wipi
   assert.equal(storage.getItem('beauty_presets'),themeValue);
   assert.equal(storage.getItem('diary_entry_001'),original.diary_entry_001);
   assert.equal(storage.getItem('mao_session_token'),original.mao_session_token);
+});
+
+test('atmosphere tone is owned by themes and old backups that omit it keep the local value',()=>{
+  const themeValue=JSON.stringify({name:'Monochrome',version:1});
+  const {reg,tools,storage}=browser({
+    beauty_presets:themeValue,
+    maomao_atmosphere_tone_v1:'dark'
+  });
+  // 导出：tone 进入 themes 模块快照，不落到其他模块
+  const exported=tools.snapshot(true,true);
+  const themeSnap=reg.selectSnapshot('themes',exported);
+  assert.equal(themeSnap.maomao_atmosphere_tone_v1,'dark');
+  assert.equal(reg.belongsTo('chats','maomao_atmosphere_tone_v1'),false);
+  // 旧版 themes 备份不含 tone：模块级恢复不得擦除本机 tone
+  assert.equal(tools.restoreScoped({beauty_presets:themeValue},'themes'),true);
+  assert.equal(storage.getItem('maomao_atmosphere_tone_v1'),'dark');
+  // 全量导入旧备份（无 tone）后，回填保留本机 tone，不被清空
+  const before={beauty_presets:themeValue,maomao_atmosphere_tone_v1:'dark'};
+  assert.equal(tools.restoreIncoming({beauty_presets:themeValue},null,before),true);
+  assert.equal(storage.getItem('maomao_atmosphere_tone_v1'),'dark');
+  // 备份自带 tone 时以备份为准，回填不覆盖
+  assert.equal(tools.restoreIncoming({maomao_atmosphere_tone_v1:'light'},null,before),true);
+  assert.equal(storage.getItem('maomao_atmosphere_tone_v1'),'light');
+});
+
+test('legacy tone restoration failure cannot report success and can roll back from the recovery snapshot',()=>{
+  const key='maomao_atmosphere_tone_v1';
+  const before={beauty_presets:'old',[key]:'dark',diary_entry_001:'keep'};
+  const incoming={beauty_presets:'new'};
+  for(const mode of ['throw','silent']){
+    let armed=true;
+    const {tools,storage}=browser(before,(k)=>{
+      if(k!==key||!armed)return true;
+      armed=false;
+      if(mode==='throw')throw Error('synthetic quota failure');
+      return false;
+    });
+    assert.equal(tools.restoreIncoming(incoming,null,before),false,mode);
+    assert.equal(Object.hasOwn(incoming,key),false,'backup remains unmodified');
+    assert.equal(tools.restore(before),true,'existing recovery point rollback');
+    assert.equal(tools.verifyRestore(before).ok,true,'rollback readback');
+    assert.equal(storage.getItem(key),'dark');
+    assert.equal(storage.getItem('diary_entry_001'),'keep');
+  }
+  assert.match(backupSource,/var ok = restoreIncoming\(incoming, scope, rpSnap\);\s*if \(!ok\)/,'import failure reaches existing rollback branch');
+});
+
+test('scoped explicit tone restores and unrelated module restore leaves tone untouched',()=>{
+  const key='maomao_atmosphere_tone_v1';
+  const {tools,storage}=browser({[key]:'dark',diary_entry_001:'old'});
+  assert.equal(tools.restoreIncoming({[key]:'light'},'themes',{}),true);
+  assert.equal(storage.getItem(key),'light');
+  assert.equal(tools.restoreIncoming({diary_entry_001:'new'},'diary',{}),true);
+  assert.equal(storage.getItem(key),'light');
 });

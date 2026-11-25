@@ -38,7 +38,7 @@ const pages = [
 
 try {
   await waitForServer();
-  const browser = await chromium.launch({ headless: true });
+  const browser = await chromium.launch({ headless: true, ...(process.env.CHROMIUM_PATH ? { executablePath: process.env.CHROMIUM_PATH } : {}), args: ['--no-sandbox', '--disable-dev-shm-usage'] });
   try {
     for (const width of [375, 390, 430]) {
       const context = await browser.newContext({
@@ -173,16 +173,16 @@ try {
           });
           await page.waitForFunction(() => {
             const shell = document.querySelector('.phone-mockup');
-            const sendButton = document.getElementById('myFloatSend');
+            const floating = document.getElementById('myFloatSend');
+            const native = document.querySelector('.send-icon-btn');
             return shell?.getAttribute('data-chat-theme-preset') === 'default'
-              && sendButton && getComputedStyle(sendButton).borderRadius === '50%';
+              && !floating
+              && native && getComputedStyle(native).backgroundColor === 'rgba(0, 0, 0, 0)' && native.getClientRects().length > 0;
           });
-          const defaultSend = await send.evaluate(el => ({
-            background: getComputedStyle(el).backgroundColor,
-            radius: getComputedStyle(el).borderRadius
+          const nativeSend = await page.locator('.send-icon-btn').evaluate(el => ({
+            background: getComputedStyle(el).backgroundColor
           }));
-          assert.equal(defaultSend.background, 'rgb(255, 255, 255)', 'default theme keeps the original white floating control');
-          assert.equal(defaultSend.radius, '50%', 'default theme keeps its original round send control');
+          assert.equal(nativeSend.background, 'rgba(0, 0, 0, 0)', 'default theme restores the transparent native send control');
         }
         process.stdout.write('PASS WeChat ' + label + ' @ ' + width + 'px\n');
       }

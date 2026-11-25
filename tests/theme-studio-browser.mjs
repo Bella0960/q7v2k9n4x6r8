@@ -25,7 +25,7 @@ server.listen(0,'127.0.0.1');await once(server,'listening');
 const url='http://127.0.0.1:'+server.address().port+'/theme-studio/theme-studio.html';
 let browser;
 try{
-  browser=await chromium.launch({headless:true,args:['--no-sandbox']});
+  browser=await chromium.launch({headless:true,...(process.env.CHROMIUM_PATH?{executablePath:process.env.CHROMIUM_PATH}:{}),args:['--no-sandbox','--disable-dev-shm-usage']});
   for(const width of [375,390,430]){
     const page=await browser.newPage({viewport:{width,height:812},isMobile:true,hasTouch:true,deviceScaleFactor:2});
     const errors=[];
