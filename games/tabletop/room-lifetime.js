@@ -48,6 +48,8 @@ export function createRoomLifetime({getContext,createDispatcher,spec,rules}) {
       const actor = 'role:'+roleId, v = current().view(actor);
       const seat = v.seats.find(s=>s.seatId===actor && s.kind==='role' && s.roleId===roleId);
       if (v.phase!=='playing' || !seat || seat.mode==='observer') fail('ROLE_CANNOT_MOVE');
+      // Sequential games must not schedule a role request before its turn.
+      if (['ludo','gomoku'].includes(v.gameId) && v.turnSeatId!==actor) fail('NOT_YOUR_TURN');
       return prepare(actor,roleId);
     },
     dispose
