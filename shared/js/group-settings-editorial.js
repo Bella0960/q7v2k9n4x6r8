@@ -352,7 +352,7 @@
       title.textContent='成员管理';title.prepend(english('MEMBERS'));
       subpage.append(manage);
       manage.classList.add('is-open');
-      if(viewParams.get('intent')==='invite') openManagement(true);
+      if(viewParams.get('intent')==='invite') requestAnimationFrame(function(){openManagement(true);});
     }else{
       title.textContent='记忆空间';title.prepend(english('MEMORY'));
       subpage.append(byId('memCard'));
@@ -361,6 +361,7 @@
     byId('btnBack').addEventListener('click',function(event){
       event.preventDefault();event.stopImmediatePropagation();
       var url=managementUrl(memoryView?'memory':'');
+      if(memberView&&viewParams.get('intent')==='invite')url='chat-settings.html?roleId='+encodeURIComponent(String(roleId));
       if(url)location.href=url;
     },true);
   }
