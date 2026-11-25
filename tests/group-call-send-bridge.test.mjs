@@ -45,3 +45,12 @@ test('progress publishes exact committed receipt and stops after scope revocatio
  const seen=[];assert.equal(await h.send('你好',h.token,h.guard,value=>seen.push(value)),null);
  assert.deepEqual(seen.map(x=>x.replyMids),[[],['r1']]);
 });
+
+test('revoked call stream paint exits before any text is read or rendered',()=>{
+ const a=page.indexOf('            function paintStreamLive(text) {');
+ const b=page.indexOf('                // Do not display a draft post',a);
+ assert.ok(a>=0&&b>a);
+ let discarded=0;
+ const guard=new Function('callTurn','callCurrent','discardStaleGroupTurn','isGroupChat',page.slice(a,b)+'\nthrow Error("unexpected paint");}\nreturn paintStreamLive;')({},()=>false,notify=>{assert.equal(notify,false);discarded++;},true);
+ guard('迟到回复');assert.equal(discarded,1);
+});

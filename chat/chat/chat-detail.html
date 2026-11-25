@@ -5993,6 +5993,7 @@
             // 重玩模式：不新增用户消息，直接基于现有历史重新请求
             let historyList = loadMessages();
             function stopForMissingRoleSource(reason, message) {
+                if(!callCurrent())return;
                 var marked = !!(sourceGateUser && _markUserSendFailed(
                     historyList, sourceGateUser.mid, sourceGateUser.time, reason
                 ));
@@ -6585,6 +6586,7 @@
               }
             } catch(e) { worldbookReadError = e; }
             if (worldbookReadError) {
+                if(!callCurrent())return;
                 console.error('[ChatPersonaSources] worldbook read/activation failed:', worldbookReadError);
                 // The user's bubble was already persisted before prompt construction.
                 // Reuse the existing failed-message/retry path; do not duplicate
@@ -7539,7 +7541,7 @@
                 if(_vl)_vl.streaming=false;
                 if(chatTitleEl)chatTitleEl.textContent=originalTitleText;
                 aiSending=false;
-                if(!groupPageExited&&notify!==false)showToast('群资料或聊天记录已变化，本轮回复已取消，请重新发送');
+                if(!groupPageExited&&notify!==false&&callCurrent())showToast('群资料或聊天记录已变化，本轮回复已取消，请重新发送');
             }
 
             // R4 渲染回调：交给 PhoneStream 每帧节流调用（正则清洗 + DOM 写入 + 滚动）
@@ -7554,6 +7556,10 @@
                     .replace(/\[(?:游|游戏|游戏私|游戏私聊|游戏猜|游戏猜测|游戏揭|游戏揭晓|群|群私|群私聊)[^\]\r\n]{0,1000}$/g, '');
             }
             function paintStreamLive(text) {
+                // A hung-up or invalidated call must not flash late text in the
+                // ordinary chat. The original scope and history guard still
+                // governs final persistence, including interrupted streams.
+                if(callTurn&&!callCurrent()){discardStaleGroupTurn(false);return;}
                 if(isGroupChat&&(groupPageExited||groupGuard.account()!==groupPageAccount)){inflightSnapshot=null;return;}
                 // Do not display a draft post or an unverified success claim during streaming.
                 if (momentsAction) {
