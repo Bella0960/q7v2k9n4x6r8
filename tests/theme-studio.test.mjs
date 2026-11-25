@@ -89,6 +89,13 @@ test('beauty marker reflects only explicit bubble overrides, not avatar/backdrop
   emptyVals.set('beauty_chat_global_v1',JSON.stringify({v:1,vars:{myBubbleBg:'',partnerBubbleColor:null,myBubbleDecorations:[]}}));
   const d3=boot('/chat/chat/chat-detail.html',emptyVals,'http://localhost/chat-detail.html?id=role-a');
   assert.equal(d3.attrs['data-ts-beauty'],undefined,'empty/null bubble values must not raise the marker');
+
+  // Unknown/typo bubble-prefixed keys and wrong-type (plain object) values must
+  // not match the DEFAULTS contract, so the legacy frosted default stays intact.
+  const unknown=new Map();
+  unknown.set('beauty_chat_global_v1',JSON.stringify({v:1,vars:{myBubbleUnknown:'#222222',partnerBubbleMystery:123,myBubbleBg:{nested:true}}}));
+  const d4=boot('/chat/chat/chat-detail.html',unknown,'http://localhost/chat-detail.html?id=role-a');
+  assert.equal(d4.attrs['data-ts-beauty'],undefined,'unknown/typo bubble keys and object values must not raise the marker');
 });
 
 test('phone viewport and safe-area layout exist without a separate desktop app',()=>{
