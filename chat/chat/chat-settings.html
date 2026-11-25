@@ -9,7 +9,7 @@
 <script src="../../shared/js/wallpaper-store.js?v=20261026v2"></script>
 <script src="../../shared/js/phone/phone_storage.js"></script>
 <script src="../../shared/js/phone/storage/media-repository.js?v=20261107v2"></script>
-<script src="../../shared/js/phone/group-portraits.js?v=20261125g2"></script>
+<script src="../../shared/js/phone/group-portraits.js?v=20261125g3"></script>
 <script src="../../shared/js/phone/group-write-guard.js?v=20261125g1"></script>
 <style>
   * { box-sizing: border-box; margin: 0; padding: 0; -webkit-tap-highlight-color: transparent; }
@@ -2107,17 +2107,20 @@
         '</div>';
       }).join('') + '</div>';
     }
+    function gpSafeAvatar(value) {
+      return typeof value==='string'&&/^(?:data:image\/(?:png|jpeg|jpg|webp|gif);base64,|https?:\/\/|\.{1,2}\/|\/[^/])/i.test(value)?value:'';
+    }
     function renderGroupAvatar(el, group) {
       if (!el) return;
-      if (group && group.avatar) {
-        el.innerHTML = '<img src="' + group.avatar + '" alt="">';
+      if (group && gpSafeAvatar(group.avatar)) {
+        el.innerHTML = '<img src="' + gpEscape(gpSafeAvatar(group.avatar)) + '" alt="">';
         return;
       }
       var members = (group && group.members) || [];
       if (members.length) {
         var cells = members.slice(0, 4).map(function (m) {
-          return m.avatar
-            ? '<img class="gp-avatar-cell" src="' + m.avatar + '" alt="">'
+          return m && gpSafeAvatar(m.avatar)
+            ? '<img class="gp-avatar-cell" src="' + gpEscape(gpSafeAvatar(m.avatar)) + '" alt="">'
             : '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>';
         }).join('');
         el.innerHTML = cells;
@@ -2145,13 +2148,13 @@
       gpNoticeInput.value = notice;
       gpNoticeSub.textContent = notice ? (notice.length > 18 ? notice.slice(0, 18) + '…' : notice) : '未设置公告';
       // 成员列表
-      gpMembersList.innerHTML = members.length ? members.map(function (m) {
-        var av = m.avatar
-          ? '<img src="' + m.avatar + '" alt="">'
+      gpMembersList.innerHTML = members.length ? members.filter(function(m){return m&&m.id!=null&&String(m.id)!=='__user';}).map(function (m) {
+        var av = gpSafeAvatar(m.avatar)
+          ? '<img src="' + gpEscape(gpSafeAvatar(m.avatar)) + '" alt="">'
           : PERSON_SVG;
-        return '<div class="gp-member-row" data-mid="' + String(m.id) + '">' +
+        return '<div class="gp-member-row" data-mid="' + gpEscape(String(m.id)) + '">' +
           '<div class="gp-member-avatar">' + av + '</div>' +
-          '<span class="gp-member-name">' + String(m.name || '成员') + '</span>' +
+          '<span class="gp-member-name">' + gpEscape(m.nickname || m.name || '成员') + '</span>' +
           '<button type="button" class="gp-member-remove">移除</button>' +
         '</div>';
       }).join('') : '<div style="color:#999;font-size:12px;padding:6px 2px;">暂无成员</div>';
@@ -2160,8 +2163,12 @@
           var row = btn.closest('.gp-member-row');
           var mid = row.getAttribute('data-mid');
           var g2 = loadCurrentGroup();
-          if (!g2) return;
-          g2.members = Array.isArray(g2.members) ? g2.members.filter(function (m) { return String(m.id) !== String(mid); }) : [];
+          if (!g2 || !Array.isArray(g2.members) || !g2.members.some(function(m){return m&&String(m.id)===mid;})) return;
+          if (mid==='__user') return;
+          if (!confirm('确定移除该成员？聊天记录会保留。')) return;
+          g2.members = g2.members.filter(function (m) { return String(m.id) !== String(mid); });
+          if(String(g2.ownerId)===mid)g2.ownerId='__user';
+          if(window.MAOGroupPortraits)window.MAOGroupPortraits.forgetMember(g2,mid);
           if (!saveCurrentGroup(g2)) {
             showToast('移除失败，请重试');
             return;
