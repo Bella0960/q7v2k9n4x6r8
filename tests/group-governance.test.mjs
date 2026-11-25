@@ -575,7 +575,7 @@ test('group turns fence requests, writes, followups and deferred actions against
   {let history=[];const result=w.GroupPrivateReceiptRecovery.reconcile({group:{id:'g1',members:[{id:'r1'}]},readGroupHistory:()=>history,readRoleHistory:()=>[{role:'assistant',mid:'m1',text:'secret',time:1,privateFromGroup:true,privateGroupReceiptV1:true,fromGroupId:'g1'}],saveGroupHistory:m=>{history=m;return true;}});assert.equal(result.ok,true);assert.equal(result.repaired,1);assert.equal(history[0].text,'');}
   assert.ok(html.includes('if(!groupTurnCurrent()){discardStaleGroupTurn();return;}\n            const chatResponseTimeoutMs'));
   assert.ok(html.includes('if(!groupTurnCurrent()){discardStaleGroupTurn();return;}\n            fullText'));
-  assert.ok(html.includes('var replySaved = groupTurnCurrent() && saveMessages(historyList)'));
+  assert.ok(html.includes('var replySaved = isGroupChat ? await saveGroupReplyLocked(historyList,groupTurnCurrent) : saveMessages(historyList)'));
   assert.ok(html.includes('if(isGroupChat){inflightSnapshot=null;groupPageExited=true;return;}'));
   assert.ok(html.includes('singleChatSendPending||!groupGuard.matches(followupScope)'));
   assert.ok(html.includes('targetId!==speakerId||!currentGroupSpeaker(targetId)'));
