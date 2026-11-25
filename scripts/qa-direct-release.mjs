@@ -484,6 +484,49 @@ async function verifyWorkerPublicRoutes() {
     'The isolated identity core is unexpectedly public through preview URLs');
 }
 
+
+function verifiedCoreAccountState({ total, matches, admins }, setupState) {
+  assert.ok(total === 0 || (matches === 1 && admins === 1),
+    'The isolated identity core contains conflicting accounts');
+  assert.equal(setupState, total === 0 ? QA_SETUP_OPEN : QA_SETUP_CLOSED,
+    'QA bootstrap lifecycle mismatch: close setup after the founder is initialized');
+  return total > 0;
+}
+
+// The gateway may never enable delegated social before its isolated authority
+// is actually migrated. A code verification or planned config is not live proof.
+// All SQL here is SELECT-only; no records, account IDs or secrets are emitted.
+async function verifySocialCoreReadiness(core, binding, initialized) {
+  assert.ok(initialized, 'Social identity core must be initialized');
+  for (const [key, expected] of [
+    ['MAO_IDENTITY_MODE', 'local'],
+    ['MAO_QA_ISOLATED_IDENTITY_CORE', 'true'],
+    ['MAO_SOCIAL_ENABLED', 'true'],
+    ['MAO_SOCIAL_E2EE_ENABLED', 'true'],
+    ['MAO_SOCIAL_CHAT_ENABLED', 'false'],
+    ['MAO_QA_ENROLLMENT_ENABLED', 'true']
+  ]) {
+    const value = binding(core, key);
+    assert.ok(value?.type === 'plain_text' && value.text === expected,
+      'Social identity core runtime not ready: ' + key);
+  }
+  const result = await cloudflare(
+    '/workers/durable_objects/namespaces/' + CORE_DB + '/query/v2',
+    { durable_object_id: CORE_DO, queries: [{
+      sql: 'SELECT (SELECT COUNT(*) FROM schema_migrations WHERE version IN (?, ?, ?)), (SELECT COUNT(*) FROM sqlite_master WHERE type = ? AND name IN (?, ?, ?, ?, ?, ?, ?)), (SELECT COUNT(*) FROM mao_accounts WHERE role = ?)',
+      params: ['0017_mao_social', '0018_mao_social_e2ee', '0019_mao_social_e2ee_media',
+        'table', 'mao_social_codes', 'mao_social_requests', 'mao_social_friends',
+        'mao_social_blocks', 'mao_social_messages', 'mao_social_e2ee_keys', 'mao_social_e2ee_media',
+        'super_admin']
+    }] });
+  const item = result?.results?.[0];
+  assert.equal(item?.meta?.rows_written, 0, 'Cannot prove social core readiness query was read-only');
+  const row = item?.rows?.[0];
+  assert.ok(Array.isArray(row) && row.length === 3 &&
+    row[0] === 3 && row[1] === 7 && row[2] === 1,
+    'Social identity core migrations or sole administrator not verified');
+}
+
 async function cloudflarePreflight() {
   await verifyWorkerPublicRoutes();
   const [qa, core] = await Promise.all([
@@ -523,18 +566,17 @@ async function cloudflarePreflight() {
       assert.ok(total >= 1 && matches === 1 && admins === 1,
         'The original QA founder/admin no longer matches');
     } else {
-      assert.ok(total <= 1 && (total === 0 || (matches === 1 && admins === 1)),
-        'The isolated identity core contains conflicting accounts');
-      // Once the QA founder exists, subsequent deployments must close the
-      // one-time setup switch instead of silently re-opening that route.
-      assert.equal(qaSetupState, total === 0 ? QA_SETUP_OPEN : QA_SETUP_CLOSED,
-        'QA bootstrap lifecycle mismatch: close setup after the founder is initialized');
-      coreInitialized = total === 1;
+      // A legitimate second ordinary user must not prevent future QA upgrades.
+      // The founder and sole active administrator still have to match exactly.
+      coreInitialized = verifiedCoreAccountState({ total, matches, admins }, qaSetupState);
     }
     console.log('Read-only verified ' + name + ': accounts=' + total +
       ', founder matches=' + matches + ', active admins=' + admins);
   }
   assert.equal(typeof coreInitialized, 'boolean', 'Cannot verify QA identity core state');
+  if (JSON.parse(readFileSync('wrangler.qa.jsonc', 'utf8')).vars?.MAO_DELEGATED_SOCIAL_ENABLED === 'true') {
+    await verifySocialCoreReadiness(core, binding, coreInitialized);
+  }
   verifyQaRuntimeVars(qa.bindings,
     JSON.parse(readFileSync('wrangler.qa.jsonc', 'utf8')).vars,
     { allowClosingSetup: coreInitialized });

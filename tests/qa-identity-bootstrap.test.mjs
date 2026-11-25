@@ -110,7 +110,7 @@ test('isolated QA core bootstrap must not mint an unused session', async () => {
   // ordinary local authority modes, with an entirely synthetic store.
   const source = readFileSync(new URL('../worker/lib/account-auth.js', import.meta.url), 'utf8');
   const start = source.indexOf('  async function bootstrap(request) {');
-  const end = source.indexOf('\n  async function register(request) {', start);
+  const end = source.indexOf('\n  // Enrollment is separate from the active-account session path.', start);
   assert.ok(start >= 0 && end > start, 'account bootstrap source must be found');
   const definition = source.slice(start, end).trim();
   const syntheticId = F;

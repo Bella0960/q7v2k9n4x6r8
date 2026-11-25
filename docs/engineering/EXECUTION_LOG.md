@@ -647,3 +647,76 @@ On the next turn/session, read this file and the current `AGENTS.md` first. Cont
 - ecf05ba270afe7b323c6dd6172e8029a308cf219 的三套群设置 Chromium 回归在 #44843160164 通过。完整发布仍须以 QA-only 门禁和同源 SHA 回执为准。
 
 - 第二轮定位记忆清理回归仍走旧入口，旧档案的角色副本与群共享 ID 时还会遮蔽群记录。明确从群选项入口进入时优先按群 ID 读取，单聊入口沿用原规则。Vite 和四套 Chromium 专项（含 375、390、430、1100px 的记忆清理）在 #44843984791 通过。
+
+
+## 2026-11-24 | REAL-FRIEND-001 historical restore on v161 (verify only)
+
+- Source reference: 32ce400d; v161 base 2e60e5e8. Restore QR, approved E2EE conversations, text/media/voice source and synthetic regression files; merge only social rows/actions into the current chat home, preserve group invitations and current roles.
+- Register original additive migrations 0017-0019 in this **unpublished** candidate for disposable SQLite tests. Do not deploy this candidate or migrate any live database. Current QA is delegated identity; peer status is not authoritatively available from the current mirror, so routes refuse delegated mode before data access. Preserve account core and old database bindings; no historical account/message/key copying. Requires separate reviewed authority contract and migration approval before release.
+- Verification pending; old results not attributed to new candidate.
+
+
+## 2026-11-24 | REAL-FRIEND-001 authority integration (verify only)
+
+- Confirmed live QA v161, isolated identity core v8. Implemented strict social/E2EE gateway routing with scoped user session and exact isolated founder proof; no plaintext/transaction routes, no forwarded cookies, no local peer mirror fallback.
+- Runtime migrations omit 0017–0019 on delegated QA and non-opt-in runtime. No live flags, databases or deployment changed. Before core update: verify source/namespace, backup, prior social data/key continuity and separate approval for additive schema. Core flags MAO_SOCIAL_ENABLED=true, MAO_SOCIAL_E2EE_ENABLED=true, MAO_SOCIAL_CHAT_ENABLED=false and gateway MAO_DELEGATED_SOCIAL_ENABLED=true require separately verified core readiness. Never use QA-only to change core or migrate data. Verification pending.
+
+
+## 2026-11-24 | owner approved isolated QA social-core upgrade
+
+- Owner explicitly approved isolated QA identity-core upgrade and additive social schema, not production or destructive migration. Cloudflare read-only checks: QA web v161, identity core v8; both expected namespace bindings unchanged, one account each; core has schema 0001–0016 and no social tables, web QA has seven social tables (all count zero) and migration 0020 already recorded. Historical separate preview untouched. No row values or credentials exported.
+- Old verify run 45414982037 failed at gate 49: admin synthetic harness used full migration list instead of runtime subset; old menu-registry and old prebuild contract differed from current architecture. Correct tests while retaining actual consent/E2EE and full-gate requirements. Enable only isolated core E2EE settings and delegated web opt-in in candidate configs; do not deploy this via qa-only until core readiness. Core export/backup must be securely retained and verified (never public artifacts), approved separate core-only release path and exact core baseline required. No actual database write or deployment yet.
+
+
+## 2026-11-25 | REAL-FRIEND-001 follow-up after public verify failure
+
+- Run 45417708118 failed at full regression gate 49 in admin-cloud-api tests 184/205/227/577. Actual cause: health collector still used the unconditional full MIGRATIONS list while runtime and test harness now intentionally exclude social schema for non-opt-in/delegated runtime. Corrected collector to use runtimeMigrations(env) for required schema while recognizing retained optional versions and still flagging unknown/missing required versions. Added local opt-in/missing/retained regression; no weakened gate. Online web QA remains v161, isolated core v8. MCP release also failed; not mixing its changes into this candidate.
+
+
+## 2026-11-25 | REAL-FRIEND-001 — isolate Moments browser navigation
+
+- Verify 45461551609 stopped at browser phase 391/category other. Exact v161/candidate blobs for chat-settings.html and Moments browser test were unchanged. Inspected backup.js: after verified import it schedules location.reload() in 700 ms. The old test observed cover storage recovery but reused the import tab for role-settings navigation without waiting for its scheduled reload. This is a concrete competing-navigation path; sanitized logs do not prove the underlying browser error string. Fix waits for actual same-frame import reload (listener installed before import), rechecks restored cover, closes the import page and opens a fresh role-settings page; verifies HTTP success, exact URL, page errors and original toggle/post assertions. No product module, account, schema, workflow or deployment settings changed in this commit. Local Chromium was blocked by environment policy (ERR_BLOCKED_BY_ADMINISTRATOR), so reproduction/full verification remains with existing public QA runner. v161 and core v8 unchanged. Do not release until all required checks and separate core backup/readiness have passed.
+
+
+## 2026-11-25 | REAL-FRIEND-001 — identity core release guard
+
+- #513 public verify 45462579329 succeeded for 23dc0286; actual live core still v8 and web v161. MCP release failed twice before tests at read-only Cloudflare preflight. Official endpoint permission schema confirms DO query/v2 requires Workers Scripts Write (dashboard Edit) even for SELECT. GitHub QA workflow reads CANDIDATE_DEPLOY_TOKEN/CANDIDATE_ACCOUNT_ID. User owns secret rotation; no credential accessed or changed.
+- Correct the old one-account ceiling in core release preflight, retaining exact founder and sole active administrator + closed setup. Add read-only fail-closed readiness guard for delegated social: require local isolated core, social/E2EE enabled, plaintext disabled, 3 exact migration versions, 7 expected tables, exactly one total super_admin, zero rows written. Add synthetic tests for legitimate second user, wrong founder, second admin, missing migration/table/config, write evidence. This prevents publishing a social UI before the actual core is ready. No live core update or data migration. Private verified backup, separate authorized core-only release and invitation enrollment remain prerequisites; current QA-only channel cannot perform them. Submit verification after serialized MCP request/credential recovery is coordinated; do not rerun previous verified SHA.
+
+
+
+## 2026-11-24 | MCP-001 restore on v161
+
+- Restore original connection center, scoped client/permissions/AI adapter and existing tests from #202 / 6db64c36; add settings link and adapter scripts without any changes to the live chat request loop. No old workflows, SW, package or API credentials copied.
+- Fix token read ordering, pending connection cancellation, stale responses, corrupt saved metadata, checked writes and bounded disconnect. No automatic tool invocation, no real endpoint used. Synthetic QA and phone verification pending. This independent branch does not include the blocked social schema candidate.
+
+
+## 2026-11-25 | MCP-001 restore QA failure repair
+
+- Actual public release run 45415570102 failed at gate 49/51: mcp-client.test.mjs:553, mcp-role-permissions.test.mjs:114 and :126. Corrected invalid catalog fixture (40 x 5 x 1200 Chinese characters did not exceed 768 KiB; 45 does, with explicit per-schema/response budget checks), synchronous listForRole error assertion, and exact grant-cap error assertion. Added post-cap retained permission and denied-new-tool checks. No runtime security limits weakened. Carried the same already-submitted narrow Moments browser navigation race fix from #513 into this independently based v161 candidate to avoid known shared test failure. Wait for serialized #513 verification, then test current exact MCP candidate or its updated integration on the actually deployed baseline. No deployment or live data changes.
+
+
+## 2026-11-25 | REAL-FRIEND-001 — preserve deployed MCP v162
+
+- Actual QA release 45464094512 attempt 3 succeeded after user rotated the deployment credential. v162 source 83bf8fd5003167a77052a66d9562876647158210 and active Worker version 0c366cb5-c5da-4af1-9ac4-81a77221f1df verified; independent identity core v8 unchanged. Integrate v162 as second parent of #513, copying only changed MCP blobs, preserving the identical Moments fix and both execution histories. No changes to either live deployment. Revalidate combined candidate before release; core readiness, private backup/rollback, authorized separate release and enrollment remain required. Never deploy old v161 candidate over v162.
+
+- Added real SQLite disposable migration fixture containing synthetic founder, pending and active accounts, session, one-use invite and audit. Requires exact row equality across 0017–0019, integrity/foreign-key check, old migration-list compatibility, idempotence, and the unique-admin constraint. This is migration compatibility evidence, NOT a live backup or a rollback rehearsal against real data; no live write. Combined candidate will be submitted through verify-only fixed QA entry.
+
+
+## 2026-11-25 | REAL-FRIEND-001 — isolated pending enrollment
+
+- Add narrowly gated registration and activation endpoints, private service binding only on preview, exact isolated founder and ready core proof, no active or pending browser session issued during registration/activation, original core credential validation/rate limit and transactional target-bound one-time invite. Existing active login remains unchanged. QA status explicitly gates account UI; activation requires credentials again and then normal login. Both candidate configs opt in; actual live core/web unchanged. New synthetic end-to-end tests needed and must pass before deploying. Private verified backup/independent core-only release remain open; never treat code as production migration.
+
+- Strengthen enrollment readiness to require exact configured active founder and both core security secrets; clear activation password immediately. Add two real SQLite core/gateway createApp integration tests covering separate pending accounts, no cookie/mirror prior to authorization, wrong recipient and password, one-time code, revoked internal session, normal active login and social scope, disabled opt-in and forged founder/context. New candidate still requires actual public isolated test.
+
+- Readback review: preserve non-opt-in bootstrap JSON shape; integration test consumes existing invite.code response contract. No live mutation.
+
+
+## 2026-11-25 | REAL-FRIEND-001 — three enrollment regression harness repairs
+
+- Verify 45470649390 failed at gate 3: account-qa-bootstrap-route.test.mjs:193, :346 and qa-identity-bootstrap.test.mjs:117. Static readback identifies missing actual showQaEnrollment helper in VM fixture, missing default-false qaEnrollmentReady in stale-submit fixture, and bootstrap extraction extending into new function definitions. Exercise the real helper, maintain existing assertions, add explicit opt-in and negative readiness cases, use exact bootstrap boundary. No product permission relaxation. Prior migration verify 45469170848 green. Native core export failed HTTP 500; two read-only logical passes stable but persistence tool call blocked before completion. No verified backup or core deployment. Do not repeat blocked operation or publish raw account/session data.
+
+
+## 2026-11-25 | REAL-FRIEND-001 — atomic social schema upgrade
+
+- Existing transaction covered each individual migration; now consecutive pending 0017–0019 social migrations and their version markers share one transaction, preserving all previously applied migrations. Add synthetic real SQLite interruption at each version marker, checking exact schema/account/version rollback, integrity, clean retry and old migration-list compatibility in both native transaction adapter and BEGIN/ROLLBACK fallback. Prior test request 45517647047 still in progress at patch start; do not cancel or overwrite it. Actual isolated core backup and independently authorized core-only runner remain unverified. Cloudflare official SQLite PITR documents 30-day recovery and runtime bookmark APIs; presence of feature documentation is not a verified restore point for existing QA core. D1 export cannot export Durable Object SQLite. No live changes.
