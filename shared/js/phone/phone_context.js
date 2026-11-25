@@ -286,7 +286,7 @@
 
         // 3. 长期记忆
         try {
-            var memories = Storage.getMemories(contactId);
+            var memories = typeof Storage.getActiveMemories === 'function' ? Storage.getActiveMemories(String(contactId)) : [];
             if (memories && memories.length) {
                 var memText = memories.map(function (m) {
                     if (typeof m === 'string') return m;
