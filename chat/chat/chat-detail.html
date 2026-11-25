@@ -7,7 +7,7 @@
     <script src="../../shared/js/native-feel.js"></script>
     <script src="../../shared/js/custom-css.js"></script>
     <script src="../../shared/js/wallpaper-store.js?v=20261026v2"></script>
-    <script src="../../shared/js/chat-beauty.js?v=20261102v3"></script>
+    <script src="../../shared/js/chat-beauty.js?v=20261124qa158"></script>
     <link rel="stylesheet" href="../../shared/css/chat-beauty-runtime.css?v=20261031v1">
     <link rel="stylesheet" href="../call/call-overlay.css?v=20261121call1">
     <script src="../../shared/js/phone/phone_storage.js?v=20261121memory1"></script>
@@ -2128,6 +2128,12 @@
     <link rel="stylesheet" href="../../shared/css/theme-studio-runtime.css?v=20261121b">
     <script src="../../shared/js/theme-studio-assets.js?v=20261121b"></script>
     <script defer src="../../shared/js/theme-studio-runtime.js?v=20261121b"></script>
+<link rel="stylesheet" href="../../shared/css/atmosphere-theme.css?v=20261124qa158">
+<link rel="stylesheet" href="../../shared/css/atmosphere-pages.css?v=20261124qa158">
+<script defer src="../../shared/js/atmosphere-icons.js?v=20261124qa158"></script>
+<script defer src="../../shared/js/atmosphere-theme.js?v=20261124qa158"></script>
+<script defer src="../../shared/js/atmosphere-pages.js?v=20261124qa158"></script>
+<script defer src="../../shared/js/atmosphere-composer.js?v=20261124qa158"></script>
 </head>
 <body class="chat-light-detail">
     <div class="phone-mockup">
@@ -11468,11 +11474,19 @@ form#chat-form .send-icon-btn { display: flex !important; visibility: visible !i
     var d = document.getElementById('chat-form');
     var cap = document.querySelector('.input-capsule');
     var wechat = isWechat();
-    if(cap) cap.style.marginRight = '50px';
+    var shell = document.querySelector('.phone-mockup');
+    var atmosphere = !!(shell && shell.getAttribute('data-chat-theme-preset') === 'atmosphere');
     if(!d) return;
     var old = d.querySelector('.send-icon-btn');
-    if(old) old.style.display = 'none';
     var b = document.getElementById('myFloatSend');
+    if(atmosphere){
+      if(cap) cap.style.removeProperty('margin-right');
+      if(old) old.style.removeProperty('display');
+      if(b) b.remove();
+      return;
+    }
+    if(cap) cap.style.marginRight = '50px';
+    if(old) old.style.display = 'none';
     if(!b){
       b = document.createElement('button');
       b.id = 'myFloatSend';
