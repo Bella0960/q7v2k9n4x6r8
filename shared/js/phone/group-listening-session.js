@@ -246,7 +246,17 @@
       if(['pause','ended','release','error'].includes(event?.type))reconcile();
     }
     const unsubscribe=player.subscribe(onPlayer);
-    function onStorage(){reconcile();}
+    function onStorage(event){
+      if(!ensure())return;
+      // Scoped catalog deletion/replacement invalidates only a missing current
+      // track. Metadata edits and unrelated storage must not interrupt audio.
+      const key=event?.key, prefix='__mao_account_v1__'+encodeURIComponent(scope.account)+'__';
+      if(session.status!=='ended'&&session.trackId&&
+        (key===null||key==='music_local_tracks'||key===prefix+'music_local_tracks')&&!getTrack(session.trackId)){
+        invalidate('TRACK_UNAVAILABLE');return;
+      }
+      reconcile();
+    }
     function onExit(){invalidate('PAGE_EXIT');}
     root.addEventListener('storage',onStorage);
     root.addEventListener('pagehide',onExit);

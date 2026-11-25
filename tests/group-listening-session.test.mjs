@@ -190,3 +190,21 @@ test('sparse queue update cannot replace active queue or interrupt playback',asy
   }finally{h.api.destroy();}
  }
 });
+
+test('current track deletion releases native audio; metadata and unrelated deletion preserve it',async()=>{
+ const h=fixture(),s=(await h.api.play(ready(h))).snapshot,src=h.audio.src;
+ const event=key=>{for(const fn of h.events.get('storage')||[])fn({key});};
+ h.tracks.set('a',{id:'a',name:'renamed'});h.tracks.delete('b');
+ event('music_local_tracks');assert.equal(h.api.getSnapshot().revision,s.revision);assert.equal(h.audio.src,src);assert.equal(h.audio.paused,false);
+ h.tracks.delete('a');event('music_recent');assert.equal(h.audio.src,src);
+ event('__mao_account_v1__MAO-BBBBBBBBBBBB__music_local_tracks');assert.equal(h.audio.src,src);
+ event('__mao_account_v1__MAO-AAAAAAAAAAAA__music_local_tracks');
+ assert.equal(h.api.getSnapshot(),null);assert.equal(h.audio.src,'');assert.equal(h.audio.paused,true);
+ h.api.destroy();
+});
+test('catalog deletion cancels pending load and prevents stale completion after clear',async()=>{
+ const h=fixture(),s=ready(h),release=h.defer(),pending=h.api.play(s);
+ h.tracks.delete('a');for(const fn of h.events.get('storage')||[])fn({key:null});
+ release();assert.equal((await pending).ok,false);assert.equal(h.api.getSnapshot(),null);assert.equal(h.audio.src,'');assert.equal(h.audio.paused,true);
+ h.api.destroy();
+});
