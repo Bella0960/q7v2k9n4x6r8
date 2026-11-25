@@ -134,3 +134,17 @@ test('lost native source after a real pause becomes error and is not projected a
  assert.equal(h.root.MAOGroupListeningContext.project({groupId:'g1',roleId:'r1',readSnapshot:()=>h.api.getSnapshot(),hasRole:id=>h.roles.has(id)}),null);
  assert.equal((await h.api.play(lost)).ok,true);h.api.destroy();
 });
+
+test('batch queue validates through one catalog scan and rejects unavailable tracks',()=>{
+ const h=fixture();let scans=0,lookups=0,broken=false;
+ const original=h.opts.catalog.getTrack;
+ h.opts.catalog.getTrack=id=>{lookups++;return original(id);};
+ h.opts.catalog.listTracks=()=>{scans++;return broken?{ok:false}:{ok:true,tracks:[...h.tracks.values()]};};
+ for(let i=0;i<99;i++)h.tracks.set('t'+i,{id:'t'+i,name:'track'});
+ const s=ready(h);lookups=0;const queue=['a',...Array.from({length:99},(_,i)=>'t'+i)];
+ const result=h.api.setQueue(s,queue);
+ assert.equal(result.ok,true);assert.equal(scans,1);assert.equal(lookups,0);assert.equal(result.snapshot.queue.length,100);
+ h.tracks.delete('t1');assert.equal(h.api.setQueue(result.snapshot,queue).code,'INVALID_QUEUE');
+ broken=true;assert.equal(h.api.setQueue(result.snapshot,['a']).code,'INVALID_QUEUE');
+ assert.deepEqual(h.api.getSnapshot().queue,queue);h.api.destroy();
+});

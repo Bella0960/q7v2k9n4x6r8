@@ -13,6 +13,11 @@
     const index=s.queue.indexOf(s.trackId);
     return index>=0&&index+1<s.queue.length?s.queue[index+1]:null;
   }
+  // Only IDs still in the authoritative catalog are selectable. Retain order.
+  function availableSelection(ids,tracks){
+    const available=new Set(tracks.map(t=>t.id));
+    return new Set([...ids].filter(id=>available.has(id)).slice(0,100));
+  }
   function mount(o){
     const {host,menu,header,getGroupScope,hasRole,memberName,paintAvatar,notify}=o||{};
     if(!host||!menu||!header||typeof getGroupScope!=='function'||typeof hasRole!=='function'||!root.MAOGroupListeningSession||!root.MAOMusicCatalogAdapter)return null;
@@ -87,7 +92,7 @@
     function openPicker(){
       if(!displayDialog('picker'))return;
       const s=snapshot(),result=catalog.listTracks();
-      rows=result?.ok?result.tracks:[];selected=new Set(s?.queue||[]);page=0;searchValue='';
+      rows=result?.ok?result.tracks:[];selected=availableSelection(s?.queue||[],rows);page=0;searchValue='';
       title.textContent='选择歌曲';hint.textContent=result?.ok?(rows.length?'来自你的音乐库 · 最多选择100首':'音乐库还没有歌曲，请先在音乐应用中导入'):'音乐库暂时无法读取，请稍后重试';
       renderPicker();
     }
@@ -116,7 +121,11 @@
     }
     async function confirmSelection(){
       if(!scope()||!dialog.open||mode!=='picker'||!selected.size)return;
-      const ids=[...selected];if(ids.some(id=>!get(id))){warn('TRACK_UNAVAILABLE');return;}
+      const latest=catalog.listTracks();
+      if(!latest?.ok){warn('TRACK_UNAVAILABLE');return;}
+      const valid=availableSelection(selected,latest.tracks);
+      if(valid.size!==selected.size){rows=latest.tracks;selected=valid;renderPicker();warn('TRACK_UNAVAILABLE');return;}
+      const ids=[...valid];
       if(!ensureSession())return;const s=snapshot();if(!s)return;
       const picked=api.selectTrack(s,ids[0]);if(!picked.ok){warn(picked.code);return;}
       const queued=api.setQueue(picked.snapshot,ids);if(!queued.ok){warn(queued.code);return;}

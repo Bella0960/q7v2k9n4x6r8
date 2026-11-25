@@ -138,9 +138,19 @@
       if(!session.queue.includes(id))session.queue=[id];
       busy=false;return ok('selected');
     }
+    function validQueueTracks(ids){
+      if(ids.some(id=>!validId(id)))return false;
+      try{
+        if(typeof catalog.listTracks!=='function')return ids.every(id=>!!getTrack(id));
+        const snapshot=catalog.listTracks();
+        if(!snapshot?.ok||!Array.isArray(snapshot.tracks))return false;
+        const available=new Set(snapshot.tracks.map(t=>t.id));
+        return ids.every(id=>available.has(id));
+      }catch{return false;}
+    }
     function setQueue(token,ids){
       const denied=authorize(token);if(denied)return denied;
-      if(!Array.isArray(ids)||ids.length>100||new Set(ids).size!==ids.length||ids.some(id=>!getTrack(id))||
+      if(!Array.isArray(ids)||ids.length>100||new Set(ids).size!==ids.length||!validQueueTracks(ids)||
         (session.trackId!==null&&!ids.includes(session.trackId)))return fail('INVALID_QUEUE');
       if(!ensure())return fail('SCOPE_CHANGED');
       session.queue=ids.slice();session.revision++;return ok('queue');

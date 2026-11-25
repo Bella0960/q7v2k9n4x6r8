@@ -13,3 +13,10 @@ test('manual pause, still-playing, loading and detached source cannot advance',(
  for(const a of [{ended:false,paused:true},{ended:true,paused:false},null])assert.equal(next(state,a),null);
  for(const s of [{...state,playing:true},{...state,status:'loading'},{...state,currentTime:0.2},{...state,duration:0},{...state,trackId:'old'},null])assert.equal(next(s,audio),null);
 });
+
+const prune=new Function(fn+'\nreturn availableSelection;')();
+test('deleted selections are pruned while remaining order is preserved',()=>{
+ assert.deepEqual([...prune(['gone','b','a'],[{id:'a'},{id:'b'}])],['b','a']);
+ assert.deepEqual([...prune(['gone'],[])],[]);
+ assert.equal(prune(Array.from({length:110},(_,i)=>'t'+i),Array.from({length:110},(_,i)=>({id:'t'+i}))).size,100);
+});
