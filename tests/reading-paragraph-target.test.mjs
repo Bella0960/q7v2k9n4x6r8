@@ -91,3 +91,25 @@ test('failed AI reply leaves independently saved personal comment untouched',asy
  const p=h.start();await h.waitForCall();h.reject(Error('offline'));await p;
  assert.equal(h.saved.length,0);assert.equal(h.cache[key].thread[0].text,'离线也要保留');
 });
+
+test('auto and manual comments use novel-reader context, never unrelated life history',async()=>{
+ for(const automatic of [true,false]){
+  const h=harness();
+  h.c.PhoneStorage.getChatHistory=()=>{throw Error('unrelated chat must not be read');};
+  h.c.PhoneStorage.getMemories=()=>{throw Error('unrelated memory must not be read');};
+  h.stored.set(h.c.coReadKey('coread',h.c.account),JSON.stringify({auto:true,interval:60,limit:5}));
+  const t={...target('a',0),bookName:'Fixture novel',chapterTitle:'Winter chapter',paragraph:'The snow fell outside the fictional inn.'};
+  const p=h.start({auto:automatic,target:t});await h.waitForCall();
+  const {system,user}=h.requests[0];
+  assert.match(system,/一起阅读同一本小说/);
+  assert.match(system,/不是小说中的人物/);
+  assert.match(system,/禁止虚构自己的生活经历/);
+  assert.match(system,/禁止剧透/);
+  assert.match(user,/Fixture novel/);
+  assert.match(user,/Winter chapter/);
+  assert.match(user,/fictional inn/);
+  assert.doesNotMatch(user,/DO_NOT_SEND_FUTURE|近期聊天：|角色记忆：/);
+  h.resolve(automatic?'SKIP':'The setting feels bleak.');await p;
+  assert.equal(h.calls(),1);
+ }
+});
