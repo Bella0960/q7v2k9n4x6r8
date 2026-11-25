@@ -455,7 +455,7 @@
     if (!roleId || !indexScope(guard.scope)) return {ok:false,reason:'invalid-scope'};
     // Preserve array coordinates (including excludeRecent) when excluding records.
     var filtered = history.map(function(m) {
-      if (!m || m.groupId != null || m.memberId != null ||
+      if (!m || m.groupId != null || m.memberId != null || m.type === 'group_welcome' ||
           m.visibility === 'private' || m.visibility === 'role_only' ||
           (m.sourceRoleId != null && String(m.sourceRoleId) !== roleId) ||
           (m.roleId != null && String(m.roleId) !== roleId) ||
