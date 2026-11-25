@@ -8,7 +8,7 @@ function checked(value) {
 }
 export function createRoomSession({verifyContext,createLifetime,spec,rules}={}) {
   if (typeof verifyContext!=='function' || typeof createLifetime!=='function') fail('INVALID_SESSION_ADAPTER');
-  let status='idle', context=null, lifetime=null, pending=null;
+  let status='idle', context=null, lifetime=null, pending=null, rosterRevision=0;
   function dispose() {
     if(status==='disposed') return;
     status='disposed';context=null;
@@ -32,6 +32,7 @@ export function createRoomSession({verifyContext,createLifetime,spec,rules}={}) 
         const next=checked(await verifyContext({signal:controller.signal}));
         if(status==='disposed'||controller.signal.aborted) fail('ROOM_DISPOSED');
         if(previous&&(previous.accountId!==next.accountId||previous.sessionId!==next.sessionId)) fail('SCOPE_CHANGED');
+        if(previous&&(previous.roleIds.length!==next.roleIds.length||previous.roleIds.some(id=>!next.roleIds.includes(id)))) rosterRevision++;
         context=next;status='ready';
         if(!lifetime) lifetime=createLifetime({getContext,spec,rules});
         if(status==='disposed') {const old=lifetime;lifetime=null;old?.dispose();fail('ROOM_DISPOSED');}
@@ -42,11 +43,19 @@ export function createRoomSession({verifyContext,createLifetime,spec,rules}={}) 
     return job.promise;
   }
   function active() {getContext();if(!lifetime) fail('SESSION_NOT_READY');return lifetime;}
-  function bind(callback) {return payload=>{active();return callback(payload);};}
+  function bind(callback,roleId=null) {
+    const revision=rosterRevision;
+    return payload=>{
+      active();
+      if(roleId!==null&&!context.roleIds.includes(roleId)) fail('ROLE_UNAVAILABLE');
+      if(revision!==rosterRevision) fail('STALE_ROSTER');
+      return callback(payload);
+    };
+  }
   return Object.freeze({
     refresh,dispose,status:()=>status,
     viewUser:()=>active().viewUser(),
     prepareUserAction:()=>bind(active().prepareUserAction()),
-    prepareRoleMove:roleId=>bind(active().prepareRoleMove(roleId))
+    prepareRoleMove:roleId=>bind(active().prepareRoleMove(roleId),roleId)
   });
 }
