@@ -695,14 +695,16 @@
         });
     }
     function rpWriteSnapshot(snap, role) {
+        var media = arguments[2] || '{}';
         return rpOpen().then(function (db) {
             return new Promise(function (resolve, reject) {
                 var tx = db.transaction(RP_STORE_NAME, 'readwrite');
-                tx.objectStore(RP_STORE_NAME).put({ role: role, snap: snap, createdAt: Date.now() });
+                // add is an atomic reservation: an unresolved recovery point must never be replaced.
+                tx.objectStore(RP_STORE_NAME).add({ role: role, snap: snap, media: media, createdAt: Date.now() });
                 tx.oncomplete = function () { resolve(); };
                 tx.onerror = function () { reject(tx.error || new Error('Restore-point write failed')); };
                 tx.onabort = function () { reject(tx.error || new Error('Restore-point write aborted')); };
-            });
+            }).finally(function () { db.close(); });
         });
     }
     function rpReadSnapshot(role) {
@@ -712,7 +714,7 @@
                 var req = tx.objectStore(RP_STORE_NAME).get(role);
                 req.onsuccess = function () { resolve(req.result || null); };
                 req.onerror = function () { reject(req.error); };
-            });
+            }).finally(function () { db.close(); });
         });
     }
     function rpDeleteRole(role) {
@@ -1247,6 +1249,132 @@
     }
     // BACKUP-SAFE-001: read-only structural checks against current registry.
     // No independent restore engine or schema change.
+    // Capture the original records of every store this import will write.
+    // Keep native blobs until the readonly transaction commits; encode only
+    // afterward. An incomplete or oversized snapshot prevents import.
+    async function captureMediaRestorePoint(obj, scope, isCurrent) {
+        var maxChars = 64 * 1024 * 1024, maxRows = 100000;
+        var used = 0, count = 0, out = Object.create(null);
+        function check() {
+            if (!isCurrent()) throw new Error('Restore scope changed');
+        }
+        function charge(n) {
+            used += n;
+            if (used > maxChars) throw new Error('Media recovery point exceeds limit');
+        }
+        function plain(value) {
+            if (value === null || typeof value === 'string' || typeof value === 'boolean' ||
+                (typeof value === 'number' && Number.isFinite(value) && !Object.is(value,-0))) return;
+            if (typeof value !== 'object' || !value ||
+                (!Array.isArray(value) && Object.getPrototypeOf(value) !== Object.prototype &&
+                 Object.getPrototypeOf(value) !== null)) throw new Error('Unsupported recovery value');
+            Object.keys(value).forEach(function(k) { plain(value[k]); });
+            if (Array.isArray(value) && Object.keys(value).length !== value.length)
+                throw new Error('Unsupported sparse recovery array');
+        }
+        function openExisting(name) {
+            return new Promise(function(resolve,reject) {
+                var missing = false, stopped = false, req;
+                try { req = indexedDB.open(name); } catch(e) { reject(e); return; }
+                req.onupgradeneeded = function(e) {
+                    missing = e.oldVersion === 0;
+                    req.transaction.abort();
+                };
+                req.onblocked = function() { stopped=true; reject(new Error('Recovery source blocked')); };
+                req.onerror = function() {
+                    if (missing) resolve(null); else reject(new Error('Recovery source unreadable'));
+                };
+                req.onsuccess = function() {
+                    if (stopped) { req.result.close(); return; }
+                    resolve(req.result);
+                };
+            });
+        }
+        function readStores(db, defs) {
+            return new Promise(function(resolve,reject) {
+                var rows = Object.create(null), failure, tx;
+                try {
+                    tx = db.transaction(defs.map(function(d){return d.store;}),'readonly');
+                    tx.onabort = function(){reject(failure || new Error('Recovery read aborted'));};
+                    tx.oncomplete = function(){resolve(rows);};
+                    defs.forEach(function(def) {
+                        var list = rows[def.store] = [];
+                        var req = tx.objectStore(def.store).openCursor();
+                        req.onsuccess = function() {
+                            try {
+                                check();
+                                var cur = req.result;
+                                if (!cur) return;
+                                if (++count > maxRows) throw new Error('Too many recovery records');
+                                var key = cur.primaryKey, value = cur.value, blobs = [];
+                                if (!(typeof key === 'string' || (typeof key === 'number' && Number.isFinite(key))))
+                                    throw new Error('Unsupported recovery key');
+                                if ((def.blobFields || []).length) {
+                                    if (!value || typeof value !== 'object' || Array.isArray(value))
+                                        throw new Error('Invalid media recovery record');
+                                    value = Object.assign({},value);
+                                    def.blobFields.forEach(function(field) {
+                                        var blob = value[field];
+                                        if (!(blob instanceof Blob)) throw new Error('Missing original media');
+                                        if (Object.prototype.hasOwnProperty.call(value,'__blobMime_'+field))
+                                            throw new Error('Conflicting media metadata');
+                                        charge(Math.ceil(blob.size/3)*4);
+                                        blobs.push({field:field,blob:blob});
+                                        delete value[field];
+                                    });
+                                }
+                                plain(value);
+                                charge(JSON.stringify({key:key,value:value}).length);
+                                list.push({key:key,value:value,blobs:blobs});
+                                cur.continue();
+                            } catch(e) { failure=e; try {tx.abort();}catch(_) {reject(e);} }
+                        };
+                    });
+                } catch(e) { if(tx)try{tx.abort();}catch(_){} reject(e); }
+            });
+        }
+        var incoming = obj.indexedDB || {};
+        for (var target of backupTargets(scope)) {
+            var payload = incoming[target.db];
+            if (!payload) continue;
+            var defs = target.stores.filter(function(d) {
+                return Array.isArray(payload[d.store]) &&
+                    (payload[d.store].length || (target.clearOnRestore && !scope));
+            });
+            if (!defs.length) continue;
+            check();
+            var db = await openExisting(target.db);
+            if (!db) {out[target.db]={existed:false,stores:{}};continue;}
+            try {
+                if (defs.some(function(d){return !db.objectStoreNames.contains(d.store);}))
+                    throw new Error('Recovery source store missing');
+                var version = db.version;
+                var rows = await readStores(db,defs);
+            } finally {db.close();}
+            check();
+            var stores = Object.create(null);
+            for (var def of defs) {
+                var list = stores[def.store] = [];
+                for (var row of rows[def.store]) {
+                    check();
+                    for (var part of row.blobs) {
+                        var encoded = await blobToBase64(part.blob);
+                        if (typeof encoded !== 'string' || encoded.length !== Math.ceil(part.blob.size/3)*4)
+                            throw new Error('Incomplete media recovery encoding');
+                        row.value[part.field] = encoded;
+                        row.value['__blobMime_'+part.field] = part.blob.type || 'application/octet-stream';
+                    }
+                    list.push(def.keyPath ? row.value : {__key:row.key,__value:row.value});
+                }
+            }
+            out[target.db]={existed:true,version:version,stores:stores};
+        }
+        check();
+        var serialized=JSON.stringify(out);
+        if (serialized.length>maxChars) throw new Error('Media recovery point exceeds limit');
+        return serialized;
+    }
+
     function validateRestorePayload(obj, scope) {
         function record(v) { return !!v && typeof v === 'object' && !Array.isArray(v); }
         function own(v,k) { return Object.prototype.hasOwnProperty.call(v,k); }
@@ -1518,13 +1646,23 @@
             //    写完立即读回并用 verifyRestore 对 localStorage 实际内容做校验。
             //    恢复点 DB 独立于三个业务库的 version，localStorage.clear() 炸不到它。
             var current = preview;
+            var mediaSnapshot;
+            try {
+                if (await rpReadSnapshot(RP_ROLE_PRE)) {
+                    toast('存在尚未处理的恢复点，已阻止覆盖。请先保留原恢复数据'); return;
+                }
+                mediaSnapshot = await captureMediaRestorePoint(obj,scope,stillCurrent);
+            } catch (_) { toast('无法完整建立媒体恢复前副本，本机数据未改动'); return; }
+            if (!stillCurrent()) { toast('本机数据已变化，本次恢复已停止'); return; }
             var rpSnap = null;       // 从恢复点读回的真正快照
             var rpReady = false;
             try {
-                await rpWriteSnapshot(current, RP_ROLE_PRE);
+                await rpWriteSnapshot(current, RP_ROLE_PRE, mediaSnapshot);
                 var rpRec = await rpReadSnapshot(RP_ROLE_PRE);
                 if (rpRec && rpRec.snap && typeof rpRec.snap === 'object'
-                        && Object.keys(rpRec.snap).length === Object.keys(current).length) {
+                        && rpRec.media === mediaSnapshot
+                        && Object.keys(rpRec.snap).length === Object.keys(current).length
+                        && Object.keys(current).every(function(k){return rpRec.snap[k]===current[k];})) {
                     rpSnap = rpRec.snap;
                     rpReady = true;
                 }
@@ -1635,7 +1773,7 @@
             // Full and scoped imports both retain recovery points on partial failure.
             if (window.__MAO_ACCOUNT_SCOPE__ !== account ||
                 !restoreOutcomeComplete(incoming,current,scope,expectedCounts,dbOutcomes,secretRes,dbFailed,dbSkippedBlob)) {
-                alert('导入未完整完成：部分数据或媒体未通过恢复核查。本机导入前的文字数据恢复点已保留；媒体可能已部分更新。');
+                alert('导入未完整完成：部分数据或媒体未通过恢复核查。导入前的文字和受影响媒体恢复点已保留；媒体可能已部分更新，尚未自动回滚。');
                 return;
             }
 
