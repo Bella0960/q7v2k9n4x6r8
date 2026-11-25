@@ -3,7 +3,7 @@ import {createLudoPageHost} from './ludo-page-host.js';
 
 // Production mountable surface. Route activation is separate and must load
 // the authenticated account scope before PhoneStorage. No fixture fallback.
-export function mountLudoPage(root,{win=root?.ownerDocument?.defaultView,makeRoomId=()=>win.crypto.randomUUID(),pace=()=>{},discussion={},decideRole=null,onFinished=()=>{}}={}){
+export function mountLudoPage(root,{win=root?.ownerDocument?.defaultView,makeRoomId=()=>win.crypto.randomUUID(),pace=()=>{},discussion={},decideRole=null,decideBot=null,onFinished=()=>{}}={}){
   if(!root?.ownerDocument||!win?.document||typeof makeRoomId!=='function')throw Error('LUDO_PAGE_INVALID_ROOT');
   const doc=root.ownerDocument,verify=createBrowserRoomVerifier(win,{includeRoleLabels:true});
   const el=(tag,cls,text)=>{const n=doc.createElement(tag);if(cls)n.className=cls;if(text!==undefined)n.textContent=text;return n;};
@@ -29,12 +29,13 @@ export function mountLudoPage(root,{win=root?.ownerDocument?.defaultView,makeRoo
   const stop=button('停止生成','mao-flight__stop',()=>{host.stopChat();chatNote.textContent='已停止生成。';});
   const row=el('div','mao-flight__composer');row.append(input,send);
   chat.append(el('summary','','游戏聊天'),list,reply,row,stop,chatNote);
+  const strategy=el('p','mao-flight__chat-note');strategy.setAttribute('role','status');
   const footer=el('footer','mao-flight__footer'),rules=el('details','mao-flight__rules'),ruleCopy=el('p','');
   rules.append(el('summary','','人数与玩法'),ruleCopy);
   const resume=button('继续本局','mao-flight__resume',()=>void resumeGame());resume.hidden=true;
   const end=button('结束本局','mao-flight__end',()=>{host.end();});
   footer.append(rules,resume,end);
-  game.append(board,chat,footer);game.hidden=true;
+  game.append(board,strategy,chat,footer);game.hidden=true;
   wrap.append(setup,game,note);root.replaceChildren(wrap);
   const label=id=>id==='user'?'我':id.startsWith('bot:')?'普通棋手 '+id.slice(4):active?.labels.get(id)??'角色';
   function renderMessages(messages){
@@ -45,12 +46,12 @@ export function mountLudoPage(root,{win=root?.ownerDocument?.defaultView,makeRoo
     }));
     list.scrollTop=list.scrollHeight;
   }
-  function clearChat(){list.replaceChildren();reply.replaceChildren();input.value='';chatNote.textContent='';chat.open=false;ruleCopy.textContent='';}
+  function clearChat(){strategy.textContent='';list.replaceChildren();reply.replaceChildren();input.value='';chatNote.textContent='';chat.open=false;ruleCopy.textContent='';}
   function resetPicker(){picker=null;selected.clear();roles.replaceChildren();rosterNote.textContent='';start.disabled=true;}
   function clearPrivate(){epoch++;checking?.abort();checking=null;resetPicker();clearChat();}
   function paused(){clearPrivate();chat.hidden=true;resume.hidden=false;note.textContent='本局已暂停，请验证账号后继续。';}
   function idle(){clearPrivate();active=null;game.hidden=true;setup.hidden=false;chat.hidden=true;resume.hidden=true;note.textContent='请重新读取角色后开始。';}
-  const host=createLudoPageHost(board,{win,pace,decideRole,onFinished,labelForSeat:label,discussion:{...discussion,onChange:renderMessages},onStatus(state){
+  const host=createLudoPageHost(board,{win,pace,decideRole,decideBot,onFinished,onStrategy:s=>{if(active&&!disposed)strategy.textContent=label(s.seatId)+' · '+(s.source==='model'?'模型决策':'本地策略');},labelForSeat:label,discussion:{...discussion,onChange:renderMessages},onStatus(state){
     if(disposed)return;
     if(state==='paused'){paused();return;}
     if(state==='idle'){idle();return;}

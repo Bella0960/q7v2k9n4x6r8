@@ -113,7 +113,7 @@ export function createTabletopModelOptions({win,identity,gameId,charge,authorize
    if(roleId&&!c.roleIds.includes(roleId))return false;
    return typeof text==='string'&&text.length<=500&&await authorizePublicText({gameId,seatId,roleId,text,commit:true},{signal})===true&&!signal?.aborted;
  }
- if(gameId==='ludo')return {decideRole:move,discussion:{generateRole:speak,generateBot:speak,allowOutput:allow}};
+ if(gameId==='ludo')return {decideRole:move,decideBot:move,discussion:{generateRole:speak,generateBot:speak,allowOutput:allow}};
  if(gameId==='gomoku')return {decideRole:move,decideBot:move,discussion:{generateRole:speak,generateBot:speak,allowOutput:allow}};
  if(gameId==='turtle')return {askRole:turn,judgeRole:turn,askBot:turn,judgeBot:turn,allowPlayerText:allow};
  return {decideRole:turn,decideBot:turn,allowSpeech:allow};

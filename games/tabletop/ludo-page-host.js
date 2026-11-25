@@ -6,9 +6,9 @@ import {createLudoDiscussion,ludoEventPriority} from './ludo-discussion.js';
 
 // Opt-in page controller. The host must load the canonical account scope and
 // PhoneStorage first. No fixture identities, storage writes or route registration.
-export function createLudoPageHost(root,{win=root?.ownerDocument?.defaultView,onStatus=()=>{},onFinished=()=>{},pace=()=>{},rollDie,discussion={},decideRole=null,labelForSeat=()=>undefined}={}){
+export function createLudoPageHost(root,{win=root?.ownerDocument?.defaultView,onStatus=()=>{},onFinished=()=>{},pace=()=>{},rollDie,discussion={},decideRole=null,decideBot=null,onStrategy=()=>{},labelForSeat=()=>undefined}={}){
   const fail=code=>{throw Error(code);};
-  if(!root?.ownerDocument||!win?.document||typeof onStatus!=='function'||typeof pace!=='function'||typeof labelForSeat!=='function'||!discussion||typeof discussion!=='object'||(decideRole!==null&&typeof decideRole!=='function')||(rollDie!==undefined&&typeof rollDie!=='function'))fail('LUDO_INVALID_PAGE_HOST');
+  if(!root?.ownerDocument||!win?.document||typeof onStatus!=='function'||typeof pace!=='function'||typeof labelForSeat!=='function'||!discussion||typeof discussion!=='object'||![decideRole,decideBot].every(f=>f===null||typeof f==='function')||typeof onStrategy!=='function'||(rollDie!==undefined&&typeof rollDie!=='function'))fail('LUDO_INVALID_PAGE_HOST');
   let entry=null,destroyed=false,busy=false,epoch=0;
   const listeners=[];
   function listen(target,name,fn){target.addEventListener(name,fn);listeners.push(()=>target.removeEventListener(name,fn));}
@@ -79,7 +79,7 @@ export function createLudoPageHost(root,{win=root?.ownerDocument?.defaultView,on
     try{
       const session=createBrowserRoomSession({win,spec:{roomId,gameId:'ludo'},expectedIdentity,rules:createLudoRules({rollDie,mode})});
       e={roomId,session,board:null,revision:-1,driver:null,discussion:null,eventView:null,runStamp:stamp};
-      e.driver=createLudoTurnDriver({session,pace,decide:decideRole,onView:view=>publish(e,view,e.runStamp)});
+      e.driver=createLudoTurnDriver({session,pace,decide:decideRole,decideBot,onStrategy:s=>{if(entry===e&&e.board&&!destroyed)onStrategy(s);},onView:view=>publish(e,view,e.runStamp)});
       entry=e;report('opening');
       await session.refresh();check(e,stamp);
       for(const roleId of selected){const invite=await session.prepareUserAction();check(e,stamp);await invite({type:'invite',roleId});check(e,stamp);}
@@ -104,7 +104,7 @@ export function createLudoPageHost(root,{win=root?.ownerDocument?.defaultView,on
     try{
       const session=createBrowserRoomSession({win,spec:{roomId:checkpoint.roomId,gameId:'ludo'},rules:createLudoRules({rollDie,mode:checkpoint.mode}),expectedIdentity,checkpoint});
       e={roomId:checkpoint.roomId,session,board:null,revision:-1,driver:null,discussion:null,eventView:null,runStamp:stamp};
-      e.driver=createLudoTurnDriver({session,pace,decide:decideRole,onView:view=>publish(e,view,e.runStamp)});
+      e.driver=createLudoTurnDriver({session,pace,decide:decideRole,decideBot,onStrategy:s=>{if(entry===e&&e.board&&!destroyed)onStrategy(s);},onView:view=>publish(e,view,e.runStamp)});
       entry=e;report('opening');
       const view=await session.viewUser();check(e,stamp);
       e.discussion=createLudoDiscussion({...discussion,session,view,checkpoint:savedChat,onChange:messages=>{
