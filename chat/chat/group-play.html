@@ -8,6 +8,7 @@
 <script src="../../shared/js/native-feel.js"></script>
 <script src="../../shared/js/phone/group-admin-policy.js?v=20261125g1"></script>
 <script src="../../shared/js/phone/group-write-guard.js?v=20261125g1"></script>
+<script src="../../shared/js/phone/group-portraits.js?v=20261125g3"></script>
 <style>
 *{box-sizing:border-box;margin:0;padding:0;-webkit-tap-highlight-color:transparent}
 :root{color-scheme:light;--ink:#111;--muted:#888;--line:#e9e9ed;--paper:#fff;--wash:#f7f7f9}
@@ -294,7 +295,7 @@ body{font-family:"Source Han Sans SC","Noto Sans SC","PingFang SC",system-ui,san
   var group=groupBase&&groupBase.group;
   if(!group || String(group.id).charAt(0)!=='g'){
     document.getElementById('mainContent').innerHTML='<div class="error">没有找到这条群聊记录。<br>可能群聊已经被解散，或链接已失效。</div>';
-    document.getElementById('groupTitle').textContent='群聊不存在';
+    document.querySelector('.top h1').textContent='群聊不存在';
   }else{
     if(!group.settings||typeof group.settings!=='object')group.settings={};
     var defaults={scheduleEnabled:false,memorySharing:false,spectatorMode:false,allowRoleActions:false,allowPrivateMessages:true,autoTalkEnabled:false,relationshipDynamicsEnabled:true,followUpEnabled:false};
@@ -631,6 +632,7 @@ body{font-family:"Source Han Sans SC","Noto Sans SC","PingFang SC",system-ui,san
       if(!confirm('确定将这位角色移出群聊？已有聊天记录会保留。'))return;
       group.members=(group.members||[]).filter(function(m){return String(m.id)!==String(id);});
       if(String(group.ownerId)===String(id))group.ownerId='__user';
+      if(window.MAOGroupPortraits)window.MAOGroupPortraits.forgetMember(group,String(id));
       delete expandedMembers[String(id)];
       if(!persist('已移出群聊'))return;
       renderMembers();renderOwner();renderRelationships();
