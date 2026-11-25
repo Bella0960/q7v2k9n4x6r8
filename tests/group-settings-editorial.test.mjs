@@ -56,10 +56,22 @@ test('white editorial page, localized English details, real invitation handler',
 
 test('group management exposes existing administrator and title controls',()=>{
   const play=read('chat/chat/group-play.html');
-  assert.match(js,/group-play\.html\?id=.*#memberManagement/);
-  assert.match(js,/byId\('gpManagePanel'\)\.prepend\(permissionEntry\)/);
+  assert.match(js,/function managementUrl\(section\)/);
+  assert.match(js,/byId\('actionGroupManage'\)\.addEventListener\('click'/);
   assert.ok(play.indexOf('id="memberManagement"')<play.indexOf('id="settingsList"'));
   assert.equal((play.match(/data-member-field="isAdmin"/g)||[]).length,1);
   assert.equal((play.match(/data-member-field="title"/g)||[]).length,1);
   assert.match(play,/if\(field==='isAdmin'&&String\(group\.ownerId/);
+});
+
+test('directory routes preserve all original controls and scoped subpages',()=>{
+  const play=read('chat/chat/group-play.html');
+  for(const section of ['members','roles','behavior','relations','memory'])assert.ok(play.includes('data-management-route="'+section+'"'));
+  for(const section of ['roles','behavior','relations','memory'])assert.ok(play.includes('data-management-view="'+section+'"'));
+  for(const key of ['scheduleEnabled','memorySharing','spectatorMode','allowRoleActions','allowPrivateMessages','autoTalkEnabled','relationshipDynamicsEnabled','followUpEnabled'])assert.equal((play.match(new RegExp('data-setting="'+key+'"','g'))||[]).length,1);
+  for(const id of ['membersList','ownerSelect','relationshipsList','autoTalkRounds','groupChatMode'])assert.equal((play.match(new RegExp('id="'+id+'"','g'))||[]).length,1);
+  assert.match(js,/subpage\.append\(manage\)/);
+  assert.match(js,/subpage\.append\(byId\('memCard'\)\)/);
+  assert.match(js,/&view=members/);
+  assert.match(css,/\.gp-subpage-content/);
 });
