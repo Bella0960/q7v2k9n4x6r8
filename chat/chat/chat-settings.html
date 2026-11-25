@@ -6,7 +6,8 @@
 <title>对话设置 · 小手机</title>
 <script src="../../shared/js/font-loader.js?v=20261022v1"></script>
 <script src="../../shared/js/native-feel.js"></script>
-<script src="../../shared/js/wallpaper-store.js?v=20261026v2"></script>
+<script src="../../shared/js/phone/group-write-guard.js?v=20261125g10"></script>
+<script src="../../shared/js/wallpaper-store.js?v=20261125group2"></script>
 <script src="../../shared/js/group-governance.js?v=20261121group1"></script>
 <script src="../../shared/js/phone/phone_storage.js?v=20261121memory1"></script>
 <script src="../../shared/js/phone/role-worldbook-bindings.js?v=20261119-qa1"></script>
@@ -2894,8 +2895,23 @@
   var bgFileInput = document.getElementById('bgFileInput');
   var bgSub = document.getElementById('bgSub');
   var wallpaperStore = window.MAOMAOWallpaperStore;
+  var bgGuard=window.MAOGroupWriteGuard;
+  var groupBackgroundMode=isGroupSetting||explicitGroupOptions||(!storedRole&&/^g.+$/.test(String(roleId)));
+  var bgAccount=groupBackgroundMode&&bgGuard?bgGuard.account():null;
+  var bgSelection=null;
+  function currentBackgroundScope(){
+    if(!groupBackgroundMode||!bgGuard||bgAccount===null||bgGuard.account()!==bgAccount)return null;
+    var snap=bgGuard.read(String(roleId));
+    return snap&&snap.account===bgAccount&&window.GroupGovernance?.userIsInGroup(snap.group)?snap:null;
+  }
+  function backgroundScopeCurrent(snap){return !!snap&&!!bgGuard&&bgGuard.account()===bgAccount&&bgGuard.matches(snap);}
 
   function readBackgroundImage() {
+    if(groupBackgroundMode){
+      var snap=currentBackgroundScope();
+      if(!snap||!wallpaperStore||typeof wallpaperStore.readGroupBackground!=='function')return Promise.resolve('');
+      return wallpaperStore.readGroupBackground(BG_KEY,function(){return backgroundScopeCurrent(snap);});
+    }
     if (wallpaperStore && typeof wallpaperStore.getByKey === 'function') {
       return wallpaperStore.getByKey(BG_KEY);
     }
@@ -2984,7 +3000,14 @@
     });
   }
 
-  function saveBackgroundImage(dataUrl) {
+  function saveBackgroundImage(dataUrl,selection) {
+    if(groupBackgroundMode){
+      if(!selection||!backgroundScopeCurrent(selection.scope))return Promise.reject(new Error('群资料已变化，请重新选择'));
+      return selection.snapshot.then(function(snapshot){
+        if(!snapshot||!backgroundScopeCurrent(selection.scope))throw new Error('群背景或账号已变化，请重新选择');
+        return wallpaperStore.saveGroupBackground(snapshot,dataUrl,function(){return backgroundScopeCurrent(selection.scope);});
+      });
+    }
     if (wallpaperStore && typeof wallpaperStore.saveByKey === 'function') {
       return wallpaperStore.saveByKey(BG_KEY, dataUrl);
     }
@@ -2998,18 +3021,27 @@
 
   if (actionBackground && bgFileInput) {
     actionBackground.addEventListener('click', function () {
+      if(bgFileInput.disabled)return;
+      if(groupBackgroundMode){
+        var scope=currentBackgroundScope();
+        if(!scope||!wallpaperStore||typeof wallpaperStore.snapshotGroupBackground!=='function'||typeof wallpaperStore.saveGroupBackground!=='function'){showToast('群背景暂不可用，请重新进入');return;}
+        bgSelection={scope:scope,snapshot:wallpaperStore.snapshotGroupBackground(BG_KEY,function(){return backgroundScopeCurrent(scope);}).catch(function(){return null;})};
+      }
       bgFileInput.click();
     });
 
     bgFileInput.addEventListener('change', function () {
       var file = bgFileInput.files && bgFileInput.files[0];
       if (!file) return;
+      var selection=bgSelection;bgSelection=null;
+      if(groupBackgroundMode&&(!selection||!backgroundScopeCurrent(selection.scope))){showToast('群资料已变化，请重新选择');bgFileInput.value='';return;}
       showToast('正在处理壁纸…');
       bgFileInput.disabled = true;
 
       compressImageFile(file).then(function (dataUrl) {
-        return saveBackgroundImage(dataUrl);
-      }).then(function () {
+        return saveBackgroundImage(dataUrl,selection);
+      }).then(function (saved) {
+        if(groupBackgroundMode&&(saved!==true||!backgroundScopeCurrent(selection.scope)))throw new Error('群背景保存结果待确认，请重新进入');
         refreshBgSub();
         showToast('聊天壁纸已更新');
       }).catch(function (error) {
