@@ -121,3 +121,9 @@
 .gp-editorial-home button.gp-own-name{width:100%;background:#fff;border:0;text-align:left;color:#111;font:inherit;font-size:14px;cursor:pointer}
 .gp-editorial-home .gp-own-value{min-width:0;max-width:55%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;text-align:right}
 .gp-name-dialog .gp-name-input{display:block;width:100%;border:1px solid #e4e4e6;border-radius:9px;background:#fff;padding:12px;color:#111;font:inherit;font-size:14px;margin:20px 0 8px;outline-offset:3px}
+
+/* Keep the actual mobile shell white; preserve desktop framing and single chat. */
+.gp-editorial-shell .status-bar[hidden]{display:none!important}
+@media(max-width:430px){body:has(.gp-editorial-shell){background:#fff}.gp-editorial-shell{width:100vw!important;height:100dvh!important;max-width:none!important;border:0!important;border-radius:0!important;box-shadow:none!important}}
+.gp-subpage-content .gp-member-name,.gp-subpage-content .gp-invite-name{min-width:0;overflow-wrap:anywhere}
+.gp-subpage-content #gpManagePanel{border-top:0!important}
