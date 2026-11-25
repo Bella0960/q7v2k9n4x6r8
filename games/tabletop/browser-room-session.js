@@ -141,7 +141,7 @@ export function createBrowserRoomSession({win=globalThis.window,spec,rules}={}) 
     },
     // Synchronous publication guard after the asynchronous account check.
     // The current local scope/roster must still match that check.
-    discussionCurrent(signal){
+    discussionCurrent(signal,{allowFinished=false}={}){
       try {
         guard();
         if(!lastVerified||signal!==discussionController.signal||signal.aborted||session.status()!=='ready') return false;
@@ -154,7 +154,8 @@ export function createBrowserRoomSession({win=globalThis.window,spec,rules}={}) 
           roster?.ok===true&&roster.meta?.source==='ai_custom_characters'&&Array.isArray(roster.value)?Array.from(roster.value,r=>r?.id):null;
         if(!ids||!ids.every(validId)||new Set(ids).size!==lastVerified.roleIds.length||!lastVerified.roleIds.every(id=>ids.includes(id))) return false;
         if(signal!==discussionController.signal||signal.aborted||win.__MAO_ACCOUNT_SCOPE__?.accountId!==scope.accountId) return false;
-        return session.viewUser().phase==='playing';
+        const phase=session.viewUser().phase;
+        return phase==='playing'||(allowFinished&&phase==='finished');
       } catch {return false;}
     },
     // Trusted caller passes this signal to the existing speech runner.

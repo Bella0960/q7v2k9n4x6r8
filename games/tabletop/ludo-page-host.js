@@ -2,12 +2,13 @@ import {createBrowserRoomSession} from './browser-room-session.js';
 import {createLudoRules} from './ludo-rules.js';
 import {createLudoBoardView} from './ludo-board-view.js';
 import {createLudoTurnDriver} from './ludo-turn-driver.js';
+import {createLudoDiscussion} from './ludo-discussion.js';
 
 // Opt-in page controller. The host must load the canonical account scope and
 // PhoneStorage first. No fixture identities, storage writes or route registration.
-export function createLudoPageHost(root,{win=root?.ownerDocument?.defaultView,onStatus=()=>{},pace=()=>{},rollDie}={}){
+export function createLudoPageHost(root,{win=root?.ownerDocument?.defaultView,onStatus=()=>{},pace=()=>{},rollDie,discussion={},decideRole=null}={}){
   const fail=code=>{throw Error(code);};
-  if(!root?.ownerDocument||!win?.document||typeof onStatus!=='function'||typeof pace!=='function'||(rollDie!==undefined&&typeof rollDie!=='function'))fail('LUDO_INVALID_PAGE_HOST');
+  if(!root?.ownerDocument||!win?.document||typeof onStatus!=='function'||typeof pace!=='function'||!discussion||typeof discussion!=='object'||(decideRole!==null&&typeof decideRole!=='function')||(rollDie!==undefined&&typeof rollDie!=='function'))fail('LUDO_INVALID_PAGE_HOST');
   let entry=null,destroyed=false,busy=false,epoch=0;
   const listeners=[];
   function listen(target,name,fn){target.addEventListener(name,fn);listeners.push(()=>target.removeEventListener(name,fn));}
@@ -16,11 +17,11 @@ export function createLudoPageHost(root,{win=root?.ownerDocument?.defaultView,on
   function clear(e){e?.board?.destroy();if(e){e.board=null;e.revision=-1;}root.replaceChildren();}
   function pause(reason){
     if(!entry)return;
-    epoch++;entry.driver.stop();clear(entry);report(reason);
+    epoch++;entry.driver.stop();entry.discussion?.stop();clear(entry);report(reason);
   }
   function end(){
     const old=entry;entry=null;epoch++;
-    if(old){old.driver.dispose();old.session.dispose();}
+    if(old){old.discussion?.close();old.driver.dispose();old.session.dispose();}
     clear(old);report('idle');
   }
   function destroy(){
@@ -38,6 +39,7 @@ export function createLudoPageHost(root,{win=root?.ownerDocument?.defaultView,on
     if(e.revision===view.revision&&e.board)return;
     if(!e.board)e.board=createLudoBoardView(root,{onMove:action=>move(e,action),labelForSeat:id=>/^bot:[1-3]$/.test(id)?'普通棋手 '+id.slice(4):undefined});
     e.board.render(view);e.revision=view.revision;
+    if(view.phase==='finished')e.discussion?.stop();
   }
   async function runRoles(e,stamp){
     check(e,stamp);e.runStamp=stamp;
@@ -67,14 +69,16 @@ export function createLudoPageHost(root,{win=root?.ownerDocument?.defaultView,on
     let e;
     try{
       const session=createBrowserRoomSession({win,spec:{roomId,gameId:'ludo'},rules:createLudoRules({rollDie,mode})});
-      e={roomId,session,board:null,revision:-1,driver:null,runStamp:stamp};
-      e.driver=createLudoTurnDriver({session,pace,onView:view=>publish(e,view,e.runStamp)});
+      e={roomId,session,board:null,revision:-1,driver:null,discussion:null,runStamp:stamp};
+      e.driver=createLudoTurnDriver({session,pace,decide:decideRole,onView:view=>publish(e,view,e.runStamp)});
       entry=e;report('opening');
       await session.refresh();check(e,stamp);
       for(const roleId of selected){const invite=await session.prepareUserAction();check(e,stamp);await invite({type:'invite',roleId});check(e,stamp);}
       if(selected.length+1<playerCount){const fill=await session.prepareUserAction();check(e,stamp);await fill({type:'fillBots',playerCount});check(e,stamp);}
       const begin=await session.prepareUserAction();check(e,stamp);
-      const view=await begin({type:'start'});check(e,stamp);publish(e,view,stamp);report('ready');
+      const view=await begin({type:'start'});check(e,stamp);
+      e.discussion=createLudoDiscussion({...discussion,session,view});
+      publish(e,view,stamp);report('ready');
       return view;
     }catch(error){if(entry===e)end();throw error;}
     finally{busy=false;}
@@ -90,5 +94,6 @@ export function createLudoPageHost(root,{win=root?.ownerDocument?.defaultView,on
     finally{busy=false;}
   }
   root.replaceChildren();
-  return Object.freeze({start,resume,end,destroy,status:()=>destroyed?'disposed':busy?'busy':entry?entry.board?'open':'paused':'idle'});
+  function chat(){if(destroyed||!entry?.board||!entry.discussion)fail('LUDO_DISCUSSION_NOT_ACTIVE');return entry.discussion;}
+  return Object.freeze({start,resume,end,destroy,sendChat:message=>chat().send(message),readChat:()=>chat().read(),stopChat:()=>entry?.discussion?.stop(),status:()=>destroyed?'disposed':busy?'busy':entry?entry.board?'open':'paused':'idle'});
 }
