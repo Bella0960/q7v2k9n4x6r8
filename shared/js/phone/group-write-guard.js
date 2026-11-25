@@ -82,7 +82,7 @@
       if(!snapshot||!validPreference(snapshot.kind,value))return {ok:false,reason:'invalid'};
       var key=preferenceKey(snapshot.group,snapshot.kind);
       if(!key||!matches(snapshot.group))return {ok:false,reason:'scope'};
-      if(global.localStorage.getItem(key)!==snapshot.raw||!matches(snapshot.group))return {ok:false,reason:'stale'};
+      if(global.localStorage.getItem(key)!==snapshot.raw||!matches(snapshot.group)||global.localStorage.getItem(key)!==snapshot.raw||account()!==snapshot.group.account)return {ok:false,reason:'stale'};
       global.localStorage.setItem(key,value);
       return matches(snapshot.group)&&global.localStorage.getItem(key)===value&&account()===snapshot.group.account?{ok:true}:{ok:false,reason:'unconfirmed'};
     }catch(error){return {ok:false,reason:'storage'};}
