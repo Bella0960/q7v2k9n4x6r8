@@ -103,3 +103,6 @@ Owner explicitly requested one shared music catalog and NetEase/QQ source channe
 
 ### M04c 播放进度保护（2026-11-26）
 - 修复旧版仅 idx 记录在载入时被零秒覆盖；恢复只读，真实播放权确认后保留时间并升级，已删除 ID 不按下标误认。非拥有者不能写断点。17项模拟执行通过，真实复验待执行。
+
+### 2026-11-26 · 验收节奏调整（用户确认）
+- 阶段内连续开发及定向检查，同一阶段的小修集中提交；阶段末统一公共 QA，不反复触发。允许独立后续模块的内存逻辑/测试提前准备，但不提前接入、结项或部署。安全边界和最终回归不变。固定命令见 `docs/engineering/GROUP_MUSIC_DEV_CHECKS.md`。当前真实双窗口 QA 仍进行中，未取消。
