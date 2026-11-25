@@ -7,16 +7,17 @@
   var FIELD='portraitOverridesV1', ASSET=/^as_[A-Z2-7]{32}$/;
   var cache=new Map(), readCache={raw:null,account:null,groups:null};
   function scope(){
-    var meta=global.document.querySelector('meta[name="mao-account-id"]');
-    return meta ? String(meta.content||'').trim() : '';
+    var guard=global.MAOGroupWriteGuard;
+    return guard&&typeof guard.account==='function'?guard.account():null;
   }
   function readGroup(groupId){
     if(typeof groupId!=='string'||groupId.charAt(0)!=='g')return null;
+    var account=scope();if(!account)return null;
     var raw=global.localStorage.getItem('phone_groups');
     var groups=JSON.parse(raw||'[]');
-    if(!Array.isArray(groups))throw Error('群聊资料不可读取');
+    if(!Array.isArray(groups)||scope()!==account)throw Error('群聊资料不可读取');
     var matches=groups.filter(function(g){return g&&String(g.id)===groupId;});
-    return matches.length===1?{raw:raw,groups:groups,group:matches[0],account:scope()}:null;
+    return matches.length===1?{raw:raw,groups:groups,group:matches[0],account:account}:null;
   }
   function hasMember(group,id){
     return id==='__user'||(Array.isArray(group.members)&&group.members.filter(function(m){return m&&String(m.id)===id;}).length===1);
@@ -82,7 +83,9 @@
   }
   function currentAsset(gid,id,account){
     try{
+      if(!account||scope()!==account)return '';
       var raw=global.localStorage.getItem('phone_groups');
+      if(scope()!==account)return '';
       if(readCache.raw!==raw||readCache.account!==account||!readCache.groups){
         var list=JSON.parse(raw||'[]');
         if(!Array.isArray(list))return '';
@@ -99,9 +102,10 @@
     var key=JSON.stringify([account,gid,id,asset]);
     if(!cache.has(key)){
       var task=Promise.resolve().then(async function(){
+        if(scope()!==account||currentAsset(gid,id,account)!==asset)return '';
         var repo=media();
         var refs=await repo.listByOwner('group-portrait',JSON.stringify([account,gid,id]));
-        if(!refs||!refs.ok||!Array.isArray(refs.value)||!refs.value.some(function(x){return x&&x.assetId===asset;}))return '';
+        if(scope()!==account||currentAsset(gid,id,account)!==asset||!refs||!refs.ok||!Array.isArray(refs.value)||!refs.value.some(function(x){return x&&x.assetId===asset;}))return '';
         var r=await repo.toDataUrl(asset);
         return r&&r.ok&&/^data:image\/(?:jpeg|png|webp);base64,/i.test(r.value||'')?r.value:'';
       }).catch(function(){return '';});
