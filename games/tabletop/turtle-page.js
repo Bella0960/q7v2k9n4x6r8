@@ -13,7 +13,7 @@ export function mountTurtlePage(root,{win=root?.ownerDocument?.defaultView,makeR
  const button=(text,cls,fn)=>{const n=el('button',cls,text);n.type='button';n.addEventListener('click',fn);return n;};
  const option=(value,text)=>{const o=el('option','',text);o.value=value;return o;};
  let epoch=0,picker=null,checking=null,active=null,busy=false,disposed=false,paused=false,view=null,revealArmed=false;
- const selected=new Set(),boxes=new Map(),listeners=[];
+ const selected=new Set(),boxes=new Map(),listeners=[];let requestedBots=0;
  const wrap=el('main','mao-turtle'),setup=el('section','mao-turtle__setup'),game=el('section','mao-turtle__game'),note=el('p','mao-turtle__note');note.setAttribute('role','status');
  const puzzle=el('select','mao-turtle__puzzle');puzzle.setAttribute('aria-label','谜题');puzzle.append(...puzzles.map(p=>option(p.id,p.title+' · '+(p.difficulty==='easy'?'简单':'普通'))));puzzle.value=puzzles[0].id;
  const host=el('select','mao-turtle__host');host.setAttribute('aria-label','主持人');host.append(option('user','我来主持'));host.value='user';
@@ -38,10 +38,10 @@ export function mountTurtlePage(root,{win=root?.ownerDocument?.defaultView,makeR
  function wipe(){
    view=null;title.textContent=prompt.textContent=turn.textContent=solution.textContent='';secret.hidden=true;secret.open=false;history.replaceChildren();quick.replaceChildren();judgement.replaceChildren();input.value='';choices.open=false;controls.hidden=true;more.hidden=true;revealArmed=false;reveal.textContent='揭晓谜底';
  }
- function clearPicker(){picker=null;selected.clear();boxes.clear();roster.replaceChildren();host.replaceChildren(option('user','我来主持'));host.value='user';bots.value='0';rosterNote.textContent='';start.disabled=true;}
+ function clearPicker(){picker=null;selected.clear();boxes.clear();roster.replaceChildren();host.replaceChildren(option('user','我来主持'));host.value='user';requestedBots=0;bots.value='0';rosterNote.textContent='';start.disabled=true;}
  function invalidate(){epoch++;checking?.abort();checking=null;clearPicker();}
  function sync(){
-   const previous=host.value,requested=Number(bots.value)||0,max=7-selected.size;
+   const previous=host.value,requested=requestedBots,max=7-selected.size;
    const count=Math.max(selected.size?0:1,Math.min(max,requested));
    bots.replaceChildren(...Array.from({length:max+1},(_,i)=>option(String(i),i?'普通棋友 '+i+' 人':'不额外邀请普通棋友')));bots.value=String(count);
    host.replaceChildren(option('user','我来主持'),...Array.from(selected,id=>option('role:'+id,picker?.roleLabels.find(r=>r.id===id)?.name??'角色')),...Array.from({length:count},(_,i)=>option('bot:'+(i+1),'棋友 '+(i+1)+' 主持')));
@@ -49,7 +49,7 @@ export function mountTurtlePage(root,{win=root?.ownerDocument?.defaultView,makeR
    for(const [id,box] of boxes){box.checked=selected.has(id);box.disabled=busy||(!box.checked&&selected.size>=7);}
    rosterNote.textContent=picker?'共 '+(1+selected.size+count)+' 人':'';start.disabled=busy||!picker||selected.size+count<1;
  }
- bots.addEventListener('change',()=>{if(picker&&!busy)sync();});
+ bots.addEventListener('change',()=>{if(picker&&!busy){requestedBots=Number(bots.value)||0;sync();}});
  async function reload(){
    if(disposed||active||busy)return;invalidate();const stamp=epoch,ac=new AbortController();checking=ac;refresh.disabled=true;note.textContent='正在读取角色…';
    try{
