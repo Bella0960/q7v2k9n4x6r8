@@ -511,3 +511,49 @@ test('legacy group settings reject stale data, permission changes and missing gr
   assert.ok(html.includes('if (requestedGroup && (!isGroupSetting || !explicitGroupOptions))'));
   assert.ok(html.includes('var g=captured;'));
 });
+
+
+test('group-only portraits use exact account/group/member ownership and never alter global avatar data',async()=>{
+  const A='MAO-AAAAAAAAAAAA',AS='as_'+'A'.repeat(32),image='data:image/png;base64,AAAA';
+  class FakeBlob{constructor(){this.type='image/png';this.size=3;}}
+  function setup(){
+    const state={account:A,ready:true,active:true,writes:0,puts:0};
+    const map=new Map([['phone_groups',JSON.stringify([{id:'g1',ownerId:'__user',members:[{id:'r1',avatar:'original'},{id:'r2'}]},{id:'g2',members:[{id:'r1',avatar:'other'}]}])],['ai_custom_characters','[{"id":"r1","avatar":"role"}]']]),owners=new Map(),blobs=new Map();
+    const w={document:{querySelector:q=>({content:q.includes('role')?'member':state.account})},location:{hostname:'preview.mao520.com'},get __MAO_ACCOUNT_SCOPE__(){return {accountId:state.account,role:'member',ready:state.ready};},localStorage:{getItem:k=>map.get(k)??null,setItem(k,v){state.writes++;map.set(k,v);}},PhoneStorage:{MediaRepository:class{
+      async putBlob(blob,opts){state.puts++;blobs.set(AS,blob);owners.set(opts.ownerId,AS);state.onPut?.();return {ok:true,value:{assetId:AS}};}
+      async getBlob(id){return {ok:true,value:blobs.get(id)};}
+      async listByOwner(type,id){return {ok:true,value:owners.has(id)?[{assetId:owners.get(id)}]:[]};}
+      async toDataUrl(){return {ok:true,value:image};}
+    }}};
+    new Function('window',load('shared/js/phone/group-write-guard.js'))(w);
+    new Function('window',load('shared/js/group-governance.js'))(w);
+    new Function('window','Blob',load('shared/js/phone/group-portraits.js'))(w,FakeBlob);
+    return {state,map,owners,blobs,p:w.MAOGroupPortraits,g:w.MAOGroupWriteGuard,gov:w.GroupGovernance,group:id=>w.MAOGroupWriteGuard.read(id).group};
+  }
+  {const h=setup(),role=h.map.get('ai_custom_characters');assert.equal(await h.p.save(h.p.snapshot('g1'),new Map([['r1',new FakeBlob()]])),true);assert.equal(h.group('g1').members[0].avatar,'original');assert.equal(h.group('g2').members[0].avatar,'other');assert.equal(h.map.get('ai_custom_characters'),role);assert.equal(h.owners.get(JSON.stringify([A,'g1','r1'])),AS);assert.equal(await h.p.resolve(h.group('g1'),'r1'),image);assert.equal(await h.p.resolve(h.group('g2'),'r1'),'');assert.equal(await h.p.save(h.p.snapshot('g1'),new Map([['r1',null]])),true);assert.equal(h.group('g1').portraitOverridesV1.entries.length,0);}
+  {const h=setup();const snap=h.p.snapshot('g1');h.state.onPut=()=>h.state.active=false;await assert.rejects(h.p.save(snap,new Map([['r1',new FakeBlob()]]),()=>h.state.active));assert.equal(h.state.writes,0);}
+  {const h=setup();await assert.rejects(h.p.save(h.p.snapshot('g1'),new Map([['r1',new FakeBlob()],['missing',new FakeBlob()]])));assert.equal(h.state.puts,0);}
+  {const h=setup();await h.p.save(h.p.snapshot('g1'),new Map([['r1',new FakeBlob()],['r2',new FakeBlob()]]));const snap=h.g.read('g1');assert.equal(h.gov.apply({group:snap.group,actorId:'__user',action:'remove',target:'r1',save:()=>h.g.commit(snap,snap.group).ok}).ok,true);assert.equal(h.group('g1').portraitOverridesV1.entries.length,1);assert.equal(h.group('g1').portraitOverridesV1.entries[0].memberId,'r2');assert.equal(h.blobs.has(AS),true);}
+  {const h=setup(),snap=h.g.read('g1');h.g.commit(snap,{...snap.group,ownerId:'r1'});await assert.rejects(h.p.save(h.p.snapshot('g1'),new Map([['r2',new FakeBlob()]])));assert.equal(h.state.puts,0);assert.equal(await h.p.save(h.p.snapshot('g1'),new Map([['__user',new FakeBlob()]])),true);}
+  const home=load('shared/js/group-settings-home.js'),detail=load('chat/chat/chat-detail.html');
+  assert.ok(home.includes("portraits.save(snapshot,new Map([[id,blob]]),valid)"));
+  assert.ok(home.includes("canvas.toBlob("));
+  assert.ok(detail.includes("fillGroupPortrait(extraAv,"));
+  assert.ok(detail.includes("fillGroupPortrait(avatar,getMyAvatar(),'__user')"));
+});
+test('group portrait backups reject missing bytes, metadata, owner refs and account mismatch before restore',()=>{
+  const b=load('settings/js/backup.js'),A='MAO-AAAAAAAAAAAA',B='MAO-BBBBBBBBBBBB',AS='as_'+'A'.repeat(32);
+  const a=b.indexOf('    function musicBackupBlobEncoded'),z=b.indexOf('    function backupMissingMusicImages',a),c=b.indexOf('    function backupMissingGroupPortraits'),d=b.indexOf('    function groupPortraitBackupAccount',c);
+  assert.ok(a>=0&&z>a&&c>=0&&d>c);
+  const verify=new Function(b.slice(a,z)+b.slice(c,d)+';return backupMissingGroupPortraits;')();
+  function archive(){return {data:{phone_groups:JSON.stringify([{id:'g1',members:[{id:'r1'}],portraitOverridesV1:{accountId:A,entries:[{memberId:'r1',assetId:AS}]}}])},indexedDB:{'maomao-assets':{blobs:[{assetId:AS,blob:'AAAA'}],assets:[{assetId:AS,mimeType:'image/png'}],refs:[{assetId:AS,refs:[{ownerType:'group-portrait',ownerId:JSON.stringify([A,'g1','r1'])}]}]}}};}
+  assert.equal(verify(archive(),A),false);
+  assert.equal(verify(archive(),B),true);
+  assert.equal(verify({data:{phone_groups:'[{"id":"g1"}]'}},A),false);
+  for(const key of ['blobs','assets','refs']){const x=archive();x.indexedDB['maomao-assets'][key]=[];assert.equal(verify(x,A),true,key);}
+  {const x=archive();x.indexedDB['maomao-assets'].refs[0].refs[0].ownerId=JSON.stringify([A,'g2','r1']);assert.equal(verify(x,A),true);}
+  {const x=archive();x.indexedDB['maomao-assets'].blobs[0].blob='??';assert.equal(verify(x,A),true);}
+  {const x=archive();x.indexedDB['maomao-assets'].blobs.push(x.indexedDB['maomao-assets'].blobs[0]);assert.equal(verify(x,A),true);}
+  assert.ok(b.includes('&& !missingGroupPortraits'));
+  assert.ok(b.includes("if(backupMissingGroupPortraits(obj,groupPortraitBackupAccount()))"));
+});
