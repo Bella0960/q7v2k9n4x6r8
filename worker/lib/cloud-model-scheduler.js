@@ -18,6 +18,17 @@ function positive(env, name) {
   return Number.isSafeInteger(value) && value > 0 ? value : null;
 }
 
+export function readCloudModelBudget(env = {}) {
+  const limits = {
+    global: positive(env,'AUTONOMY_MODEL_DAILY_GLOBAL_LIMIT'),
+    account: positive(env,'AUTONOMY_MODEL_DAILY_ACCOUNT_LIMIT'),
+    role: positive(env,'AUTONOMY_MODEL_DAILY_ROLE_LIMIT')
+  };
+  if (!Object.values(limits).every(v=>v!==null&&v<=10000) ||
+      limits.role>limits.account || limits.account>limits.global) return null;
+  return limits;
+}
+
 function readTickConfig(env) {
   const leaseMs = positive(env, 'AUTONOMY_LEASE_MS');
   const tickLimit = positive(env, 'AUTONOMY_TICK_LIMIT');
@@ -116,6 +127,13 @@ export async function runCloudModelTick({
         leaseMs: validated.config.leaseMs,
         modelTimeoutMs: modelConfig.timeoutMs
       });
+    return summary;
+  }
+  const budget = readCloudModelBudget(env);
+  if (!budget || typeof store.reserveCloudModelAttempt !== 'function') {
+    summary.ok = false;
+    summary.reason = 'cloud_model_budget_unavailable';
+    log(store, timestamp, 'autonomy_cloud_tick', 'skipped', summary.reason, null);
     return summary;
   }
   if (typeof store.listDueCloudActivities !== 'function') {
@@ -244,6 +262,24 @@ export async function runCloudModelTick({
       continue;
     }
 
+    // Zero provider calls without a persisted, read-back-verified reservation.
+    let reserved = false;
+    try {
+      reserved = store.reserveCloudModelAttempt({
+        activityId: claimed.id, attemptCount, accountId: task.user_id,
+        characterId: claimed.character_id, deviceId: claimed.device_id,
+        now: Number(clock()), limits: budget, timeoutMs: modelConfig.timeoutMs
+      }) === true;
+    } catch {}
+    if (!reserved) {
+      const failed = store.failActivity({
+        id: claimed.id, owner: OWNER, attemptCount, now: Number(clock()), nextAttemptAt: null
+      });
+      summary.failed += 1;
+      log(store, Number(clock()), 'autonomy_cloud_model', failed ? 'failed' : 'deferred',
+        'cloud_model_budget_denied', claimed);
+      continue;
+    }
     const generation = await generateAutonomousMessages({
       env, snapshot, fetchImpl, initialContact: isInitialContact
     });
