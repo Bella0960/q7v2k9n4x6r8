@@ -39,6 +39,21 @@ const makeImage=async(page,hex)=>page.evaluate(color=>{
   return c.toDataURL('image/png');
 },hex);
 const readLayout=page=>page.evaluate(()=>JSON.parse(localStorage.getItem('ds_layout_v14')));
+// Performance budget on the 60Hz reference runner, not a physical display FPS claim.
+function assessHeavyDragBudget(profile, result) {
+  const limits = profile === 'hd-glass-font-normal'
+    ? {p95Ms:25, consecutiveLimit:50}
+    : profile === 'hd-glass-font-cpu4x'
+      ? {p95Ms:50, consecutiveLimit:100}
+      : null;
+  if(!limits)return {ok:false,reason:'unknown-profile'};
+  if(!Number.isFinite(result.p95Ms)||result.samples<20||
+      !Number.isInteger(result.maxConsecutiveSlowFrames)||result.maxConsecutiveSlowFrames<0)
+    return {ok:false,reason:'invalid-samples'};
+  if(result.p95Ms>limits.p95Ms)return {ok:false,reason:'p95-budget'};
+  if(result.maxConsecutiveSlowFrames>=2)return {ok:false,reason:'consecutive-stall'};
+  return {ok:true,reason:'pass'};
+}
 try{
   for(const [width,height] of [[375,667],[390,844],[430,932]]){
     step='open_'+width;
@@ -436,7 +451,8 @@ try{
             }).filter(p=>p.x>bounds.left+45&&p.x<bounds.right-45&&p.y>bounds.top+24&&p.y<bounds.bottom-40).slice(0,6);
           });
           assert.ok(targets.length>=2,'heavy probe lacks visible neighbours');
-          await hp.evaluate(()=>{
+          const slowLimit=label==='hd-glass-font-normal'?50:100;
+          await hp.evaluate(slowLimit=>{
             const frames=[],tasks=[];let previous=null,frame,observer=null,changes=0;
             const tick=t=>{if(previous!==null)frames.push(t-previous);previous=t;frame=requestAnimationFrame(tick);};
             frame=requestAnimationFrame(tick);
@@ -453,11 +469,16 @@ try{
               if(observer){tasks.push(...observer.takeRecords().map(e=>e.duration));observer.disconnect();}
               const sorted=frames.slice().sort((a,b)=>a-b);
               const percentile=p=>sorted[Math.max(0,Math.ceil(sorted.length*p)-1)]??null;
+              let streak=0,maxConsecutiveSlowFrames=0;
+              for(const duration of frames){
+                streak=duration>slowLimit?streak+1:0;
+                maxConsecutiveSlowFrames=Math.max(streak,maxConsecutiveSlowFrames);
+              }
               delete window.__stopHeavyDragProbe;
               return {samples:frames.length,p50Ms:percentile(.5),p95Ms:percentile(.95),p99Ms:percentile(.99),
-                over50Ms:frames.filter(x=>x>50).length,longTasks:observer?tasks:null,changes};
+                over50Ms:frames.filter(x=>x>50).length,maxConsecutiveSlowFrames,slowLimitMs:slowLimit,longTasks:observer?tasks:null,changes};
             };
-          });
+          },slowLimit);
           let result,from=point;
           try{
             for(let round=0;round<3;round++){
@@ -471,12 +492,31 @@ try{
             }
           }finally{result=await hp.evaluate(()=>window.__stopHeavyDragProbe());}
           assert.ok(result.samples>=20&&result.changes>=1,'heavy probe did not exercise real reordering');
+          // Snapshot exact intended grid order, not just item membership. The
+          // hidden source is replaced by its current placeholder at release.
+          const expected=await hp.evaluate(()=>{
+            const source=document.querySelector('.is-dragging-source');
+            if(!source)throw Error('drag source missing');
+            const ids=parent=>Array.from(parent.children).flatMap(el=>{
+              if(el===source)return [];
+              if(el.classList.contains('drag-placeholder'))return [source.dataset.drag];
+              return el.dataset.drag?[el.dataset.drag]:[];
+            });
+            return {pages:Array.from(document.querySelectorAll('.home-page .desktop-grid')).map(ids),
+              dock:ids(document.getElementById('dockBar'))};
+          });
+          const verdict=assessHeavyDragBudget(label,result);
+          console.log('DESKTOP_HEAVY_DRAG '+JSON.stringify({label,width,dpr:3,...loaded,...result,budget:verdict.reason}));
           await ht(commit?'touchEnd':'touchCancel');
           await hp.waitForFunction(()=>!document.querySelector('.drag-avatar,.drag-placeholder,.is-dragging-source')&&!document.body.classList.contains('home-dragging'));
           const after=await readLayout(hp);
           assert.deepEqual(inventory(after),inventory(heavyLayout),'heavy drag lost or duplicated layout item');
           if(!commit)assert.deepEqual(after,heavyLayout,'cancel persisted a partial layout');
-          console.log('DESKTOP_HEAVY_DRAG '+JSON.stringify({label,width,dpr:3,...loaded,...result}));
+          else {
+            assert.deepEqual(after.pages,expected.pages,'saved grid order differs from the intended drop');
+            assert.deepEqual(after.dock,expected.dock,'saved Dock order differs from the intended drop');
+          }
+          assert.equal(verdict.ok,true,'DESKTOP_HEAVY_DRAG_BUDGET '+label+' '+verdict.reason);
           return after;
         };
         await measure('hd-glass-font-normal',false);
