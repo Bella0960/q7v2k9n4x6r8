@@ -21,9 +21,9 @@
       if(matches.length!==1||JSON.stringify(groups[matches[0]])!==expected.serialized)return {ok:false,reason:'stale'};
       if(remove)groups.splice(matches[0],1);else groups[matches[0]]=next;
       var encoded=JSON.stringify(groups);
-      if(account()!==expected.account||global.localStorage.getItem('phone_groups')!==raw)return {ok:false,reason:'stale'};
+      if(account()!==expected.account||global.localStorage.getItem('phone_groups')!==raw||account()!==expected.account)return {ok:false,reason:'stale'};
       global.localStorage.setItem('phone_groups',encoded);
-      if(account()!==expected.account||global.localStorage.getItem('phone_groups')!==encoded)return {ok:false,reason:'unconfirmed'};
+      if(account()!==expected.account||global.localStorage.getItem('phone_groups')!==encoded||account()!==expected.account)return {ok:false,reason:'unconfirmed'};
       return remove?{ok:true}:{ok:true,expected:{id:expected.id,account:expected.account,serialized:JSON.stringify(next)}};
     }catch(error){return {ok:false,reason:'storage'};}
   }
@@ -36,9 +36,9 @@
       if(!Array.isArray(groups))return {ok:false,reason:'invalid'};
       if(groups.some(function(g){return g&&String(g.id)===next.id;}))return {ok:false,reason:'duplicate'};
       var encoded=JSON.stringify(groups.concat([next]));
-      if(account()!==owner||global.localStorage.getItem('phone_groups')!==raw)return {ok:false,reason:'stale'};
+      if(account()!==owner||global.localStorage.getItem('phone_groups')!==raw||account()!==owner)return {ok:false,reason:'stale'};
       global.localStorage.setItem('phone_groups',encoded);
-      if(account()!==owner||global.localStorage.getItem('phone_groups')!==encoded)return {ok:false,reason:'unconfirmed'};
+      if(account()!==owner||global.localStorage.getItem('phone_groups')!==encoded||account()!==owner)return {ok:false,reason:'unconfirmed'};
       return {ok:true};
     }catch(error){return {ok:false,reason:'storage'};}
   }
@@ -84,7 +84,7 @@
       if(!key||!matches(snapshot.group))return {ok:false,reason:'scope'};
       if(global.localStorage.getItem(key)!==snapshot.raw||!matches(snapshot.group))return {ok:false,reason:'stale'};
       global.localStorage.setItem(key,value);
-      return matches(snapshot.group)&&global.localStorage.getItem(key)===value?{ok:true}:{ok:false,reason:'unconfirmed'};
+      return matches(snapshot.group)&&global.localStorage.getItem(key)===value&&account()===snapshot.group.account?{ok:true}:{ok:false,reason:'unconfirmed'};
     }catch(error){return {ok:false,reason:'storage'};}
   }
   function commit(expected,next){return change(expected,next,false);}
