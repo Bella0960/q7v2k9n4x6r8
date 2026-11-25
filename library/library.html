@@ -1508,14 +1508,16 @@ button{font:inherit;color:inherit;cursor:pointer;border:0;background:transparent
   function ownReadingRecord(target) {
     try {return commentCache[ownReadingKey(target,readerAccountToken())]||null;} catch(e){return null;}
   }
+  var readingFeedBuildIndex=null;
   function mergedReadingThread(target,roleId) {
     var mine=readingThread(ownReadingRecord(target)).map(function(m){return Object.assign({},m,{author:'我'});});
     var prefix=commentKey(target.bookId,target.chapterIndex,target.paragraphIndex,'');
-    Object.keys(commentCache).forEach(function(key){
+    var keys=readingFeedBuildIndex?(readingFeedBuildIndex.get(prefix)||[]):Object.keys(commentCache);
+    keys.forEach(function(key){
       if(key.indexOf(prefix)!==0)return;
       var record=commentCache[key];
       if(!record||record.bookId!==target.bookId||Number(record.chapterIndex)!==target.chapterIndex||Number(record.paragraphIndex)!==target.paragraphIndex||String(record.roleId).indexOf('@reader')===0)return;
-      var role=readerRoleById(record.roleId),name=record.roleName||(role&&role.name)||'角色';
+      var role=readerRoleById(record.roleId),name=(role&&role.name)||record.roleName||'角色';
       readingThread(record).forEach(function(m){mine.push(Object.assign({},m,{author:m.role==='user'?'我':name}));});
     });
     return mine.sort(function(a,b){return (a.createdAt||0)-(b.createdAt||0);});
@@ -1577,7 +1579,7 @@ button{font:inherit;color:inherit;cursor:pointer;border:0;background:transparent
   function renderParagraphCommentThread() {
     if (!activeParagraph) return;
     var roleId=String(paragraphRoleSelect.value||settings.commentRoleId||'');
-    var role=readerRoleById(roleId);
+    var role=selectedReadingRoleIds().indexOf(roleId)>=0?readerRoleById(roleId):null;
     var thread=mergedReadingThread(activeParagraph,roleId);
     document.getElementById('paragraphCommentHeading').textContent='段评 · '+thread.length;
     document.getElementById('coReadReply').hidden=false;
@@ -1786,7 +1788,7 @@ button{font:inherit;color:inherit;cursor:pointer;border:0;background:transparent
     if(saved) commentCache[key]=saved;
     return saved||null;
   }
-  var readingVisibleKey='', readingVisibleSince=0, lastProgress='', progressWarned=false;
+  var readingVisibleKey='', readingVisibleSince=0, lastProgress='', progressWarned=false,lastAutoReadingRole='';
   function visibleReadingTarget() {
     if(!state.book || document.hidden || readerView.getAttribute('aria-hidden')==='true' || sheetBackdrop.classList.contains('is-open'))return null;
     var page=readerBody.querySelector('.chapter-page[data-ch="'+state.ch+'"]');
@@ -1831,10 +1833,12 @@ button{font:inherit;color:inherit;cursor:pointer;border:0;background:transparent
     try{
       var token=readerAccountToken(),cfg=coReadSettings(token),ledger=coReadLedger(token,now);
       if(!cfg.auto||ledger.count>=cfg.limit||now-ledger.lastAuto<cfg.interval*1000)return;
-      var ids=selectedReadingRoleIds();
+      var ids=selectedReadingRoleIds(),last=ids.indexOf(lastAutoReadingRole);
+      if(last>=0)ids=ids.slice(last+1).concat(ids.slice(0,last+1));
       var roleId=ids.find(function(id){var k=commentKey(t.bookId,t.chapterIndex,t.paragraphIndex,id);return ledger.attempted.indexOf(k)<0&&!commentCache[k];});
       if(!roleId)return;
       readingVisibleSince=now;
+      lastAutoReadingRole=roleId;
       generateParagraphComment({auto:true,target:t,roleId:roleId});
     }catch(e){}
   }
@@ -1859,11 +1863,15 @@ button{font:inherit;color:inherit;cursor:pointer;border:0;background:transparent
 
   function buildReader(book) {
     readerTitle.textContent = book.name;
+    readingFeedBuildIndex=new Map();
+    Object.keys(commentCache).forEach(function(key){var c=commentCache[key];if(!c||c.bookId!==book.id)return;var prefix=commentKey(c.bookId,c.chapterIndex,c.paragraphIndex,'');var keys=readingFeedBuildIndex.get(prefix)||[];keys.push(key);readingFeedBuildIndex.set(prefix,keys);});
+    try {
     readerBody.innerHTML = book.chapters.map(function (ch, i) {
       return '<section class="chapter-page" data-ch="' + i + '">' +
         '<article class="reader-content">' + pageHtml(book, ch, i) + '</article>' +
       '</section>';
     }).join('');
+    }finally{readingFeedBuildIndex=null;}
     readerBody.scrollLeft = 0;
     readerBody.scrollTop = 0;
   }
