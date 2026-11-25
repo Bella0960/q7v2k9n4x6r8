@@ -484,6 +484,91 @@
         }
     }
 
+    // Inspect the entire memory payload before the existing restore path is
+    // allowed to clear live storage. Keep legacy lists readable and never
+    // rewrite incoming bytes or try to reconstruct a missing revision.
+    function validateMemoryBackup(data) {
+        var states = ['superseded-fixed','superseded-confirmed','withdrawn'];
+        function validList(list, roleId) {
+            if (!Array.isArray(list)) return false;
+            var special = list.filter(function(m) {
+                return m && typeof m === 'object' &&
+                    (m.source === 'user-correction' || states.indexOf(m.status) >= 0);
+            });
+            if (!special.length) return true;
+            var byId = new Map(), linked = new Map();
+            list.forEach(function(m) {
+                if (!m || typeof m !== 'object' || m.id == null) return;
+                var id = String(m.id);
+                if (byId.has(id)) byId.set(id,null);
+                else byId.set(id,m);
+            });
+            function owned(m) {
+                return m && typeof m.id === 'string' && !!m.id &&
+                    byId.get(m.id) === m && String(m.sourceRoleId || '') === roleId &&
+                    (m.roleId == null || String(m.roleId) === roleId);
+            }
+            for (var i = 0; i < special.length; i++) {
+                var m = special[i];
+                if (!owned(m)) return false;
+                if (m.source !== 'user-correction') {
+                    if (m.status === 'withdrawn') return false;
+                    continue;
+                }
+                if (['fixed','confirmed'].concat(states).indexOf(m.status) < 0 ||
+                    !Array.isArray(m.sourceMemoryIds) || m.sourceMemoryIds.length !== 1 ||
+                    typeof m.sourceMemoryIds[0] !== 'string') return false;
+                var parentId = m.sourceMemoryIds[0], parent = byId.get(parentId);
+                if (!owned(parent) || parent === m) return false;
+                linked.set(m.id,parentId);
+            }
+            // At most one non-withdrawn child of each superseded version.
+            var children = new Map();
+            for (var entry of linked) {
+                var child = byId.get(entry[0]);
+                if (child.status === 'withdrawn') continue;
+                var parent = byId.get(entry[1]);
+                if (['superseded-fixed','superseded-confirmed'].indexOf(parent.status) < 0 ||
+                    children.has(parent.id)) return false;
+                children.set(parent.id,child.id);
+            }
+            for (var m of special) {
+                if (['superseded-fixed','superseded-confirmed'].indexOf(m.status) >= 0 && !children.has(m.id)) return false;
+            }
+            // Every chain must terminate at an existing original.
+            for (var id of linked.keys()) {
+                var seen = new Set(), current = id;
+                while (linked.has(current)) {
+                    if (seen.has(current)) return false;
+                    seen.add(current); current = linked.get(current);
+                }
+            }
+            return true;
+        }
+        try {
+            var keys = Object.keys(data);
+            for (var i = 0; i < keys.length; i++) {
+                var key = keys[i];
+                if (key.indexOf('chat_memories_') === 0) {
+                    var roleId = key.slice('chat_memories_'.length);
+                    if (!roleId || typeof data[key] !== 'string' ||
+                        !validList(JSON.parse(data[key]),roleId)) return false;
+                }
+            }
+            if (Object.prototype.hasOwnProperty.call(data,'phone_data_v2')) {
+                if (typeof data.phone_data_v2 !== 'string') return false;
+                var root = JSON.parse(data.phone_data_v2);
+                if (!root || typeof root !== 'object' || Array.isArray(root)) return false;
+                for (var roleId of Object.keys(root)) {
+                    var bucket = root[roleId];
+                    if (bucket && bucket.memories != null &&
+                        !validList(bucket.memories.items,roleId)) return false;
+                }
+            }
+        } catch (_) { return false; }
+        return true;
+    }
+
     // 严格校验：结构 → 应用标识 → schema 版本 → data 段 → 核心键抽样
     function validateBackup(obj) {
         if (!obj || typeof obj !== 'object') return '文件不是有效的 JSON 对象';
@@ -494,6 +579,7 @@
         if (meta.schema > BACKUP_SCHEMA) return '备份版本（schema ' + meta.schema + '）比当前应用更新，请先升级应用再导入';
         if (meta.schema < 1) return 'schema 版本号异常，拒绝导入';
         if (!obj.data || typeof obj.data !== 'object' || Array.isArray(obj.data)) return 'data 段缺失或格式错误';
+        if (!validateMemoryBackup(obj.data)) return '记忆存档损坏或修订链不完整，已阻止恢复以保护原数据';
         var scope = meta.scope || '';
         var registry = typeof backupRegistry === 'function' ? backupRegistry() : null;
         if (scope && (!registry || !registry.get(scope)))
@@ -523,8 +609,10 @@
         localStorage.clear();
         var failed = false;
         Object.keys(snap).forEach(function (k) {
-            try { localStorage.setItem(k, String(snap[k])); }
-            catch (e) { failed = true; }
+            try {
+                localStorage.setItem(k, String(snap[k]));
+                if (localStorage.getItem(k) !== String(snap[k])) failed = true;
+            } catch (e) { failed = true; }
         });
         return !failed;
     }
