@@ -5,11 +5,12 @@ const id=v=>typeof v==='string'&&v.length>0&&v.length<=256&&v.trim()===v;
 const roleSeat=v=>id(v)&&((v.startsWith('role:')&&id(v.slice(5)))||/^bot:[1-3]$/.test(v));
 const limit=(v,max)=>Number.isSafeInteger(v)&&v>0&&v<=max;
 
-export function createRoomSpeechQueue({roleSeatIds,maxPerRound=6,maxPerRoom=128}={}) {
+export function createRoomSpeechQueue({roleSeatIds,maxPerRound=6,maxPerRoom=128,restoredJobIds=[]}={}) {
   if(!Array.isArray(roleSeatIds)||roleSeatIds.length>12||!Array.from(roleSeatIds).every(roleSeat)||
      new Set(roleSeatIds).size!==roleSeatIds.length||!limit(maxPerRound,32)||
      !limit(maxPerRoom,4096)||maxPerRoom<maxPerRound) fail('INVALID_SPEECH_SPEC');
-  const roles=new Set(roleSeatIds),seen=new Set();
+  if(!Array.isArray(restoredJobIds)||restoredJobIds.length>maxPerRoom||!Array.from(restoredJobIds).every(id)||new Set(restoredJobIds).size!==restoredJobIds.length)fail('INVALID_SPEECH_CHECKPOINT');
+  const roles=new Set(roleSeatIds),seen=new Set(restoredJobIds);
   let pending=[],active=null,closed=false,stopping=false;
   function open(){if(closed) fail('SPEECH_CLOSED');if(stopping) fail('SPEECH_STOPPING');}
   function beginRound(jobs) {
@@ -48,7 +49,7 @@ export function createRoomSpeechQueue({roleSeatIds,maxPerRound=6,maxPerRoom=128}
     const old=active;active=null;pending=[];
     try {old?.controller.abort();} finally {stopping=false;}
   }
-  return Object.freeze({beginRound,take,settle,stop,
+  return Object.freeze({beginRound,take,settle,stop,checkpoint(){open();if(active||pending.length)fail('SPEECH_ROUND_BUSY');return [...seen];},
     close(){closed=true;stop();},
     status:()=>Object.freeze({closed,active:active!==null,queued:pending.length,remaining:maxPerRoom-seen.size})
   });

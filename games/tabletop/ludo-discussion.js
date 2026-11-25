@@ -17,9 +17,9 @@ export function ludoEventPriority(view){
   }
   return last.kind==='roll'&&last.cruise===true?1:0;
 }
-export function createLudoDiscussion({session,view,generateRole=null,generateBot=null,allowOutput=null,onChange=()=>{},timeoutMs=30000,now=Date.now}={}){
+export function createLudoDiscussion({session,view,generateRole=null,generateBot=null,allowOutput=null,onChange=()=>{},timeoutMs=30000,now=Date.now,checkpoint=null}={}){
   if(!session||!['viewUser','viewRole','viewBot','discussionSignal','discussionCurrent'].every(k=>typeof session[k]==='function')||
-    view?.gameId!=='ludo'||view.phase!=='playing'||view.selfSeatId!=='user'||
+    view?.gameId!=='ludo'||!['playing','finished'].includes(view.phase)||view.selfSeatId!=='user'||
     !Array.isArray(view.seats)||view.seats.length<2||view.seats.length>4||
     ![generateRole,generateBot,allowOutput].every(f=>f===null||typeof f==='function')||
     ((generateRole||generateBot)&&!allowOutput)||typeof onChange!=='function'||typeof now!=='function') fail('LUDO_DISCUSSION_INVALID');
@@ -29,6 +29,37 @@ export function createLudoDiscussion({session,view,generateRole=null,generateBot
   const generator=s=>s.kind==='bot'?generateBot:generateRole;
   let closed=false,epoch=0,tail=Promise.resolve(),pending=0,roundSignal=null,sequence=0;
   let roundEvent=null,automatic=null,lastObserved=view.revision,lastAutomatic=-Infinity,automaticCount=0;
+  let restoredJobIds=[];
+  const exact=(o,keys)=>o&&typeof o==='object'&&!Array.isArray(o)&&Object.keys(o).length===keys.length&&keys.every(k=>Object.hasOwn(o,k));
+  if(checkpoint!==null){
+    if(!exact(checkpoint,['schema','roomId','revision','sequence','automaticCount','lastAutomatic','jobIds','messages'])||
+      checkpoint.schema!==1||checkpoint.roomId!==roomId||checkpoint.revision!==view.revision||
+      !Number.isSafeInteger(checkpoint.sequence)||checkpoint.sequence<0||checkpoint.sequence>4096||
+      !Number.isInteger(checkpoint.automaticCount)||checkpoint.automaticCount<0||checkpoint.automaticCount>12||
+      (checkpoint.lastAutomatic===null?checkpoint.automaticCount!==0:(!Number.isSafeInteger(checkpoint.lastAutomatic)||checkpoint.lastAutomatic<0||checkpoint.lastAutomatic>view.revision||checkpoint.automaticCount===0))||
+      !Array.isArray(checkpoint.jobIds)||checkpoint.jobIds.length>128||new Set(checkpoint.jobIds).size!==checkpoint.jobIds.length||
+      !Array.isArray(checkpoint.messages)||checkpoint.messages.length>log.maxMessages)fail('LUDO_INVALID_CHAT_CHECKPOINT');
+    sequence=checkpoint.sequence;automaticCount=checkpoint.automaticCount;lastAutomatic=checkpoint.lastAutomatic??-Infinity;
+    let events=0;
+    const jobs=new Map();
+    for(const job of checkpoint.jobIds){
+      if(typeof job!=='string'||job.length>256)fail('LUDO_INVALID_CHAT_CHECKPOINT');
+      const m=/^(reply|event):([1-9][0-9]*):(.+)$/.exec(job),n=m?Number(m[2]):NaN;
+      if(!m||!Number.isSafeInteger(n)||!eligible.some(s=>s.seatId===m[3])||
+        (m[1]==='reply'?n>sequence:n>lastAutomatic))fail('LUDO_INVALID_CHAT_CHECKPOINT');
+      if(m[1]==='event')events++;
+      jobs.set(job,m[3]);
+    }
+    if(events>automaticCount)fail('LUDO_INVALID_CHAT_CHECKPOINT');
+    restoredJobIds=[...checkpoint.jobIds];
+    const seen=new Set();
+    for(const m of checkpoint.messages){
+      if(!exact(m,['id','senderSeatId','text','time'])||seen.has(m.id)||!audience.includes(m.senderSeatId)||
+        (m.senderSeatId==='user'?(typeof m.id!=='string'||!m.id.startsWith('user:')||!id(m.id.slice(5))||typeof m.text!=='string'||m.text.length>1000):jobs.get(m.id)!==m.senderSeatId))fail('LUDO_INVALID_CHAT_CHECKPOINT');
+      log.append({senderSeatId:m.senderSeatId,messageId:m.id,audienceSeatIds:audience,time:m.time},m.text);
+      seen.add(m.id);
+    }
+  }
   function check(stamp){if(closed||stamp!==epoch)fail('LUDO_DISCUSSION_STOPPED');}
   function verify(v,allowFinished=false){
     if(v?.roomId!==roomId||v.gameId!=='ludo'||!(v.phase==='playing'||allowFinished&&v.phase==='finished')||
@@ -45,7 +76,7 @@ export function createLudoDiscussion({session,view,generateRole=null,generateBot
     try{onChange(log.read('user'));}catch{/* presentation cannot roll back a message */}
   }
   function find(seatId){const s=eligible.find(s=>s.seatId===seatId);if(!s)fail('LUDO_DISCUSSION_SPEAKER');return s;}
-  const runner=createRoomSpeechRunner({chatLog:log,roleSeatIds:eligible.map(s=>s.seatId),timeoutMs,maxPerRound:3,maxPerRoom:128,now,
+  const runner=createRoomSpeechRunner({chatLog:log,roleSeatIds:eligible.map(s=>s.seatId),timeoutMs,maxPerRound:3,maxPerRoom:128,now,restoredJobIds,
     async prepare(ticket){
       const signal=roundSignal,s=find(ticket.seatId);
       await current(signal);
@@ -89,6 +120,7 @@ export function createLudoDiscussion({session,view,generateRole=null,generateBot
       // addressed replies always keep their exact immutable seat identity.
       const available=candidates.filter(s=>generator(s)),offset=target?0:sequence%available.length;
       const speakers=target?available:[...available.slice(offset),...available.slice(0,offset)].slice(0,2);
+      if(runner.status().remaining<speakers.length)return {duplicate:false,committed:0,reason:'SPEECH_LIMIT'};
       sequence++;
       const jobs=speakers.map(s=>({jobId:'reply:'+sequence+':'+s.seatId,seatId:s.seatId}));
       check(stamp);roundSignal=signal;
@@ -110,7 +142,7 @@ export function createLudoDiscussion({session,view,generateRole=null,generateBot
     const revision=eventView.revision,priority=ludoEventPriority(eventView);
     if(eventView.selfSeatId!=='user'||!Number.isSafeInteger(revision)||revision<=lastObserved)return Promise.resolve({committed:0,reason:'STALE_EVENT'});
     lastObserved=revision;
-    if(!priority||pending||automaticCount>=12||revision-lastAutomatic<4)return Promise.resolve({committed:0,reason:'QUIET'});
+    if(!priority||pending||automaticCount>=12||runner.status().remaining<1||revision-lastAutomatic<4)return Promise.resolve({committed:0,reason:'QUIET'});
     const last=eventView.game.last;
     if(!audience.includes(last.seatId))return Promise.resolve({committed:0,reason:'STALE_EVENT'});
     const victims=last.kind==='move'&&Array.isArray(last.captures)?last.captures.filter(c=>audience.includes(c?.seatId)&&Number.isInteger(c.plane)&&c.plane>=0&&c.plane<4).map(c=>({seatId:c.seatId,plane:c.plane})):[];
@@ -143,7 +175,13 @@ export function createLudoDiscussion({session,view,generateRole=null,generateBot
     const stamp=epoch,signal=await session.discussionSignal();await current(signal,true);check(stamp);
     return log.read('user');
   }
+  async function save(expectedRevision){
+    const stamp=epoch,signal=await session.discussionSignal(),v=await current(signal,true);check(stamp);
+    if(pending||runner.status().running||!Number.isSafeInteger(expectedRevision)||v.revision!==expectedRevision)fail('LUDO_CHAT_CHECKPOINT_BUSY');
+    return {schema:1,roomId,revision:v.revision,sequence,automaticCount,lastAutomatic:Number.isFinite(lastAutomatic)?lastAutomatic:null,
+      jobIds:runner.checkpoint(),messages:log.read('user').map(m=>({id:m.id,senderSeatId:m.sender.seatId,text:m.text,time:m.time}))};
+  }
   function stop(){epoch++;if(automatic)automatic.cancelled=true;roundSignal=null;roundEvent=null;runner.stop();}
   function close(){if(closed)return;closed=true;stop();runner.close();}
-  return Object.freeze({send,react,read,stop,close,status:()=>({closed,pending,...runner.status()})});
+  return Object.freeze({send,react,read,save,stop,close,status:()=>({closed,pending,...runner.status()})});
 }

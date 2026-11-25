@@ -7,7 +7,7 @@ function fixture(options={}){
   let ac=new AbortController(),valid=true;
   const session={viewUser:async()=>({...view}),viewRole:async()=>({...view,selfSeatId:'role:r'}),viewBot:async()=>({...view,selfSeatId:'bot:1'}),discussionSignal:async()=>ac.signal,discussionCurrent:(s,{allowFinished=false}={})=>valid&&s===ac.signal&&!s.aborted&&(view.phase==='playing'||allowFinished&&view.phase==='finished')};
   const discussion=createLudoDiscussion({session,view,...options});
-  return {discussion,view,revoke(){valid=false;ac.abort();},update(){view.revision++;}};
+  return {discussion,view,session,revoke(){valid=false;ac.abort();},update(){view.revision++;}};
 }
 test('separate provider routes and ordered public history, no private source fallback',async()=>{
   const calls=[],f=fixture({allowOutput:()=>true,generateRole:async c=>{calls.push(['role',c]);return '我选这条路线。';},generateBot:async c=>{calls.push(['bot',c]);return '该我了。';}});
@@ -96,4 +96,43 @@ test('automatic commentary has a bounded per-match call count',async()=>{
   let calls=0;const f=fixture({generateRole:()=>{calls++;return null;},allowOutput:()=>true});
   for(let i=1;i<=15;i++)await f.discussion.react(event(f,i*5,collision));
   assert.equal(calls,12);assert.deepEqual(await f.discussion.read(),[]);
+});
+
+test('chat checkpoint restores public identities and history and preserves generated IDs',async()=>{
+  const f=fixture({generateRole:()=> '角色发言',generateBot:()=> '普通棋友发言',allowOutput:()=>true});
+  await f.discussion.send({messageId:'1',text:'开始'});
+  const saved=await f.discussion.save(1);
+  const restored=createLudoDiscussion({session:f.session,view:f.view,checkpoint:saved,generateRole:()=> '下一句',allowOutput:()=>true});
+  assert.deepEqual(await restored.read(),await f.discussion.read());
+  assert.equal((await restored.send({messageId:'1',text:'开始'})).duplicate,true);
+  await restored.send({messageId:'2',text:'继续'});
+  assert.deepEqual((await restored.read()).map(m=>m.id),['user:1','reply:1:role:r','reply:1:bot:1','user:2','reply:2:role:r']);
+  assert.equal(restored.status().remaining,125);
+});
+test('restored silent or cancelled speech stays charged against local attempt limits',async()=>{
+  const f=fixture({generateRole:()=>null,allowOutput:()=>true});
+  for(let i=1;i<=12;i++)await f.discussion.react(event(f,i*5,collision));
+  const saved=await f.discussion.save(60),restored=createLudoDiscussion({session:f.session,view:f.view,checkpoint:saved,generateRole:()=> '不应发言',allowOutput:()=>true});
+  f.view.revision=65;
+  assert.equal((await restored.react({...f.view})).reason,'QUIET');assert.equal(restored.status().remaining,116);
+  assert.deepEqual(await restored.read(),[]);
+});
+test('malformed chat checkpoint cannot impersonate a sender or migrate another room',async()=>{
+  const f=fixture({generateRole:()=> '角色发言',allowOutput:()=>true});
+  await f.discussion.send({messageId:'1',text:'开始'});const saved=await f.discussion.save(1);
+  for(const mutate of [s=>s.roomId='other',s=>s.revision=2,s=>s.messages[1].senderSeatId='bot:1',s=>s.jobIds=[],s=>s.messages.push(s.messages[0]),s=>s.messages[0].audienceSeatIds=['user'],s=>s.sequence=0]){
+    const bad=JSON.parse(JSON.stringify(saved));mutate(bad);
+    assert.throws(()=>createLudoDiscussion({session:f.session,view:f.view,checkpoint:bad}),/LUDO_INVALID_CHAT_CHECKPOINT/);
+  }
+});
+test('checkpoint refuses unfinished generation; stopped round can save without late text',async()=>{
+  let start,release;const started=new Promise(r=>{start=r;});
+  const f=fixture({generateRole:()=>{start();return new Promise(r=>{release=r;});},allowOutput:()=>true});
+  const request=f.discussion.send({messageId:'1',text:'开始'}),rejected=assert.rejects(request,/SPEECH_CANCELLED|LUDO_DISCUSSION_STOPPED/);
+  await started;await assert.rejects(f.discussion.save(1),/LUDO_CHAT_CHECKPOINT_BUSY/);
+  f.discussion.stop();release('迟到');await rejected;
+  const saved=await f.discussion.save(1);assert.equal(saved.messages.length,1);assert.equal(saved.jobIds.length,1);
+  f.view.phase='finished';
+  const restored=createLudoDiscussion({session:f.session,view:f.view,checkpoint:saved});
+  assert.equal((await restored.read()).length,1);await assert.rejects(restored.send({messageId:'2',text:'结束'}),/LUDO_DISCUSSION_SCOPE/);
 });

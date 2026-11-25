@@ -11,9 +11,9 @@ function audience(value,seatId) {
      new Set(value).size!==value.length||!value.includes(seatId)) fail('INVALID_SPEECH_AUDIENCE');
   return [...value];
 }
-export function createRoomSpeechRunner({chatLog,roleSeatIds,prepare,generate,authorize,validateCommit,timeoutMs=30000,maxPerRound=6,maxPerRoom=128,now=Date.now}={}) {
+export function createRoomSpeechRunner({chatLog,roleSeatIds,prepare,generate,authorize,validateCommit,timeoutMs=30000,maxPerRound=6,maxPerRoom=128,now=Date.now,restoredJobIds=[]}={}) {
   if(!chatLog||typeof chatLog.append!=='function'||typeof chatLog.assertAppendable!=='function'||typeof prepare!=='function'||typeof generate!=='function'||typeof authorize!=='function'||typeof validateCommit!=='function'||typeof now!=='function'||!Number.isSafeInteger(timeoutMs)||timeoutMs<1||timeoutMs>120000) fail('INVALID_SPEECH_RUNNER');
-  const queue=createRoomSpeechQueue({roleSeatIds,maxPerRound,maxPerRoom});
+  const queue=createRoomSpeechQueue({roleSeatIds,maxPerRound,maxPerRoom,restoredJobIds});
   let running=false;
   function check(ticket){if(ticket.signal.aborted) fail('SPEECH_CANCELLED');}
   async function execute(ticket,allowSilence) {
@@ -83,5 +83,5 @@ export function createRoomSpeechRunner({chatLog,roleSeatIds,prepare,generate,aut
     } catch(error) {queue.stop();throw error;}
     finally {signal?.removeEventListener('abort',onAbort);running=false;}
   }
-  return Object.freeze({runRound,stop:()=>queue.stop(),close:()=>{queue.close();chatLog.close();},status:()=>({...queue.status(),running})});
+  return Object.freeze({runRound,checkpoint(){if(running)fail('SPEECH_ROUND_BUSY');return queue.checkpoint();},stop:()=>queue.stop(),close:()=>{queue.close();chatLog.close();},status:()=>({...queue.status(),running})});
 }
