@@ -637,3 +637,9 @@ On the next turn/session, read this file and the current `AGENTS.md` first. Cont
 - ecf05ba270afe7b323c6dd6172e8029a308cf219 的三套群设置 Chromium 回归在 #44843160164 通过。完整发布仍须以 QA-only 门禁和同源 SHA 回执为准。
 
 - 第二轮定位记忆清理回归仍走旧入口，旧档案的角色副本与群共享 ID 时还会遮蔽群记录。明确从群选项入口进入时优先按群 ID 读取，单聊入口沿用原规则。Vite 和四套 Chromium 专项（含 375、390、430、1100px 的记忆清理）在 #44843984791 通过。
+
+## 2026-11-26 · ARCH-001 · 公共应用提示词组装契约 v1
+- 基于 #299 核实 HEAD `cf440666a47f5443385c2937cb14faa698d3e46a` 的独立增量分支，未修改 #533/#534、主聊天详情、群聊、账号、存储或 UI。继续复用 PhoneEngine / PhoneApps / PhoneContext / PhoneAPI。
+- 实际实现 `52b886c735290abb08269080a3ca62721043a2b3`：`PhoneEngine.buildGenerationRequest(roleContext, apps, bundle)` 纯函数统一单 App/整机刷新提示词构建，公共指令和注册应用任务/JSON 契约置于 system、动态资料置于 user；整机模式补齐此前遗漏的各应用专属规则、固定外层键；单应用仅注入其任务。调用入口验证唯一正式角色、有效应用、非空 schema 与上下文，失败不发 API。维持已有 JSON 返回契约、单次请求模式及 quickReply 行为；不新建注册表，不改变持久化。资料和指令分离是提示词工程，不替代权限检查或程序化输出验证；实际读取权限需安全整合 #534 等现有候选。
+- 新增 `tests/phone-engine-prompt-composition.test.mjs`（提交 `348b5e3b7763ba5f1cac394b11322352d7fd3e06`），实际读取分支源码并在隔离 JS V8 合成夹具执行对应 9 项断言，9/9 通过；无真实模型请求、密钥或用户数据。完整 Node CLI/Vite/Chromium、真实模型输出效果、前缀缓存命中率、手机 QA/真机均 NOT VERIFIED。
+- 调用清单：现有共享 refreshApp/refreshAll 入口已改；主线搜索未找到实际页面直接调用这两个刷新方法的证据，朋友圈已加载 PhoneEngine 但只确认角色选择相关调用。不能宣称所有 App 或聊天主链已完成提示词统一。下一步核对现有集成分支具体页面调用、按模块迁移与实际输出校验，避免覆盖并行开发。独立专项回滚为撤销本分支增量；未合并、未部署。
