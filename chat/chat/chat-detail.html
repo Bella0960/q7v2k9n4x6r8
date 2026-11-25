@@ -2447,8 +2447,8 @@
         const groupPageAccount=isGroupChat&&groupGuard?groupGuard.account():null;
         const groupObjectBaselines=new WeakMap();
         let groupPageExited=false;
-        function readGroupScope(){
-            if(groupPageExited||!isGroupChat||!groupGuard||groupPageAccount===null||groupGuard.account()!==groupPageAccount)return null;
+        function readGroupScope(allowExit){
+            if((groupPageExited&&allowExit!==true)||!isGroupChat||!groupGuard||groupPageAccount===null||groupGuard.account()!==groupPageAccount)return null;
             const snap=groupGuard.read(String(currentRoleId));
             if(!snap||snap.account!==groupPageAccount||!window.GroupGovernance?.userIsInGroup(snap.group)||!Array.isArray(snap.group.members))return null;
             const ids=snap.group.members.map(m=>m&&m.id!=null?String(m.id):'');
@@ -2462,9 +2462,9 @@
             groupObjectBaselines.set(snap.group,snap);
             return snap.group;
         }
-        function currentGroupSpeaker(id){
+        function currentGroupSpeaker(id,allowExit){
             if(typeof id!=='string'||!id||id==='__user'||id===String(currentRoleId))return false;
-            const snap=readGroupScope();
+            const snap=readGroupScope(allowExit===true);
             if(!snap)return false;
             const members=snap.group.members.filter(m=>String(m.id)===id);
             return members.length===1&&!window.GroupGovernance.isMuted(members[0])&&!!getRoleById(id);
@@ -5671,16 +5671,46 @@
         // 在 pagehide 里把它落库为一条 assistant 消息，从而变成未读 + 顶部弹窗，
         // 还原 QQ/微信里"你切出去对方消息照到"的真实感。
         let inflightSnapshot = null;
+        let groupInterruptedSave = null;
+
+        // An interrupted response is public prose only. Never parse actions or
+        // save an unfinished private/unknown marker as a visible group message.
+        function buildInterruptedGroupHistory(raw,received,meta){
+            if(typeof raw!=='string'||!meta||!meta.memberId||meta.memberId==='__user')return null;
+            let history;
+            try{history=JSON.parse(raw);}catch(error){return null;}
+            if(!Array.isArray(history))return null;
+            let clean=meta.allowText===false?'':stripInternalReasoning(String(received||''))
+                .replace(/<narratage\b[^>]*>[\s\S]*?(?:<\/narratage\s*>|$)/gi,'');
+            // Conservatively keep only the plain prefix before any remaining
+            // bracket/tag. In a broken stream a nested delimiter is ambiguous.
+            clean=clean.split(/[\[<【［]/,1)[0].trim();
+            if(clean&&typeof meta.validate==='function'&&!meta.validate(clean))clean='';
+            const at=Date.now();
+            if(clean){
+                const message={role:'assistant',text:clean,time:at,voiceMode:meta.voiceMode||'online',name:meta.name,memberId:meta.memberId};
+                ensureMid(message);
+                history.push(message);
+            }
+            const tip={role:'system_error',isError:true,text:clean?'连接中断，以上为已收到的回复':String(meta.emptyTip||'连接中断，未收到可安全保存的回复'),time:at+1};
+            ensureMid(tip);
+            history.push(tip);
+            return {history:history,hasText:!!clean};
+        }
 
         // 页面被切走（返回列表/刷空间/发动态）时：如果 AI 还在说话，
         // 把已经流出来的那半截消息立刻落库。localStorage 写入是同步的，
         // 在页面卸载前一定完成，下一页轮询时就能读到未读 + 弹窗。
         window.addEventListener('pagehide', function () {
             try {
+                // Best effort only: a browser may terminate the document before
+                // the asynchronous shared lock runs. Never fall back to a sync write.
+                if(isGroupChat){
+                    const save=groupInterruptedSave;groupInterruptedSave=null;inflightSnapshot=null;
+                    if(aiSending&&save)void save();
+                    return;
+                }
                 if (!aiSending || !inflightSnapshot || singleChatPartialSaved) return;
-                // No group partial is written from pagehide: the shared history lock is asynchronous.
-                // Keep the already-saved user message; never append a second stale AI reply.
-                if(isGroupChat){inflightSnapshot=null;groupPageExited=true;return;}
                 var raw = String(inflightSnapshot.text || '').trim();
                 if (!raw) return;
                 var cleaned = stripInternalReasoning(raw)
@@ -5718,6 +5748,7 @@
                 singleChatSendPending = false;
                 inflightSnapshot = null;
                 singleChatPartialSaved = false;
+                groupInterruptedSave = null;
             }
         }
 
@@ -7463,9 +7494,31 @@
             // 意外异常时，用最后一次收到并尝试渲染的原始累计文本做保文兜底。
             let lastPaintedStreamText = '';
             let groupReplyVisible = false;
-            function groupTurnCurrent(){
+            function groupTurnCurrent(allowExit){
                 if(!isGroupChat)return true;
-                try{return !groupPageExited&&!!turnGroup&&groupGuard.account()===groupPageAccount&&groupGuard.matches(turnGroup)&&!!groupReplyPick&&currentGroupSpeaker(String(groupReplyPick.id))&&groupSpeakerBaseline!==null&&JSON.stringify(getRoleById(groupReplyPick.id))===groupSpeakerBaseline&&groupLoreCurrent()&&_chatHistoryBaselines.has(historyList)&&localStorage.getItem(storageKey)===_chatHistoryBaselines.get(historyList)&&groupGuard.account()===groupPageAccount;}catch(error){return false;}
+                try{return (!groupPageExited||allowExit===true)&&!!turnGroup&&groupGuard.account()===groupPageAccount&&groupGuard.matches(turnGroup)&&!!groupReplyPick&&currentGroupSpeaker(String(groupReplyPick.id),allowExit===true)&&groupSpeakerBaseline!==null&&JSON.stringify(getRoleById(groupReplyPick.id))===groupSpeakerBaseline&&groupLoreCurrent()&&_chatHistoryBaselines.has(historyList)&&localStorage.getItem(storageKey)===_chatHistoryBaselines.get(historyList)&&groupGuard.account()===groupPageAccount;}catch(error){return false;}
+            }
+            async function persistInterruptedGroupReply(received,allowExit,emptyTip){
+                // The only permitted post-pagehide write is this captured public
+                // prefix, with the original account, speaker and exact history.
+                if(!groupTurnCurrent(allowExit===true)||!window.ChatHistoryAtomic)return false;
+                const baseline=_chatHistoryBaselines.get(historyList);
+                const speakerId=String(groupReplyPick.id);
+                const result=buildInterruptedGroupHistory(baseline,received,{
+                    memberId:speakerId,name:groupReplyPick.name,voiceMode:presenceMode||'online',
+                    allowText:!isManualContinue&&!isRegen&&!momentsAction,
+                    emptyTip:emptyTip,
+                    validate:function(clean){
+                        if(currentGroup.settings&&currentGroup.settings.chatMode==='offline')return true;
+                        const policy=window.MAOMAOChatRoleContext;
+                        return !!(policy&&typeof policy.validateGroupOnlineReply==='function'&&
+                            policy.validateGroupOnlineReply({role:getRoleById(speakerId),text:clean,latestUserText:text}).ok);
+                    }
+                });
+                if(!result||(allowExit===true&&!result.hasText))return false;
+                const saved=await window.ChatHistoryAtomic.replaceRawIfUnchanged(
+                    currentRoleId,baseline,result.history,function(){return groupTurnCurrent(allowExit===true);});
+                return !!(saved&&saved.ok);
             }
             function discardStaleGroupTurn(){
                 inflightSnapshot=null;
@@ -7623,6 +7676,11 @@
             // 永不 reject：结果对象 { ok, fullText, error }，fullText 中断时 = 已收到的部分
             if(!groupTurnCurrent()){discardStaleGroupTurn();return;}
             const chatResponseTimeoutMs = 60000;
+            if(isGroupChat&&!isRegen&&!isManualContinue&&!momentsAction){
+                groupInterruptedSave=function(){
+                    return persistInterruptedGroupReply(lastPaintedStreamText,true).catch(function(){return false;});
+                };
+            }
             let streamResult;
             try {
                 streamResult = await PhoneStream.chat({
@@ -7655,6 +7713,7 @@
                     }
                 };
             }
+            groupInterruptedSave=null;
             if(!groupTurnCurrent()){discardStaleGroupTurn();return;}
             fullText = typeof streamResult.fullText === 'string'
                 ? streamResult.fullText
@@ -7717,6 +7776,31 @@
                 logApiCall(apiModel, 'error', apiCallStart, errText);
             } else {
                 logApiCall(apiModel, 'success', apiCallStart);
+            }
+
+            // Failed group streams bypass every action parser and secondary
+            // state mutation. The public prefix and error are one locked write.
+            if(isGroupChat&&!streamResult.ok){
+                if(isRegen){restoreFailedRegeneration();return;}
+                inflightSnapshot=null;
+                streamNodes.forEach(node=>{if(node&&node.parentNode)node.parentNode.removeChild(node);});streamNodes=[];
+                if(_vl)_vl.streaming=false;
+                if(chatTitleEl)chatTitleEl.textContent=originalTitleText;
+                let saved=false;
+                try{
+                    if(streamResult.error&&streamResult.error.kind==='capacity'&&!fullText){
+                        showToast('服务器开小差了，请稍后重试');
+                    }else{
+                        saved=await persistInterruptedGroupReply(fullText,false,'连接中断，未收到可安全保存的回复');
+                        if(!saved&&!groupPageExited)showToast('群回复未能安全保存，请重新进入聊天核对');
+                    }
+                }finally{
+                    if(!groupPageExited&&readGroupScope()){
+                        if(_vl)vlRefresh();else renderAllMessages();
+                        scrollToBottom(true);
+                    }
+                }
+                return;
             }
 
             // A valid provider response can still be a generic AI service menu

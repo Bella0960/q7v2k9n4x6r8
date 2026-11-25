@@ -574,13 +574,13 @@ test('group turns fence requests, writes, followups and deferred actions against
   }
   {let history=[];const result=w.GroupPrivateReceiptRecovery.reconcile({group:{id:'g1',members:[{id:'r1'}]},readGroupHistory:()=>history,readRoleHistory:()=>[{role:'assistant',mid:'m1',text:'secret',time:1,privateFromGroup:true,privateGroupReceiptV1:true,fromGroupId:'g1'}],saveGroupHistory:m=>{history=m;return true;}});assert.equal(result.ok,true);assert.equal(result.repaired,1);assert.equal(history[0].text,'');}
   assert.ok(html.includes('if(!groupTurnCurrent()){discardStaleGroupTurn();return;}\n            const chatResponseTimeoutMs'));
-  assert.ok(html.includes('if(!groupTurnCurrent()){discardStaleGroupTurn();return;}\n            fullText'));
+  assert.ok(html.includes('groupInterruptedSave=null;\n            if(!groupTurnCurrent()){discardStaleGroupTurn();return;}\n            fullText'));
   assert.ok(html.includes('var replySaved = isGroupChat ? await saveGroupReplyLocked(historyList,groupTurnCurrent) : saveMessages(historyList)'));
-  assert.ok(html.includes('if(isGroupChat){inflightSnapshot=null;groupPageExited=true;return;}'));
+  assert.ok(html.includes('if(aiSending&&save)void save();'));
   assert.ok(html.includes('singleChatSendPending||!groupGuard.matches(followupScope)'));
   assert.ok(html.includes('targetId!==speakerId||!currentGroupSpeaker(targetId)'));
   assert.ok(html.includes('queueGameReveal, contextOnly)'));
-  assert.ok(html.includes('if(groupPageExited||!isGroupChat||!groupGuard'));
+  assert.ok(html.includes('if((groupPageExited&&allowExit!==true)||!isGroupChat||!groupGuard'));
 });
 
 
@@ -648,4 +648,27 @@ test('invitation acceptance refuses duplicate role ids and orphan history',()=>{
   const before=h.storage.getItem('phone_groups');h.storage.setItem('ai_custom_characters',JSON.stringify([...roles,roles[0]]));
   assert.equal(h.api.resolveInvitation({id:o.invitation.id,accept:true}).ok,false);h.storage.setItem('ai_custom_characters',JSON.stringify(roles));
   h.storage.setItem('chat_history_'+o.invitation.groupId,'[]');assert.equal(h.api.resolveInvitation({id:o.invitation.id,accept:true}).ok,false);assert.equal(h.storage.getItem('phone_groups'),before);
+});
+
+test('interrupted group reply retains only validated public prose and an error in one replacement',()=>{
+  const html=load('chat/chat/chat-detail.html'),start=html.indexOf('        function buildInterruptedGroupHistory('),end=html.indexOf('\n        // 页面被切走',start);
+  assert.ok(start>=0&&end>start);
+  const code=html.slice(start,end);
+  const build=new Function('stripInternalReasoning','ensureMid',code+'\nreturn buildInterruptedGroupHistory;')(
+    s=>String(s).replace(/<think\b[^>]*>[\s\S]*?(?:<\/think\s*>|$)/gi,''),m=>{m.mid='test-'+m.time;});
+  const raw='[{"role":"user","mid":"u1","text":"你好"}]',meta={memberId:'r1',name:'角色',validate:()=>true};
+  for(const value of ['你好[群私聊:r2:秘密]','你好[群私','你好[转账:100','你好[投票:内容]','你好<thi','<think>内部</think>你好[游戏私聊:r2:秘密]']){
+    const out=build(raw,value,meta);assert.equal(out.hasText,true);assert.equal(out.history.length,3);assert.equal(out.history[0].mid,'u1');
+    assert.equal(out.history[1].text,'你好');assert.equal(out.history[1].memberId,'r1');assert.equal(out.history[2].role,'system_error');
+    assert.ok(!JSON.stringify(out.history).includes('秘密'));
+  }
+  for(const options of [{...meta,validate:()=>false},{...meta,allowText:false}]){
+    const out=build(raw,'你好',options);assert.equal(out.hasText,false);assert.equal(out.history.length,2);assert.equal(out.history[1].role,'system_error');
+  }
+  assert.equal(build(raw,'你好',{...meta,memberId:'__user'}),null);
+  assert.equal(build('{bad','你好',meta),null);
+  assert.ok(html.indexOf('if(isGroupChat&&!streamResult.ok){')<html.indexOf('var groupTurnEffects = window.GroupTurnEffects'));
+  assert.ok(html.includes('currentRoleId,baseline,result.history,function(){return groupTurnCurrent(allowExit===true);}'));
+  assert.ok(html.includes('if(!result||(allowExit===true&&!result.hasText))return false;'));
+  assert.ok(html.includes('if(isRegen){restoreFailedRegeneration();return;}'));
 });
