@@ -499,6 +499,12 @@ test('10. legacy group-play and group-management controls still work', async () 
       const stored3 = await readStorage(page, 'phone_groups');
       assert.equal(stored3[0].ownerId, 'c2');
       assert.equal(stored3[0].members.find((m) => String(m.id) === 'c2').isAdmin, true);
+      assert.equal(stored3[0].members.find((m) => String(m.id) === 'c2').memberRole, 'admin');
+      assert.equal(await page.locator('#ownerSelect').isDisabled(), true);
+      assert.equal(await page.locator('#transferOwnerBtn').isDisabled(), true);
+      assert.equal(await page.locator('[data-member-id="c1"] [data-member-field="isAdmin"]').isDisabled(), true);
+      assert.equal(await page.locator('[data-member-id="c2"] [data-remove-member]').count(), 0);
+
     });
 
   await withPage({ phone_groups: [makeGroup('g1', '旧群名', members)], ai_custom_characters: makeRoles(4) },
