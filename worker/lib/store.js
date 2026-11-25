@@ -681,6 +681,41 @@ class CloudStore {
     return Boolean(row);
   }
 
+  // One atomic SQL reservation for every potentially billed attempt. Count
+  // failures/timeouts too, because a provider may have billed the request.
+  reserveCloudModelAttempt({ activityId, attemptCount, accountId, characterId, deviceId, now, limits, timeoutMs }) {
+    if (![activityId,accountId,characterId,deviceId].every(v => typeof v === 'string' && v.length > 0 && v.length <= 256) ||
+        !Number.isSafeInteger(attemptCount) || attemptCount < 1 || !Number.isSafeInteger(now) || now <= 0 ||
+        !Number.isSafeInteger(timeoutMs) || timeoutMs <= 0 || !limits ||
+        ![limits.global,limits.account,limits.role].every(v => Number.isSafeInteger(v) && v > 0 && v <= 10000) ||
+        limits.role > limits.account || limits.account > limits.global) return false;
+    const id = 'cloud_model_attempt:' + JSON.stringify([accountId,characterId,activityId,attemptCount]);
+    const detail = JSON.stringify({accountId,characterId,activityId,attemptCount});
+    const since = now - 86400000;
+    const inserted = this.exec(
+      `INSERT INTO execution_log (id,device_id,kind,status,reason_code,detail_json,duration_ms,created_at)
+       SELECT ?,?,'cloud_model_budget','started','attempt_reserved',?,0,?
+       WHERE EXISTS (
+         SELECT 1 FROM activity_queue q JOIN devices d ON d.id=q.device_id
+         WHERE q.id=? AND q.character_id=? AND q.device_id=? AND d.user_id=?
+           AND d.revoked_at IS NULL AND q.status='running' AND q.locked_by='cloud_model_executor'
+           AND q.attempt_count=? AND q.locked_until>?
+       )
+       AND (SELECT COUNT(*) FROM execution_log WHERE kind='cloud_model_budget' AND created_at>=?) < ?
+       AND (SELECT COUNT(*) FROM execution_log WHERE kind='cloud_model_budget' AND created_at>=?
+         AND json_extract(detail_json,'$.accountId')=?) < ?
+       AND (SELECT COUNT(*) FROM execution_log WHERE kind='cloud_model_budget' AND created_at>=?
+         AND json_extract(detail_json,'$.accountId')=? AND json_extract(detail_json,'$.characterId')=?) < ?
+       ON CONFLICT(id) DO NOTHING RETURNING id`,
+      id,deviceId,detail,now,activityId,characterId,deviceId,accountId,attemptCount,now+timeoutMs+1000,
+      since,limits.global,since,accountId,limits.account,since,accountId,characterId,limits.role
+    )[0];
+    if (inserted?.id !== id) return false;
+    const row = this.exec('SELECT id,device_id,detail_json,created_at,kind,status FROM execution_log WHERE id=?',id)[0];
+    return Boolean(row && row.id===id && row.device_id===deviceId && row.detail_json===detail &&
+      Number(row.created_at)===now && row.kind==='cloud_model_budget' && row.status==='started');
+  }
+
   countRecentExecutions(deviceId, kind, since) {
     // Count every attempt, not only successful sends. Otherwise repeated
     // failures could bypass the per-device rate limit by never succeeding.
