@@ -144,6 +144,9 @@ button{font:inherit;color:inherit;cursor:pointer;border:0;background:transparent
 .head-back svg{width:16px;height:16px;stroke:currentColor;fill:none;stroke-width:1.2;stroke-linecap:round;stroke-linejoin:round}
 .reader-title{position:absolute;left:50%;transform:translateX(-50%);max-width:60%;margin:0;text-align:center;
   font-family:var(--serif);font-weight:400;font-size:16px;letter-spacing:.02em;color:var(--reader-ink,#171717);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+/* Hide chrome only inside the actual reading view, never the book detail. */
+#readerView.is-reading-chrome-hidden>.reader-head{display:none}
+#readerView.is-reading-chrome-hidden .reader-body{flex:1;min-height:0}
 /* ===== 阅读器正文容器：基础 + 三种翻页模式 ===== */
 .reader-body{position:relative;z-index:1;flex:1;min-height:0;background:var(--reader-bg,#fff);color:var(--reader-ink,#171717);
   filter:brightness(var(--reader-bright,1));transition:background .3s ease;scrollbar-width:none;-webkit-overflow-scrolling:touch;overscroll-behavior:contain}
@@ -379,7 +382,7 @@ button{font:inherit;color:inherit;cursor:pointer;border:0;background:transparent
 
       <section class="shelf-block">
         <div class="section-head">
-          <span class="section-title">今日推荐</span>
+          <span class="section-title" id="homeShelfHeading">最近阅读</span>
           <span class="section-count" id="homeCount">02 Volumes</span>
         </div>
         <div class="shelf-grid" id="homeGrid"><!-- 推荐书籍由 JS 渲染 --></div>
@@ -663,6 +666,7 @@ button{font:inherit;color:inherit;cursor:pointer;border:0;background:transparent
   </div>
   <div class="paragraph-sheet book-action-sheet" id="bookActionSheet" role="dialog" aria-modal="true" aria-label="书籍管理">
     <div class="paragraph-sheet-head"><span class="book-action-title" id="bookActionTitle"></span><button type="button" id="closeBookAction">关闭</button></div>
+    <button type="button" class="book-action" id="showShelfBookDetail">书籍详情</button>
     <button type="button" class="book-action" id="changeBookCover">更换封面</button>
     <button type="button" class="book-action" id="deleteShelfBook">删除书籍</button>
   </div>
@@ -877,9 +881,18 @@ button{font:inherit;color:inherit;cursor:pointer;border:0;background:transparent
       return Array.isArray(list) ? list : [];
     } catch (e) { return []; }
   }
+  function seedShelfOverrideId(token,id){return '@seed:'+encodeURIComponent(token)+':'+id;}
+  function applySeedShelfOverrides(stored,token){
+    return seedBooks.reduce(function(out,seed){
+      var entry=(stored||[]).find(function(b){return b&&b.id===seedShelfOverrideId(token,seed.id)&&b.readerShelfOverride===1&&b.accountToken===token&&b.seedBookId===seed.id;});
+      if(!entry||!entry.hidden)out.push(entry&&entry.coverImage?Object.assign({},seed,{coverImage:entry.coverImage}):seed);
+      return out;
+    },[]);
+  }
   function restoreLocalBooks() {
     return idbGetAll('books').then(function (stored) {
-      books = seedBooks.concat((stored || []).filter(function (b) {
+      var token=readerAccountToken();
+      books = applySeedShelfOverrides(stored,token).concat((stored || []).filter(function (b) {
         return b && b.isLocal && b.id && Array.isArray(b.chapters);
       }).sort(function (a, b) { return Number(b.createdAt || 0) - Number(a.createdAt || 0); }));
     }).catch(function () {
@@ -1087,7 +1100,7 @@ button{font:inherit;color:inherit;cursor:pointer;border:0;background:transparent
   /* ===== 阅读状态 ===== */
   var state = { book: null, ch: 0 };
   var lastMain = 'home';
-  var detailBookId='',readerReturnRoute='';
+  var detailBookId='',readerReturnRoute='',detailReturnRoute='home';
 
   /* ===== 工具 ===== */
   function esc(s) {
@@ -1514,11 +1527,18 @@ button{font:inherit;color:inherit;cursor:pointer;border:0;background:transparent
     grid.innerHTML = books.map(cardHtml).join('');
   }
 
+  function getBookProgress(bookId){
+    try{var raw=localStorage.getItem(coReadKey('progress',readerAccountToken())+':'+encodeURIComponent(bookId));return raw?JSON.parse(raw):null;}catch(e){return null;}
+  }
+  function recentBookPicks(all,progress){
+    return all.map(function(book,index){var p=progress(book.id);return {book:book,index:index,recent:p&&Number.isFinite(p.lastReadAt)?p.lastReadAt:0};})
+      .sort(function(a,b){return b.recent-a.recent||a.index-b.index;}).slice(0,3).map(function(item){return item.book;});
+  }
   function renderHome() {
-    var picks = books.slice(0, 3);
+    var picks = recentBookPicks(books,getBookProgress);
     homeGrid.innerHTML = picks.map(cardHtml).join('');
     homeCount.textContent = pad2(picks.length) + ' Volumes';
-    homeIndexLabel.innerHTML = (picks.length === 1 ? 'ONE' : picks.length === 2 ? 'TWO' : 'THREE') + '<br>PICKS<br>TODAY';
+    homeIndexLabel.innerHTML = (picks.length === 0?'ZERO':picks.length === 1 ? 'ONE' : picks.length === 2 ? 'TWO' : 'THREE') + '<br>BOOKS<br>RECENT';
   }
 
   /* ===== 阅读器：段落与角色段评 ===== */
@@ -1822,10 +1842,11 @@ button{font:inherit;color:inherit;cursor:pointer;border:0;background:transparent
     }
     return null;
   }
-  function saveReadingPosition(target) {
+  function saveReadingPosition(target,forceRecent) {
     var token=readerAccountToken(), key=coReadKey('progress',token)+':'+encodeURIComponent(target.bookId);
     var value={chapter:target.chapterIndex,paragraph:target.paragraphIndex}, stamp=key+JSON.stringify(value);
-    if(stamp===lastProgress)return;
+    if(!forceRecent&&stamp===lastProgress)return;
+    value.lastReadAt=Date.now();
     writeCoReadValue(key,value);lastProgress=stamp;
   }
   function restoreReadingPosition(book) {
@@ -1953,6 +1974,7 @@ button{font:inherit;color:inherit;cursor:pointer;border:0;background:transparent
   /* 切换翻页模式：重设容器类名 + 重新定位 */
   function setMode(mode) {
     settings.mode = mode;
+    if(mode==='none')setReadingChrome(true);
     readerBody.classList.remove('mode-scroll', 'mode-smooth', 'mode-none');
     readerBody.classList.add('mode-' + mode);
     var pages = chapterPages();
@@ -1976,6 +1998,8 @@ button{font:inherit;color:inherit;cursor:pointer;border:0;background:transparent
     syncReaderUi();
   }
 
+  function setReadingChrome(show){readerView.classList.toggle('is-reading-chrome-hidden',!show);}
+  function hideReadingChromeForGesture(){if(!state.book||readerView.getAttribute('aria-hidden')==='true'||settings.mode==='none'||sheetBackdrop.classList.contains('is-open'))return;setReadingChrome(false);toggleControls(false);}
   function toggleControls(force) {
     var open = (typeof force === 'boolean') ? force : !readerControls.classList.contains('is-open');
     readerControls.classList.toggle('is-open', open);
@@ -2041,11 +2065,12 @@ button{font:inherit;color:inherit;cursor:pointer;border:0;background:transparent
     hideAllMain();
     setHidden(readerView, false);
     setMode(settings.mode);   /* 按当前翻页模式布局 */
-    if(Number.isInteger(chapter)&&chapter>=0&&chapter<book.chapters.length){goChapter(chapter,true);saveExplicitChapterPosition(book,chapter);}else restoreReadingPosition(book);
+    setReadingChrome(true);
+    if(Number.isInteger(chapter)&&chapter>=0&&chapter<book.chapters.length){goChapter(chapter,true);saveExplicitChapterPosition(book,chapter);}else {restoreReadingPosition(book);var p=getBookProgress(book.id);try{var ch=p&&book.chapters[p.chapter]&&book.chapters[p.chapter].paras[p.paragraph]?p.chapter:0,para=ch===p?.chapter?p.paragraph:0;if(book.chapters[ch]&&book.chapters[ch].paras[para])saveReadingPosition(makeReadingTarget(book,ch,para),true);}catch(e){showToast('阅读位置未能保存');}}
   }
 
   function saveExplicitChapterPosition(book,chapter){
-    try{if(book.chapters[chapter]&&book.chapters[chapter].paras.length)saveReadingPosition(makeReadingTarget(book,chapter,0));}catch(e){showToast('阅读位置未能保存');}
+    try{if(book.chapters[chapter]&&book.chapters[chapter].paras.length)saveReadingPosition(makeReadingTarget(book,chapter,0),true);}catch(e){showToast('阅读位置未能保存');}
   }
   function openBookDetail(book){
     closeSheets();toggleControls(false);hideAllMain();setHidden(readerView,true);
@@ -2071,6 +2096,7 @@ button{font:inherit;color:inherit;cursor:pointer;border:0;background:transparent
   function showMain(route) {
     if (MAIN_ROUTES.indexOf(route) < 0) route = 'home';
     lastMain = route;
+    if(route==='home')renderHome();
     MAIN_ROUTES.forEach(function (r) {
       setHidden(document.getElementById(r + 'View'), r !== route);
     });
@@ -2082,14 +2108,15 @@ button{font:inherit;color:inherit;cursor:pointer;border:0;background:transparent
   function applyRoute(route) {
     if (!route) route = 'home';
     if (route.indexOf('detail-')===0){
-      var detail=findBook(route.slice(7));
-      if(detail){lastMain='home';openBookDetail(detail);return;}
-      route='home';
+      var fromShelf=route.indexOf('detail-shelf-')===0,detail=findBook(route.slice(fromShelf?13:7));
+      if(detail){detailReturnRoute=fromShelf?'shelf':'home';lastMain=detailReturnRoute;openBookDetail(detail);return;}
+      route=fromShelf?'shelf':'home';
     }
     if(route.indexOf('read-detail-')===0){
-      var parts=route.slice(12).split('?'),detailReader=findBook(parts[0]);
-      if(detailReader){readerReturnRoute='detail-'+detailReader.id;var match=/^chapter=(\d+)$/.exec(parts[1]||'');openReader(detailReader,match?Number(match[1]):undefined);if(match)history.replaceState(null,'','#read-detail-'+detailReader.id);return;}
-      route='home';
+      var shelfDetail=route.indexOf('read-detail-shelf-')===0,detailPrefix=shelfDetail?'detail-shelf-':'detail-';
+      var parts=route.slice(shelfDetail?18:12).split('?'),detailReader=findBook(parts[0]);
+      if(detailReader){readerReturnRoute=detailPrefix+detailReader.id;var match=/^chapter=(\d+)$/.exec(parts[1]||'');openReader(detailReader,match?Number(match[1]):undefined);if(match)history.replaceState(null,'','#read-'+detailPrefix+detailReader.id);return;}
+      route=shelfDetail?'shelf':'home';
     }
     if (route.indexOf('read-') === 0) {
       var book = findBook(route.slice(5));
@@ -2179,8 +2206,8 @@ button{font:inherit;color:inherit;cursor:pointer;border:0;background:transparent
   function cancelShelfHold(){clearTimeout(shelfHoldTimer);shelfHold=null;}
   function openShelfActions(card){
     var book=findBook(card.dataset.bookId);
-    if(!book||!book.isLocal||shelfBusy||sheetBackdrop.classList.contains('is-open'))return;
-    try{shelfActionBook={id:book.id,token:readerAccountToken()};}catch(e){showToast('无法确认账号');return;}
+    if(!book||shelfBusy||sheetBackdrop.classList.contains('is-open'))return;
+    try{shelfActionBook={id:book.id,token:readerAccountToken(),fromShelf:!!card.closest('#shelfGrid')};}catch(e){showToast('无法确认账号');return;}
     document.getElementById('bookActionTitle').textContent=book.name;
     document.getElementById('bookActionSheet').classList.add('is-open');
     sheetBackdrop.classList.add('is-open');shelfHoldOpenedAt=Date.now();
@@ -2199,7 +2226,7 @@ button{font:inherit;color:inherit;cursor:pointer;border:0;background:transparent
   phone.addEventListener('contextmenu',function(e){var c=e.target.closest&&e.target.closest('.book-card');if(!c)return;e.preventDefault();cancelShelfHold();openShelfActions(c);});
   phone.addEventListener('keydown',function(e){var c=e.target.closest&&e.target.closest('.book-card');if(c&&(e.key==='ContextMenu'||(e.shiftKey&&e.key==='F10'))){e.preventDefault();openShelfActions(c);}});
   function checkShelfTarget(target){
-    if(!target||readerAccountToken()!==target.token||!findBook(target.id)||!findBook(target.id).isLocal)throw Error('账号或书籍已改变');
+    if(!target||readerAccountToken()!==target.token||!findBook(target.id))throw Error('账号或书籍已改变');
   }
   async function shelfMutation(target,action){
     if(shelfBusy)return;
@@ -2241,7 +2268,24 @@ button{font:inherit;color:inherit;cursor:pointer;border:0;background:transparent
       img.src=url;
     });
   }
+  async function saveSeedShelfOverride(target,patch){
+    checkShelfTarget(target);
+    var db=await openReaderDb();checkShelfTarget(target);
+    return new Promise(function(resolve,reject){
+      var tx=db.transaction('books','readwrite'),store=tx.objectStore('books'),id=seedShelfOverrideId(target.token,target.id),req=store.get(id),next;
+      req.onsuccess=function(){try{checkShelfTarget(target);var old=req.result;
+        if(old&&(old.readerShelfOverride!==1||old.seedBookId!==target.id||old.accountToken!==target.token||old.hidden))throw Error('书籍状态已改变');
+        next=Object.assign({id:id,readerShelfOverride:1,seedBookId:target.id,accountToken:target.token,hidden:false},old||{},patch);
+        store.put(next);
+      }catch(e){tx.abort();}};
+      tx.oncomplete=function(){resolve(next);};tx.onabort=tx.onerror=function(){reject(Error('默认书籍修改失败，原数据保留'));};
+    });
+  }
   document.getElementById('closeBookAction').addEventListener('click',closeSheets);
+  document.getElementById('showShelfBookDetail').addEventListener('click',function(){
+    if(!shelfActionBook||shelfBusy)return;var target=shelfActionBook;
+    try{checkShelfTarget(target);closeSheets();go((target.fromShelf?'detail-shelf-':'detail-')+target.id);}catch(e){showToast('书籍状态已改变');}
+  });
   document.getElementById('changeBookCover').addEventListener('click',function(){
     if(!shelfActionBook||shelfBusy)return;coverTarget=Object.assign({},shelfActionBook);
     var input=document.getElementById('bookCoverInput');input.value='';input.click();
@@ -2250,7 +2294,8 @@ button{font:inherit;color:inherit;cursor:pointer;border:0;background:transparent
     var file=this.files&&this.files[0],target=coverTarget;coverTarget=null;this.value='';
     if(!file||!target)return;
     shelfMutation(target,async function(){
-      ensureNoLegacyBook(target,false);var image=await encodeShelfCover(file);checkShelfTarget(target);
+      var book=findBook(target.id);if(book.isLocal)ensureNoLegacyBook(target,false);var image=await encodeShelfCover(file);checkShelfTarget(target);
+      if(!book.isLocal){await saveSeedShelfOverride(target,{coverImage:image});checkShelfTarget(target);books=books.map(function(b){return b.id===target.id?Object.assign({},b,{coverImage:image}):b;});renderShelf();renderHome();closeSheets();showToast('已更换封面');return;}
       var db=await openReaderDb();checkShelfTarget(target);
       var next=await new Promise(function(resolve,reject){
         var tx=db.transaction('books','readwrite'),store=tx.objectStore('books'),req=store.get(target.id),updated;
@@ -2262,8 +2307,9 @@ button{font:inherit;color:inherit;cursor:pointer;border:0;background:transparent
   });
   document.getElementById('deleteShelfBook').addEventListener('click',function(){
     if(!shelfActionBook||shelfBusy)return;var target=Object.assign({},shelfActionBook),book=findBook(target.id);
-    if(!book||!confirm('删除《'+book.name+'》及其段评？此操作不可撤销。'))return;
+    if(!book||!confirm(book.isLocal?'删除《'+book.name+'》及其段评？此操作不可撤销。':'从书架删除《'+book.name+'》？原有段评会保留。'))return;
     shelfMutation(target,async function(){
+      if(!book.isLocal){await saveSeedShelfOverride(target,{hidden:true,coverImage:''});checkShelfTarget(target);books=books.filter(function(b){return b.id!==target.id;});renderShelf();renderHome();closeSheets();showToast('已删除书籍');return;}
       ensureNoLegacyBook(target,true);var db=await openReaderDb();checkShelfTarget(target);
       await new Promise(function(resolve,reject){
         var tx=db.transaction(['books','comments'],'readwrite'),store=tx.objectStore('books'),req=store.get(target.id);
@@ -2324,8 +2370,17 @@ button{font:inherit;color:inherit;cursor:pointer;border:0;background:transparent
     }
     if (tocSheet.classList.contains('is-open') || readSettings.classList.contains('is-open') ||
         paragraphSheet.classList.contains('is-open') || importDialog.classList.contains('is-open')) return;
-    toggleControls();
+    if(readerView.classList.contains('is-reading-chrome-hidden')){setReadingChrome(true);toggleControls(true);}else toggleControls();
   });
+  var readingGesture=null;
+  readerBody.addEventListener('pointerdown',function(e){readingGesture={x:e.clientX,y:e.clientY,id:e.pointerId};},{passive:true});
+  readerBody.addEventListener('pointermove',function(e){if(readingGesture&&readingGesture.id===e.pointerId&&Math.hypot(e.clientX-readingGesture.x,e.clientY-readingGesture.y)>10)hideReadingChromeForGesture();},{passive:true});
+  ['pointerup','pointercancel','pointerleave'].forEach(function(type){readerBody.addEventListener(type,function(){readingGesture=null;},{passive:true});});
+  var readerTouchStart=null;
+  readerBody.addEventListener('touchstart',function(e){var t=e.touches[0];readerTouchStart=t?{x:t.clientX,y:t.clientY}:null;},{passive:true});
+  readerBody.addEventListener('touchmove',function(e){var t=e.touches[0];if(t&&readerTouchStart&&Math.hypot(t.clientX-readerTouchStart.x,t.clientY-readerTouchStart.y)>10)hideReadingChromeForGesture();},{passive:true});
+  readerBody.addEventListener('wheel',function(e){if(e.deltaX||e.deltaY)hideReadingChromeForGesture();},{passive:true});
+  readerBody.addEventListener('keydown',function(e){if(['ArrowDown','ArrowUp','ArrowLeft','ArrowRight','PageDown','PageUp','Home','End'].indexOf(e.key)>=0)hideReadingChromeForGesture();});
 
   /* 滚动 / 滑动 → 反算当前章，与目录、页码联动（无动画模式不参与） */
   readerBody.addEventListener('scroll', function () {
@@ -2342,9 +2397,10 @@ button{font:inherit;color:inherit;cursor:pointer;border:0;background:transparent
   document.getElementById('readerBack').addEventListener('click', function () {
     go(readerReturnRoute||lastMain);
   });
-  document.getElementById('bookDetailBack').addEventListener('click',function(){go('home');});
-  document.getElementById('bookDetailRead').addEventListener('click',function(){if(findBook(detailBookId))go('read-detail-'+detailBookId);});
-  document.getElementById('bookDetailChapters').addEventListener('click',function(e){var row=e.target.closest('[data-detail-chapter]');var book=findBook(detailBookId);if(row&&book&&book.chapters[Number(row.dataset.detailChapter)])go('read-detail-'+detailBookId+'?chapter='+row.dataset.detailChapter);});
+  function detailReaderRoute(){return 'read-detail-'+(detailReturnRoute==='shelf'?'shelf-':'')+detailBookId;}
+  document.getElementById('bookDetailBack').addEventListener('click',function(){go(detailReturnRoute);});
+  document.getElementById('bookDetailRead').addEventListener('click',function(){if(findBook(detailBookId))go(detailReaderRoute());});
+  document.getElementById('bookDetailChapters').addEventListener('click',function(e){var row=e.target.closest('[data-detail-chapter]');var book=findBook(detailBookId);if(row&&book&&book.chapters[Number(row.dataset.detailChapter)])go(detailReaderRoute()+'?chapter='+row.dataset.detailChapter);});
 
   document.getElementById('ctrlToc').addEventListener('click', openToc);
   document.getElementById('ctrlPrev').addEventListener('click', function () { goChapter(state.ch - 1); });
