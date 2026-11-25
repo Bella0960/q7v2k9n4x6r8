@@ -6,12 +6,24 @@
     var list=group.members.filter(function(m){return m&&String(m.id)===id;});
     return list.length===1?list[0]:null;
   }
+  function isAdmin(m){return !!m&&(typeof m.isAdmin==='boolean'?m.isAdmin:m.memberRole==='admin');}
+  function isMuted(m,now){return !!m&&(typeof m.muted==='boolean'?m.muted:m.isMuted===true)&&(!(Number(m.mutedUntil)>0)||Number(m.mutedUntil)>(now==null?Date.now():now));}
+  function userOwns(group){return !!group&&group.userMembership!=='left'&&group.userMembership!=='declined'&&String(group.ownerId||'__user')==='__user';}
+  function userCanManage(group,action,target){
+    if(!userOwns(group)||!Array.isArray(group.members))return false;
+    if(action==='invite')return true;
+    if(action==='transfer'||action==='admin'||action==='mute'||action==='remove'){
+      var m=member(group,target);
+      return !!m&&String(group.ownerId||'__user')!==target&&(action!=='remove'||group.members.length>1);
+    }
+    return false;
+  }
   function role(group,id){
     if(!group||!id)return '';
-    if(id==='__user')return String(group.ownerId||'__user')===id?'owner':'user';
+    if(id==='__user')return group.userMembership==='left'||group.userMembership==='declined'?'':userOwns(group)?'owner':'user';
     var m=member(group,id);
     if(!m)return '';
-    return String(group.ownerId||'__user')===id?'owner':m.isAdmin===true?'admin':'member';
+    return String(group.ownerId||'__user')===id?'owner':isAdmin(m)?'admin':'member';
   }
   function title(value){
     if(typeof value!=='string')return null;
@@ -46,5 +58,5 @@
     if(!r||r.id==null||!String(r.id)||String(r.id)==='__user')return null;
     return {id:String(r.id),name:r.name||'未命名角色',avatar:r.avatar||'',nickname:'',title:'',isAdmin:false,muted:false,activeFrom:'08:00',activeTo:'23:00',talkativeness:0.5,replyThreshold:55,interests:[],interestTags:[],expertiseTags:[],backgroundTags:[]};
   }
-  global.MAOGroupAdminPolicy={member:member,role:role,title:title,can:can,findInviteRole:findInviteRole,defaultMember:defaultMember};
+  global.MAOGroupAdminPolicy={member:member,isAdmin:isAdmin,isMuted:isMuted,userOwns:userOwns,userCanManage:userCanManage,role:role,title:title,can:can,findInviteRole:findInviteRole,defaultMember:defaultMember};
 })(typeof window!=='undefined'?window:globalThis);
