@@ -24,7 +24,19 @@ function sameMembership(event) {
 export function createBrowserRoomSession({win=globalThis.window,spec,rules}={}) {
   if(!win?.document||typeof win.addEventListener!=='function'||typeof win.removeEventListener!=='function'||
      typeof win.document.addEventListener!=='function'||typeof win.document.removeEventListener!=='function') fail('INVALID_BROWSER_RUNTIME');
-  const session=createRoomSession({verifyContext:createBrowserRoomVerifier(win),createLifetime:args=>createRoomLifetime({...args,createDispatcher:createRoomDispatcher}),spec,rules});
+  let discussionController=new AbortController(),lastVerified=null;
+  function cancelDiscussion() {
+    const old=discussionController;discussionController=new AbortController();old.abort();
+  }
+  const verify=createBrowserRoomVerifier(win);
+  const session=createRoomSession({verifyContext:async options=>{
+    const next=await verify(options);
+    // Same-document roster changes are observable on successful verification
+    // even without a storage event. Cancel only the current discussion signal.
+    if(lastVerified&&(lastVerified.accountId!==next.accountId||lastVerified.sessionId!==next.sessionId||
+       lastVerified.roleIds.length!==next.roleIds.length||lastVerified.roleIds.some(id=>!next.roleIds.includes(id)))) cancelDiscussion();
+    lastVerified=next;return next;
+  },createLifetime:args=>createRoomLifetime({...args,createDispatcher:createRoomDispatcher}),spec,rules});
   let disposed=false,started=false,pending=null,epoch=0,eventRevision=0,lastError=null;
   const listeners=[];
   function listen(target,name,handler) {
@@ -33,7 +45,7 @@ export function createBrowserRoomSession({win=globalThis.window,spec,rules}={}) 
   }
   function dispose() {
     if(disposed) return;
-    disposed=true;epoch++;
+    disposed=true;epoch++;cancelDiscussion();lastVerified=null;
     for(const remove of listeners.splice(0)) remove();
     session.dispose();
   }
@@ -56,7 +68,7 @@ export function createBrowserRoomSession({win=globalThis.window,spec,rules}={}) 
       pending=job;
       const clear=()=>{if(pending===job) pending=null;};
       job.then(()=>{lastError=null;clear();},error=>{
-        lastError=error;
+        lastError=error;cancelDiscussion();
         if(session.status()==='disposed') dispose();
         clear();
       });
@@ -67,7 +79,7 @@ export function createBrowserRoomSession({win=globalThis.window,spec,rules}={}) 
     eventRevision++;
     if(started&&!disposed&&!win.document.hidden&&win.navigator?.onLine!==false) refresh().catch(error=>{lastError=error;});
   }
-  function inactive() {epoch++;eventRevision++;}
+  function inactive() {epoch++;eventRevision++;cancelDiscussion();}
   function storage(event) {
     // The released namespace passes physical own-account keys, while founder
     // storage remains unprefixed. Never examine values for foreign keys.
@@ -75,7 +87,7 @@ export function createBrowserRoomSession({win=globalThis.window,spec,rules}={}) 
     if(scope?.ready!==true||!validId(scope.accountId)) {dispose();return;}
     const key=scope.role==='super_admin'?'ai_custom_characters':'__mao_account_v1__'+encodeURIComponent(scope.accountId)+'__ai_custom_characters';
     if(event.key!==key&&event.key!==null) return;
-    if(event.key===null||!sameMembership(event)) epoch++;
+    if(event.key===null||!sameMembership(event)) {epoch++;cancelDiscussion();}
     recheck();
   }
   listen(win,'pagehide',dispose);
@@ -113,6 +125,15 @@ export function createBrowserRoomSession({win=globalThis.window,spec,rules}={}) 
       const stamp=epoch,view=session.viewRole(roleId);
       guard();if(stamp!==epoch) fail('STALE_BROWSER_CONTEXT');
       return view;
+    },
+    // Trusted caller passes this signal to the existing speech runner.
+    // This detects observed invalidation, not unobserved server-side changes.
+    async discussionSignal(){
+      await refresh();guard();
+      const controller=discussionController;
+      if(!['playing','finished'].includes(session.viewUser().phase)) fail('DISCUSSION_NOT_ACTIVE');
+      guard();if(controller!==discussionController||controller.signal.aborted) fail('STALE_BROWSER_CONTEXT');
+      return controller.signal;
     },
     prepareUserAction:()=>prepare(()=>session.prepareUserAction()),
     prepareRoleMove:roleId=>prepare(()=>session.prepareRoleMove(roleId)),

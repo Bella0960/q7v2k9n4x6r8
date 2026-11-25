@@ -1,6 +1,8 @@
 import {test} from 'node:test';
 import assert from 'node:assert/strict';
 import {createBrowserRoomSession} from '../games/tabletop/browser-room-session.js';
+import {createRoomSpeechRunner} from "../games/tabletop/room-speech-runner.js";
+import {createRoomChatLog} from "../games/tabletop/room-chat-log.js";
 const id='MAO-AAAAAAAAAAAA', foreign='MAO-BBBBBBBBBBBB';
 const key='__mao_account_v1__'+id+'__ai_custom_characters';
 const roster=ids=>JSON.stringify(ids.map(id=>({id})));
@@ -138,4 +140,33 @@ test('speech view rejects hidden or offline page and re-verifies roster after re
   const f=fixture({project:projectTurn});await f.start();f.win.document.hidden=true;f.win.document.fire('visibilitychange');await assert.rejects(f.session.viewRole('r1'),/PAGE_INACTIVE/);
   f.win.document.hidden=false;f.win.document.fire('visibilitychange');f.win.navigator.onLine=false;f.win.fire('offline');await assert.rejects(f.session.viewRole('r1'),/PAGE_INACTIVE/);
   f.win.navigator.onLine=true;f.win.fire('online');f.setRoles(['r2']);await assert.rejects(f.session.viewRole('r1'),/ROLE_UNAVAILABLE|ROSTER_CHANGED/);
+});
+
+// Connect the actual room lifetime to the actual speech runner, with a mock provider.
+async function discussionFixture(){
+  const f=fixture();await f.start();const d=deferred(),calls=[];
+  const log=createRoomChatLog({roomId:'room',seats:(await f.session.viewUser()).seats});
+  const runner=createRoomSpeechRunner({chatLog:log,roleSeatIds:['role:r1'],prepare:t=>({request:{seat:t.seatId},audienceSeatIds:['user','role:r1']}),generate:(_r,{signal})=>{calls.push(signal);return d.promise;},authorize:(_t,p)=>p.audienceSeatIds,validateCommit:()=>true,now:()=>1});
+  const signal=await f.session.discussionSignal();
+  const pending=runner.runRound([{jobId:'speech1',seatId:'role:r1'}],{signal});
+  await new Promise(r=>setImmediate(r));return {f,log,runner,d,calls,signal,pending};
+}
+test('room exit immediately aborts pending speech and prevents late append',async()=>{
+  const x=await discussionFixture();x.f.win.fire('pagehide');await assert.rejects(x.pending,/SPEECH_CANCELLED/);
+  assert.equal(x.signal.aborted,true);assert.equal(x.calls[0].aborted,true);x.d.resolve('late');await new Promise(r=>setImmediate(r));assert.deepEqual(x.log.read('user'),[]);
+});
+test('offline or observed roster change cancels speech, old signal cannot start again',async()=>{
+  for(const reason of ['offline','roster']){const x=await discussionFixture();if(reason==='offline'){x.f.win.navigator.onLine=false;x.f.win.fire('offline');}else x.f.change(['r2']);await assert.rejects(x.pending,/SPEECH_CANCELLED/);assert.equal(x.calls[0].aborted,true);x.d.resolve('late');await assert.rejects(x.runner.runRound([{jobId:'speech2',seatId:'role:r1'}],{signal:x.signal}),/SPEECH_CANCELLED/);assert.deepEqual(x.log.read('user'),[]);}
+});
+test('reordering roles does not cancel discussion; actual room close does',async()=>{
+  const x=await discussionFixture();x.f.change(['r2','r1']);await x.f.session.refresh();assert.equal(x.signal.aborted,false);await x.f.action('close');await assert.rejects(x.pending,/SPEECH_CANCELLED/);assert.equal(x.calls[0].aborted,true);x.d.resolve('late');assert.deepEqual(x.log.read('user'),[]);
+});
+test('verification suspension cancels speech and recovered room has a fresh signal',async()=>{
+  const x=await discussionFixture(),fetch=x.f.win.fetch;x.f.win.fetch=async()=>({ok:false,status:503});await assert.rejects(x.f.session.refresh(),/ACCOUNT_TEMPORARILY_UNAVAILABLE/);await assert.rejects(x.pending,/SPEECH_CANCELLED/);assert.equal(x.calls[0].aborted,true);x.d.resolve('late');x.f.win.fetch=fetch;const fresh=await x.f.session.discussionSignal();assert.notEqual(fresh,x.signal);assert.equal(fresh.aborted,false);assert.deepEqual(x.log.read('user'),[]);
+});
+test('lobby cannot start discussion signal and closed session cannot obtain one',async()=>{
+  const f=fixture();await f.action('invite',{roleId:'r1'});await assert.rejects(f.session.discussionSignal(),/DISCUSSION_NOT_ACTIVE/);f.session.dispose();await assert.rejects(f.session.discussionSignal(),/ROOM_DISPOSED/);
+});
+test('same-document roster change detected by verification cancels pending speech',async()=>{
+  const x=await discussionFixture();x.f.setRoles(['r2']);await x.f.session.refresh();await assert.rejects(x.pending,/SPEECH_CANCELLED/);assert.equal(x.calls[0].aborted,true);x.d.resolve('late');assert.deepEqual(x.log.read('user'),[]);
 });

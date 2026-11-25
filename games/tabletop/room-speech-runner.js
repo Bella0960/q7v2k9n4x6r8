@@ -49,11 +49,16 @@ export function createRoomSpeechRunner({chatLog,roleSeatIds,prepare,generate,aut
     try {return await Promise.race([work(),deadline]);}
     finally {clearTimeout(timer);signal.removeEventListener('abort',abort);}
   }
-  async function runRound(jobs) {
+  async function runRound(jobs,{signal}={}) {
     if(running) fail('SPEECH_ROUND_BUSY');
+    if(signal!==undefined&&(!(signal instanceof AbortSignal))) fail('INVALID_SPEECH_SIGNAL');
+    if(signal?.aborted) fail('SPEECH_CANCELLED');
     queue.beginRound(jobs);running=true;
+    const onAbort=()=>queue.stop();
+    signal?.addEventListener('abort',onAbort,{once:true});
     let committed=0;
     try {
+      if(signal?.aborted) fail('SPEECH_CANCELLED');
       for(let ticket;(ticket=queue.take());) {
         const {text,final}=await execute(ticket);
         const time=now();
@@ -73,7 +78,7 @@ export function createRoomSpeechRunner({chatLog,roleSeatIds,prepare,generate,aut
       }
       return {committed};
     } catch(error) {queue.stop();throw error;}
-    finally {running=false;}
+    finally {signal?.removeEventListener('abort',onAbort);running=false;}
   }
   return Object.freeze({runRound,stop:()=>queue.stop(),close:()=>{queue.close();chatLog.close();},status:()=>({...queue.status(),running})});
 }
