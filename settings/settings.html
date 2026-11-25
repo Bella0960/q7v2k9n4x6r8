@@ -187,7 +187,8 @@
                     <button type="button" id="rowExportRecoveryPoint" style="flex:1;min-width:76px;font:inherit;font-size:12px;padding:8px 10px;color:var(--ink,#111);background:var(--card-2,#f7f7f9);border:1px solid #dedee2;border-radius:10px;">导出档案</button>
                     <button type="button" id="rowReleaseRecoveryPoint" style="flex:1;min-width:76px;font:inherit;font-size:12px;padding:8px 10px;color:var(--ink,#111);background:var(--card-2,#f7f7f9);border:1px solid #dedee2;border-radius:10px;">释放恢复点</button>
                 </div>
-                <p style="font-size:11px;line-height:1.7;color:var(--aux,#888);margin:10px 0 0;">恢复档案含私人资料，不是完整备份，暂不能直接导入。请勿分享。</p>
+                <input type="file" id="recoveryPointFileInput" accept=".json,application/json" style="display:none;">
+                <p style="font-size:11px;line-height:1.7;color:var(--aux,#888);margin:10px 0 0;">恢复档案含私人资料，不是完整备份，暂不能直接导入。释放时需重新选择已保存的档案。请勿分享。</p>
             </section>
 
             <!-- 单功能备份：在备份注册表中登记后自动出现在列表里 -->
