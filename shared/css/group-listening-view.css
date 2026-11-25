@@ -36,3 +36,5 @@
 .glisten-queue-item[aria-current=true]{font-weight:600;text-decoration:underline;text-underline-offset:3px}
 .glisten-dialog button:disabled{opacity:.4;cursor:default}
 .glisten-strip button:focus-visible,.glisten-dialog button:focus-visible,.glisten-dialog input:focus-visible{outline:2px solid #777;outline-offset:2px}
+
+.glisten-paging{display:flex;justify-content:space-between;align-items:center;gap:8px}.glisten-paging button{padding:6px 12px;font-size:11px}

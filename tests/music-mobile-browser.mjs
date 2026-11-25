@@ -445,7 +445,7 @@ try {
         await entry.click();
         const dialog=chat.locator('#groupListeningDialog'),strip=chat.locator('#groupListeningStrip');
         await dialog.waitFor({state:'visible'});
-        const track=dialog.locator('[data-glisten-track]').filter({hasNotText:'__unused__'});
+        const track=dialog.locator('[data-glisten-track]');
         assert.equal(await track.count(),2);
         await track.first().check();await track.nth(1).check();
         // Repeat the synthetic one-second WAV during UI interaction; no real media mocked.
@@ -455,8 +455,12 @@ try {
         await chat.waitForFunction(()=>{const a=document.querySelector('[data-group-listening-audio]');return a&&!a.paused;});
         assert.ok((await strip.boundingBox()).height<=60,'compact playback card');
         assert.ok(await chat.evaluate(()=>document.documentElement.scrollWidth<=innerWidth),'no horizontal overflow');
-        await chat.locator('#chat-input').fill('听歌时继续编辑聊天消息');
-        assert.equal(await chat.evaluate(()=>document.querySelector('[data-group-listening-audio]').paused),false);
+        await chat.evaluate(()=>localStorage.removeItem('api_settings'));
+        const sourceBefore=await chat.evaluate(()=>document.querySelector('[data-group-listening-audio]').src);
+        await chat.locator('#chat-input').fill('听歌时继续发送聊天消息');
+        await chat.locator('#chat-form button[type=submit]').click();
+        await chat.waitForFunction(()=>JSON.parse(localStorage.getItem('chat_history_g-listen-ui')||'[]').some(m=>m.role==='user'&&m.text==='听歌时继续发送聊天消息'&&m.sendFailedReason==='missing-api-key'));
+        assert.deepEqual(await chat.evaluate(()=>{const a=document.querySelector('[data-group-listening-audio]');return {paused:a.paused,src:a.src};}),{paused:false,src:sourceBefore},'real chat send/storage path does not interrupt playback');
         await strip.getByRole('button',{name:'打开一起听歌详情'}).click();
         await dialog.locator('[data-glisten-member="listen-role"]').click();
         assert.equal(await dialog.locator('[data-glisten-member="listen-role"]').getAttribute('aria-pressed'),'true');
@@ -464,10 +468,14 @@ try {
         await chat.waitForFunction(()=>document.querySelector('[data-group-listening-audio]').paused);
         await dialog.getByRole('button',{name:'播放',exact:true}).click();
         await chat.waitForFunction(()=>!document.querySelector('[data-group-listening-audio]').paused);
+        const previousSource=await chat.evaluate(()=>document.querySelector('[data-group-listening-audio]').src);
         await dialog.getByRole('button',{name:'下一首'}).click();
-        await chat.waitForFunction(()=>!document.querySelector('[data-group-listening-audio]').paused);
+        await chat.waitForFunction(old=>{const a=document.querySelector('[data-group-listening-audio]');return a&&!a.paused&&a.src!==old;},previousSource);
         await dialog.locator('[data-glisten-end]').click();
         await strip.waitFor({state:'hidden'});assert.equal(await chat.locator('[data-group-listening-audio]').count(),0);
+        await chat.reload();
+        await entry.waitFor({state:'attached'});
+        assert.equal(await chat.locator('[data-group-listening-audio]').count(),0,'refresh never automatically restarts a previous session');
         await chat.goto(new URL('/chat/chat/chat-detail.html?id=listen-role',BASE).href);
         assert.equal(await chat.locator('[data-group-listening-entry]').count(),0,'single-chat unaffected');
         assert.equal(await chat.locator('[data-feat="music-app"]').count(),1,'original music shortcut retained');

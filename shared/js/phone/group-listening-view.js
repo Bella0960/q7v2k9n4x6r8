@@ -15,7 +15,7 @@
     const catalog=root.MAOMusicCatalogAdapter,initial=getGroupScope();
     if(!initial)return null;
     const account=initial.account,groupId=initial.id,identity=root.__MAO_ACCOUNT_SCOPE__,storage=root.localStorage,idb=root.indexedDB;
-    let dead=false,api=null,unsubscribe=null,audio=null,mode='',selected=new Set(),rows=[],page=0,lastKey='',pendingRender=false,coverTicket=0,coverUrl=null,coverKey='',lastFocus=null,searchValue='',listEpoch=0;
+    let dead=false,api=null,unsubscribe=null,audio=null,mode='',selected=new Set(),rows=[],page=0,lastKey='',pendingRender=false,coverTicket=0,coverUrl=null,coverKey='',lastFocus=null,searchValue='',listEpoch=0,timer=null;
     let media=null;const listUrls=new Set();
     function scope(){
       try{const f=getGroupScope();return !dead&&f&&f.id===groupId&&f.account===account&&root.__MAO_ACCOUNT_SCOPE__===identity&&root.localStorage===storage&&root.indexedDB===idb?f:null;}catch{return null;}
@@ -32,7 +32,7 @@
     strip.querySelector('.glisten-open').onclick=()=>openDetail();toggle.onclick=()=>void togglePlay();
     $('.glisten-close').onclick=()=>dialog.close();
     dialog.addEventListener('click',e=>{if(e.target===dialog)dialog.close();});
-    dialog.addEventListener('close',()=>{mode='';body.replaceChildren();foot.replaceChildren();clearListUrls();lastKey='';if(lastFocus?.isConnected&&!lastFocus.closest('[hidden]'))lastFocus.focus();lastFocus=null;});
+    dialog.addEventListener('close',()=>{if(dialog.open||dead)return;mode='';body.replaceChildren();foot.replaceChildren();clearListUrls();lastKey='';if(lastFocus?.isConnected&&!lastFocus.closest('[hidden]'))lastFocus.focus();lastFocus=null;syncTimer();});
     function clearListUrls(){listEpoch++;for(const url of listUrls)root.URL.revokeObjectURL(url);listUrls.clear();}
     function clearCover(){coverTicket++;coverKey='';if(coverUrl)root.URL.revokeObjectURL(coverUrl);coverUrl=null;stripCover.innerHTML=icon('music');}
     function get(id){try{const result=scope()&&catalog.getTrack(id);return result?.ok?result.track:null;}catch{return null;}}
@@ -64,14 +64,14 @@
         audio=el('audio');audio.hidden=true;audio.preload='metadata';audio.dataset.groupListeningAudio='1';host.append(audio);
         api=root.MAOGroupListeningSession.createForGroup({audio,getGroupId:()=>scope()?.id||null,hasRole});
         unsubscribe=api.subscribe(e=>{if(e.type==='invalidated'){strip.hidden=true;clearCover();if(dialog.open)dialog.close();}schedule();});
-        const r=api.start();if(!r.ok){warn(r.code);disposeSession();return false;}return true;
+        const r=api.start();if(!r.ok){warn(r.code);disposeSession();return false;}syncTimer();return true;
       }catch{disposeSession();warn('GROUP_UNAVAILABLE');return false;}
     }
     function schedule(){if(dead||pendingRender)return;pendingRender=true;root.setTimeout(()=>{pendingRender=false;render();},0);}
     function displayDialog(which){
       if(!scope()||typeof dialog.showModal!=='function'){warn('GROUP_UNAVAILABLE');return false;}
       if(!dialog.open){lastFocus=strip.hidden?d.getElementById('plus-action-btn'):strip.querySelector('.glisten-open');try{dialog.showModal();}catch{return false;}}
-      mode=which;lastKey='';return true;
+      mode=which;lastKey='';syncTimer();return true;
     }
     function open(){
       if(typeof root.closePlusPanel==='function')root.closePlusPanel();
@@ -89,12 +89,12 @@
     function renderPicker(){
       clearListUrls();body.replaceChildren();foot.replaceChildren();
       const search=el('input','glisten-search');search.type='search';search.placeholder='搜索曲名或歌手';search.value=searchValue;search.setAttribute('aria-label','搜索歌曲');
-      const list=el('div','glisten-list'),count=el('small','glisten-count'),more=button('查看更多','glisten-secondary',()=>{page++;draw();});
+      const list=el('div','glisten-list'),count=el('small','glisten-count'),paging=el('div','glisten-paging'),position=el('small','glisten-count'),previous=button('上一页','glisten-secondary',()=>{page--;draw();}),more=button('下一页','glisten-secondary',()=>{page++;draw();});paging.append(previous,position,more);
       const confirm=button('开始播放','glisten-primary',()=>void confirmSelection());confirm.dataset.glistenStart='1';
       function draw(){
         clearListUrls();const epoch=listEpoch;list.replaceChildren();
         const query=searchValue.trim().toLocaleLowerCase(),filtered=rows.filter(t=>!query||(t.name+' '+t.artist).toLocaleLowerCase().includes(query));
-        const shown=filtered.slice(0,Math.min(filtered.length,(page+1)*24));
+        const pages=Math.max(1,Math.ceil(filtered.length/24));page=Math.min(pages-1,Math.max(0,page));const shown=filtered.slice(page*24,(page+1)*24);
         for(const track of shown){
           const row=el('label','glisten-track'),cover=el('span','glisten-cover');cover.innerHTML=icon('music');
           const words=el('span','glisten-text');words.append(el('strong','',track.name),el('small','',track.artist));
@@ -103,11 +103,11 @@
           row.append(cover,words,box);list.append(row);void thumbnail(cover,track,epoch);
         }
         if(!shown.length)list.append(el('p','glisten-empty',rows.length?'没有匹配的歌曲':'暂无歌曲'));
-        more.hidden=shown.length>=filtered.length;updateCount();
+        paging.hidden=pages<=1;previous.disabled=page===0;more.disabled=page>=pages-1;position.textContent=(page+1)+' / '+pages;updateCount();
       }
       function updateCount(){count.textContent='已选 '+selected.size+' 首';confirm.disabled=!selected.size;}
       search.oninput=()=>{searchValue=search.value;page=0;draw();};
-      body.append(search,list,more);foot.append(count,confirm);draw();
+      body.append(search,list,paging);foot.append(count,confirm);draw();
     }
     async function confirmSelection(){
       if(!scope()||!selected.size)return;
@@ -165,7 +165,7 @@
       const queue=el('div','glisten-queue');
       for(const id of s.queue){const t=get(id);const row=button(t?.name||'歌曲不可用','glisten-queue-item',()=>void changeTrack(id));row.dataset.glistenQueue=id;row.disabled=!t;row.setAttribute('aria-current',id===s.trackId?'true':'false');queue.append(row);}
       const edit=button('重新选歌','glisten-secondary',openPicker),end=button('结束一起听歌','glisten-end',()=>{
-        const live=snapshot();if(live&&api){const r=api.end(live);if(!r.ok){warn(r.code);return;}}disposeSession();if(dialog.open)dialog.close();render();
+        const live=snapshot();if(live&&api){const r=api.end(live);if(!r.ok){warn(r.code);return;}}disposeSession();if(dialog.open)dialog.close();render();syncTimer();
       });end.dataset.glistenEnd='1';
       body.append(now,seek,times,controls,el('h3','','参与成员'),people,el('h3','','播放队列'),queue);foot.append(edit,end);
       updateProgress(s);
@@ -193,8 +193,8 @@
       if(mode==='detail'&&dialog.open)updateProgress(s);
     }
     function tick(){if(!scope()){destroy();return;}if(api)render();}
-    const timer=root.setInterval(tick,1000);
-    function destroy(){if(dead)return;dead=true;root.clearInterval(timer);root.removeEventListener('pagehide',destroy);root.removeEventListener('storage',tick);disposeSession();clearListUrls();if(dialog.open)dialog.close();entry.remove();strip.remove();dialog.remove();mounted.delete(host);}
+    function syncTimer(){const needed=!dead&&(!!api||dialog.open);if(needed&&timer===null)timer=root.setInterval(tick,1000);else if(!needed&&timer!==null){root.clearInterval(timer);timer=null;}}
+    function destroy(){if(dead)return;dead=true;if(timer!==null)root.clearInterval(timer);timer=null;root.removeEventListener('pagehide',destroy);root.removeEventListener('storage',tick);disposeSession();clearListUrls();if(dialog.open)dialog.close();entry.remove();strip.remove();dialog.remove();mounted.delete(host);}
     root.addEventListener('pagehide',destroy);root.addEventListener('storage',tick);
     const out=Object.freeze({destroy,getSnapshot:snapshot});mounted.set(host,out);return out;
   }
