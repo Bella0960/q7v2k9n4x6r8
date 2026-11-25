@@ -1,86 +1,116 @@
-// Trusted in-memory room coordinator. No DOM, storage, AI or network access.
-// Runtime adapter must supply verified scope and vetted role IDs; never pass full state to AI.
-export const ROOM_SCHEMA = 1;
+// Trusted in-memory coordinator; no runtime authentication, storage or AI calls.
+export const ROOM_SCHEMA = 2;
 const USER = 'user';
 const fail = code => { throw new Error(code); };
-const id = value => typeof value === 'string' && value.length > 0 && value.length <= 256 && value.trim() === value;
-const requireId = value => { if (!id(value)) fail('INVALID_ID'); return value; };
-const copy = value => JSON.parse(JSON.stringify(value));
+const id = v => typeof v === 'string' && v.length > 0 && v.length <= 256 && v.trim() === v;
+const requireId = v => { if (!id(v)) fail('INVALID_ID'); return v; };
+const copy = v => JSON.parse(JSON.stringify(v));
+const policies = Object.freeze({
+  ludo: Object.freeze({min:2,max:4,observers:0,moderator:false,phased:false}),
+  gomoku: Object.freeze({min:2,max:2,observers:6,moderator:false,phased:false}),
+  turtle: Object.freeze({min:2,max:8,observers:0,moderator:true,phased:true}),
+  werewolf: Object.freeze({min:6,max:12,observers:0,moderator:false,phased:true,exact:Object.freeze([6,9,12])})
+});
+export function gamePolicy(gameId) {
+  if (!Object.hasOwn(policies,gameId)) fail('UNKNOWN_GAME');
+  return copy(policies[gameId]);
+}
 function checkContext(ctx) {
   if (!ctx || !id(ctx.accountId) || !id(ctx.sessionId) || !Array.isArray(ctx.roleIds) || !ctx.roleIds.every(id)) fail('INVALID_SCOPE');
 }
-function authorize(room, ctx) {
+function authorize(room,ctx) {
   checkContext(ctx);
   if (!room || room.schema !== ROOM_SCHEMA || room.accountId !== ctx.accountId || room.sessionId !== ctx.sessionId) fail('SCOPE_MISMATCH');
 }
-function checkRoster(room, ctx) {
-  if (room.seats.some(s => s.kind === 'role' && !ctx.roleIds.includes(s.roleId))) fail('ROLE_UNAVAILABLE');
+function checkRoster(room,ctx) {
+  if (room.seats.some(s=>s.kind==='role'&&!ctx.roleIds.includes(s.roleId))) fail('ROLE_UNAVAILABLE');
 }
-export function createRoom(ctx, spec) {
+const mode = s => s.mode;
+const participants = r => r.seats.filter(s=>mode(s)!=='observer');
+const players = r => r.seats.filter(s=>mode(s)==='player');
+function checkCapacity(r) {
+  if (participants(r).length>r.maxSeats || r.seats.filter(s=>mode(s)==='observer').length>r.observerLimit) fail('ROOM_FULL');
+}
+// The generic constructor is for trusted rule adapters and tests only.
+export function createRoom(ctx,spec) {
   checkContext(ctx);
-  const { roomId, gameId, minSeats, maxSeats } = spec || {};
+  const {roomId,gameId,minSeats,maxSeats}=spec||{};
   requireId(roomId); requireId(gameId);
-  if (!Number.isInteger(minSeats) || !Number.isInteger(maxSeats) || minSeats < 2 || minSeats > maxSeats || maxSeats > 12) fail('INVALID_CAPACITY');
-  return { schema: ROOM_SCHEMA, accountId: ctx.accountId, sessionId: ctx.sessionId, roomId, gameId, minSeats, maxSeats, revision: 0, phase: 'lobby', seats: [{ seatId: USER, kind: 'user' }], turnSeatId: null };
+  const p=Object.hasOwn(policies,gameId)?gamePolicy(gameId):null;
+  const min=p?p.min:minSeats, max=p?p.max:maxSeats;
+  if (!Number.isInteger(min)||!Number.isInteger(max)||min<2||min>max||max>12) fail('INVALID_CAPACITY');
+  return {schema:ROOM_SCHEMA,accountId:ctx.accountId,sessionId:ctx.sessionId,roomId,gameId,minSeats:min,maxSeats:max,observerLimit:p?p.observers:0,revision:0,phase:'lobby',seats:[{seatId:USER,kind:'user',mode:'player'}],turnSeatId:null};
 }
-export function roomToken(room, ctx, seatId) {
-  authorize(room, ctx);
-  if (seatId !== USER) checkRoster(room, ctx);
-  if (!room.seats.some(s => s.seatId === seatId)) fail('UNKNOWN_SEAT');
-  return { accountId: room.accountId, sessionId: room.sessionId, roomId: room.roomId, revision: room.revision, seatId };
+export function createGameRoom(ctx,spec) {
+  gamePolicy(spec?.gameId);
+  return createRoom(ctx,spec);
 }
-// actorSeatId is trusted dispatch metadata, not an AI-provided field.
-// 'advance' is a sequential-turn primitive; actual game adapters must validate moves first.
-export function reduceRoom(room, ctx, actorSeatId, token, action) {
-  authorize(room, ctx);
-  if (!token || token.accountId !== room.accountId || token.sessionId !== room.sessionId || token.roomId !== room.roomId || token.revision !== room.revision || token.seatId !== actorSeatId) fail('STALE_ACTION');
-  if (!room.seats.some(s => s.seatId === actorSeatId)) fail('UNKNOWN_SEAT');
-  if (!action || typeof action.type !== 'string') fail('INVALID_ACTION');
-  const next = copy(room);
-  const host = () => { if (actorSeatId !== USER) fail('HOST_ONLY'); };
-  const lobby = () => { host(); if (room.phase !== 'lobby') fail('NOT_IN_LOBBY'); };
-  switch (action.type) {
+export function roomToken(room,ctx,seatId) {
+  authorize(room,ctx);
+  if(seatId!==USER) checkRoster(room,ctx);
+  if(!room.seats.some(s=>s.seatId===seatId)) fail('UNKNOWN_SEAT');
+  return {accountId:room.accountId,sessionId:room.sessionId,roomId:room.roomId,revision:room.revision,seatId};
+}
+// actorSeatId is trusted dispatch metadata. 'advance' must follow a validated game move.
+export function reduceRoom(room,ctx,actorSeatId,token,action) {
+  authorize(room,ctx);
+  if(!token||token.accountId!==room.accountId||token.sessionId!==room.sessionId||token.roomId!==room.roomId||token.revision!==room.revision||token.seatId!==actorSeatId) fail('STALE_ACTION');
+  if(!room.seats.some(s=>s.seatId===actorSeatId)) fail('UNKNOWN_SEAT');
+  if(!action||typeof action.type!=='string') fail('INVALID_ACTION');
+  const next=copy(room), p=Object.hasOwn(policies,room.gameId)?policies[room.gameId]:null;
+  const host=()=>{if(actorSeatId!==USER) fail('HOST_ONLY');};
+  const lobby=()=>{host();if(room.phase!=='lobby') fail('NOT_IN_LOBBY');};
+  const getSeat=seatId=>{const s=next.seats.find(x=>x.seatId===seatId);if(!s) fail('UNKNOWN_SEAT');return s;};
+  switch(action.type){
     case 'invite': {
-      lobby(); checkRoster(room, ctx);
-      const roleId = requireId(action.roleId);
-      if (!ctx.roleIds.includes(roleId)) fail('ROLE_UNAVAILABLE');
-      if (room.seats.some(s => s.kind === 'role' && s.roleId === roleId)) fail('DUPLICATE_ROLE');
-      if (room.seats.length >= room.maxSeats) fail('ROOM_FULL');
-      next.seats.push({ seatId: `role:${roleId}`, kind: 'role', roleId });
-      break;
+      lobby();checkRoster(room,ctx);
+      const roleId=requireId(action.roleId), requested=action.mode??'player';
+      if(!ctx.roleIds.includes(roleId)) fail('ROLE_UNAVAILABLE');
+      if(room.seats.some(s=>s.kind==='role'&&s.roleId===roleId)) fail('DUPLICATE_ROLE');
+      if(requested!=='player'&&(requested!=='observer'||!room.observerLimit)) fail('INVALID_SEAT_MODE');
+      next.seats.push({seatId:'role:'+roleId,kind:'role',roleId,mode:requested});checkCapacity(next);break;
     }
     case 'remove': {
-      lobby();
-      const index = room.seats.findIndex(s => s.kind === 'role' && s.seatId === action.seatId);
-      if (index < 0) fail('UNKNOWN_ROLE_SEAT');
-      next.seats.splice(index, 1); break;
+      lobby();const i=room.seats.findIndex(s=>s.kind==='role'&&s.seatId===action.seatId);
+      if(i<0) fail('UNKNOWN_ROLE_SEAT');next.seats.splice(i,1);break;
     }
     case 'reorder': {
-      lobby(); checkRoster(room, ctx);
-      const order = action.seatIds;
-      if (!Array.isArray(order) || order.length !== room.seats.length || new Set(order).size !== order.length || order.some(s => !room.seats.some(x => x.seatId === s))) fail('INVALID_ORDER');
-      next.seats = order.map(s => copy(room.seats.find(x => x.seatId === s))); break;
+      lobby();checkRoster(room,ctx);const order=action.seatIds;
+      if(!Array.isArray(order)||order.length!==room.seats.length||new Set(order).size!==order.length||order.some(s=>!room.seats.some(x=>x.seatId===s))) fail('INVALID_ORDER');
+      next.seats=order.map(s=>getSeat(s));break;
     }
-    case 'start':
-      lobby(); checkRoster(room, ctx);
-      if (room.seats.length < room.minSeats) fail('NOT_ENOUGH_PLAYERS');
-      next.phase = 'playing'; next.turnSeatId = next.seats[0].seatId; break;
+    case 'swapSeats': {
+      lobby();checkRoster(room,ctx);if(!room.observerLimit) fail('OBSERVERS_UNSUPPORTED');
+      const a=getSeat(action.playerSeatId), b=getSeat(action.observerSeatId);
+      if(mode(a)!=='player'||mode(b)!=='observer') fail('INVALID_SWAP');
+      a.mode='observer';b.mode='player';break;
+    }
+    case 'setModerator': {
+      lobby();checkRoster(room,ctx);if(!p?.moderator) fail('MODERATOR_UNSUPPORTED');
+      const target=getSeat(action.seatId);for(const s of next.seats) if(mode(s)==='moderator') s.mode='player';
+      target.mode='moderator';break;
+    }
+    case 'start': {
+      lobby();checkRoster(room,ctx);const n=participants(room).length;
+      if(n<room.minSeats) fail('NOT_ENOUGH_PLAYERS');
+      if(p?.exact&&!p.exact.includes(n)) fail('INVALID_PLAYER_COUNT');
+      if(p?.moderator&&room.seats.filter(s=>mode(s)==='moderator').length!==1) fail('MODERATOR_REQUIRED');
+      if(!players(room).length) fail('NOT_ENOUGH_PLAYERS');
+      checkCapacity(room);next.phase='playing';next.turnSeatId=p?.phased?null:players(room)[0].seatId;break;
+    }
     case 'advance': {
-      checkRoster(room, ctx);
-      if (room.phase !== 'playing' || room.turnSeatId !== actorSeatId) fail('NOT_YOUR_TURN');
-      const i = room.seats.findIndex(s => s.seatId === actorSeatId);
-      next.turnSeatId = next.seats[(i + 1) % next.seats.length].seatId; break;
+      checkRoster(room,ctx);if(p?.phased) fail('PHASE_ENGINE_REQUIRED');
+      if(room.phase!=='playing'||room.turnSeatId!==actorSeatId) fail('NOT_YOUR_TURN');
+      const order=players(room),i=order.findIndex(s=>s.seatId===actorSeatId);if(i<0) fail('NOT_YOUR_TURN');
+      next.turnSeatId=order[(i+1)%order.length].seatId;break;
     }
-    case 'close':
-      host(); if (room.phase === 'closed') fail('ROOM_CLOSED');
-      next.phase = 'closed'; next.turnSeatId = null; break;
+    case 'close': host();if(room.phase==='closed') fail('ROOM_CLOSED');next.phase='closed';next.turnSeatId=null;break;
     default: fail('UNKNOWN_ACTION');
   }
-  next.revision += 1;
-  return next;
+  next.revision+=1;return next;
 }
-export function seatView(room, ctx, seatId) {
-  authorize(room, ctx); checkRoster(room, ctx);
-  if (!room.seats.some(s => s.seatId === seatId)) fail('UNKNOWN_SEAT');
-  return { schema: ROOM_SCHEMA, roomId: room.roomId, gameId: room.gameId, revision: room.revision, phase: room.phase, turnSeatId: room.turnSeatId, selfSeatId: seatId, seats: room.seats.map(s => s.kind === 'user' ? { seatId: s.seatId, kind: s.kind } : { seatId: s.seatId, kind: s.kind, roleId: s.roleId }) };
+export function seatView(room,ctx,seatId) {
+  authorize(room,ctx);checkRoster(room,ctx);
+  if(!room.seats.some(s=>s.seatId===seatId)) fail('UNKNOWN_SEAT');
+  return {schema:ROOM_SCHEMA,roomId:room.roomId,gameId:room.gameId,revision:room.revision,phase:room.phase,turnSeatId:room.turnSeatId,selfSeatId:seatId,seats:room.seats.map(s=>s.kind==='user'?{seatId:s.seatId,kind:s.kind,mode:s.mode}:{seatId:s.seatId,kind:s.kind,roleId:s.roleId,mode:s.mode})};
 }
