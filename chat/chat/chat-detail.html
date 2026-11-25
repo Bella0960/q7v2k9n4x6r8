@@ -14,6 +14,7 @@
     <script src="../../shared/js/phone/storage/repository.js"></script>
     <script src="../../shared/js/phone/storage/media-repository.js?v=20261107v2"></script>
     <script src="../../shared/js/phone/group-portraits.js?v=20261125g1"></script>
+    <script src="../../shared/js/phone/group-admin-policy.js?v=20261125g1"></script>
     <script src="../../shared/js/phone/role-avatar-library.js?v=20261113v1"></script>
     <script src="../../shared/js/phone/role-sticker-library.js?v=20261107v2"></script>
     <script src="../../shared/js/phone/chat-image-vision.js?v=20261113v1"></script>
@@ -3971,10 +3972,22 @@
                 const nameTag = document.createElement('div');
                 nameTag.className = 'msg-sender';
                 nameTag.textContent = msg.name;
+                var titleMember=window.MAOGroupAdminPolicy&&window.MAOGroupAdminPolicy.member(currentGroup,String(msg.memberId==null?'':msg.memberId));
+                var customTitle=titleMember&&window.MAOGroupAdminPolicy.title(titleMember.title);
+                if(customTitle){
+                    var titleTag=document.createElement('span');titleTag.className='group-custom-title';titleTag.textContent=customTitle;nameTag.appendChild(titleTag);
+                }
                 row.appendChild(nameTag);
             }
 
             if (isSent) {
+                if(isGroupChat&&currentGroup&&window.MAOGroupAdminPolicy){
+                    var ownTitle=window.MAOGroupAdminPolicy.title(currentGroup.selfTitle);
+                    if(ownTitle&&!(Number(msg.bubbleIndex)>0)){
+                        var ownTitleTag=document.createElement('span');
+                        ownTitleTag.className='group-custom-title group-own-title';ownTitleTag.textContent=ownTitle;attachEl.prepend(ownTitleTag);
+                    }
+                }
                 // 发送失败（拉黑）：气泡前面加红色感叹号
                 if (msg.sendFailed) {
                     var failedMark = document.createElement('span');
@@ -5925,7 +5938,7 @@
                     }
                 }
                 if (groupSettings.allowRoleActions) {
-                    systemPrompt += '\n\n[群管理行动]\n只有带有管理员或群主身份的成员才可以根据剧情执行群管理操作。若剧情确实需要，可在正常台词末尾附加一个隐藏标记：改群名用 [群动作:改名:新群名]；邀请角色库中已有角色用 [群动作:邀请:角色名]；移除成员用 [群动作:移除:角色名]。不要向用户解释标记，系统会处理。不要重复邀请已有成员，不要移除最后一名群成员。';
+                    systemPrompt += '\n\n[群管理行动]\n群主和管理员可按权限管理群聊。改群名用 [群动作:改名:新群名]；邀请现有角色用 [群动作:邀请:角色ID]；移除成员用 [群动作:移除:成员ID]；禁言或解除禁言用 [群动作:禁言:成员ID:开启] 或 [群动作:禁言:成员ID:关闭]。修改头衔用 [群动作:头衔:成员ID:新头衔]，清除头衔用空头衔。普通成员只能修改自己的头衔，管理员只能管理自己或普通成员，不能修改群主、其他管理员或用户的头衔。群主可修改其他角色头衔。不得冒充其他成员，不得修改真实账号权限。每次最多一个群动作；仅在确有需要时使用，系统校验后才会执行。';
                 }
                 if (groupSettings.allowPrivateMessages !== false) {
                     systemPrompt += '\n\n[群成员私聊能力]\n你可以偶尔向用户发起私聊，但不要每轮都触发，仅在出现适合单独说的话、想补充秘密或想私下安慰用户时使用。仅允许给自己发私聊：在本轮正常群聊回复末尾另起一行写 [群私聊:你的准确角色ID:私聊内容]。角色ID必须从群成员名单中选择，并且应当是本轮发言者自己的ID；私聊内容控制在1-3句，不要解释标记。标记会保存到你的单聊历史，并在群聊里弹出私聊小窗。每轮最多一条。';
@@ -8318,39 +8331,61 @@
                 showGroupPrivatePopup(displayName, targetId, privateMessageText);
                 return '';
             });
-            text = text.replace(/\[群动作[:：](改名|邀请|移除)[:：]([^\]]{1,40})\]/g, function (marker, action, targetName) {
-                var isOwner = currentGroup && String(currentGroup.ownerId || '__user') === String(speaker && speaker.id || '');
-                if (!settings.allowRoleActions || !speaker || (!speaker.isAdmin && !isOwner)) return '';
-                targetName = String(targetName || '').trim();
-                if (!targetName) return '';
-                var actionMessage = '';
-                if (action === '改名') {
-                    currentGroup.name = targetName.slice(0, 20);
-                    currentCharacter.name = currentGroup.name;
-                    var title = document.getElementById('chat-title');
-                    if (title) title.textContent = currentGroup.name;
-                    actionMessage = '群管理员将群名修改为「' + currentGroup.name + '」';
-                } else if (action === '邀请') {
-                    var roles = [];
-                    try { roles = JSON.parse(localStorage.getItem('ai_custom_characters') || '[]'); } catch (e) {}
-                    var targetRole = Array.isArray(roles) ? roles.find(function (role) { return role && (String(role.id) === targetName || String(role.name || '').trim() === targetName); }) : null;
-                    if (targetRole && !(currentGroup.members || []).some(function (member) { return String(member.id) === String(targetRole.id); })) {
-                        if (!Array.isArray(currentGroup.members)) currentGroup.members = [];
-                        currentGroup.members.push({ id: String(targetRole.id), name: targetRole.name || '角色', avatar: targetRole.avatar || '', nickname: '', title: '', isAdmin: false, muted: false, activeFrom: '08:00', activeTo: '23:00' });
-                        actionMessage = '群管理员邀请「' + (targetRole.name || '角色') + '」加入群聊';
+            var managementActionSeen=false;
+            text = text.replace(/\[群动作[:：]([^\]\r\n]{1,240})\]/g,function(marker,payload){
+                if(managementActionSeen||isRegeneration||!speaker||speaker.id==null)return '';
+                managementActionSeen=true;
+                var policy=window.MAOGroupAdminPolicy;
+                if(!policy)return '';
+                var parts=payload.split(/[:：]/),action=parts.shift(),target=String(parts.shift()||'').trim(),value=parts.join(':');
+                var actor=String(speaker.id),gid=String(currentRoleId),fresh=loadGroupById(gid);
+                if(!fresh||String(fresh.id)!==gid||!policy.can(fresh,actor,action,target))return '';
+                var actionMessage='',existing=policy.member(fresh,target);
+                if(action==='头衔'){
+                    var titleValue=policy.title(value);
+                    if(titleValue===null||!existing||existing.title===titleValue)return '';
+                    existing.title=titleValue;
+                    actionMessage=groupMemberDisplayName(existing)+'的群头衔已更新';
+                }else if(action==='禁言'){
+                    if(!existing||(value!=='开启'&&value!=='关闭')||existing.muted===(value==='开启'))return '';
+                    existing.muted=value==='开启';
+                    actionMessage=groupMemberDisplayName(existing)+(existing.muted?'已禁言':'已解除禁言');
+                }else if(action==='改名'){
+                    var nextName=policy.title([target].concat(parts).join(':'));
+                    if(!nextName||fresh.name===nextName)return '';
+                    fresh.name=nextName;actionMessage='群名已修改为「'+nextName+'」';
+                }else if(action==='邀请'){
+                    var pool=[];
+                    try{pool=JSON.parse(localStorage.getItem('ai_custom_characters')||'[]');}catch(error){}
+                    if(!Array.isArray(pool))return '';
+                    var candidates=pool.filter(function(r){return r&&String(r.id)===target;});
+                    if(candidates.length!==1){
+                        candidates=pool.filter(function(r){return r&&String(r.name||'').trim()===target;});
                     }
-                } else if (action === '移除') {
-                    var existing = (currentGroup.members || []).find(function (member) { return String(member.id) === targetName || String(member.name || '').trim() === targetName || groupMemberDisplayName(member) === targetName; });
-                    if (existing && (currentGroup.members || []).length > 1) {
-                        currentGroup.members = currentGroup.members.filter(function (member) { return String(member.id) !== String(existing.id); });
-                        if (String(currentGroup.ownerId || '') === String(existing.id)) currentGroup.ownerId = '__user';
-                        actionMessage = '群管理员将「' + groupMemberDisplayName(existing) + '」移出群聊';
-                    }
+                    if(candidates.length!==1||String(candidates[0].id)==='__user'||!candidates[0].id)return '';
+                    var targetRole=candidates[0];
+                    if(!Array.isArray(fresh.members))fresh.members=[];
+                    if(fresh.members.some(function(m){return m&&String(m.id)===String(targetRole.id);}))return '';
+                    fresh.members.push({id:String(targetRole.id),name:targetRole.name||'角色',avatar:targetRole.avatar||'',nickname:'',title:'',isAdmin:false,muted:false,activeFrom:'08:00',activeTo:'23:00'});
+                    actionMessage='已邀请「'+(targetRole.name||'角色')+'」加入群聊';
+                }else if(action==='移除'){
+                    if(!existing||fresh.members.length<=1)return '';
+                    fresh.members=fresh.members.filter(function(m){return String(m.id)!==target;});
+                    actionMessage='已将「'+groupMemberDisplayName(existing)+'」移出群聊';
                 }
-                if (actionMessage) {
-                    saveCurrentGroupObject();
-                    if (typeof showToast === 'function') showToast(actionMessage);
+                if(!actionMessage)return '';
+                var previous=currentGroup;
+                currentGroup=fresh;
+                if(!saveCurrentGroupObject()){
+                    currentGroup=previous;
+                    if(typeof showToast==='function')showToast('群管理操作未保存成功');
+                    return '';
                 }
+                if(action==='改名'){
+                    currentCharacter.name=fresh.name;
+                    var header=document.getElementById('chat-title');if(header)header.textContent=fresh.name;
+                }
+                if(typeof showToast==='function')showToast(actionMessage);
                 return '';
             });
             text = text.replace(/\[群聊结束\]/g, function () {
@@ -9438,6 +9473,7 @@
   height: 34px !important;
   border-radius: 6px !important;
 }
+.group-own-title{display:block!important;margin:0 0 4px auto!important;width:max-content}.group-custom-title{display:inline-block;margin-left:6px;padding:1px 5px;border-radius:4px;background:#f4f4f5;color:#666;font-size:9px;font-weight:400;max-width:120px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;vertical-align:middle}
 /* 自己的消息右对齐，头像在右边，不显示成员名 */
 .msg-row.sent .msg-sender,
 .msg-row.right .msg-sender {
