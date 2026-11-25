@@ -1032,3 +1032,26 @@ html[data-theme="liquid-glass"] body.maomao-home:is(.home-editing,.home-paging,.
   -webkit-backdrop-filter: none !important;
   transition: none !important;
 }
+
+
+/* Touch input must be owned by the launcher while dragging an already editable icon.
+   Scope to the glass theme; ordinary paging and the customize panel stay unchanged. */
+html[data-theme="liquid-glass"] body.maomao-home.home-editing:not(.lg-controls-open) :is(.app-tile,.dock-item)[data-drag] {
+  touch-action: none;
+}
+
+/* During gestures use a single static lens, not the vendor's masked/refraction
+   layers. Idle glass, selected tint, original icons and wallpaper remain intact. */
+html[data-theme="liquid-glass"] body.maomao-home:is(.home-editing,.home-paging,.home-dragging):not(.lg-controls-open) :is(.desktop-grid,.dock-bar,.drag-avatar) .app-icon.maomao-liquid-glass-icon {
+  background-color: var(--_lg-fill, rgba(255,255,255,.08)) !important;
+  box-shadow: inset 0 1px 1px rgba(255,255,255,.28), 0 2px 8px rgba(20,24,34,.07) !important;
+  backdrop-filter: none !important;
+  -webkit-backdrop-filter: none !important;
+  transition: none !important;
+}
+html[data-theme="liquid-glass"] body.maomao-home:is(.home-editing,.home-paging,.home-dragging):not(.lg-controls-open) :is(.desktop-grid,.dock-bar,.drag-avatar) .app-icon.maomao-liquid-glass-icon::before,
+html[data-theme="liquid-glass"] body.maomao-home:is(.home-editing,.home-paging,.home-dragging):not(.lg-controls-open) :is(.desktop-grid,.dock-bar,.drag-avatar) .app-icon.maomao-liquid-glass-icon::after {
+  display: none !important;
+  backdrop-filter: none !important;
+  -webkit-backdrop-filter: none !important;
+}
