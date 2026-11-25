@@ -47,3 +47,30 @@ export async function verifyRoomContext({request,readScope,readScopedRoster,sign
   check();
   return Object.freeze({accountId:initial.accountId,sessionId,roleIds});
 }
+
+// Browser contract from the released QA scope. Not auto-installed or enabled:
+// the page must load the authenticated Worker-injected scope before PhoneStorage.
+export function createBrowserRoomVerifier(win=globalThis.window) {
+  function readScope() {
+    const s=win?.__MAO_ACCOUNT_SCOPE__;
+    const pageAccountId=win?.document?.querySelector('meta[name="mao-account-id"]')?.content;
+    const pageRole=win?.document?.querySelector('meta[name="mao-account-role"]')?.content;
+    if (!s || s.role!==pageRole) return null;
+    return {ready:s.ready,accountId:s.accountId,pageAccountId,role:s.role};
+  }
+  function readScopedRoster({accountId,sessionId}) {
+    const before=scopeSnapshot(readScope);
+    if(before.accountId!==accountId) fail('ACCOUNT_SCOPE_CHANGED');
+    const storage=win?.PhoneStorage?.result;
+    if(typeof storage?.getCharacters!=='function') fail('ROSTER_UNVERIFIED');
+    const result=storage.getCharacters();
+    const after=scopeSnapshot(readScope);
+    if(after.accountId!==before.accountId || after.role!==before.role) fail('ACCOUNT_SCOPE_CHANGED');
+    if(result?.ok===false && result.error?.code==='NOT_FOUND') return {accountId,sessionId,roleIds:[]};
+    if(result?.ok!==true || result.meta?.source!=='ai_custom_characters' || !Array.isArray(result.value)) fail('ROSTER_UNVERIFIED');
+    const roleIds=Array.from(result.value,role=>role?.id);
+    if(!roleIds.every(validId)) fail('ROSTER_UNVERIFIED');
+    return {accountId,sessionId,roleIds};
+  }
+  return ({signal}={})=>verifyRoomContext({request:(path,options)=>win.fetch(path,options),readScope,readScopedRoster,signal});
+}
