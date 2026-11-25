@@ -265,7 +265,8 @@ test('touchcancel restores original element without persisting a partially moved
   runInNewContext(match[0] + '\ncancelDrag();', harness);
   assert.equal(harness.isDragging, false);
   assert.deepEqual(counts, { placeholder: 1, ghost: 1, cleanup: 1, refresh: 1, writes: 0 });
-  assert.match(index, /window\.addEventListener\('blur', function \(\) \{[\s\S]*?if \(isDragging\) cancelDrag\(\)/);
+  assert.match(index, /function interruptHomeDrag\(\) \{[\s\S]*?if \(isDragging\) cancelDrag\(\)/);
+  assert.match(index, /window\.addEventListener\('blur', interruptHomeDrag\)/);
 });
 
 test('cancelled cross-page gesture navigates back without storing a drop', () => {
@@ -367,7 +368,7 @@ test('drag input coalesces into a single frame and flushes the last point on dro
   const calls = [], frames = new Map();
   let serial = 0;
   const ctx = {
-    isDragging: true, pendingDragPoint: null, dragFrame: null,
+    isDragging: true, pendingDragPoint: null, latestDragPoint: null, dragFrame: null,
     requestAnimationFrame(fn) { frames.set(++serial, fn); return serial; },
     cancelAnimationFrame(id) { frames.delete(id); },
     moveDrag(x,y) { calls.push([x,y]); }
@@ -392,4 +393,166 @@ test('desktop icons cannot shrink into a rectangle; row height accounts for text
   assert.match(desktopCss,/flex:\s*0 0 auto !important;[\s\S]*?aspect-ratio:\s*1 \/ 1 !important/);
   assert.match(desktopCss,/--desktop-icon-row:\s*max\(72px,\s*calc\(var\(--desktop-icon-edge\) \+ 6px \+ \.86rem \+ 2px\)\)/);
   assert.match(mobileCss,/grid-auto-rows:\s*var\(--desktop-icon-row,\s*68px\) !important/);
+});
+
+test('normal touch movement remains passive; active drag alone installs and removes blocking listener',()=>{
+  assert.match(index,/document\.addEventListener\('touchmove', handleActiveDragTouch, \{ passive: false \}\)/);
+  assert.match(index,/document\.removeEventListener\('touchmove', handleActiveDragTouch\)/);
+  assert.match(index,/function handleActiveDragTouch\(e\)[\s\S]*?if \(e\.cancelable\) e\.preventDefault\(\)/);
+  assert.match(index,/document\.addEventListener\('touchmove', function \(e\) \{[\s\S]*?clearTimeout\(pressTimer\)[\s\S]*?\}, \{ passive: true \}\)/);
+});
+test('drag clones retain measured source dimensions; minute ticks avoid unnecessary widget updates',()=>{
+  assert.match(index,/var sourceWidth = targetItem\.offsetWidth/);
+  assert.match(index,/ghostIcon\.style\.setProperty\('height', iconHeight \+ 'px', 'important'\)/);
+  assert.match(index,/if \(renderedDay === dayKey\) return/);
+  assert.match(index,/if \(!eventEl\.isContentEditable && eventEl\.textContent !== data\.event\)/);
+});
+
+
+test('drag geometry cache reuses stable measurements and invalidates on real placement', () => {
+  const start = index.indexOf('      function invalidateDragGeometry() {');
+  const end = index.indexOf('      function setDragAvatarPosition(cx, cy) {', start);
+  assert.ok(start >= 0 && end > start);
+  let reads = 0, writes = 0;
+  const rect = () => { reads++; return { left: 0, right: 10, top: 0, bottom: 10, width: 10, height: 10 }; };
+  const tile = { getBoundingClientRect: rect };
+  const placeholder = { getBoundingClientRect: rect };
+  const dragEl = { getBoundingClientRect: () => { throw new Error('hidden source measured'); } };
+  const grid = { children: [placeholder, tile, dragEl], insertBefore(node, sibling) {
+    writes++; this.children = this.children.filter(x => x !== node);
+    this.children.splice(sibling ? this.children.indexOf(sibling) : this.children.length, 0, node);
+    node.parentNode = this;
+  } };
+  placeholder.parentNode = grid;
+  const ctx = { dragBounds: null, dragGeometry: null, dragReorderAnimations: new Map(), placeholder, dragEl,
+    homeScreen: { getBoundingClientRect: rect }, dockBar: { getBoundingClientRect: rect },
+    nextPlaceableSibling(el) { return grid.children.slice(grid.children.indexOf(el)+1).find(x => x !== dragEl && x !== placeholder) || null; } };
+  runInNewContext(index.slice(start,end) + '\nthis.api = { getDragBounds, getDragGeometry, invalidateDragGeometry, placeDragPlaceholder };', ctx);
+  const api = ctx.api;
+  api.getDragBounds(); api.getDragGeometry(grid);
+  assert.equal(reads,4);
+  for (let i=0;i<100;i++) { api.getDragBounds(); api.getDragGeometry(grid); }
+  assert.equal(reads,4, 'stable drag must not remeasure tiles');
+  assert.equal(api.placeDragPlaceholder(grid,tile),false);
+  assert.equal(writes,0);
+  assert.equal(api.placeDragPlaceholder(grid,null),true);
+  assert.equal(writes,1);
+  api.getDragBounds(); api.getDragGeometry(grid);
+  assert.equal(reads,8,'placement must invalidate cached geometry');
+  api.invalidateDragGeometry();
+  api.getDragGeometry(grid);
+  assert.equal(reads,10);
+  assert.match(index,/document\.addEventListener\('scroll', invalidateDragGeometry, true\)/);
+  assert.match(index,/document\.removeEventListener\('scroll', invalidateDragGeometry, true\)/);
+  assert.match(index,/finally \{ setDragAvatarPosition\(cx, cy\); \}/);
+});
+
+
+test('desktop and Dock drag slot hysteresis prevents boundary jitter without locking adjacent slots', () => {
+  const start = index.indexOf('      function isPointInDragSlot(');
+  const end = index.indexOf('      function placeDragPlaceholder(', start);
+  assert.ok(start >= 0 && end > start);
+  const ctx = {};
+  runInNewContext(index.slice(start,end),ctx);
+  const inside = ctx.isPointInDragSlot;
+  const slot = { left: 20, right: 80, top: 30, bottom: 90 };
+  assert.equal(inside(null,40,40,5),false);
+  for (const [x,y] of [[15,60],[85,60],[50,25],[50,95],[50,50]]) assert.equal(inside(slot,x,y,5),true);
+  for (const [x,y] of [[14,60],[86,60],[50,24],[50,96]]) assert.equal(inside(slot,x,y,5),false);
+  assert.match(index,/isPointInDragSlot\(dockGeometry\.slot, cx, cy, 5\)/);
+  assert.match(index,/isPointInDragSlot\(geometry\.slot, cx, cy, 5\)/);
+});
+
+
+test('reorder visual animation preserves final hit geometry and cancels without leaking', () => {
+  const start = index.indexOf('      function getDragTileRect(');
+  const end = index.indexOf('      function setDragAvatarPosition(', start);
+  assert.ok(start >= 0 && end > start);
+  const active = new Map(), calls = [];
+  let x = 0, visualOffset = 0;
+  const placeholder = {}, dragEl = {};
+  const tile = { offsetWidth: 40, offsetHeight: 40,
+    getBoundingClientRect() { return {left:x+visualOffset, right:x+visualOffset+40, top:10, bottom:50, width:40, height:40}; },
+    animate(frames,options) {
+      calls.push({frames,options});
+      visualOffset=parseFloat(frames[0].translate);
+      return {cancel(){visualOffset=0; if(this.oncancel)this.oncancel();}};
+    } };
+  const grid={children:[placeholder,tile],insertBefore(){this.children=[tile,placeholder];x=40;}};
+  placeholder.parentNode=grid;
+  const ctx={dragReorderAnimations:active,placeholder,dragEl,
+    window:{getComputedStyle(){return {translate:visualOffset+'px 0px'}},matchMedia(){return {matches:false}}},
+    CSS:{supports(){return true}},nextPlaceableSibling(){return tile},invalidateDragGeometry(){}};
+  runInNewContext(index.slice(start,end),ctx);
+  assert.equal(ctx.placeDragPlaceholder(grid,null),true);
+  assert.equal(calls.length,1);
+  assert.equal(calls[0].frames[0].translate,'-40px 0px');
+  assert.equal(calls[0].options.duration,180);
+  assert.equal(tile.getBoundingClientRect().left,0);
+  assert.equal(ctx.getDragTileRect(tile).left,40,'hit testing must use the final slot, not the animated visual');
+  ctx.stopDragReorderAnimations();
+  assert.equal(active.size,0);
+  assert.equal(visualOffset,0);
+  assert.equal(ctx.getDragTileRect(tile).left,40);
+  ctx.window.matchMedia=()=>({matches:true});
+  assert.equal(ctx.canAnimateDragReorder(),false);
+});
+
+
+test('cross-page edge intent is cancelled over Dock, invalid boundaries and newer unpainted input', () => {
+  const start=index.indexOf('      function clearDragEdgeIntent()');
+  const end=index.indexOf('      function updateDragTarget(',start);
+  assert.ok(start>=0&&end>start);
+  const bounds={home:{left:0,right:390,top:50,bottom:720},dock:{left:0,right:390,top:700,bottom:780,width:390,height:80}};
+  let flip=0;const timers=new Map();let seq=0;
+  const grid={};const pages=[{querySelector:()=>grid},{querySelector:()=>grid}];
+  const ctx={MAX_PAGES:4,activePageIndex:0,edgeTimer:null,lastEdgeSide:null,edgeCooldown:false,isDragging:true,placeholder:{},latestDragPoint:{x:380,y:300},getDragBounds:()=>bounds,getPages:()=>pages,setTimeout(fn){timers.set(++seq,fn);return seq;},clearTimeout(id){timers.delete(id);},goToPage(i){flip++;ctx.activePageIndex=i;},placeDragPlaceholder(){},vibrate(){},lockDragEdge(){ctx.edgeCooldown=true;}};
+  runInNewContext(index.slice(start,end),ctx);
+  assert.equal(ctx.getDragEdgeSide(bounds,10,300,0,2),null);
+  assert.equal(ctx.getDragEdgeSide(bounds,380,740,0,2),null);
+  assert.equal(ctx.getDragEdgeSide(bounds,380,300,3,4),null);
+  ctx.updateDragEdgeIntent(380,300);assert.equal(timers.size,1);
+  ctx.latestDragPoint={x:10,y:300};
+  let [id,fn]=[...timers.entries()][0];timers.delete(id);fn();
+  assert.equal(flip,0);assert.equal(ctx.lastEdgeSide,null);
+  ctx.latestDragPoint={x:380,y:300};ctx.updateDragEdgeIntent(380,300);
+  ctx.updateDragEdgeIntent(380,740);assert.equal(timers.size,0);
+  ctx.updateDragEdgeIntent(380,300);
+  [id,fn]=[...timers.entries()][0];timers.delete(id);fn();
+  assert.equal(flip,1);assert.equal(ctx.activePageIndex,1);
+});
+
+test('drop consumes final touch and mouse position and interruption is a cancellation', () => {
+  assert.match(index,/function endDrag\(finalPoint\)/);
+  assert.match(index,/latestDragPoint = pendingDragPoint = finalPoint;[\s\S]*?flushDragMove\(\)/);
+  assert.match(index,/endDrag\(touch \? \{ x: touch\.clientX, y: touch\.clientY \} : null\)/);
+  assert.match(index,/endDrag\(\{ x: e\.clientX, y: e\.clientY \}\)/);
+  assert.match(index,/window\.addEventListener\('pagehide', interruptHomeDrag\)/);
+  assert.match(index,/if \(document\.hidden\) interruptHomeDrag\(\)/);
+  assert.match(index,/if \(isDragging\) \{ endDrag\(\); return; \}/);
+});
+
+
+test('release settles a pending page flip, uses latest input and persists exactly once', () => {
+  const start=index.indexOf('      function endDrag(finalPoint)');
+  const end=index.indexOf('      // ===== 事件监听',start);
+  assert.ok(start>=0&&end>start);
+  const order=[], calls=[];
+  const parent={id:'gridPage1',insertBefore(){order.push('place');}};
+  const source={classList:{remove(){}},style:{}};
+  const ph={parentNode:parent,remove(){order.push('remove-slot');}};
+  const ctx={isDragging:true,dragEl:source,placeholder:ph,dragClone:{remove(){order.push('remove-ghost');}},
+    dragOriginPage:0,edgeTimer:null,activePageIndex:1,latestDragPoint:{x:100,y:200},pendingDragPoint:null,
+    homeScreen:{clientWidth:390,scrollLeft:210,scrollTo(options){this.scrollLeft=options.left;order.push('settle');}},
+    invalidateDragGeometry(){order.push('invalidate');},
+    flushDragMove(){calls.push([ctx.pendingDragPoint.x,ctx.pendingDragPoint.y]);order.push('flush');},
+    resetDragMotion(){order.push('reset');},setElementAsDock(){throw Error('wrong parent');},setElementAsDesktop(){},
+    vibrate(){},cleanupEmptyTrailingPages(){order.push('cleanup');},persistCurrentDOM(){order.push('save');},
+    document:{body:{classList:{add(){}}}},setTimeout(){},clearTimeout(){}};
+  runInNewContext(index.slice(start,end),ctx);
+  ctx.endDrag({x:110,y:210});ctx.endDrag({x:120,y:220});
+  assert.deepEqual(calls,[[110,210]]);
+  assert.deepEqual(order,['settle','invalidate','flush','reset','place','remove-slot','remove-ghost','cleanup','save']);
+  assert.equal(ctx.isDragging,false);
+  assert.equal(ctx.dragEl,null);
 });

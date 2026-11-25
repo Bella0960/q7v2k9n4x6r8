@@ -707,3 +707,10 @@ On the next turn/session, read this file and the current `AGENTS.md` first. Cont
 ## 2026-11-25 | MCP-001 restore QA failure repair
 
 - Actual public release run 45415570102 failed at gate 49/51: mcp-client.test.mjs:553, mcp-role-permissions.test.mjs:114 and :126. Corrected invalid catalog fixture (40 x 5 x 1200 Chinese characters did not exceed 768 KiB; 45 does, with explicit per-schema/response budget checks), synchronous listForRole error assertion, and exact grant-cap error assertion. Added post-cap retained permission and denied-new-tool checks. No runtime security limits weakened. Carried the same already-submitted narrow Moments browser navigation race fix from #513 into this independently based v161 candidate to avoid known shared test failure. Wait for serialized #513 verification, then test current exact MCP candidate or its updated integration on the actually deployed baseline. No deployment or live data changes.
+
+
+## 2026-11-25｜DESKTOP-DRAG-PERF-001｜隔离性能验收候选
+
+- 基线 c95ddd91ef1deb526027bd2655abbef4b66f1029：公共 QA run 45542381041 的 release 请求和 origin-check 成功日志均已核实；当前线上版本号未直接读取。main 7f666f1d53c593d341b390442e0e4ff1d0a8f39d 与 QA 历史分叉，不直接用 main 覆盖。
+- 原 PR #496 HEAD 9bc5d349f40d77a14ac77cb186e5a58401306a59，仅逐段移植 24 个功能/测试补丁至当前已核实发布基线，全部唯一匹配，无整文件覆盖；保留基线其余数据与功能。补 390px DPR3 Chromium CPU 4x 压力探针、帧间隔统计、单 ghost/placeholder 断言。
+- 这是 QA verify 候选，不是发布授权。当前公共固定通道有其他任务在运行，不覆盖请求或取消任务。真实 Node/Vite/Chromium、实际帧率、设备验收待结果；CPU throttling 不等价真实设备，rAF 不等价屏幕 FPS。性能结果未测前不承诺改善幅度。

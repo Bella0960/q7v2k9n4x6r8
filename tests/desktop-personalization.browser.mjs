@@ -42,7 +42,7 @@ const readLayout=page=>page.evaluate(()=>JSON.parse(localStorage.getItem('ds_lay
 try{
   for(const [width,height] of [[375,667],[390,844],[430,932]]){
     step='open_'+width;
-    const context=await browser.newContext({viewport:{width,height},isMobile:true,hasTouch:true,serviceWorkers:'block',deviceScaleFactor:2});
+    const context=await browser.newContext({viewport:{width,height},isMobile:true,hasTouch:true,serviceWorkers:'block',deviceScaleFactor:3});
     const page=await context.newPage();
     const errors=[];
     page.on('pageerror',e=>errors.push(e.message));
@@ -126,15 +126,162 @@ try{
     const x=box.x+box.width/2, y=box.y+box.height/2;
     await touch('touchStart',x,y);
     await page.waitForSelector('.drag-avatar',{timeout:3000});
+    const ghostGeometry=await page.evaluate(()=>{
+      const source=document.querySelector('.is-dragging-source');
+      const ghost=document.querySelector('.drag-avatar');
+      const icon=ghost?.querySelector('.app-icon');
+      return {sourceWidth:parseFloat(ghost?.style.width),ghostWidth:ghost?.offsetWidth,
+        sourceHeight:parseFloat(ghost?.style.height),ghostHeight:ghost?.offsetHeight,
+        iconWidth:icon?.offsetWidth,iconHeight:icon?.offsetHeight,sourceExists:!!source};
+    });
+    assert.ok(ghostGeometry.sourceExists);
+    assert.equal(ghostGeometry.ghostWidth,ghostGeometry.sourceWidth);
+    assert.equal(ghostGeometry.ghostHeight,ghostGeometry.sourceHeight);
+    assert.equal(ghostGeometry.iconWidth,ghostGeometry.iconHeight);
     await touch('touchMove',x+10,y+10);
     await page.waitForFunction(()=>document.body.classList.contains('home-dragging') &&
       !!document.querySelector('.drag-avatar')?.style.getPropertyValue('--drag-x'));
+    // Warm one stable slot, then measure real geometry reads during touch jitter.
+    const slot = await page.locator('.drag-placeholder').boundingBox();
+    assert.ok(slot && slot.width>0 && slot.height>0);
+    const slotX=slot.x+slot.width/2, slotY=slot.y+slot.height/2;
+    await touch('touchMove',slotX,slotY);
+    await pause(120);
+    await page.evaluate(()=>{
+      const original=Element.prototype.getBoundingClientRect;
+      let reads=0;
+      Element.prototype.getBoundingClientRect=function(){
+        if(this.parentElement?.classList.contains('desktop-grid')) reads++;
+        return original.call(this);
+      };
+      window.__dragMeasureEnd=()=>{
+        Element.prototype.getBoundingClientRect=original;
+        delete window.__dragMeasureEnd;
+        return reads;
+      };
+    });
+    let stableReads;
+    try {
+      for(let i=0;i<12;i++){
+        await touch('touchMove',slotX+(i%2?1:-1),slotY);
+        await pause(20);
+      }
+    } finally {
+      stableReads=await page.evaluate(()=>window.__dragMeasureEnd());
+    }
+    assert.ok(stableReads<12,'stable slot should not trigger a full tile scan on every touch: '+stableReads);
+    console.log('DESKTOP_DRAG_METRIC width='+width+' stable_tile_rect_reads='+stableReads);
+    // Measure frame callback cadence during real same-page touch motion.
+    // rAF is not a physical display FPS measurement. CI metrics are recorded
+    // separately from the functional gate and must be compared on equal hardware.
+    const targets=await page.evaluate(()=>{
+      const grid=document.querySelector('.home-page[data-page="1"] .desktop-grid');
+      const screen=document.getElementById('homeScreen').getBoundingClientRect();
+      const visible=Array.from(grid.querySelectorAll('.app-tile[data-drag]'))
+        .filter(el=>!el.classList.contains('is-dragging-source'))
+        .map(el=>{const r=el.getBoundingClientRect();return {x:r.left+r.width*.55,y:r.top+r.height*.5};})
+        .filter(p=>p.x>screen.left+48&&p.x<screen.right-48&&p.y>screen.top+24&&p.y<screen.bottom-48);
+      return visible.slice(0,6);
+    });
+    assert.ok(targets.length>=3,'not enough visible same-page drag targets');
+    const initialSlotOrder=await page.evaluate(()=>{
+      const ph=document.querySelector('.drag-placeholder');
+      return Array.from(ph.parentElement.children).filter(el=>!el.classList.contains('is-dragging-source')).indexOf(ph);
+    });
+    await page.evaluate(()=>{
+      const samples=[], longTasks=[];
+      let last=null, frame=null, observer=null, placementChanges=0, reorderAnimations=0;
+      const originalAnimate=Element.prototype.animate;
+      Element.prototype.animate=function(frames,options){
+        if(this.parentElement?.classList.contains('desktop-grid')&&Array.isArray(frames)&&frames[0]?.translate)reorderAnimations++;
+        return originalAnimate.call(this,frames,options);
+      };
+      const start=performance.now();
+      const tick=t=>{if(last!==null)samples.push(t-last);last=t;frame=requestAnimationFrame(tick);};
+      frame=requestAnimationFrame(tick);
+      const grid=document.querySelector('.home-page[data-page="1"] .desktop-grid');
+      const mutations=new MutationObserver(records=>{
+        for(const r of records) if(Array.from(r.addedNodes).some(n=>n.nodeType===1&&n.classList.contains('drag-placeholder')))placementChanges++;
+      });
+      mutations.observe(grid,{childList:true});
+      if(window.PerformanceObserver?.supportedEntryTypes?.includes('longtask')){
+        observer=new PerformanceObserver(list=>longTasks.push(...list.getEntries().map(e=>e.duration)));
+        observer.observe({entryTypes:['longtask']});
+      }
+      window.__stopDragFrameProbe=()=>{
+        cancelAnimationFrame(frame);
+        Element.prototype.animate=originalAnimate;
+        mutations.disconnect();
+        if(observer){longTasks.push(...observer.takeRecords().map(e=>e.duration));observer.disconnect();}
+        const sorted=samples.slice().sort((a,b)=>a-b);
+        const quantile=p=>sorted[Math.max(0,Math.ceil(sorted.length*p)-1)]??null;
+        const sum=samples.reduce((a,b)=>a+b,0);
+        delete window.__stopDragFrameProbe;
+        return {samples:samples.length,durationMs:performance.now()-start,
+          rafHz:sum?samples.length*1000/sum:null,p50Ms:quantile(.5),p95Ms:quantile(.95),p99Ms:quantile(.99),
+          over25Ms:samples.filter(x=>x>25).length,over50Ms:samples.filter(x=>x>50).length,
+          longestMs:quantile(1),longTasks:observer?longTasks:null,placementChanges,reorderAnimations};
+      };
+    });
+    let dragFrames;
+    try {
+      let from={x:slotX,y:slotY};
+      for(const to of [...targets,...targets.slice().reverse(),...targets]){
+        for(let n=1;n<=4;n++){
+          await touch('touchMove',from.x+(to.x-from.x)*n/4,from.y+(to.y-from.y)*n/4);
+          await pause(16);
+        }
+        from=to;
+      }
+      await pause(80);
+    }finally{dragFrames=await page.evaluate(()=>window.__stopDragFrameProbe());}
+    assert.ok(dragFrames.samples>=20,'drag frame probe produced too few samples');
+    assert.ok(dragFrames.placementChanges>=1,'probe did not exercise real grid reordering');
+    assert.ok(dragFrames.reorderAnimations>=1,'same-page motion did not animate displaced tiles');
+    assert.ok(Number.isFinite(dragFrames.rafHz)&&dragFrames.p95Ms>0,'invalid frame metrics');
+    console.log('DESKTOP_DRAG_FRAMES '+JSON.stringify({width,dpr:3,initialSlotOrder,...dragFrames}));
+    // Stress the same real touch path with a slowed Chromium renderer.
+    // CPU throttling is a reproducible proxy, not a physical low-end phone.
+    if(width===390){
+      const frameStats=await page.evaluate(()=>{
+        const frames=[];let last=null,handle=null;
+        const tick=t=>{if(last!==null)frames.push(t-last);last=t;handle=requestAnimationFrame(tick);};
+        handle=requestAnimationFrame(tick);
+        window.__endSlowDrag=()=>{cancelAnimationFrame(handle);delete window.__endSlowDrag;return frames;};
+        return true;
+      });
+      assert.equal(frameStats,true);
+      let slowFrames;
+      try{
+        await cdp.send('Emulation.setCPUThrottlingRate',{rate:4});
+        for(let round=0;round<3;round++){
+          for(const point of [...targets,...targets.slice().reverse()]){
+            await touch('touchMove',point.x,point.y);
+            await pause(32);
+          }
+        }
+      }finally{
+        await cdp.send('Emulation.setCPUThrottlingRate',{rate:1});
+        slowFrames=await page.evaluate(()=>window.__endSlowDrag());
+      }
+      assert.ok(slowFrames.length>=10,'throttled renderer produced too few frame samples');
+      const sorted=slowFrames.slice().sort((a,b)=>a-b);
+      console.log('DESKTOP_DRAG_CPU4X '+JSON.stringify({width,samples:sorted.length,p95Ms:sorted[Math.ceil(sorted.length*.95)-1],over50Ms:sorted.filter(n=>n>50).length,maxMs:sorted.at(-1)}));
+      assert.equal(await page.locator('.drag-avatar').count(),1,'stress must retain exactly one drag ghost');
+      assert.equal(await page.locator('.drag-placeholder').count(),1,'stress must retain exactly one placeholder');
+    }
     await touch('touchCancel');
     await page.waitForFunction(()=>!document.body.classList.contains('home-dragging')&&!document.querySelector('.drag-avatar'));
     assert.deepEqual(await readLayout(page),baseline,'touch cancellation saved a partial drag');
     // Retry immediately from the same page, move across the left edge and commit.
     await touch('touchStart',x,y);
     await page.waitForSelector('.drag-avatar',{timeout:3000});
+    // Briefly enter the edge, then leave for the centre before the dwell expires.
+    await touch('touchMove',screen.x+12,y);
+    await pause(80);
+    await touch('touchMove',screen.x+screen.width*.5,y);
+    await pause(420);
+    assert.ok(await page.evaluate(()=>{const h=document.getElementById('homeScreen');return Math.abs(h.scrollLeft-h.clientWidth)<4;}),'stale edge timer flipped page after leaving edge');
     await touch('touchMove',screen.x+12,y);
     await page.waitForFunction(()=>{
       const h=document.getElementById('homeScreen');
