@@ -79,7 +79,11 @@
       cache.set(key,task);
       if(cache.size>64)cache.delete(cache.keys().next().value);
     }
-    return cache.get(key).then(function(url){return scope()===account?url:'';});
+    return cache.get(key).then(function(url){
+      if(scope()!==account)return '';
+      try{var fresh=readGroup(gid);return fresh&&fresh.account===account&&assetFor(fresh.group,String(id),account)===asset?url:'';}
+      catch(error){return '';}
+    });
   }
   global.MAOGroupPortraits={snapshot:snapshot,save:save,resolve:resolve,assetFor:assetFor,scope:scope};
 })(window);
