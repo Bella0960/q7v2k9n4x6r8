@@ -707,3 +707,9 @@ On the next turn/session, read this file and the current `AGENTS.md` first. Cont
 ## 2026-11-25 | MCP-001 restore QA failure repair
 
 - Actual public release run 45415570102 failed at gate 49/51: mcp-client.test.mjs:553, mcp-role-permissions.test.mjs:114 and :126. Corrected invalid catalog fixture (40 x 5 x 1200 Chinese characters did not exceed 768 KiB; 45 does, with explicit per-schema/response budget checks), synchronous listForRole error assertion, and exact grant-cap error assertion. Added post-cap retained permission and denied-new-tool checks. No runtime security limits weakened. Carried the same already-submitted narrow Moments browser navigation race fix from #513 into this independently based v161 candidate to avoid known shared test failure. Wait for serialized #513 verification, then test current exact MCP candidate or its updated integration on the actually deployed baseline. No deployment or live data changes.
+
+
+## 2026-11-25 | DESKTOP-DRAG-PERF-001 | isolated QA integration
+- Base c95ddd91ef1deb526027bd2655abbef4b66f1029: fixed QA release run 45542381041 completed upload and origin-check. This is a historical verified deployment receipt, not a direct live URL read; verify mode must re-read live baseline and reject stale candidates.
+- Source PR #496 head 9bc5d349f40d77a14ac77cb186e5a58401306a59: applied 24 exact-context hunks to four desktop files, preserving unrelated newer QA content. No schema, production or identity changes. Branch integration/desktop-drag-perf-20261125 is verify-only, not approval to merge the old PR.
+- Chromium probe adds 4x CPU slowdown at 390px/DPR3, native-runner frame samples at all three sizes, actual placeholder/animation counts, and cross-page release timing upper bound. Browser cadence is not physical display FPS; CPU emulation is not real hardware; no 120Hz or device claims. Verify with existing fixed QA channel, retain real output and fix actual failures.
