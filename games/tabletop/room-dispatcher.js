@@ -22,7 +22,8 @@ function validateResult(result, room) {
 export function createRoomDispatcher({getContext, spec, rules}) {
   if (typeof getContext!=='function' || !rules || typeof rules.init!=='function' || typeof rules.step!=='function' || rules.gameId!==spec?.gameId) fail('INVALID_RULE_ADAPTER');
   const policy=gamePolicy(spec.gameId);
-  const init=rules.init.bind(rules), step=rules.step.bind(rules);
+  if(rules.project!==undefined && typeof rules.project!=='function') fail('INVALID_RULE_ADAPTER');
+  const init=rules.init.bind(rules), step=rules.step.bind(rules), project=rules.project?.bind(rules);
   let room=createGameRoom(getContext(),spec), state=null, result=null, busy=false;
   function guarded(fn) {
     if(busy) fail('DISPATCH_BUSY');
@@ -32,9 +33,23 @@ export function createRoomDispatcher({getContext, spec, rules}) {
     const expected=roomToken(room,ctx,actor);
     if(!sameToken(token,expected)) fail('STALE_ACTION');
   }
-  function view(actor,ctx,r=room,outcome=result) {
+  function baseView(actor,ctx,r=room,outcome=result) {
     const v=seatView(r,ctx,actor);
     return {...v,result:outcome===null?null:clone(outcome)};
+  }
+  // Trusted game rules must explicitly allowlist each seat's visible state.
+  // No projector means no board/hidden state is exposed; never return raw state.
+  function view(actor,ctx,r=room,outcome=result,snapshot=state) {
+    const v=baseView(actor,ctx,r,outcome);
+    if(!project || !['playing','finished'].includes(r.phase)) return v;
+    const visible=project({state:clone(snapshot),room:clone(v),actorSeatId:actor});
+    if(!visible || typeof visible!=='object' || Array.isArray(visible) || typeof visible.then==='function') fail('INVALID_RULE_PROJECTION');
+    const detached=clone(visible);
+    if(!detached || typeof detached!=='object' || Array.isArray(detached)) fail('INVALID_RULE_PROJECTION');
+    // The projector is trusted synchronous code, but its execution must not
+    // bypass a context/roster change before the result is returned.
+    seatView(r,getContext(),actor);
+    return {...v,game:detached};
   }
   // Re-check the authoritative context just before publishing any transition.
   function commit(next,nextState,nextResult,actor,token,cleanup=false) {
@@ -43,7 +58,7 @@ export function createRoomDispatcher({getContext, spec, rules}) {
     // Do not expose any unverified roster details through this recovery response.
     const projected=cleanup && next.seats.some(s=>s.kind==='role'&&!ctx.roleIds.includes(s.roleId))
       ? {roomId:next.roomId,revision:next.revision,phase:next.phase,recoveryRequired:next.phase!=='closed'}
-      : view(actor,ctx,next,nextResult);
+      : view(actor,ctx,next,nextResult,nextState);
     room=next;state=nextState;result=nextResult;return projected;
   }
   return Object.freeze({
@@ -55,12 +70,12 @@ export function createRoomDispatcher({getContext, spec, rules}) {
       if(!action || typeof action.type!=='string') fail('INVALID_ACTION');
       if(lobbyActions.has(action.type)) {
         const next=reduceRoom(room,ctx,actor,token,action);
-        const nextState=action.type==='start'?jsonState(init(view(actor,ctx,next,null))):action.type==='close'?null:state;
+        const nextState=action.type==='start'?jsonState(init(baseView(actor,ctx,next,null))):action.type==='close'?null:state;
         return commit(next,nextState,result,actor,token,action.type==='remove'||action.type==='close');
       }
       if(action.type!=='move') fail('UNKNOWN_ACTION');
       if(room.phase!=='playing') fail('NOT_PLAYING');
-      const actorView=view(actor,ctx), seat=actorView.seats.find(s=>s.seatId===actor);
+      const actorView=baseView(actor,ctx), seat=actorView.seats.find(s=>s.seatId===actor);
       if(seat.mode==='observer') fail('OBSERVER_CANNOT_MOVE');
       if(!policy.phased && room.turnSeatId!==actor) fail('NOT_YOUR_TURN');
       // Rules are trusted local code. They must check phase/legality before returning.

@@ -2,9 +2,9 @@ import {test} from 'node:test';
 import assert from 'node:assert/strict';
 import {createRoomDispatcher} from '../games/tabletop/room-dispatcher.js';
 const context=()=>({accountId:'a',sessionId:'s',roleIds:['r1','r2','r3']});
-function fixture({gameId='gomoku',init,step,getContext}={}) {
+function fixture({gameId='gomoku',init,step,getContext,project}={}) {
   let calls=0,ctx=context();
-  const d=createRoomDispatcher({getContext:getContext||(()=>ctx),spec:{roomId:'room',gameId},rules:{gameId,init:init||(()=>({count:0,private:'secret'})),step:step||(({state,actorSeatId,move})=>{calls++;if(move==='bad')throw Error('ILLEGAL_MOVE');return {state:{...state,count:state.count+1},nextSeatId:move==='win'?null:actorSeatId==='user'?'role:r1':'user',result:move==='win'?{kind:'win',winnerSeatIds:[actorSeatId]}:null};})}});
+  const d=createRoomDispatcher({getContext:getContext||(()=>ctx),spec:{roomId:'room',gameId},rules:{gameId,project,init:init||(()=>({count:0,private:'secret'})),step:step||(({state,actorSeatId,move})=>{calls++;if(move==='bad')throw Error('ILLEGAL_MOVE');return {state:{...state,count:state.count+1},nextSeatId:move==='win'?null:actorSeatId==='user'?'role:r1':'user',result:move==='win'?{kind:'win',winnerSeatIds:[actorSeatId]}:null};})}});
   const send=(type,data={},actor='user',token=d.token(actor))=>d.dispatch(actor,token,{type,...data});
   const start=()=>{send('invite',{roleId:'r1'});send('start');};
   return {d,send,start,calls:()=>calls,setCtx:c=>{ctx=c;}};
@@ -26,3 +26,39 @@ test('host can remove multiple unavailable roles one by one without leaking stal
 test('host can close after a role disappears; stale private roster is not returned',()=>{const f=fixture();f.start();f.setCtx({...context(),roleIds:[]});const v=f.send('close');assert.equal(v.phase,'closed');assert.ok(!('seats' in v));assert.throws(()=>f.d.token('user'),/ROOM_TERMINAL/);});
 
 test('sparse winner list rejected and original room preserved',()=>{const f=fixture({step:()=>({state:{},result:{kind:'win',winnerSeatIds:Array(1)}})});f.start();const before=f.d.view('user');assert.throws(()=>f.send('move',{move:'ok'}),/INVALID_RESULT/);assert.deepEqual(f.d.view('user'),before);});
+
+// Trusted adapters opt in to a per-seat, detached board/discussion view.
+test('rule projection supplies only the current seat\'s allowed board and private fields',()=>{
+  const f=fixture({init:()=>({board:[0],hidden:'raw-secret',hands:{user:'my-card','role:r1':'r1-card','role:r2':'r2-card'}}),project:({state,actorSeatId})=>({board:state.board,hand:state.hands[actorSeatId]??null}),step:({state})=>({state:{...state,board:[1]},nextSeatId:'role:r1'})});
+  f.send('invite',{roleId:'r2',mode:'observer'});f.start();
+  assert.deepEqual(f.d.view('user').game,{board:[0],hand:'my-card'});
+  assert.deepEqual(f.d.view('role:r1').game,{board:[0],hand:'r1-card'});
+  assert.deepEqual(f.d.view('role:r2').game,{board:[0],hand:'r2-card'});
+  const updated=f.send('move',{move:1});assert.deepEqual(updated.game,{board:[1],hand:'my-card'});
+  assert.ok(!JSON.stringify(updated).includes('raw-secret'));assert.ok(!JSON.stringify(updated).includes('r1-card'));
+  assert.throws(()=>f.d.view('role:r3'),/UNKNOWN_SEAT/);
+});
+test('projection mutations and returned view mutations cannot alter rule state or room metadata',()=>{
+  const f=fixture({init:()=>({board:[0]}),project:({state,room})=>{state.board.push(99);room.seats.length=0;return {board:state.board};},step:({state})=>{assert.deepEqual(state.board,[0]);return {state:{board:[1]},nextSeatId:'role:r1'};}});
+  f.start();const v=f.d.view('user');assert.equal(v.seats.length,2);v.game.board.push(100);
+  assert.deepEqual(f.d.view('user').game.board,[0,99]);assert.deepEqual(f.send('move',{move:1}).game.board,[1,99]);
+});
+test('projection error prevents start and move commit atomically',()=>{
+  let broken=true;const f=fixture({project:()=>{if(broken)throw Error('PROJECTION_FAILED');return {ok:true};}});
+  f.send('invite',{roleId:'r1'});const before=f.d.view('user');assert.throws(()=>f.send('start'),/PROJECTION_FAILED/);assert.deepEqual(f.d.view('user'),before);
+  broken=false;f.send('start');const playing=f.d.view('user');broken=true;assert.throws(()=>f.send('move',{move:'ok'}),/PROJECTION_FAILED/);broken=false;assert.deepEqual(f.d.view('user'),playing);
+});
+test('invalid asynchronous or non-object projection fails before room transition',()=>{
+  for(const project of [async()=>({}),()=>undefined,()=>null,()=>[],()=>1]){const f=fixture({project});f.send('invite',{roleId:'r1'});const before=f.d.view('user');assert.throws(()=>f.send('start'),/INVALID_RULE_PROJECTION/);assert.deepEqual(f.d.view('user'),before);}
+});
+test('no game projection in lobby or closed room, finished view is rule-controlled',()=>{
+  let calls=0;const f=fixture({project:({room})=>{calls++;return {finished:room.phase==='finished'};}});
+  assert.ok(!('game' in f.d.view('user')));assert.equal(calls,0);f.start();assert.deepEqual(f.d.view('user').game,{finished:false});
+  const end=f.send('move',{move:'win'});assert.deepEqual(end.game,{finished:true});assert.deepEqual(f.d.view('role:r1').game,{finished:true});
+  const g=fixture({project:()=>{throw Error('unexpected projection');}});assert.ok(!('game' in g.send('close')));
+});
+test('scope change during projection prevents commit and a projected read',()=>{
+  let changed=false,f;f=fixture({project:()=>{if(changed)f.setCtx({...context(),roleIds:[]});return {board:[0]};}});f.start();const before=f.d.view('user');changed=true;
+  assert.throws(()=>f.send('move',{move:'ok'}),/ROLE_UNAVAILABLE/);f.setCtx(context());assert.throws(()=>f.d.view('user'),/ROLE_UNAVAILABLE/);
+  f.setCtx(context());changed=false;assert.deepEqual(f.d.view('user'),before);
+});
