@@ -22,11 +22,19 @@
     }
   }
 
+  // The refinements sheet only targets the chat list / detail shells; do not
+  // inject it on contacts, moments, profile or other non-chat pages.
+  function isChatPage() {
+    var b = document.body;
+    return !!(b && (b.classList.contains('chat-light-list') || b.classList.contains('chat-light-detail')));
+  }
+
   function ensureImessageStylesheet(on) {
     var head = document.head || document.getElementsByTagName('head')[0];
     if (!head) return;
     var injected = head.querySelector('#' + IMSG_CSS_ID);
     if (on) {
+      if (!isChatPage()) return;
       if (injected) return;
       var runtimeLink = null;
       var links = head.querySelectorAll('link[rel="stylesheet"]');
