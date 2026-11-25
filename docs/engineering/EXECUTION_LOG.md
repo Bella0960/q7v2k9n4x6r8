@@ -285,3 +285,8 @@ On the next turn/session, read this file and the current `AGENTS.md` first. Cont
 - **测试：** 新增 `tests/games-storage-trust.test.mjs`（9 项，VM 跑真实 `saveRaw/saveJSON/saveCaseProgress/selectRole/saveStat`），9/9 通过；7 段内联脚本全部 `vm.Script` 解析通过。
 - **登记未做（需产品决策）：** 游戏大厅只读角色卡 + 记忆无关；不产出世界事件（依赖 `ECO-LINK-002`）；侦探案件生成为付费调用，无次数限制或失败重试预算控制。
 - **未验证：** Vite 全站构建、Chromium 375/390/430、真机、真实配额场景。
+
+
+## 2026-11-25 — DATA-006 phase A: IndexedDB archive laboratory
+- Independent branch DATA-006/indexeddb-storage-lab from main; #523 remains independent. Re-read main AGENTS, release policy, DATA-006/backup and caller contracts. New dormant engine only; no production callers or real data migration. See INDEXEDDB_ARCHIVE_LAB.md for contract, proposed registry and mandatory activation gates.
+- Node v22.16.0 exact candidate engine and test blobs: 12/12 pass, source syntax passed. Chromium localhost and file fixture navigation blocked by administrator; real IDB and 10k/100k/1m scenario execution NOT VERIFIED. Browser fixture and runner committed for authorized QA. No Vite/full backup/restore/phone test, no merge or deployment. All existing storage and user data untouched.
