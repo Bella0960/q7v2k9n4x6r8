@@ -65,7 +65,7 @@ test('out-of-line arrays retain their original shape',async()=>{
 });
 test('actual restoreDatabase requests strict store transaction',()=>assert.ok(source.includes('restoreStore(db, def, records, clearOnRestore, mergeOnly, true)')));
 test('actual import performs hash check before confirmation or recovery point',()=>{
- const h=source.indexOf('var hashError = await verifyBackupAssetHashes(obj)');const c=source.indexOf('if (!confirm(promptText)) return;',h);const r=source.indexOf('await rpWriteSnapshot(current, RP_ROLE_PRE)',c);
+ const h=source.indexOf('var hashError = await verifyBackupAssetHashes(obj)');const c=source.indexOf('if (!confirm(promptText)) return;',h);const r=source.indexOf('await rpWriteSnapshot(current, RP_ROLE_PRE, mediaSnapshot)',c);
  assert.ok(h>=0&&c>h&&r>c);
 });
 
