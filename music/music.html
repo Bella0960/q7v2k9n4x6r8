@@ -1305,6 +1305,7 @@
     if (!musicHasConfirmedSource(tracks[currentIdx])) musicDiscardAudioSource();
     playing = musicHasConfirmedSource(tracks[currentIdx]) && !window.audio.paused && !window.audio.ended;
     updatePlayIcon();
+    musicEmitPlayback('error');
     toast(message);
     return false;
   }
@@ -1711,6 +1712,7 @@
     }
     playing = false;
     updatePlayIcon();
+    musicEmitPlayback('switching');
     if (playRequest !== playbackRevision) return false;
     try { await window.audio.play(); }
     catch (e) {
@@ -1788,6 +1790,7 @@
           try {
             window.audio.currentTime = Math.min(resumeTime, Math.max(0, window.audio.duration - 0.1));
             saveState();
+            musicEmitPlayback('seek');
           } catch (err) { toast('当前音频无法恢复原播放进度'); }
         }
         return;
@@ -1857,8 +1860,10 @@
   document.getElementById('progressBar').addEventListener('click', function(e) {
     const rect = this.getBoundingClientRect();
     const pct = (e.clientX - rect.left) / rect.width;
-    if (!pendingPlayback && musicHasConfirmedSource(tracks[currentIdx]) && Number.isFinite(window.audio.duration))
+    if (!pendingPlayback && musicHasConfirmedSource(tracks[currentIdx]) && Number.isFinite(window.audio.duration)) {
       window.audio.currentTime = Math.max(0, Math.min(1, pct)) * window.audio.duration;
+      musicEmitPlayback('seek');
+    }
   });
 
   // 播完自动切下一首

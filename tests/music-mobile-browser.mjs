@@ -267,7 +267,8 @@ try {
         const revoked = [];
         const check = (value, label) => { if (!value) throw Error(label); };
         const state = () => window.MAOMAOMusicPlayback.getState();
-        const results = [];
+        const results = [], playbackEvents = [];
+        const unsubscribe = window.MAOMAOMusicPlayback.subscribe(event => playbackEvents.push(event));
         const originalLoop = media.loop;
         media.loop = true; // one-second WAV must not naturally advance during assertions
         URL.revokeObjectURL = function(url) { revoked.push(url); return nativeRevoke.call(URL,url); };
@@ -284,6 +285,7 @@ try {
           bar.dispatchEvent(new MouseEvent('click', {clientX:rect.left + rect.width * 0.5, bubbles:true}));
           check(Math.abs(media.currentTime-target) < 0.12, 'native seek');
           check(Math.abs(state().currentTime-target) < 0.12, 'seek state');
+          check(playbackEvents.at(-1).type === 'seek' && Math.abs(playbackEvents.at(-1).currentTime-target) < 0.12, 'seek event agrees with audio');
           results.push('seek');
           const originalSource = media.src;
           Object.defineProperty(media,'play',{configurable:true,value:()=>Promise.reject(new DOMException('Synthetic policy rejection','NotAllowedError'))});
@@ -292,6 +294,9 @@ try {
             check(media.paused && !media.getAttribute('src') && state().trackId === firstId && !state().playing, 'no false track ownership');
             check(revoked.includes(originalSource), 'old object URL released');
             check(JSON.parse(localStorage.getItem('music_state')).id === firstId, 'failed track not persisted');
+            const errorState = playbackEvents.at(-1);
+            check(errorState.type === 'error' && errorState.trackId === firstId && !errorState.playing, 'subscription stops on failed play');
+            check(JSON.parse(localStorage.getItem('music_playback_state_v1')).playing === false, 'persisted shared state not falsely playing');
           } finally { delete media.play; }
           await togglePlay();
           check(!media.paused && state().trackId === firstId && media.src.startsWith('blob:'), 'retry opens prior song');
@@ -318,6 +323,7 @@ try {
         } finally {
           getAudioBlob=read;
           delete media.play;
+          unsubscribe();
           URL.revokeObjectURL=nativeRevoke;
           media.loop=originalLoop;
           musicPauseNative();
