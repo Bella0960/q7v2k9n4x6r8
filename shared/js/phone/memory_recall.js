@@ -342,6 +342,7 @@
     var accountId = initialAccount && initialAccount.ready === true &&
       typeof initialAccount.accountId === 'string' && initialAccount.accountId.trim()
       ? initialAccount.accountId : '';
+    var accountRole = initialAccount && initialAccount.role;
     var revision = 0, generation = 0, snapshot = null, index = null, pending = null, closed = false;
     var key = 'chat_history_' + id;
     function fail(reason) { return { ok:false, reason:reason }; }
@@ -349,7 +350,7 @@
       try {
         var current = global.__MAO_ACCOUNT_SCOPE__;
         return !closed && !!accountId && current && current.ready === true &&
-          current.accountId === accountId && current.role === initialAccount.role &&
+          current.accountId === accountId && current.role === accountRole &&
           typeof id === 'string' && !!id.trim() && id.charAt(0) !== 'g' &&
           typeof readSelection === 'function' && String(readSelection()) === id &&
           typeof isCurrentPage === 'function' && isCurrentPage() === true &&
@@ -396,7 +397,7 @@
       var current = readRaw();
       if (!current.ok) { invalidate(); return Promise.resolve(current); }
       if (snapshot !== null && current.raw !== snapshot) invalidate();
-      if (index) return Promise.resolve({ ok:true });
+      if (index) return Promise.resolve({ ok:true, generation:generation, handle:index });
       if (pending) return pending;
       var history;
       try { history = JSON.parse(current.raw); }
@@ -421,7 +422,7 @@
         pending = null;
         if (!result.ok) { invalidate(); return result; }
         index = result;
-        return { ok:true };
+        return { ok:true, generation:thisGeneration, handle:result };
       }, function () {
         if (generation === thisGeneration) invalidate();
         return fail('index-failed');
@@ -434,7 +435,8 @@
       if (!ready.ok) return ready;
       // ensureIndex may legitimately have invalidated the previous snapshot.
       // Recheck the captured handle and exact live snapshot before use.
-      var handle = index;
+      var handle = ready.handle;
+      if (ready.generation !== generation || handle !== index) return fail('stale-scope');
       var live = readRaw();
       if (!handle || !live.ok || snapshot === null || live.raw !== snapshot) {
         invalidate(); return fail('stale-scope');
