@@ -20,6 +20,7 @@ function slice(from, to) {
 }
 
 const identityBlock = slice('  function diaryAuthorKind(', '  function diaryCharacters(');
+const personaBlock = slice('  function diaryRoleContext(', '  function openAnnotation()');
 const manualBlock = slice('  function generateCharComment(){', '  function renderReader(){');
 const persistBlock = slice('  function persist(){', '  function hydratePhotos(');
 const flagBlock = slice('  function toggleEntryFlag(', '  function renderPhotoPreview(');
@@ -41,7 +42,7 @@ function makeStore(seed = {}) {
   };
 }
 
-function makeSandbox({ store, entries = [], role = { id: 'roleA', name: '阿岚' }, aiText = '今天风很大，窗台上的绿植被吹得一直点头。我把咖啡放在窗边，看它慢慢凉掉，忽然很想跟你说一句没什么用的废话。' }) {
+function makeSandbox({ store, entries = [], role = { id: 'roleA', name: '阿岚', persona:'从事植物研究，记录自然观察。', tone:'简练、克制' }, aiText = '今天风很大，窗台上的绿植被吹得一直点头。我把咖啡放在窗边，看它慢慢凉掉，忽然很想跟你说一句没什么用的废话。' }) {
   const toasts = [];
   const sandbox = {
     localStorage: store,
@@ -76,7 +77,10 @@ function makeSandbox({ store, entries = [], role = { id: 'roleA', name: '阿岚'
   sandbox.window = sandbox;
   sandbox.PhoneAPI = { complete: () => Promise.resolve(aiText) };
   vm.createContext(sandbox);
-  vm.runInContext(identityBlock + '\n' + persistBlock + '\n' + flagBlock + '\n' + autoWriteBlock + '\n' + autoPeekBlock + '\n' + manualBlock, sandbox);
+  for(const file of ['chat-role-context.js','chat-context-policy.js','role-worldbook-bindings.js']){
+    vm.runInContext(readFileSync(resolve(root,'shared/js/phone',file),'utf8'),sandbox);
+  }
+  vm.runInContext(identityBlock + '\n' + personaBlock + '\n' + persistBlock + '\n' + flagBlock + '\n' + autoWriteBlock + '\n' + autoPeekBlock + '\n' + manualBlock, sandbox);
   return { sb: sandbox, toasts };
 }
 
@@ -235,4 +239,31 @@ test('backup import keeps the author fields instead of treating role diary as us
  assert.match(importer,/clean\.author=e\.author/);
  assert.match(importer,/clean\.authorName=e\.authorName/);
  assert.match(importer,/clean\.charWritten=e\.charWritten/);
+});
+
+test('diary request contains full canonical persona and tone, not another role context',async()=>{
+ const role={id:'roleA',name:'Same name',persona:'ROLE_A_START '+ '自然观察。'.repeat(800)+' ROLE_A_END',tone:'ROLE_A_TONE',worldBookIds:['a']};
+ const store=makeStore({phone_worldbooks:JSON.stringify([{id:'a',name:'A lore',entries:[{name:'A note',content:'ROLE_A_LORE',enabled:true,constant:true}]},{id:'b',name:'B lore',entries:[{name:'B note',content:'ROLE_B_PRIVATE',enabled:true,constant:true}]}])});
+ const {sb}=makeSandbox({store,role});
+ sb.PhoneStorage={getMemories:id=>{assert.equal(id,'roleA');return [{status:'confirmed',content:'ROLE_A_MEMORY'},{status:'pending',content:'PENDING_MEMORY'}]}};
+ let request;sb.PhoneAPI.complete=opts=>{request=opts;return Promise.resolve('观察植物生长记录，今天叶片有新的变化。')};
+ sb.maybeAutoWriteCharEntry();await new Promise(r=>setTimeout(r,10));
+ assert.ok(request);
+ assert.ok(request.system.includes(role.persona));
+ assert.match(request.system,/ROLE_A_TONE/);
+ assert.match(request.system,/ROLE_A_MEMORY/);
+ assert.doesNotMatch(request.system,/ROLE_B_PRIVATE|PENDING_MEMORY/);
+ assert.equal(sb.entries[0].author,'roleA');
+});
+test('incomplete persona or unreadable worldbook binding prevents automatic paid diary generation',()=>{
+ for(const [role,seed] of [[{id:'roleA',name:'Same name'},{}],[{id:'roleA',name:'Same name',persona:'观察自然。'},{chat_worldbooks_roleA:'broken'}]]){
+  const {sb}=makeSandbox({role,store:makeStore(seed)});let calls=0;
+  sb.PhoneAPI.complete=()=>{calls++;return Promise.resolve('reply')};sb.maybeAutoWriteCharEntry();assert.equal(calls,0);
+ }
+});
+test('clear or disabled role worldbook mount never resurrects old character bindings',()=>{
+ const role={id:'roleA',name:'A',persona:'自然研究员',worldBookIds:['a']};
+ const store=makeStore({chat_worldbooks_roleA:JSON.stringify({worldbookIds:['a'],enabled:false}),phone_worldbooks:JSON.stringify([{id:'a',name:'A',content:'PRIVATE_LORE'}])});
+ const {sb}=makeSandbox({store,role});
+ assert.doesNotMatch(sb.diaryRoleContext(role,'日记',true),/PRIVATE_LORE/);
 });
