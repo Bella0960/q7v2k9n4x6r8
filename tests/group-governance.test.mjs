@@ -146,7 +146,7 @@ test('new role-owned group stays a draft until accepted and keeps existing roles
 test('all touched pages compile and refer to the shared bridge; backup and PWA include it', () => {
   for (const filename of ['chat/chat/chat.html', 'chat/chat/chat-detail.html', 'chat/chat/group-play.html', 'chat/chat/chat-settings.html']) {
     const html = load(filename);
-    assert.match(html, /group-governance\.js\?v=20261121group1/, filename);
+    assert.match(html, /group-governance\.js\?v=20261125scope2/, filename);
     const inline = [...html.matchAll(/<script(?:\s+[^>]*)?>([\s\S]*?)<\/script>/gi)];
     for (const [index, match] of inline.entries()) {
       assert.doesNotThrow(() => new vm.Script(match[1], { filename: filename + ':inline' + index }));
@@ -159,7 +159,7 @@ test('all touched pages compile and refer to the shared bridge; backup and PWA i
   assert.match(detail, /群动作:禁言:/);
   assert.match(load('chat/chat/chat.html'), /pendingInvitations/);
   assert.match(load('chat/chat/group-play.html'), /GroupGovernance\.leave/);
-  assert.match(load('sw.js'), /group-governance\.js\?v=20261121group1/);
+  assert.match(load('sw.js'), /group-governance\.js\?v=20261125scope2/);
   assert.match(load('settings/js/backup-modules.js'), /phone_group_invitations/);
 });
 
@@ -581,4 +581,15 @@ test('group turns fence requests, writes, followups and deferred actions against
   assert.ok(html.includes('targetId!==speakerId||!currentGroupSpeaker(targetId)'));
   assert.ok(html.includes('queueGameReveal, contextOnly)'));
   assert.ok(html.includes('if(groupPageExited||!isGroupChat||!groupGuard'));
+});
+
+
+test('group integration pages and precache use one canonical script revision',()=>{
+  const sw=load('sw.js');
+  const pages=['chat/chat/chat.html','chat/chat/chat-detail.html','chat/chat/chat-settings.html','chat/chat/group-play.html'];
+  const expected={"group-governance.js":"20261125scope2","group-memory-events.js":"20261125public1","chat-context-policy.js":"20261125public1","chat-history-atomic.js":"20261125scope1","wallpaper-store.js":"20261125group2","group-turn-effects.js":"20261125scope1","group-private-receipt-recovery.js":"20261125scope1","group-settings-home.js":"20261125scope3","group-write-guard.js":"20261125g10","group-portraits.js":"20261125scope1"};
+  for(const [name,rev] of Object.entries(expected)){
+    assert.ok(sw.includes(name+'?v='+rev),name+' precache');
+    for(const page of pages){const html=load(page);for(const match of html.matchAll(/<script[^>]+src="([^"]+)"/g)){if(match[1].includes('/'+name+'?v='))assert.ok(match[1].endsWith(name+'?v='+rev),page+' '+name);}}
+  }
 });
