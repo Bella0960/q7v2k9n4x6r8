@@ -588,3 +588,39 @@ test('creator-only shortcut cannot reenter ordinary layout via remaining-app res
     }
   }
 });
+
+
+test('desktop glass pauses expensive optical work while editing and excludes visual ghosts', () => {
+  const vendor = readFileSync(new URL('../shared/vendor/liquid-glass/liquid-glass.js', import.meta.url), 'utf8');
+  const glassCss = readFileSync(new URL('../shared/css/liquid-glass-theme.css', import.meta.url), 'utf8');
+  const controls = readFileSync(new URL('../shared/js/liquid-glass-controls.js', import.meta.url), 'utf8');
+  for(const source of [index,controls]){
+    assert.ok(source.includes("selector: '.maomao-liquid-glass-icon:not([data-home-drag-ghost])'"));
+    assert.ok(source.includes("deferDuring: 'body.maomao-home:is(.home-editing,.home-dragging,.home-paging):not(.lg-controls-open)'"));
+  }
+  assert.match(index,/icon\.setAttribute\('data-home-drag-ghost', ''\)/);
+  assert.match(glassCss,/home-editing \.desktop-grid > \.app-tile,[\s\S]*?animation: none !important/);
+  assert.match(glassCss,/home-editing,\.home-paging,\.home-dragging\):not\(\.lg-controls-open\) \.dock-bar,[\s\S]*?backdrop-filter: none !important/);
+  const fn=vendor.match(/function hostMotionDeferred\(\) \{[\s\S]*?\n\}/)?.[0];
+  assert.ok(fn);
+  const ctx={HAS_DOM:true,config:{deferDuring:null},document:{body:{matches:s=>s==='busy'}}};
+  runInNewContext(fn+'\nthis.check=hostMotionDeferred;',ctx);
+  assert.equal(ctx.check(),false);
+  ctx.config.deferDuring='busy';assert.equal(ctx.check(),true);
+  ctx.config.deferDuring='idle';assert.equal(ctx.check(),false);
+  ctx.document.body=null;assert.equal(ctx.check(),false);
+  // Exercise actual deferred branches without running the third-party renderer.
+  const tier=vendor.slice(vendor.indexOf('function evaluateTiers()'),vendor.indexOf('  const max = config.maxRefractive',vendor.indexOf('function evaluateTiers()')))+'}';
+  const tone=vendor.slice(vendor.indexOf('function runToneSampling()'),vendor.indexOf('  const { all, scroll, entered } = toneState;',vendor.indexOf('function runToneSampling()')))+'}';
+  const timers=[];
+  const runtime={state:{initialized:true},document:{hidden:false},hostMotionDeferred:()=>true,
+    tiers:{timer:7},toneState:{timer:8,all:true,scroll:true,entered:new Set(['fixture'])},
+    clearTimeout(){},setTimeout(fn,delay){timers.push(delay);return 99;}};
+  runInNewContext(tier+'\n'+tone+'\nevaluateTiers();runToneSampling();',runtime);
+  assert.deepEqual(timers,[250,250]);
+  assert.equal(runtime.toneState.all,true);
+  assert.equal(runtime.toneState.scroll,true);
+  assert.equal(runtime.toneState.entered.has('fixture'),true);
+  assert.equal(runtime.tiers.timer,99);
+  assert.equal(runtime.toneState.timer,99);
+});

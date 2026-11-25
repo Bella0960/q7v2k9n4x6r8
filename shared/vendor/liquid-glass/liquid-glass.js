@@ -140,11 +140,19 @@ const DEFAULT_CONFIG = {
   maxRefractiveAreaRatio: 0.35,
   worker: false,
   observe: true,
+  deferDuring: null,          // opt-in host selector: defer expensive tone/tier work during gestures
   bleed: true,                 // Tier B overscan + clip-path so the blur sees past the edge
   urlOverrides: false,
   debug: false,
 };
 const config = { ...DEFAULT_CONFIG };
+
+// MAOMAO host integration: opt-in only, no change for other Liquid Glass consumers.
+// Retain the current optical resources; resume queued work when the host is idle.
+function hostMotionDeferred() {
+  if (!HAS_DOM || !config.deferDuring || !document.body) return false;
+  try { return document.body.matches(config.deferDuring); } catch { return false; }
+}
 
 // Runtime state that is not an init option.
 const state = {
@@ -2742,6 +2750,10 @@ function scheduleTierEvaluation(soon = false) {
 function evaluateTiers() {
   clearTimeout(tiers.timer);
   if (!state.initialized) return;
+  if (hostMotionDeferred()) {
+    tiers.timer = setTimeout(evaluateTiers, 250);
+    return;
+  }
   const max = config.maxRefractive ?? (caps.coarse ? 4 : 8);
   // A zero-size viewport (hidden frame) has no meaningful area budget; the count still applies.
   const viewport = innerWidth * innerHeight;
@@ -3222,6 +3234,11 @@ function sampleInstance(inst, now, pass) {
 
 function runToneSampling() {
   toneState.timer = 0;
+  // Keep queued scope and pending samples intact; no hit-testing/readback while moving.
+  if (state.initialized && !document.hidden && hostMotionDeferred()) {
+    toneState.timer = setTimeout(runToneSampling, 250);
+    return;
+  }
   const { all, scroll, entered } = toneState;
   toneState.all = toneState.scroll = false;
   toneState.entered = new Set();
@@ -4044,6 +4061,9 @@ function resizeGlass(el) {
   if (!inst || inst.dead || !inst.geom) return;
   // offsetWidth/Height: the untransformed border box, in the same units as the first measure.
   const w = el.offsetWidth, h = el.offsetHeight;
+  // A drag temporarily hides the original tile. Do not discard/rebuild its
+  // glass resources for that zero-size intermediate state.
+  if (hostMotionDeferred() && (!w || !h) && el.closest('.is-dragging-source')) return;
   if (w === inst.geom.w && h === inst.geom.h) return;
   const grew = inst.area === 0;
   inst.measure({ w, h });

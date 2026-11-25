@@ -438,6 +438,11 @@ try{
         assert.equal(loaded.fontLoaded,true,'custom font was not decoded');
         assert.equal(loaded.photos,setup.widgetCount,'photo fixture did not restore');
         const heavyLayout=await readLayout(hp);
+        await hp.waitForFunction(()=>typeof window.LiquidGlass?.stats==='function'&&window.LiquidGlass.stats().instances>0);
+        const idleOptics=await hp.evaluate(()=>{
+          const icon=document.querySelector('#gridPage0 .maomao-liquid-glass-icon');
+          return {icon:getComputedStyle(icon,'::before').backdropFilter,dock:getComputedStyle(document.getElementById('dockBar')).backdropFilter};
+        });
         // Static synthetic page has no super-admin role. Its live and persisted
         // inventory must agree before any gesture, with no creator-only entry.
         const initialDomInventory=await hp.evaluate(()=>Array.from(document.querySelectorAll('.desktop-grid > [data-drag], #dockBar > [data-drag], #itemShelf > [data-drag]')).map(el=>el.dataset.drag).sort());
@@ -458,8 +463,22 @@ try{
             return tiles[0]||null;
           });
           assert.ok(point,'no visible drag source in heavy home grid');
+          const instancesBefore=await hp.evaluate(()=>window.LiquidGlass.stats().instances);
           await ht('touchStart',point.x,point.y);
           await hp.waitForSelector('.drag-avatar',{timeout:3000});
+          const gestureOptics=await hp.evaluate(()=>{
+            const icon=document.querySelector('#gridPage0 .app-tile:not(.is-dragging-source) .maomao-liquid-glass-icon');
+            return {instances:window.LiquidGlass.stats().instances,
+              ghost:document.querySelector('.drag-avatar .maomao-liquid-glass-icon')?.hasAttribute('data-home-drag-ghost'),
+              animation:getComputedStyle(icon.closest('.app-tile')).animationName,
+              icon:getComputedStyle(icon,'::before').backdropFilter,
+              dock:getComputedStyle(document.getElementById('dockBar')).backdropFilter};
+          });
+          assert.equal(gestureOptics.instances,instancesBefore,'drag ghost registered another optical instance');
+          assert.equal(gestureOptics.ghost,true,'ghost is not excluded from the optical engine');
+          assert.equal(gestureOptics.animation,'none','edit mode kept repainting all glass icons');
+          assert.equal(gestureOptics.icon,'none','live icon backdrop active during edit drag');
+          assert.equal(gestureOptics.dock,'none','live dock backdrop active during edit drag');
           diagnosticPhase=commit?431:393;
           const targets=await hp.evaluate(()=>{
             const bounds=document.getElementById('homeScreen').getBoundingClientRect();
@@ -560,6 +579,9 @@ try{
         await hc.detach();
         diagnosticPhase=397;
         await go(hp,'/index.html');
+        await hp.waitForFunction(()=>window.LiquidGlass?.stats?.().instances>0);
+        const restoredOptics=await hp.evaluate(()=>({icon:getComputedStyle(document.querySelector('#gridPage0 .maomao-liquid-glass-icon'),'::before').backdropFilter,dock:getComputedStyle(document.getElementById('dockBar')).backdropFilter}));
+        assert.deepEqual(restoredOptics,idleOptics,'idle optical appearance was not restored');
         assert.deepEqual(await readLayout(hp),committed,'heavy drag layout did not persist after reload');
         assert.deepEqual(heavyErrors,[],'heavy profile page errors');
         pass('heavy_hd_glass_font_widget_drag_'+width);

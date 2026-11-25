@@ -41,8 +41,8 @@
     <link rel="stylesheet" href="desktop/css/styles.css?v=20261124-motion1">
   <link rel="stylesheet" href="shared/css/mobile-fit.css?v=20261106-home-layout2">
     <link rel="stylesheet" href="shared/vendor/liquid-glass/liquid-glass.css?v=1.2.0">
-    <script>window.LiquidGlassConfig = { selector: '.maomao-liquid-glass-icon', preset: 'ios26', refraction: 'auto', maxRefractive: 2, maxRefractiveAreaRatio: 0.12, observe: true, debug: false };</script>
-    <script defer src="shared/vendor/liquid-glass/liquid-glass.js?v=1.2.0"></script>
+    <script>window.LiquidGlassConfig = { selector: '.maomao-liquid-glass-icon:not([data-home-drag-ghost])', deferDuring: 'body.maomao-home:is(.home-editing,.home-dragging,.home-paging):not(.lg-controls-open)', preset: 'ios26', refraction: 'auto', maxRefractive: 2, maxRefractiveAreaRatio: 0.12, observe: true, debug: false };</script>
+    <script defer src="shared/vendor/liquid-glass/liquid-glass.js?v=1.2.0-mao-motion1"></script>
   <style>
     /* ===== 添加挂件：跳转独立挂件管理页（desktop/widgets.html） ===== */
     .edit-add-btn { margin-right: 8px; }
@@ -1328,6 +1328,10 @@
 
         dragClone.style.setProperty('width', sourceWidth + 'px', 'important');
         dragClone.style.setProperty('height', sourceHeight + 'px', 'important');
+        // A visual clone must never become a second live glass-engine instance.
+        dragClone.querySelectorAll('.maomao-liquid-glass-icon').forEach(function (icon) {
+          icon.setAttribute('data-home-drag-ghost', '');
+        });
         var ghostIcon = dragClone.querySelector('.app-icon');
         if (ghostIcon && iconWidth && iconHeight) {
           ghostIcon.style.setProperty('width', iconWidth + 'px', 'important');
@@ -3373,7 +3377,7 @@
 </script>
 
 <script src="shared/js/dock-control.js?v=20261023v1"></script>
-<script src="shared/js/liquid-glass-controls.js?v=20261023v11"></script>
+<script src="shared/js/liquid-glass-controls.js?v=20261125motion1"></script>
 <script src="shared/js/chat-notifier.js?v=20261119scheduled1"></script>
 </body>
 </html>
