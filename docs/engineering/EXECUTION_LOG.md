@@ -333,3 +333,7 @@ On the next turn/session, read this file and the current `AGENTS.md` first. Cont
 
 ### 2026-11-25 · PR #529 真实浏览器验收脚本与旧测试迁移
 恢复成员卡片原角色名与群昵称摘要，目录人数立即渲染；移动端群设置壳纯白、无假状态栏，桌面壳及单聊保持；长昵称不撑破布局。旧 group-ui-collapse-invite / group-chat-invite-e2e Playwright 用例按新版目录/子页导航更新，保留邀请去重、角色库隔离、关系独立展开、旧玩法及群主转让断言，并新增 375/390/430px 三档真实页面测试（白底、展开/收起、置顶、昵称、实际 PNG 上传、IndexedDB 媒体、刷新/恢复默认、群管理、管理员、邀请与返回、无横溢出/页面异常）。测试使用本地合成账号 meta，不代表真实服务端身份验收。候选页面及测试脚本语法解析通过，11 项源码连通检查通过。当前 connector 未提供执行远端 Node/Chromium 或读取完整仓库到本地运行环境的通路，新增浏览器用例尚未执行；固定发布迁移 #507 和账号 scope 文件缺失问题仍待解决。未合并未部署。
+
+
+### 2026-11-25 · PR #529 群头像并发保护收尾
+群头像保存改为共享 group-write-guard 提交，目标群快照校验不再因其他群发生合法更新而无故拒绝；提交保留其他群最新值。保存构造独立更新对象，失败不污染原快照，允许安全重试；同群资料修改、成员移除及账号标记变化仍拒写。13 项隔离 JS 测试通过。另核实 worker.js 注入 /shared/js/mao-account-scope.js?v=2，但 main 文件不存在且既有 admin-cloud-mobile.browser.mjs 明确使用空替身；完整账号隔离须由账号核心专项修复/验证，未擅改共享账号机制。三个候选模块已核对 Git blob SHA 后复制到本地，Chromium 对本地 fixture 和纯内存路由测试导航均返回 ERR_BLOCKED_BY_ADMINISTRATOR，未通过真实页面验收。未合并、未部署。
