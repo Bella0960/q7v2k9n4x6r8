@@ -2446,8 +2446,9 @@
         const groupGuard=window.MAOGroupWriteGuard;
         const groupPageAccount=isGroupChat&&groupGuard?groupGuard.account():null;
         const groupObjectBaselines=new WeakMap();
+        let groupPageExited=false;
         function readGroupScope(){
-            if(!isGroupChat||!groupGuard||groupPageAccount===null||groupGuard.account()!==groupPageAccount)return null;
+            if(groupPageExited||!isGroupChat||!groupGuard||groupPageAccount===null||groupGuard.account()!==groupPageAccount)return null;
             const snap=groupGuard.read(String(currentRoleId));
             if(!snap||snap.account!==groupPageAccount||!window.GroupGovernance?.userIsInGroup(snap.group)||!Array.isArray(snap.group.members))return null;
             const ids=snap.group.members.map(m=>m&&m.id!=null?String(m.id):'');
@@ -5602,7 +5603,6 @@
         // R3 防重入锁：AI 回复期间（含流式）忽略重复发送，防止并发请求交错写坏聊天记录
         let aiSending = false;
         let singleChatSendPending = false;
-        let groupPageExited=false;
         window.addEventListener('pagehide',function(){if(isGroupChat){groupPageExited=true;groupAutoFollowupToken++;}});
         window.addEventListener('pageshow',function(event){if(isGroupChat&&event.persisted)location.reload();});
         let singleChatPartialSaved = false;
