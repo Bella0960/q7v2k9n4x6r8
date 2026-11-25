@@ -557,3 +557,28 @@ test('group portrait backups reject missing bytes, metadata, owner refs and acco
   assert.ok(b.includes('&& !missingGroupPortraits'));
   assert.ok(b.includes("if(backupMissingGroupPortraits(obj,groupPortraitBackupAccount()))"));
 });
+
+
+test('group turns fence requests, writes, followups and deferred actions against current identity',()=>{
+  const html=load('chat/chat/chat-detail.html'),w={};
+  for(const [,code] of html.matchAll(/<script(?:\s[^>]*)?>([\s\S]*?)<\/script>/g))if(code.trim())new vm.Script(code);
+  new Function('window',load('shared/js/phone/group-turn-effects.js'))(w);
+  new Function('window',load('shared/js/phone/group-private-receipt-recovery.js'))(w);
+  {let n=0;const f=w.GroupTurnEffects.create(()=>true);f.afterSave(()=>{n++;return true;});assert.equal(f.finalize(false).saved,false);assert.equal(n,0);}
+  {let n=0;const f=w.GroupTurnEffects.create(()=>false);f.afterSave(()=>{n++;return true;});assert.equal(f.finalize(true).postCommitFailures,1);assert.equal(n,0);}
+  {let active=true,n=0;const f=w.GroupTurnEffects.create(()=>active);f.afterSave(()=>{active=false;n++;return true;});f.afterSave(()=>{n++;return true;});const result=f.finalize(true);assert.equal(result.committed,1);assert.equal(result.postCommitFailures,1);assert.equal(n,1);}
+  {let n=0;const f=w.GroupTurnEffects.create();f.afterSave(()=>{n++;return true;});assert.equal(f.finalize(true).ok,true);assert.equal(n,1);assert.equal(f.finalize(true).ok,false);}
+  for(const group of [{id:'g1',members:[{id:'r1'},{id:'r1'}]},{id:'g1',members:[{id:'__user'}]},{id:'g1',members:[{id:'g1'}]},{id:'g1',userMembership:'declined',members:[{id:'r1'}]}]){
+    let n=0;const result=w.GroupPrivateReceiptRecovery.reconcile({group,readGroupHistory(){n++;return [];},readRoleHistory(){n++;return [];},saveGroupHistory(){n++;return true;}});
+    assert.equal(result.ok,false);assert.equal(n,0);
+  }
+  {let history=[];const result=w.GroupPrivateReceiptRecovery.reconcile({group:{id:'g1',members:[{id:'r1'}]},readGroupHistory:()=>history,readRoleHistory:()=>[{role:'assistant',mid:'m1',text:'secret',time:1,privateFromGroup:true,privateGroupReceiptV1:true,fromGroupId:'g1'}],saveGroupHistory:m=>{history=m;return true;}});assert.equal(result.ok,true);assert.equal(result.repaired,1);assert.equal(history[0].text,'');}
+  assert.ok(html.includes('if(!groupTurnCurrent()){discardStaleGroupTurn();return;}\n            const chatResponseTimeoutMs'));
+  assert.ok(html.includes('if(!groupTurnCurrent()){discardStaleGroupTurn();return;}\n            fullText'));
+  assert.ok(html.includes('var replySaved = groupTurnCurrent() && saveMessages(historyList)'));
+  assert.ok(html.includes('if(isGroupChat){inflightSnapshot=null;groupPageExited=true;return;}'));
+  assert.ok(html.includes('singleChatSendPending||!groupGuard.matches(followupScope)'));
+  assert.ok(html.includes('targetId!==speakerId||!currentGroupSpeaker(targetId)'));
+  assert.ok(html.includes('queueGameReveal, contextOnly)'));
+  assert.ok(html.includes('if(groupPageExited||!isGroupChat||!groupGuard'));
+});
