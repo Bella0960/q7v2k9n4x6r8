@@ -40,3 +40,33 @@ for(const [name,id,active,role,changed,n,dup,expected] of cases){
   else{assert.equal(writes.length,1);assert.equal(writes[0].roleId,id);assert.equal(writes[0].input.status,expected);}
  });
 }
+
+test('desktop back uses native navigation and legacy global renderer is detached',()=>{
+ assert.match(page, /<a class="mem-back back-btn" href="\.\.\/\.\.\/index\.html" aria-label="返回"/);
+ assert.doesNotMatch(page,/src="\.\.\/\.\.\/shared\/js\/memory\.js/);
+});
+const summary=excerpt(page,'    async function runSummary(','    // ---- 记忆工具 ----');
+const buildSummary=new Function('currentMemId','readHistory','getAiConfig','getSelectedCats','CAT_LABEL','sumConfig','document','alert','fetch','AbortController','setTimeout','clearTimeout','loadMemories','saveMemories','localStorage','refreshManual','renderLib',summary+'\nreturn runSummary');
+for(const [name,role,sender,changed,oversized,expected] of [
+ ['valid summary remains pending','r1','sent',false,false,true],
+ ['changed source stops commit','r1','sent',true,false,false],
+ ['unknown sender stops request','r1','npc',false,false,false],
+ ['group stops request','g1','sent',false,false,false],
+ ['oversized batch stops cursor','r1','sent',false,true,false]
+]){
+ test(name,async()=>{
+  let source=[{role:sender,text:oversized?'a'.repeat(4100):'test source'}],calls=0,writes=0,cursor=0,mems=[];
+  const orig=JSON.parse(JSON.stringify(source)),btn={textContent:'总结',disabled:false};
+  const run=buildSummary(role,()=>source,()=>({apiKey:'synthetic'}),()=>['detail'],{detail:'细节'},{maxOutput:100},{getElementById:()=>btn},()=>{},async()=>{calls++;if(changed)source=[{role:sender,text:'changed'}];return {ok:true,json:async()=>({choices:[{message:{content:'[{"content":"synthetic candidate","category":"detail","importance":5}]'}}]})}},class{abort(){}},()=>1,()=>{},()=>[],(id,v)=>{writes++;mems=v;return true},{setItem:k=>{if(k.includes('processed'))cursor++}},()=>{},()=>{});
+  await run(orig,true,1);
+  if(expected){assert.equal(writes,1);assert.equal(mems[0].status,'pending');assert.equal(cursor,1);}
+  else{assert.equal(writes,0);assert.equal(cursor,0);assert.equal(calls,changed?1:0);}
+ });
+}
+test('AI merge preserves originals and marks derived records pending',()=>{
+ const merge=excerpt(page,'    async function doMerge()','    // ---- 折叠卡片 ----');
+ assert.match(merge,/sourceMemoryIds: pool\.map/);
+ assert.match(merge,/JSON\.stringify\(latestPool\) !== poolSnapshot/);
+ assert.match(merge,/status: 'pending'/);
+ assert.doesNotMatch(merge,/arr = arr\.filter/);
+});
