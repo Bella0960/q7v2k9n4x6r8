@@ -25,8 +25,10 @@
   function mount(home, openCategory) {
     var gid = new URLSearchParams(location.search).get('id') ||
       new URLSearchParams(location.search).get('roleId');
-    var governance = root.GroupGovernance;
-    if (!gid || !governance) return;
+    var governance = root.GroupGovernance, guard = root.MAOGroupWriteGuard;
+    if (!gid || !governance || !guard) return;
+    var pageAccount=guard.account(), renderedState=null, memberDialogState=null;
+    function pageCurrent(){return pageAccount!==null&&guard.account()===pageAccount;}
     var headerBack = document.getElementById('backBtn');
     var dialog = document.createElement('dialog');
     dialog.className = 'group-settings-dialog';
@@ -59,55 +61,49 @@
       return el;
     }
     function read(key, fallback) {
-      try { return localStorage.getItem(key) ?? fallback; } catch (e) { return fallback; }
+      if(!pageCurrent())return fallback;
+      try { var value=localStorage.getItem(key);return pageCurrent()?(value??fallback):fallback; } catch (e) { return fallback; }
     }
     function profile() {
       try { return JSON.parse(read('myProfile', '{}')) || {}; } catch (e) { return {}; }
     }
     function state() {
-      var groups;
-      try { groups = JSON.parse(read('phone_groups', '[]')); } catch (e) { return null; }
-      if (!Array.isArray(groups)) return null;
-      var group = groups.find(function (item) {
-        return item && String(item.id) === gid && Array.isArray(item.members);
-      });
-      if (!governance.userIsInGroup(group)) return null;
-      group.members = group.members.filter(Boolean);
-      return {
-        group: group,
-        save: function () { return write('phone_groups', JSON.stringify(groups), true); }
-      };
+      if(!pageCurrent())return null;
+      var snapshot=guard.read(gid);
+      if(!snapshot||snapshot.account!==pageAccount||!governance.userIsInGroup(snapshot.group))return null;
+      var group=snapshot.group;
+      // Invalid rows must not be silently removed by an unrelated settings save.
+      if(!Array.isArray(group.members)||group.members.some(function(m){return !m||m.id==null;}))return null;
+      return {group:group,snapshot:snapshot,save:function(){return pageCurrent()&&guard.commit(snapshot,group).ok===true;}};
     }
-    function write(key, value, quiet) {
-      try {
-        localStorage.setItem(key, value);
-        if (localStorage.getItem(key) === value) return true;
-      } catch (e) {}
-      if (!quiet) report('保存失败，请检查本地存储空间。');
-      return false;
+    function isCurrent(current){return !!current&&pageCurrent()&&guard.matches(current.snapshot);}
+    function savePreference(snapshot,value){
+      if(pageCurrent()&&guard.writePreference(snapshot,String(value)).ok)return true;
+      report('群设置已变化或保存失败，请重新打开。');return false;
     }
     function report(message) {
       live.textContent = message || '';
       var status = dialog.querySelector('[role="status"]');
       if (dialog.open && status) status.textContent = message;
     }
-    function apply(action, target, options) {
-      var current = state();
-      if (!current) return report('群聊已不可用。');
+    function apply(action, target, options, captured) {
+      var current = captured || memberDialogState || state();
+      if (!isCurrent(current)) return report('群资料已变化，请重新打开。');
       var result = governance.apply({group: current.group, actorId: '__user',
         action: action, target: target, options: options, save: current.save});
       if (result.ok) {
         dialog.close();
+        memberDialogState=null;
         render();
       }
       report(result.message);
     }
-    function setPreference(key, value) {
-      var current = state();
-      if (!current) return report('群聊已不可用。');
+    function setPreference(key, value, captured) {
+      var current = captured || renderedState;
+      if (!isCurrent(current)) return report('群资料已变化，请重新打开。');
       var group = current.group;
       if (key === 'pinned') {
-        if (!write('chat_pin_' + gid, String(value))) { render(); return; }
+        if (!savePreference(current.pinSnapshot, value)) { render(); return; }
       } else {
         group.preferences = Object.assign({}, group.preferences, {[key]: value});
         if (!current.save()) { render(); report('保存失败，请检查本地存储空间。'); return; }
@@ -147,7 +143,9 @@
     // Group-only presentation: keep the data and permission handlers unchanged.
     function render() {
       var current = state();
-      if (!current) return;
+      if (!current) {renderedState=null;memberDialogState=null;home.replaceChildren(node('p','群资料暂不可用，请重新进入。','group-settings-status'));if(dialog.open)dialog.close();return;}
+      current.pinSnapshot=guard.readPreference(current.snapshot,'pin');
+      renderedState=current;
       if (activeView === 'manage') { selectMembers('manage'); return; }
       var group = current.group;
       var canManage = governance.rank(group, '__user') >= 2;
@@ -172,7 +170,7 @@
       cover.append(photo);
       if (wallpaper && typeof wallpaper.getByKey === 'function') {
         Promise.resolve(wallpaper.getByKey(bgKey)).then(function (url) {
-          if (typeof url === 'string' && /^data:image\//i.test(url)) usePhoto(url);
+          if (pageCurrent() && typeof url === 'string' && /^data:image\//i.test(url)) usePhoto(url);
         }).catch(function () {});
       }
 
@@ -279,6 +277,7 @@
     function selectMembers(mode, id) {
       var current = state();
       if (!current) return;
+      memberDialogState=current;
       var group = current.group;
       var canManage = governance.rank(group, '__user') >= 2;
       var all = group.members;
@@ -345,8 +344,8 @@
           canvas.height = Math.max(1, Math.round(image.naturalHeight * scale));
           canvas.getContext('2d').drawImage(image, 0, 0, canvas.width, canvas.height);
           var data = canvas.toDataURL('image/jpeg', .72);
-          var latest = state();
-          if (!latest) return report('群聊已不可用。');
+          var latest = current;
+          if (!isCurrent(latest)) return report('群资料已变化，请重新选择图片。');
           if (kind === 'avatar') {
             if (governance.rank(latest.group, '__user') < 2) return report('没有修改群头像的权限。');
             latest.group.avatar = data;
@@ -363,7 +362,7 @@
       show(kind === 'avatar' ? '群头像' : '群背景', [file].concat(kind === 'background' && wallpaper ? [button('恢复默认背景', 'reset-background')] : []));
     }
     var handlers = {
-      close: function () { dialog.close(); },
+      close: function () { memberDialogState=null;dialog.close(); },
       cover: function () {
         var current = state();
         if (!current) return;
@@ -388,29 +387,30 @@
       preference: function (id, target) { setPreference(id, target.getAttribute('aria-checked') !== 'true'); },
       name: function () {
         var current = state();
-        if (current) edit('群组名称', current.group.name, 20, function (value) { apply('rename', value); },
+        if (current) edit('群组名称', current.group.name, 20, function (value) { apply('rename', value, undefined, current); },
           governance.rank(current.group, '__user') < 2);
       },
       alias: function () {
-        var key = 'chat_group_alias_' + gid;
-        edit('备注', read(key, ''), 40, function (value) {
-          if (write(key, value)) { dialog.close(); render(); report('群备注已保存。'); }
+        var current=state(), snapshot=current&&guard.readPreference(current.snapshot,'alias');
+        if(!snapshot)return report('群资料暂不可用。');
+        edit('备注', snapshot.raw||'', 40, function (value) {
+          if (savePreference(snapshot, value)) { dialog.close(); render(); report('群备注已保存。'); }
         });
       },
       notice: function () {
         var current = state();
         if (!current) return;
-        var key = 'chat_group_notice_' + gid;
-        edit('群公告', read(key, ''), 500, function (value) {
-          var latest = state();
-          if (!latest || governance.rank(latest.group, '__user') < 2) return report('没有编辑群公告的权限。');
-          if (write(key, value)) { dialog.close(); report('群公告已保存。'); }
+        var snapshot=guard.readPreference(current.snapshot,'notice');
+        if(!snapshot)return report('群公告暂不可用。');
+        edit('群公告', snapshot.raw||'', 500, function (value) {
+          if (!isCurrent(current) || governance.rank(current.group, '__user') < 2) return report('群资料或权限已变化。');
+          if (savePreference(snapshot, value)) { dialog.close(); report('群公告已保存。'); }
         }, governance.rank(current.group, '__user') < 2);
       },
       myNickname: function () {
         var current = state();
         if (current) edit('我在群组的昵称', (current.group.preferences || {}).myNickname,
-          20, function (value) { setPreference('myNickname', value); });
+          20, function (value) { setPreference('myNickname', value, current); });
       },
       invite: function () { selectMembers('invite'); },
       remove: function () { selectMembers('remove'); },
@@ -421,6 +421,7 @@
       'remove-review': function (id) {
         var current = state();
         var member = current && governance.findMember(current.group, id);
+        if(current)memberDialogState=current;
         if (member) show('移除 ' + displayName(member) + '？', [node('p', '聊天记录会保留。'), button('确认移除', 'remove-confirm', id)]);
       },
       'remove-confirm': function (id) { apply('remove', id); },
@@ -443,6 +444,7 @@
     function onClick(event) {
       var target = event.target.closest('[data-group-action]');
       if (!target || target.disabled) return;
+      if(!pageCurrent()){render();return;}
       var action = target.dataset.groupAction;
       var handler = hooks.get(action) || handlers[action];
       if (typeof handler === 'function') handler(target.dataset.target, target, {groupId:gid, render:render, apply:apply});
