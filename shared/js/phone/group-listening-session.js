@@ -104,6 +104,10 @@
         session.error=session.status==='error'?'SOURCE_LOST':null;
         updateNative(n);session.revision++;return ok('reconciled').snapshot;
       }
+      if(session.status==='paused'&&(!n||n.trackId!==session.trackId)){
+        session.status='error';session.error='SOURCE_LOST';updateNative(n);session.revision++;
+        return ok('reconciled').snapshot;
+      }
       if(session.status==='playing'||session.status==='paused')updateNative(n);
       return project();
     }
@@ -185,7 +189,9 @@
       if(!ensure())return fail('SCOPE_CHANGED');
       const n=native();if(!n||n.playing||n.pending||!r?.ok)return invalidate('PLAYER_PAUSE_FAILED');
       if(!ensure())return fail('SCOPE_CHANGED');
-      busy=false;session.status='paused';session.error=null;updateNative(n);return ok('paused');
+      // Cancelling the initial load is not pausing a confirmed source.
+      busy=false;session.status=n.trackId===session.trackId?'paused':'ready';session.error=null;
+      updateNative(n);return ok(session.status==='paused'?'paused':'load-cancelled');
     }
     function seek(token,seconds){
       const denied=authorize(token);if(denied)return denied;

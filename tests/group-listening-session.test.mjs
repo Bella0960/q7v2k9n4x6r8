@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import {readFileSync} from 'node:fs';
 const files=['../shared/js/phone/group-write-guard.js','../shared/js/group-governance.js','../shared/js/phone/music-playback-controller.js','../shared/js/phone/group-listening-session.js'];
 const sources=files.map(path=>readFileSync(new URL(path,import.meta.url),'utf8'));
+const contextSource=readFileSync(new URL('../shared/js/phone/group-listening-context.js',import.meta.url),'utf8');
 function fixture(){
  let account='MAO-AAAAAAAAAAAA',role='member',identity={ready:true,accountId:account,role},gid='g1',uuid=0,writes=0,monitor;
  const groups=[{id:'g1',ownerId:'__user',members:[{id:'r1',name:'同名'},{id:'r2',name:'同名'}]},{id:'g2',members:[{id:'r3'}]}];
@@ -72,7 +73,7 @@ test('delayed audio read after account switch cannot play',async()=>{
 test('pause pending read using fresh token; obsolete completion cannot restart',async()=>{
  const h=fixture(),s=ready(h),release=h.defer();const pending=h.api.play(s);const loading=h.api.getSnapshot();
  assert.equal(loading.status,'loading');assert.equal(h.api.pause(loading).ok,true);release();
- assert.equal((await pending).ok,false);assert.equal(h.audio.paused,true);assert.equal(h.api.getSnapshot().status,'paused');h.api.destroy();
+ assert.equal((await pending).ok,false);assert.equal(h.audio.paused,true);assert.equal(h.api.getSnapshot().status,'ready');h.api.destroy();
 });
 test('new selection cancels pending old track and end is terminal',async()=>{
  const h=fixture(),s=ready(h),release=h.defer();const pending=h.api.play(s);const b=h.api.selectTrack(h.api.getSnapshot(),'b').snapshot;release();
@@ -112,4 +113,24 @@ test('product composition rejects replacement scope and allows fresh controller 
  assert.equal((await api.play(s)).ok,true);h.replaceScope();assert.equal(api.getSnapshot(),null);assert.equal(h.audio.src,'');
  assert.equal(api.start().ok,false);api.destroy();const replacement=h.root.MAOGroupListeningSession.createForGroup(opts);
  assert.equal(replacement.start().ok,true);replacement.destroy();
+});
+
+test('cancelling first load returns ready and does not expose paused music context',async()=>{
+ const h=fixture();new Function('window',contextSource)(h.root);
+ const s=h.api.join(ready(h),'r1').snapshot,release=h.defer(),pending=h.api.play(s);
+ const cancelled=h.api.pause(h.api.getSnapshot());release();
+ assert.equal((await pending).ok,false);assert.equal(cancelled.snapshot.status,'ready');
+ const options={groupId:'g1',roleId:'r1',readSnapshot:()=>h.api.getSnapshot(),hasRole:id=>h.roles.has(id)};
+ assert.equal(h.root.MAOGroupListeningContext.project(options),null);
+ assert.equal((await h.api.play(h.api.getSnapshot())).ok,true);h.api.destroy();
+});
+test('lost native source after a real pause becomes error and is not projected as paused',async()=>{
+ const h=fixture();new Function('window',contextSource)(h.root);
+ const s=h.api.join(ready(h),'r1').snapshot;
+ await h.api.play(s);const paused=h.api.pause(h.api.getSnapshot()).snapshot;
+ assert.equal(paused.status,'paused');
+ h.player.release();const lost=h.api.getSnapshot();
+ assert.equal(lost.status,'error');assert.equal(lost.error,'SOURCE_LOST');assert.equal(lost.playing,false);
+ assert.equal(h.root.MAOGroupListeningContext.project({groupId:'g1',roleId:'r1',readSnapshot:()=>h.api.getSnapshot(),hasRole:id=>h.roles.has(id)}),null);
+ assert.equal((await h.api.play(lost)).ok,true);h.api.destroy();
 });
