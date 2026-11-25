@@ -153,6 +153,7 @@
             return transaction('readwrite','append',async(records,meta,guard) => {
               const oldState = await request(meta.get(partition));
               const state = oldState ? validatePartition(oldState,partition,'active-lab') : {partition,count:0,revision:0};
+              if(!oldState && await request(records.openKeyCursor(range.bound([partition,0],[partition,Number.MAX_SAFE_INTEGER]))))fail('CORRUPT_PARTITION');
               if (state.count && !(await request(records.get([partition,state.count])))) fail('CORRUPT_PARTITION');
               if (await request(records.get([partition,state.count+1]))) fail('CORRUPT_PARTITION');
               let added=0,duplicate=0;
@@ -183,7 +184,12 @@
             return transaction('readonly',lane==='shadow'?'shadow':'read',async(records,meta,guard)=>{
               const state=await request(meta.get(partition));
               if(state) validatePartition(state,partition,lane);
-              if(before===1||!state) return {items:[],nextBefore:null,count:state?state.count:0};
+              if(!state) {
+                const orphan=await request(records.openKeyCursor(range.bound([partition,0],[partition,Number.MAX_SAFE_INTEGER])));
+                if(orphan)fail('CORRUPT_PARTITION');
+                return {items:[],nextBefore:null,count:0};
+              }
+              if(before===1)return {items:[],nextBefore:null,count:state.count};
               const items=[]; let bytes=0,more=false;
               let expected=Math.min(state.count,before-1);
               await new Promise((resolve,reject)=>{
@@ -242,6 +248,7 @@
                 if(old.status==='verified-shadow'){old.status='copying';old.verifiedCount=0;guard();await request(meta.put(old));}
                 return old;
               }
+              if(await request(records.openKeyCursor(range.bound([partition,0],[partition,Number.MAX_SAFE_INTEGER]))))fail('CORRUPT_PARTITION');
               const fresh={partition,count:0,verifiedCount:0,total:rows.length,sourceHash,status:'copying'};
               guard();await request(meta.add(fresh));return fresh;
             });
