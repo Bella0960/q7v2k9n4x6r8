@@ -330,6 +330,34 @@ try {
         }
       }, trackId);
       assert.deepEqual(playbackChecks, ['play/pause','seek','rejected switch/retry','cancel pending switch','switch/release']);
+      // M04c: two real same-origin documents must never play together.
+      const peer = await context.newPage();
+      const peerErrors = [];
+      peer.on('pageerror', err => peerErrors.push(err.message));
+      try {
+        await peer.goto(BASE,{waitUntil:'domcontentloaded'});
+        await peer.waitForFunction(()=>typeof window.MAOMAOMusicPlayback?.getState==='function');
+        assert.equal(await page.evaluate(()=>{window.audio.loop=true;return playTrack(tracks[currentIdx].id);}),true);
+        const activeShared=await page.evaluate(()=>localStorage.getItem('music_playback_state_v1'));
+        const denied=await peer.evaluate(async id=>{
+          window.audio.loop=true;
+          return {ok:await playTrack(id),paused:window.audio.paused,src:window.audio.getAttribute('src'),
+            shared:localStorage.getItem('music_playback_state_v1')};
+        },trackId);
+        assert.equal(denied.ok,false);assert.equal(denied.paused,true);assert.equal(denied.src,null);
+        assert.equal(denied.shared,activeShared,'non-owner cannot overwrite shared playback state');
+        assert.equal(await page.evaluate(()=>window.MAOMAOMusicPlayback.getState().playing),true);
+        await page.evaluate(()=>togglePlay());
+        await page.waitForFunction(async()=>!(await navigator.locks.query()).held.some(l=>l.name==='maomao-native-music-playback-v1'));
+        assert.equal(await peer.evaluate(id=>playTrack(id),trackId),true);
+        assert.equal(await page.evaluate(()=>window.audio.paused),true);
+        assert.equal(await peer.evaluate(()=>window.MAOMAOMusicPlayback.getState().playing),true);
+        await peer.close();
+        await page.waitForFunction(async()=>!(await navigator.locks.query()).held.some(l=>l.name==='maomao-native-music-playback-v1'));
+        assert.equal(await page.evaluate(id=>playTrack(id),trackId),true);
+        await page.evaluate(()=>{musicPauseNative();musicDiscardAudioSource();window.audio.loop=false;});
+        assert.deepEqual(peerErrors,[]);
+      } finally {if(!peer.isClosed())await peer.close();}
       assert.deepEqual(pageErrors, [], 'no uncaught JS errors at ' + width);
       console.log('PASS Chromium ' + width + 'px: viewport, import Blob, reload, playback, cover, LRC, playlist');
     } finally {

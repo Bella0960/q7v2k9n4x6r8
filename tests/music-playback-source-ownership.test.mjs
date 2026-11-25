@@ -6,15 +6,24 @@ const moduleSource=readFileSync(new URL('../shared/js/phone/music-playback-contr
 const helpers=page.slice(page.indexOf('  const musicController = window.MAOMusicPlaybackController.create('),page.indexOf('  // ===== IndexedDB：audio store'));
 const player=page.slice(page.indexOf('  async function playTrack(trackId)'),page.indexOf('  // 音频事件：进度更新'));
 assert.ok(helpers.includes('function musicPlaybackMessage') && player.includes('async function togglePlay'));
-function fixture(){
+function fakeLocks(){
+ let held=false;
+ return {async request(name,options,callback){
+   assert.equal(name,'maomao-native-music-playback-v1');
+   assert.deepEqual(options,{mode:'exclusive',ifAvailable:true});
+   if(held)return callback(null);
+   held=true;try{return await callback({name});}finally{held=false;}
+ },get held(){return held;}};
+}
+function fixture(locks=fakeLocks(),initialScope='test-account'){
  const tracks=[{id:'a',name:'A',artist:'a',source:'local'},{id:'b',name:'B',artist:'b',source:'local'},{id:'c',name:'C',artist:'c',source:'local'}];
  const revokes=[],saved=[],events=[],toasts=[],elements=new Map();
- let nextUrl=0,read=async id=>({id}),start=async()=>{audio.paused=false},scope='test-account';
+ let nextUrl=0,read=async id=>({id}),start=async()=>{audio.paused=false},scope=initialScope;
  const audio={src:'',paused:true,ended:false,currentTime:0,duration:12,pause(){this.paused=true},removeAttribute(k){if(k==='src')this.src=''},load(){this.currentTime=0;this.ended=false;this.paused=true},play(){return start()},addEventListener(){},removeEventListener(){}};
  const document={getElementById(id){if(!elements.has(id))elements.set(id,{style:{}});return elements.get(id)}};
  const store={getItem(){return null},setItem(){},};
  const env={window:{audio,isShuffle:false},tracks,document,URL:{createObjectURL:()=> 'blob:'+ ++nextUrl,revokeObjectURL:url=>revokes.push(url)},getAudioBlob:id=>read(id),getTrackById:id=>tracks.find(t=>t.id===id),toast:m=>toasts.push(m),updatePlayIcon(){},renderAlbum(){},updateHeartIcon(){},closeImportSheet(){},renderTrackLyrics(){},musicDisplayArtist:t=>t.artist,readRecentIds:()=>[],saveRecentIds(){},localStorage:store,musicWarnOnce(){},showNP(){},musicApplyCurrentCover:async()=>{},musicEmitPlayback:type=>events.push({type,paused:audio.paused}),navigator:{},setTimeout(){}};
- env.window.MAOGroupWriteGuard={account:()=>scope};env.window.URL=env.URL;
+ env.window.MAOGroupWriteGuard={account:()=>scope};env.window.URL=env.URL;env.window.navigator={locks};
  new Function('window',moduleSource)(env.window);
  const api=new Function('e',`const {window,tracks,document,URL,getAudioBlob,getTrackById,toast,updatePlayIcon,renderAlbum,updateHeartIcon,closeImportSheet,renderTrackLyrics,musicDisplayArtist,readRecentIds,saveRecentIds,localStorage,musicWarnOnce,showNP,musicApplyCurrentCover,musicEmitPlayback,navigator,setTimeout}=e;
  let currentIdx=0,playing=false;
@@ -56,7 +65,7 @@ test('latest fast switch wins and obsolete deferred request cannot revoke active
 });
 test('pause during pending native play discards unconfirmed URL; late reject cannot change state',async()=>{
  const h=fixture();await h.api.playTrack('a');let reject;
- h.start(()=>new Promise((_,no)=>{reject=no}));const work=h.api.playTrack('b');for(let i=0;i<12&&!reject;i++)await Promise.resolve();assert.equal(typeof reject,'function');
+ h.start(()=>new Promise((_,no)=>{reject=no}));const work=h.api.playTrack('b');for(let i=0;i<40&&!reject;i++)await Promise.resolve();assert.equal(typeof reject,'function');
  const unconfirmed=h.audio.src;await h.api.togglePlay();reject(Error('AbortError'));assert.equal(await work,false);
  assert.equal(h.audio.src,'');assert.equal(h.api.state().source,null);assert.ok(h.revokes.includes(unconfirmed));assert.deepEqual(h.saved,['a']);
 });
@@ -85,4 +94,33 @@ test('scope changes during read stop current audio and prevent stale data from p
 });
 test('shared seek clamps native time and refuses invalid values',async()=>{
  const h=fixture();await h.api.playTrack('a');assert.equal(h.api.controller.seek(100).ok,true);assert.equal(h.audio.currentTime,12);assert.equal(h.api.controller.seek(-1).ok,true);assert.equal(h.audio.currentTime,0);assert.equal(h.api.controller.seek(NaN).ok,false);
+});
+
+test('two controllers share a single origin lock even when accounts differ',async()=>{
+ const locks=fakeLocks(),a=fixture(locks),b=fixture(locks,'other-account');
+ assert.equal(await a.api.playTrack('a'),true);
+ assert.equal(await b.api.playTrack('b'),false);assert.equal(b.audio.src,'');assert.equal(b.audio.paused,true);
+ assert.equal(a.api.controller.getState().playing,true);assert.equal(locks.held,true);
+ await a.api.togglePlay();assert.equal(a.audio.paused,true);
+ assert.equal(await b.api.playTrack('b'),true);
+ assert.equal(await a.api.controller.resume().then(r=>r.code),'PLAYBACK_BUSY');
+ assert.equal(a.audio.paused,true);assert.equal(b.api.controller.getState().playing,true);
+ b.api.controller.dispose();assert.equal(await a.api.controller.resume().then(r=>r.ok),true);
+ a.api.controller.dispose();
+});
+test('missing reliable lock support fails closed',async()=>{
+ const h=fixture(null);let calls=0;h.start(async()=>{calls++});
+ const result=await h.api.controller.play('a');assert.equal(result.code,'LOCK_UNAVAILABLE');assert.equal(calls,0);assert.equal(h.audio.src,'');
+});
+test('failed native play releases lease',async()=>{
+ const locks=fakeLocks(),a=fixture(locks),b=fixture(locks);
+ a.start(async()=>{throw Error('rejected')});assert.equal(await a.api.playTrack('a'),false);
+ assert.equal(await b.api.playTrack('b'),true);b.api.controller.dispose();
+});
+test('cancel pending lock cannot start native audio later',async()=>{
+ let grant;const locks={request(name,opts,fn){return new Promise(resolve=>{grant=()=>Promise.resolve(fn({name})).then(resolve);});}};
+ const h=fixture(locks);let calls=0;h.start(async()=>{calls++});
+ const pending=h.api.playTrack('a');for(let i=0;i<40&&!grant;i++)await Promise.resolve();
+ assert.equal(typeof grant,'function');await h.api.togglePlay();grant();
+ assert.equal(await pending,false);assert.equal(calls,0);assert.equal(h.audio.src,'');
 });

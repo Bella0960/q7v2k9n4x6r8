@@ -6,7 +6,7 @@
 <title>音乐 · Music</title>
 <script src="../shared/js/phone/phone_storage.js"></script>
 <script src="../shared/js/phone/group-write-guard.js?v=20261125g10"></script>
-<script src="../shared/js/phone/music-playback-controller.js?v=20261126m04b1"></script>
+<script src="../shared/js/phone/music-playback-controller.js?v=20261126m04c1"></script>
 <script src="../shared/js/phone/storage/repository.js"></script>
 <script src="../shared/js/phone/storage/media-repository.js"></script>
 <script src="../shared/js/statusbar-control.js"></script>
@@ -1218,7 +1218,8 @@
       source: t.source === 'local' ? 'local' : 'remote', updatedAt: Date.now(),
       origin: 'native-audio-player', roleJoined: false };
     // 数据源只表示本机真实音频播放；不会对角色/好友宣称已经听到或同步。
-    try {
+    // Non-owners may notify their own UI, never overwrite the active tab's state.
+    if (musicController.hasLease()) try {
       var raw = JSON.stringify(state);
       localStorage.setItem(MUSIC_PLAYBACK_STATE_KEY, raw);
       if (localStorage.getItem(MUSIC_PLAYBACK_STATE_KEY) !== raw)
@@ -1289,7 +1290,7 @@
     updatePlayIcon();
   }
   musicController.subscribe(function (event) {
-    if (event.type === 'switching' || event.type === 'error' || event.type === 'scope-lost') {
+    if (['switching','error','scope-lost','pause','ended','release'].includes(event.type)) {
       playing = event.playing;
       updatePlayIcon();
       if(event.type !== 'scope-lost')musicEmitPlayback(event.type);
@@ -1300,6 +1301,8 @@
     if(code==='SCOPE_CHANGED')return '账号已变化或暂不可用，请重新进入音乐';
     if(code==='PLAY_REJECTED')return '无法开始播放，请检查音频来源或手机播放权限';
     if(code==='TRACK_NOT_FOUND')return '曲目不存在';
+    if(code==='PLAYBACK_BUSY')return '另一个窗口正在播放，请先暂停后重试';
+    if(code==='LOCK_UNAVAILABLE')return '当前浏览器无法安全协调音乐播放，请使用支持此功能的浏览器';
     return '音频加载失败';
   }
 
@@ -1807,7 +1810,7 @@
       }
     }
     // 保存断点（每 5 秒存一次）
-    if (Math.floor(window.audio.currentTime) % 5 === 0) saveState();
+    if (musicController.hasLease() && Math.floor(window.audio.currentTime) % 5 === 0) saveState();
   });
 
   // 点击"词"按钮切换歌词显示

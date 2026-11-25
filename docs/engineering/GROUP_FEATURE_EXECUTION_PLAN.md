@@ -97,3 +97,6 @@ Owner explicitly requested one shared music catalog and NetEase/QQ source channe
 ### M04a 结项 / M04b 共享控制器（2026-11-26）
 - 45662976123 完整 verify 成功；M04a 结项。
 - `shared/js/phone/music-playback-controller.js` 由现有音乐页实际调用，单 audio 元素拥有者、真实播放结果、账号复核、取消、定位及资源回收集中，保留原 UI/历史/歌词/曲库。十项模拟执行通过，真实 Chromium 待验收。跨窗口唯一播放锁在 M04c 完成；群聊尚未挂载。
+
+### M04b 结项 / M04c 多窗口仲裁（2026-11-26）
+- 45666045629 verify 成功，M04b 结项。统一播放锁使用同源 Web Locks；不抢占其他窗口，需先暂停。拒绝方不覆盖活动窗口共享状态；缺失锁能力明确提示，不伪造仲裁。14项模拟测试通过，真实双窗口 Chromium 及手机验收待完成。M04c 未结项。
