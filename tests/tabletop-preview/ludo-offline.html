@@ -171,7 +171,13 @@ function createLudoRules({rollDie=()=>1+Math.floor(Math.random()*6),mode='classi
   function verifyVariant(state){if(adventure?(state.mode!=='adventure'||!state.players.every(p=>integer(p.cruise,0,1)&&p.cards&&['boost','shield'].every(k=>integer(p.cards[k],0,2))&&Array.isArray(p.shields)&&p.shields.length===4&&Array.from(p.shields).every(x=>typeof x==='boolean'))):state.mode!==undefined)fail('LUDO_INVALID_ADVENTURE_STATE');}
 
   if(typeof rollDie!=='function') fail('LUDO_INVALID_DICE_SOURCE');
-  return Object.freeze({gameId:'ludo',
+  return Object.freeze({gameId:'ludo',checkpointVersion:1,checkpointMode:mode,
+    replayStep({state,room,actorSeatId,move,die}){
+      const rolling=move?.kind==='roll'||move?.kind==='cruise';
+      if(rolling?!integer(die,1,6):die!==null)fail('LUDO_INVALID_REPLAY_DIE');
+      if(move?.kind==='cruise'&&die!==3)fail('LUDO_INVALID_REPLAY_DIE');
+      return createLudoRules({mode,rollDie:()=>die}).step({state,room,actorSeatId,move});
+    },
     init(room){const ids=players(room);return {schema:1,stage:'roll',die:null,players:ids.map((seatId,i)=>({seatId,slot:slots(ids.length)[i],planes:adventure?[0,4,-1,-1]:Array(planesPerSeat).fill(-1),...(adventure?{cards:{boost:1,shield:1},cruise:1,shields:[false,false,false,false]}:{})})),last:null,...(adventure?{mode:'adventure'}:{})};},
     step({state,room,actorSeatId,move}){
       const ids=validate(state,room);verifyVariant(state);
@@ -461,19 +467,28 @@ function validateResult(result, room) {
   if (new Set(winners).size !== winners.length || (result.kind==='win' ? !winners.length : winners.length!==0) || Array.from(winners).some(id=>!room.seats.some(s=>s.seatId===id&&s.mode==='player'))) fail('INVALID_RESULT');
   return {kind:result.kind,winnerSeatIds:[...winners]};
 }
-function createRoomDispatcher({getContext, spec, rules}) {
+function createRoomDispatcher({getContext, spec, rules, checkpoint=null}) {
   if (typeof getContext!=='function' || !rules || typeof rules.init!=='function' || typeof rules.step!=='function' || rules.gameId!==spec?.gameId) fail('INVALID_RULE_ADAPTER');
   const policy=gamePolicy(spec.gameId);
   if(rules.project!==undefined && typeof rules.project!=='function') fail('INVALID_RULE_ADAPTER');
   const init=rules.init.bind(rules), step=rules.step.bind(rules), project=rules.project?.bind(rules);
   let room=createGameRoom(getContext(),spec), state=null, result=null, busy=false;
+  const replayable=spec.gameId==='ludo'&&rules.checkpointVersion===1&&typeof rules.replayStep==='function';
+  const issued=new WeakSet();let initial=null,history=[];
+  const maxMoves=20000;
+  const exact=(o,keys)=>o&&typeof o==='object'&&!Array.isArray(o)&&Object.keys(o).length===keys.length&&keys.every(k=>Object.hasOwn(o,k));
+  const validId=v=>typeof v==='string'&&v.length>0&&v.length<=256&&v.trim()===v;
+  function recordMove(actor,move,transition){
+    const kind=move.kind,record={actorSeatId:actor,move:kind==='choose'?{kind,plane:move.plane,...(move.card?{card:move.card}:{})}:{kind},die:kind==='choose'?null:transition.state.last.die};
+    return record;
+  }
   function guarded(fn) {
     if(busy) fail('DISPATCH_BUSY');
     busy=true;try{return fn();}finally{busy=false;}
   }
   function check(actor,token,ctx) {
     const expected=roomToken(room,ctx,actor);
-    if(!sameToken(token,expected)) fail('STALE_ACTION');
+    if(!sameToken(token,expected)||(replayable&&!issued.has(token))) fail('STALE_ACTION');
   }
   function baseView(actor,ctx,r=room,outcome=result) {
     const v=seatView(r,ctx,actor);
@@ -503,9 +518,14 @@ function createRoomDispatcher({getContext, spec, rules}) {
       : view(actor,ctx,next,nextResult,nextState);
     room=next;state=nextState;result=nextResult;return projected;
   }
-  return Object.freeze({
+  const api=Object.freeze({
+    checkpoint(){return guarded(()=>{
+      if(!replayable||!initial||!['playing','finished'].includes(room.phase))fail('CHECKPOINT_UNAVAILABLE');
+      seatView(room,getContext(),'user');
+      return clone({schema:1,gameId:'ludo',mode:rules.checkpointMode,accountId:room.accountId,roomId:room.roomId,startRevision:initial.revision,seats:initial.seats,moves:history});
+    });},
     view(actor){return guarded(()=>view(actor,getContext()));},
-    token(actor){return guarded(()=>{if(terminal(room)) fail('ROOM_TERMINAL');return roomToken(room,getContext(),actor);});},
+    token(actor){return guarded(()=>{if(terminal(room)) fail('ROOM_TERMINAL');const t=roomToken(room,getContext(),actor);if(replayable)issued.add(t);return t;});},
     dispatch(actor,token,action){return guarded(()=>{
       const ctx=getContext();check(actor,token,ctx);
       if(terminal(room)) fail('ROOM_TERMINAL');
@@ -513,7 +533,9 @@ function createRoomDispatcher({getContext, spec, rules}) {
       if(lobbyActions.has(action.type)) {
         const next=reduceRoom(room,ctx,actor,token,action);
         const nextState=action.type==='start'?jsonState(init(baseView(actor,ctx,next,null))):action.type==='close'?null:state;
-        return commit(next,nextState,result,actor,token,action.type==='remove'||action.type==='close');
+        const projected=commit(next,nextState,result,actor,token,action.type==='remove'||action.type==='close');
+        if(replayable&&action.type==='start')initial={revision:room.revision,seats:clone(room.seats)};
+        return projected;
       }
       if(action.type!=='move') fail('UNKNOWN_ACTION');
       if(room.phase!=='playing') fail('NOT_PLAYING');
@@ -522,7 +544,9 @@ function createRoomDispatcher({getContext, spec, rules}) {
       if(!policy.phased && room.turnSeatId!==actor) fail('NOT_YOUR_TURN');
       // Rules are trusted local code. They must check phase/legality before returning.
       // AI output is only a move payload, never a room-state or result replacement.
-      const transition=step({state:clone(state),room:actorView,actorSeatId:actor,move:jsonState(action.move)});
+      if(replayable&&history.length>=maxMoves)fail('CHECKPOINT_CAPACITY');
+      const move=jsonState(action.move);
+      const transition=step({state:clone(state),room:actorView,actorSeatId:actor,move});
       if(!transition || typeof transition.then==='function' || !Object.hasOwn(transition,'state')) fail('INVALID_RULE_TRANSITION');
       const nextState=jsonState(transition.state);
       let nextResult=null, nextTurn=null, phase='playing';
@@ -535,9 +559,52 @@ function createRoomDispatcher({getContext, spec, rules}) {
         if(nextTurn!==null && !room.seats.some(s=>s.seatId===nextTurn&&s.mode==='player')) fail('INVALID_NEXT_SEAT');
       }
       const next={...room,phase,turnSeatId:nextTurn,revision:room.revision+1};
-      return commit(next,nextState,nextResult,actor,token);
+      const record=replayable?recordMove(actor,move,transition):null;
+      const projected=commit(next,nextState,nextResult,actor,token);
+      if(record)history.push(record);
+      return projected;
     });}
   });
+  if(checkpoint!==null){
+    // Restore only from a trusted, account-scoped repository. Replay is semantic
+    // validation, not a signature or authorization for arbitrary imported data.
+    if(!replayable||!exact(checkpoint,['schema','gameId','mode','accountId','roomId','startRevision','seats','moves'])||
+      checkpoint.schema!==1||checkpoint.gameId!=='ludo'||checkpoint.mode!==rules.checkpointMode||
+      checkpoint.accountId!==room.accountId||checkpoint.roomId!==room.roomId||
+      !Number.isSafeInteger(checkpoint.startRevision)||checkpoint.startRevision<2||checkpoint.startRevision>maxMoves||
+      !Array.isArray(checkpoint.seats)||checkpoint.seats.length<2||checkpoint.seats.length>4||
+      !Array.isArray(checkpoint.moves)||checkpoint.moves.length>maxMoves)fail('INVALID_CHECKPOINT');
+    const ctx=getContext(),seats=[],ids=new Set();
+    for(const seat of checkpoint.seats){
+      if(!seat||seat.mode!=='player'||!validId(seat.seatId)||ids.has(seat.seatId))fail('INVALID_CHECKPOINT_SEAT');
+      if(seat.kind==='user'&&seat.seatId==='user'&&exact(seat,['seatId','kind','mode'])){}
+      else if(seat.kind==='role'&&validId(seat.roleId)&&seat.seatId==='role:'+seat.roleId&&exact(seat,['seatId','kind','mode','roleId'])&&ctx.roleIds.includes(seat.roleId)){}
+      else if(seat.kind==='bot'&&/^bot:[1-3]$/.test(seat.seatId)&&exact(seat,['seatId','kind','mode'])){}
+      else fail('INVALID_CHECKPOINT_SEAT');
+      seats.push(clone(seat));ids.add(seat.seatId);
+    }
+    if(!ids.has('user'))fail('INVALID_CHECKPOINT_SEAT');
+    const bots=seats.filter(s=>s.kind==='bot').map(s=>s.seatId);
+    if(bots.some((_,i)=>!bots.includes('bot:'+(i+1))))fail('INVALID_CHECKPOINT_SEAT');
+    if(checkpoint.startRevision<seats.filter(s=>s.kind==='role').length+Number(bots.length>0)+1)fail('INVALID_CHECKPOINT');
+    room={...room,seats,phase:'playing',turnSeatId:seats[0].seatId,revision:checkpoint.startRevision};
+    initial={revision:room.revision,seats:clone(seats)};
+    state=jsonState(init(baseView('user',ctx,room,null)));
+    for(const entry of checkpoint.moves){
+      if(!exact(entry,['actorSeatId','move','die'])||room.phase!=='playing'||entry.actorSeatId!==room.turnSeatId)fail('INVALID_CHECKPOINT_MOVE');
+      const move=entry.move;
+      if(!(exact(move,['kind'])&&['roll','cruise'].includes(move.kind)||
+        (exact(move,['kind','plane'])||exact(move,['kind','plane','card']))&&move.kind==='choose'&&Number.isInteger(move.plane)&&move.plane>=0&&move.plane<4&&(!Object.hasOwn(move,'card')||['boost','shield'].includes(move.card))))fail('INVALID_CHECKPOINT_MOVE');
+      const t=rules.replayStep({state:clone(state),room:baseView(entry.actorSeatId,ctx),actorSeatId:entry.actorSeatId,move:clone(move),die:entry.die});
+      state=jsonState(t.state);result=t.result==null?null:validateResult(t.result,room);
+      const nextTurn=result?null:t.nextSeatId;
+      if(!result&&!ids.has(nextTurn))fail('INVALID_CHECKPOINT_MOVE');
+      room={...room,phase:result?'finished':'playing',turnSeatId:nextTurn,revision:room.revision+1};
+      history.push(clone(entry));
+    }
+    view('user',getContext());
+  }
+  return api;
 }
 
 return {createRoomDispatcher};

@@ -62,7 +62,13 @@ export function createLudoRules({rollDie=()=>1+Math.floor(Math.random()*6),mode=
   function verifyVariant(state){if(adventure?(state.mode!=='adventure'||!state.players.every(p=>integer(p.cruise,0,1)&&p.cards&&['boost','shield'].every(k=>integer(p.cards[k],0,2))&&Array.isArray(p.shields)&&p.shields.length===4&&Array.from(p.shields).every(x=>typeof x==='boolean'))):state.mode!==undefined)fail('LUDO_INVALID_ADVENTURE_STATE');}
 
   if(typeof rollDie!=='function') fail('LUDO_INVALID_DICE_SOURCE');
-  return Object.freeze({gameId:'ludo',
+  return Object.freeze({gameId:'ludo',checkpointVersion:1,checkpointMode:mode,
+    replayStep({state,room,actorSeatId,move,die}){
+      const rolling=move?.kind==='roll'||move?.kind==='cruise';
+      if(rolling?!integer(die,1,6):die!==null)fail('LUDO_INVALID_REPLAY_DIE');
+      if(move?.kind==='cruise'&&die!==3)fail('LUDO_INVALID_REPLAY_DIE');
+      return createLudoRules({mode,rollDie:()=>die}).step({state,room,actorSeatId,move});
+    },
     init(room){const ids=players(room);return {schema:1,stage:'roll',die:null,players:ids.map((seatId,i)=>({seatId,slot:slots(ids.length)[i],planes:adventure?[0,4,-1,-1]:Array(planesPerSeat).fill(-1),...(adventure?{cards:{boost:1,shield:1},cruise:1,shields:[false,false,false,false]}:{})})),last:null,...(adventure?{mode:'adventure'}:{})};},
     step({state,room,actorSeatId,move}){
       const ids=validate(state,room);verifyVariant(state);
