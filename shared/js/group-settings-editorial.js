@@ -212,6 +212,13 @@
   info.classList.add('gp-name-card');
   alias.classList.add('gp-alias-card');
   manage.classList.add('gp-manage-card');
+  var permissionEntry = btn('gp-permissions-entry','管理员与头衔',function(){
+    var group = loadCurrentGroup();
+    if (!group) return;
+    location.href='group-play.html?id='+encodeURIComponent(String(group.id))+'#memberManagement';
+  });
+  bilingual(permissionEntry,'ROLES / TITLES');
+  byId('gpManagePanel').prepend(permissionEntry);
   byId('actionGroupInfo').prepend(el('span','gp-setting-label','群聊名称'));
   byId('actionGroupAlias').prepend(el('span','gp-setting-label','备注'));
   byId('actionGroupManage').querySelector('.action-title').textContent='群组管理';
