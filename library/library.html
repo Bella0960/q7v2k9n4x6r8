@@ -1531,7 +1531,7 @@ button{font:inherit;color:inherit;cursor:pointer;border:0;background:transparent
     try{var raw=localStorage.getItem(coReadKey('progress',readerAccountToken())+':'+encodeURIComponent(bookId));return raw?JSON.parse(raw):null;}catch(e){return null;}
   }
   function recentBookPicks(all,progress){
-    return all.map(function(book,index){var p=progress(book.id);return {book:book,index:index,recent:p&&Number.isFinite(p.lastReadAt)?p.lastReadAt:0};})
+    return all.map(function(book,index){var p=progress(book.id);return {book:book,index:index,recent:p&&Number.isFinite(p.lastReadAt)?p.lastReadAt:(p&&Number.isInteger(p.chapter)&&Number.isInteger(p.paragraph)?1:0)};})
       .sort(function(a,b){return b.recent-a.recent||a.index-b.index;}).slice(0,3).map(function(item){return item.book;});
   }
   function renderHome() {
@@ -2359,7 +2359,7 @@ button{font:inherit;color:inherit;cursor:pointer;border:0;background:transparent
   /* 段评入口优先处理；普通正文点击才呼出阅读控制栏。 */
   readerBody.addEventListener('click', function (e) {
     var trigger = e.target.closest ? e.target.closest('[data-paragraph-comment]') : null;
-    if(!trigger&&Date.now()-paragraphHoldOpenedAt<700){e.preventDefault();return;}
+    if(!trigger&&(Date.now()-paragraphHoldOpenedAt<700||readingGestureMoved)){readingGestureMoved=false;e.preventDefault();return;}
     if (trigger) {
       e.preventDefault();
       var page = trigger.closest('.chapter-page');
@@ -2372,13 +2372,13 @@ button{font:inherit;color:inherit;cursor:pointer;border:0;background:transparent
         paragraphSheet.classList.contains('is-open') || importDialog.classList.contains('is-open')) return;
     if(readerView.classList.contains('is-reading-chrome-hidden')){setReadingChrome(true);toggleControls(true);}else toggleControls();
   });
-  var readingGesture=null;
-  readerBody.addEventListener('pointerdown',function(e){readingGesture={x:e.clientX,y:e.clientY,id:e.pointerId};},{passive:true});
-  readerBody.addEventListener('pointermove',function(e){if(readingGesture&&readingGesture.id===e.pointerId&&Math.hypot(e.clientX-readingGesture.x,e.clientY-readingGesture.y)>10)hideReadingChromeForGesture();},{passive:true});
+  var readingGesture=null,readingGestureMoved=false;
+  readerBody.addEventListener('pointerdown',function(e){readingGestureMoved=false;readingGesture={x:e.clientX,y:e.clientY,id:e.pointerId};},{passive:true});
+  readerBody.addEventListener('pointermove',function(e){if(readingGesture&&readingGesture.id===e.pointerId&&Math.hypot(e.clientX-readingGesture.x,e.clientY-readingGesture.y)>10){readingGestureMoved=true;hideReadingChromeForGesture();}},{passive:true});
   ['pointerup','pointercancel','pointerleave'].forEach(function(type){readerBody.addEventListener(type,function(){readingGesture=null;},{passive:true});});
   var readerTouchStart=null;
   readerBody.addEventListener('touchstart',function(e){var t=e.touches[0];readerTouchStart=t?{x:t.clientX,y:t.clientY}:null;},{passive:true});
-  readerBody.addEventListener('touchmove',function(e){var t=e.touches[0];if(t&&readerTouchStart&&Math.hypot(t.clientX-readerTouchStart.x,t.clientY-readerTouchStart.y)>10)hideReadingChromeForGesture();},{passive:true});
+  readerBody.addEventListener('touchmove',function(e){var t=e.touches[0];if(t&&readerTouchStart&&Math.hypot(t.clientX-readerTouchStart.x,t.clientY-readerTouchStart.y)>10){readingGestureMoved=true;hideReadingChromeForGesture();}},{passive:true});
   readerBody.addEventListener('wheel',function(e){if(e.deltaX||e.deltaY)hideReadingChromeForGesture();},{passive:true});
   readerBody.addEventListener('keydown',function(e){if(['ArrowDown','ArrowUp','ArrowLeft','ArrowRight','PageDown','PageUp','Home','End'].indexOf(e.key)>=0)hideReadingChromeForGesture();});
 
