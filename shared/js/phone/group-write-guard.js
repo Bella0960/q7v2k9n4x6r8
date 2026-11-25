@@ -1,15 +1,28 @@
 /* Existing phone_groups writes: reject stale group snapshots; no migration. */
 (function installGroupWriteGuard(global){
   'use strict';
-  function account(){var m=global.document.querySelector('meta[name="mao-account-id"]');return m?String(m.content||'').trim():'';}
-  function scopeAllowed(value){return !!value||/^(localhost|127\.0\.0\.1|\[::1\])$/.test(String(global.location&&global.location.hostname||''));}
+  function loopback(){return /^(localhost|127\.0\.0\.1|\[::1\])$/.test(String(global.location&&global.location.hostname||''));}
+  function account(){
+    try{
+      var meta=global.document.querySelector('meta[name="mao-account-id"]');
+      var roleMeta=global.document.querySelector('meta[name="mao-account-role"]');
+      var scope=global.__MAO_ACCOUNT_SCOPE__;
+      if(!meta&&!roleMeta&&!scope&&loopback())return '';
+      var id=meta&&String(meta.content||'').trim(),role=roleMeta&&String(roleMeta.content||'').trim();
+      // Identity metadata alone is not proof that account storage was installed.
+      return id&&/^MAO-[A-Z0-9]{12,24}$/.test(id)&&role&&scope&&scope.ready===true&&scope.accountId===id&&scope.role===role?id:null;
+    }catch(error){return null;}
+  }
+  function scopeAllowed(value){return typeof value==='string'&&(value!==''||loopback());}
   function read(id){
-    if(typeof id!=='string'||id.charAt(0)!=='g')return null;
-    var owner=account();if(!scopeAllowed(owner))return null;
-    var raw=global.localStorage.getItem('phone_groups'),groups=JSON.parse(raw||'[]');
-    if(!Array.isArray(groups)||account()!==owner)return null;
-    var matches=groups.filter(function(x){return x&&String(x.id)===id;});
-    return matches.length===1?{id:id,account:owner,serialized:JSON.stringify(matches[0]),group:matches[0]}:null;
+    try{
+      if(typeof id!=='string'||id.charAt(0)!=='g')return null;
+      var owner=account();if(!scopeAllowed(owner))return null;
+      var raw=global.localStorage.getItem('phone_groups'),groups=JSON.parse(raw===null?'[]':raw);
+      if(!Array.isArray(groups)||account()!==owner)return null;
+      var matches=groups.filter(function(x){return x&&String(x.id)===id;});
+      return matches.length===1?{id:id,account:owner,serialized:JSON.stringify(matches[0]),group:matches[0]}:null;
+    }catch(error){return null;}
   }
   function change(expected,next,remove){
     try{
