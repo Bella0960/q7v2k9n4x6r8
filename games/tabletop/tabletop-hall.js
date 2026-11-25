@@ -63,7 +63,19 @@ export function mountTabletopHall(root,{win=root?.ownerDocument?.defaultView,gam
    try{
      const c=await verified(stamp);const saved=restore?saves.get(id):null;if(restore&&!saved)fail('TABLETOP_NO_SAVE');
      const container=el('div','mao-table-hall__game');main.replaceChildren(container);title.hidden=true;back.textContent='返回多人游戏';tools();
-     const modelOptions=modelServices?createTabletopModelOptions({...modelServices,win,identity:c,gameId:id}):{};
+     // Use the existing game journal, never the general daily-memory reader.
+     const modelOptions=modelServices?createTabletopModelOptions({...modelServices,win,identity:c,gameId:id,
+       readGameMemory:async ({roleId,excludePuzzleId},{signal}={})=>{
+         check(stamp);if(signal?.aborted||needsRefresh||current?.id!==id||context.accountId!==c.accountId||context.sessionId!==c.sessionId)fail('TABLETOP_MEMORY_STALE');
+         const items=journal.read({roleId,channel:'game',excludePuzzleId,limit:24});
+         const lines=[];let used=0;
+         for(const f of items.slice().reverse()){
+           const name=TABLETOP_GAMES.find(g=>g.id===f.gameId)?.name??'桌游';
+           const line=JSON.stringify({game:name,kind:f.kind,...(f.kind==='result'?{outcome:f.outcome}:{text:f.text})});
+           if(used+line.length+1>6000)break;lines.unshift(line);used+=line.length+1;
+         }
+         return lines.join('\n');
+       }}):{};
      page=mounts[id](container,{...gameOptions[id],...modelOptions,win});current={kind:'game',id,page};
      if(saved){
        // Wait for the page's own scoped roster verification. A duplicate

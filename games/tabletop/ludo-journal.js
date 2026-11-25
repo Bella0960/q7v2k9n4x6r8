@@ -21,11 +21,11 @@ function scope(getContext){
 const fragmentId=(roomId,roleId,source)=>JSON.stringify([roomId,roleId,source]);
 const grantId=(fragmentId,roleId,channel)=>JSON.stringify([fragmentId,roleId,channel]);
 export function createLudoJournal(options={}){return createGameJournal({...options,gameIds:['ludo']});}
-export function createGameJournal({getContext,maxMatches=512,gameIds=['ludo','gomoku','turtle','werewolf']}={}){
+export function createGameJournal({getContext,maxMatches=512,snapshot=null,gameIds=['ludo','gomoku','turtle','werewolf']}={}){
   if(!Array.isArray(gameIds)||!gameIds.length||!gameIds.every(g=>['ludo','gomoku','turtle','werewolf'].includes(g)))fail('JOURNAL_SPEC');
   const allowedGames=new Set(gameIds);
   if(typeof getContext!=='function'||!Number.isInteger(maxMatches)||maxMatches<1||maxMatches>4096)fail('JOURNAL_SPEC');
-  const initial=scope(getContext),records=new Map(),fragments=new Map(),grants=new Set(),muted=new Set();
+  const initial=scope(getContext),records=new Map(),fragments=new Map(),grants=new Set(),muted=new Set(),replays=new Map();
   let closed=false;
   function current(){
     if(closed)fail('JOURNAL_CLOSED');
@@ -90,7 +90,7 @@ export function createGameJournal({getContext,maxMatches=512,gameIds=['ludo','go
       schema:1,id:memoryId(p.roleId,'result'),roomId:v.roomId,roleId:p.roleId,kind:'result',
       gameId:board.gameId,mode:entry.mode,outcome:wolf?v.result.kind==='draw'?'draw':v.result.winnerSeatIds.includes(p.seatId)?'win':'loss':turtle?p.mode==='moderator'?'hosted':winner===p.seatId?'solved':'participated':gomoku&&p.mode==='observer'?'observed':winner===null?'draw':p.seatId===winner?'win':'loss',...(wolf?{rounds:entry.rounds,activeAtEnd:p.activeAtEnd}:turtle?{puzzleId:entry.puzzleId,questions:entry.questions,endReason:entry.endReason}:gomoku?{color:p.color,moves:entry.moves}:{finished:p.finished})
     }));
-    records.set(recordKey,entry);for(const f of [...next,...messageFragments])fragments.set(f.id,f);
+    records.set(recordKey,entry);replays.set(recordKey,clone({board,chat}));for(const f of [...next,...messageFragments])fragments.set(f.id,f);
     return {duplicate:false,record:clone(entry)};
   }
   function recordSavedMatch(saved){
@@ -134,5 +134,33 @@ export function createGameJournal({getContext,maxMatches=512,gameIds=['ludo','go
     return {fragmentId:fid,enabled};
   }
   function list(){const c=current();const out=[...records.values()].filter(e=>e.players.every(p=>p.kind!=='role'||c.roleIds.includes(p.roleId)));same(c);return clone(out);}
-  return Object.freeze({recordMatch:board=>recordMatch(board),recordSavedMatch,permit,read,manage,setRecall,list,close(){closed=true;}});
+  // Trusted private repository payload only. Replay terminal actions to derive
+  // facts instead of trusting imported summaries. Includes hidden action data;
+  // never use this as a public export or model input.
+  function checkpoint(){
+    const c=current();same(c);
+    return clone({schema:1,accountId:c.accountId,matches:[...replays.values()],grants:[...grants],muted:[...muted]});
+  }
+  if(snapshot!==null){
+    const c=current();
+    if(!exact(snapshot,['schema','accountId','matches','grants','muted'])||snapshot.schema!==1||snapshot.accountId!==c.accountId||!Array.isArray(snapshot.matches)||snapshot.matches.length>maxMatches||!Array.isArray(snapshot.grants)||!Array.isArray(snapshot.muted))fail('JOURNAL_INVALID_CHECKPOINT');
+    for(const entry of snapshot.matches){
+      if(!exact(entry,['board','chat'])||!entry.board||entry.chat!==null&&!['ludo','gomoku'].includes(entry.board.gameId))fail('JOURNAL_INVALID_CHECKPOINT');
+      if(recordMatch(entry.board,entry.chat).duplicate)fail('JOURNAL_INVALID_CHECKPOINT');
+    }
+    for(const fid of snapshot.muted){
+      if(typeof fid!=='string'||muted.has(fid)||!fragments.has(fid))fail('JOURNAL_INVALID_CHECKPOINT');
+      muted.add(fid);
+    }
+    for(const key of snapshot.grants){
+      let pair;try{pair=JSON.parse(key);}catch{fail('JOURNAL_INVALID_CHECKPOINT');}
+      if(typeof key!=='string'||!Array.isArray(pair)||pair.length!==3||JSON.stringify(pair)!==key||grants.has(key))fail('JOURNAL_INVALID_CHECKPOINT');
+      const [fid,targetRoleId,channel]=pair;
+      if(!fragments.has(fid)||muted.has(fid)||!['game','daily'].includes(channel))fail('JOURNAL_INVALID_CHECKPOINT');
+      if(!c.roleIds.includes(targetRoleId))continue;
+      permit({fragmentId:fid,targetRoleId,channel,allowed:true});
+    }
+    same(c);
+  }
+  return Object.freeze({recordMatch:board=>recordMatch(board),recordSavedMatch,permit,read,manage,setRecall,list,checkpoint,close(){closed=true;}});
 }
