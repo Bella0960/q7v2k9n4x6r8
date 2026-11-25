@@ -133,6 +133,8 @@
     var check = editable(c); if (!check.ok) return check;
     if (c.members.length <= 1) return fail('LAST_MEMBER', '不能移除最后一名群成员');
     c.group.members = c.members.filter(function (m) { return id(m.id) !== id(c.member.id); });
+    var portrait=c.group.portraitOverridesV1;
+    if(portrait&&Array.isArray(portrait.entries))portrait.entries=portrait.entries.filter(function(entry){return !entry||entry.memberId!==id(c.member.id);});
     return { ok: true, message: '已移出群成员' };
   }});
   registerAction('invite', { scope: 'admin', run: function (c) {
