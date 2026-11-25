@@ -66,7 +66,7 @@ try{
   await page.locator('#bookDetailBack').click();
   await page.locator('.tab-item[data-route="settings"]').click();
   assert.equal(await page.locator('#writeRow').count(),0);
-  assert.equal(await page.locator('.import-help').evaluate(e=>e.open),false);
+  assert.equal(await page.locator('.import-help').count(),0);
   const fileChooser=page.waitForEvent('filechooser');
   await page.locator('#importRow').click();
   assert.ok(await fileChooser);
