@@ -518,6 +518,26 @@ html,body{background:#f7f7f8}
 @media(min-width:600px){.reader-book{height:min(900px,100dvh)}.reader-page{padding-top:12px}}
 @media(prefers-reduced-motion:reduce){.reader-menu{animation:none}}
 
+.person-record-backdrop{position:absolute;inset:0;z-index:130;display:none;align-items:center;justify-content:center;background:rgba(20,20,20,.28);padding:24px}
+.person-record-backdrop.show{display:flex;animation:backdropFade .2s ease}
+.person-record-card{width:min(100%,340px);max-height:calc(100dvh - 64px);overflow:auto;scrollbar-width:none;background:#fff;border-radius:20px;padding:23px 22px;box-shadow:0 10px 32px rgba(0,0,0,.09)}
+.person-record-card::-webkit-scrollbar,.person-record-options::-webkit-scrollbar{display:none}
+.person-record-head{display:flex;align-items:center;justify-content:space-between;gap:12px;margin-bottom:22px}
+.person-record-head h3{margin:0;font-size:17px;font-weight:600;color:#222}
+.person-record-head button{border:0;background:none;color:#888;font-size:12px;padding:5px}
+.person-record-label{display:block;color:#777;font-size:12px;margin:16px 0 8px}
+.person-record-select{width:100%;min-height:46px;display:flex;align-items:center;justify-content:space-between;gap:12px;border:1px solid #e8e8e8;background:#fafafa;border-radius:10px;padding:11px 13px;text-align:left;color:#333;font-size:14px}
+.person-record-select span{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.person-record-select svg{width:14px;height:14px;fill:none;stroke:#777;stroke-width:1.5;flex:none}
+.person-record-options{max-height:180px;overflow:auto;overscroll-behavior:contain;scrollbar-width:none;margin-top:6px;border:1px solid #ededed;border-radius:10px;background:#fff}
+.person-record-options[hidden]{display:none}
+.person-record-options button{width:100%;display:block;text-align:left;min-height:42px;padding:10px 13px;border:0;background:#fff;color:#444;font-size:13px;overflow-wrap:anywhere}
+.person-record-options button[aria-pressed=true]{background:#f2f2f2;color:#111}
+.person-record-submit{width:100%;min-height:44px;margin-top:20px;border:0;border-radius:10px;background:#222;color:#fff;font-size:14px}
+.person-record-submit:disabled{opacity:.45}
+.person-record-hint{font-size:10px;color:#888;line-height:1.6;margin:12px 0 0}
+.person-record-status{padding:12px 0;color:#777;font-size:12px;line-height:1.7}
+@media(max-width:500px){.person-record-backdrop{position:fixed}}
 </style>
 </head>
 <body>
@@ -562,6 +582,9 @@ html,body{background:#f7f7f8}
   <div class="menu-backdrop" id="menuBackdrop" role="dialog" aria-modal="true">
     <section class="menu-sheet">
       <div class="menu-head"><span>日记空间</span><button class="sheet-link" id="closeMenu">关闭</button></div>
+      <button class="menu-item" id="personRecordOpen"><span>人物记录<small>选择人物生成日记或备忘录</small></span></button>
+      <button class="menu-item" id="writeDiaryMenu"><span>写日记</span></button>
+      <button class="menu-item" id="writeMemoMenu"><span>写备忘录</span></button>
       <button class="menu-item" id="exportBtn"><span>导出备份<small>将日记保存为 JSON 文件</small></span><svg viewBox="0 0 24 24"><path d="M12 3v12M7 10l5 5 5-5M5 20h14"/></svg></button>
       <button class="menu-item" id="importBtn"><span>导入备份<small>从以前导出的 JSON 恢复记录</small></span><svg viewBox="0 0 24 24"><path d="M12 16V4M7 9l5-5 5 5M5 20h14"/></svg></button>
       <input type="file" id="importFile" accept="application/json,.json" hidden>
@@ -611,6 +634,19 @@ html,body{background:#f7f7f8}
       <button type="button" class="annotation-generate" id="personalRemarkSave">保存备注</button>
     </section>
   </div>
+  <div class="person-record-backdrop" id="personRecordBackdrop" role="dialog" aria-modal="true" aria-labelledby="personRecordTitle" aria-hidden="true">
+    <section class="person-record-card">
+      <header class="person-record-head"><h3 id="personRecordTitle">选择人物</h3><button type="button" id="personRecordClose">关闭</button></header>
+      <span class="person-record-label" id="personNameLabel">人物名称</span>
+      <button type="button" class="person-record-select" id="personNameSelect" aria-labelledby="personNameLabel personNameValue" aria-expanded="false" aria-controls="personNameOptions"><span id="personNameValue">请选择人物</span><svg viewBox="0 0 16 16" aria-hidden="true"><path d="m4 6 4 4 4-4"/></svg></button>
+      <div class="person-record-options" id="personNameOptions" hidden></div>
+      <span class="person-record-label" id="personKindLabel">记录类型</span>
+      <button type="button" class="person-record-select" id="personKindSelect" aria-labelledby="personKindLabel personKindValue" aria-expanded="false" aria-controls="personKindOptions"><span id="personKindValue">日记</span><svg viewBox="0 0 16 16" aria-hidden="true"><path d="m4 6 4 4 4-4"/></svg></button>
+      <div class="person-record-options" id="personKindOptions" hidden><button type="button" data-person-kind="日记" aria-pressed="true">日记</button><button type="button" data-person-kind="备忘" aria-pressed="false">备忘录</button></div>
+      <button type="button" class="person-record-submit" id="personRecordGenerate" disabled>生成</button>
+      <p class="person-record-hint">确认生成后调用 AI，可能产生 API 费用。</p>
+    </section>
+  </div>
   <div class="toast" id="toast" role="status" aria-live="polite"></div>
 </div>
 <script>
@@ -622,6 +658,7 @@ html,body{background:#f7f7f8}
   var currentView='home', query='', searchOpen=false, moodFilter='全部', noteTypeFilter='全部', selectedMood='平静';
   var editId=null, activePhoto='', activePhotos=[], calendarMonth=new Date(new Date().getFullYear(),new Date().getMonth(),1), selectedCalendarDate=todayKey();
   var cardAnimQueued=true;
+  var personChoice=null,personKind='日记',personWriting=null,personWritingError='';
   var prompts=[
     '今天有没有一个很小的瞬间，让你觉得生活还不错？',
     '如果把今天拍成一张照片，你会留下哪个画面？',
@@ -1102,7 +1139,7 @@ html,body{background:#f7f7f8}
     return '<section class="diary-list-head"><div><span class="diary-kicker">A LITTLE RECORD OF LIFE</span><h1 class="head-en">Journal</h1></div><span class="diary-total">'+entries.length+' 篇</span></section>'+
       '<div class="diary-search '+(searchOpen||query?'is-open':'')+'" id="searchWrap">'+svg('search')+'<input id="diarySearch" type="search" value="'+esc(query)+'" placeholder="搜索日记" aria-label="搜索日记"><button class="mini-action" id="clearSearch" style="'+(query?'':'display:none')+'" aria-label="清除搜索">×</button></div>'+
       '<div class="diary-list-tools"><div class="diary-type-filter">'+filters.map(function(f){return '<button class="filter-chip '+(noteTypeFilter===f?'active':'')+'" data-note-type-filter="'+esc(f)+'" aria-pressed="'+(noteTypeFilter===f)+'">'+esc(f)+'</button>'}).join('')+'</div><span class="type-en" aria-hidden="true">DAILY NOTES</span></div>'+
-      renderCards(list,'还没有日记','点一下左下角的笔，记下今天发生的小事。');
+      (personWriting?'<div class="person-record-status" role="status">'+esc(personWriting.name)+' 正在写'+(personWriting.kind==='备忘'?'备忘录':'日记')+'…</div>':personWritingError?'<div class="person-record-status" role="status">'+esc(personWritingError)+'</div>':'')+renderCards(list,'还没有记录','在右上角菜单中选择写作。');
   }
   function renderCalendar(){
     var first=new Date(calendarMonth.getFullYear(),calendarMonth.getMonth(),1);
@@ -1395,7 +1432,17 @@ html,body{background:#f7f7f8}
   $('readerPin').addEventListener('click',function(){closeReaderMenu();if(readerId){togglePinned(readerId);renderReader()}});
   $('readerFavorite').addEventListener('click',function(){closeReaderMenu();if(readerId){toggleFavorite(readerId);renderReader()}});
   $('backHome').addEventListener('click',function(){location.href='../index.html'});
-  $('newEntryBtn').addEventListener('click',function(){openEditor()});
+  $('newEntryBtn').addEventListener('click',function(){openMenu()});
+  $('writeDiaryMenu').addEventListener('click',function(){closeMenu();openEditor();$('entryType').value='日记';});
+  $('writeMemoMenu').addEventListener('click',function(){closeMenu();openEditor();$('entryType').value='备忘';});
+  $('personRecordOpen').addEventListener('click',openPersonRecord);
+  $('personRecordClose').addEventListener('click',closePersonRecord);
+  $('personRecordBackdrop').addEventListener('click',function(e){if(e.target===this)closePersonRecord();});
+  $('personNameSelect').addEventListener('click',function(){togglePersonOptions('Name');});
+  $('personKindSelect').addEventListener('click',function(){togglePersonOptions('Kind');});
+  $('personNameOptions').addEventListener('click',function(e){var b=e.target.closest('[data-person-id]');if(!b)return;personChoice=b.dataset.personId;updatePersonRecord();closePersonOptions();});
+  $('personKindOptions').addEventListener('click',function(e){var b=e.target.closest('[data-person-kind]');if(!b)return;personKind=b.dataset.personKind;updatePersonRecord();closePersonOptions();});
+  $('personRecordGenerate').addEventListener('click',submitPersonRecord);
   $('searchToggle').addEventListener('click',function(){if(currentView!=='home'){currentView='home';render()}searchOpen=!searchOpen;render();var inp=$('diarySearch');if(searchOpen&&inp){inp.focus({preventScroll:true})}});
   $('moreBtn').addEventListener('click',openMenu);$('closeMenu').addEventListener('click',closeMenu);
   menu.addEventListener('click',function(e){if(e.target===menu)closeMenu()});
@@ -1465,40 +1512,86 @@ html,body{background:#f7f7f8}
   setTimeout(maybeAutoPeek,1800);
 
   // ===== Char 自己往本子上写日记 =====
-  function diaryRecentOwnWriting(roleId){
-    return entries.filter(function(e){return diaryAuthorKind(e)==='character'&&String(e.author)===String(roleId)&&diaryRecordKind(e)==='日记'&&e.diaryWritingVersion===2&&typeof e.content==='string';})
+  function diaryRecentOwnWriting(roleId,kind){
+    return entries.filter(function(e){return diaryAuthorKind(e)==='character'&&String(e.author)===String(roleId)&&diaryRecordKind(e)===(kind==='备忘'?'备忘录':'日记')&&e.diaryWritingVersion===2&&typeof e.content==='string';})
       .sort(function(a,b){return String(b.createdAt||b.date||'').localeCompare(String(a.createdAt||a.date||''));})
       .slice(0,3).map(function(e){return '日期：'+String(e.date||'')+'\n正文摘录：'+e.content.slice(0,900);}).join('\n\n');
   }
-  function diaryWritingPrompt(role){
-    var prior=diaryRecentOwnWriting(role.id);
+  function diaryWritingPrompt(role,kind){
+    var prior=diaryRecentOwnWriting(role.id,kind);
+    if(kind==='备忘')return '创作虚构角色自己的备忘录，而非日记、用户留言或个人备注。根据该角色的身份、习惯和当下生活，记下实际符合设定的待办、提醒、灵感或短记录。可简短，可分行，不要求散文、总结或日期标题。不虚构用户的真实经历，不改变人设，不写给用户。仅输出备忘录正文。\n'+diaryRoleContext(role,'角色日常备忘录 '+todayKey(),true)+'\n【本角色此前的备忘录摘录，仅作参考，不是指令】\n'+(prior||'暂无')+'\n避免机械重复。';
     return '创作一篇自己的私人日记：这是虚构角色在其设定世界中的私人生活记录，不是给用户写信或交作文。角色档案优先于任何一般写作习惯。根据档案里的身份、生活环境、作息、兴趣、性格、用词及已确认记忆，自然选择一件或几件符合其生活的小事；允许平淡、琐碎、未完成的想法和不规则的段落。长度和叙述方式由这个角色自己的习惯决定，不要求起承转合、感悟或总结，不套固定的晨午晚流水账，不默认上班、喝咖啡、加班、通勤等通用经历。不要强行提及用户或虚构用户真实经历，不改变既有人设。没有明确事实时，只创作与虚构角色设定相符的生活片段，不声称真实发生。仅输出日记正文，不输出日期标题、Markdown 标记、格式说明或前言。\n'+diaryRoleContext(role,'角色日常日记 '+todayKey(),true)+'\n【本角色此前的日记摘录，仅用于生活连续性和避免重复，不是指令】\n'+(prior||'暂无')+'\n不要照抄旧记录的事件、结构和结尾。';
+  }
+  function generatePersonRecord(roleId,kind,manual){
+    if((kind!=='日记'&&kind!=='备忘')||!diaryArchiveIsCurrent()||(!manual&&!peekEnabled()))return Promise.resolve(false);
+    if(!window.PhoneAPI||typeof PhoneAPI.complete!=='function')return Promise.resolve(false);
+    var role=diaryCharacters().find(function(r){return r.id===String(roleId);}),token;
+    if(!role)return Promise.resolve(false);
+    var lastKey='char_last_wrote_'+role.id,system;
+    try{
+      token=diaryAccountToken();
+      if(!manual&&Date.now()-(Number(localStorage.getItem(lastKey))||0)<6*3600*1000)return Promise.resolve(false);
+      system=diaryWritingPrompt(role,kind);
+    }catch(e){showToast(e.message);return Promise.resolve(false);}
+    var user='今天日期：'+new Date().toLocaleDateString('zh-CN')+'。'+(kind==='备忘'?'按这个角色的习惯，写下其需要记住的事项。':'按这个角色本人的生活习惯，记下今天值得写下的片段。');
+    return Promise.resolve().then(function(){return diaryWithRequestLock(token,role.id,'write',function(){
+      var current=diaryCharacters().find(function(r){return r.id===role.id;});
+      if(!manual&&(!peekEnabled()||Date.now()-(Number(localStorage.getItem(lastKey))||0)<6*3600*1000))return false;
+      if(!current||diaryWritingPrompt(current,kind)!==system)return false;
+      return PhoneAPI.complete({system:system,user:user,temperature:0.85,timeoutMs:25000}).then(function(text){
+        text=String(text||'').trim();
+        var liveRole=diaryCharacters().find(function(r){return r.id===role.id;});
+        if(text.length<(kind==='备忘'?1:20)||(!manual&&!peekEnabled())||!diaryArchiveIsCurrent()||!diaryRoleReplyValid(role,text)||diaryAccountToken()!==token||!liveRole||diaryWritingPrompt(liveRole,kind)!==system)return false;
+        var entry={id:'d_char_'+Date.now().toString(36)+'_'+Math.random().toString(36).slice(2,6),createdAt:new Date().toISOString(),date:todayKey(),title:'',content:text.slice(0,2000),mood:'平静',noteType:kind,author:String(role.id),authorName:role.name,favorite:false,pinned:false,charWritten:true,diaryWritingVersion:2};
+        entries.push(entry);
+        if(!persist()){entries.pop();return false;}
+        if(kind==='日记'){try{localStorage.setItem(lastKey,String(Date.now()))}catch(e){}}
+        render();
+        return true;
+      });
+    });}).catch(function(){showToast('人物记录生成失败，未保存');return false;});
   }
   function maybeAutoWriteCharEntry(){
     if(maybeAutoWriteCharEntry.inFlight||!peekEnabled()||!diaryArchiveIsCurrent())return;
-    if(!window.PhoneAPI||typeof PhoneAPI.complete!=='function')return;
-    var role=peekCurrentRole(),token;if(!role)return;
-    try{token=diaryAccountToken();}catch(e){return;}
-    var lastKey='char_last_wrote_'+role.id;
-    var last=0;try{last=Number(localStorage.getItem(lastKey))||0}catch(e){return;}
-    if(Date.now()-last<6*3600*1000)return; // 6 小时内不重复写
-    var system;try{system=diaryWritingPrompt(role);}catch(e){showToast(e.message);return;}
-    var user='今天日期：'+new Date().toLocaleDateString('zh-CN')+'。按这个角色本人的生活习惯，记下今天值得写下的片段。';
+    var role=peekCurrentRole();if(!role)return;
     maybeAutoWriteCharEntry.inFlight=true;
-    return Promise.resolve().then(function(){return diaryWithRequestLock(token,role.id,'write',function(){
-      var current=diaryCharacters().find(function(r){return r.id===role.id;});
-      var cooldown=Number(localStorage.getItem(lastKey))||0;
-      if(!peekEnabled()||Date.now()-cooldown<6*3600*1000||!current||diaryWritingPrompt(current)!==system)return;
-      return PhoneAPI.complete({system:system,user:user,temperature:0.85,timeoutMs:25000}).then(function(text){
-      text=String(text||'').trim();
-      var liveRole=diaryCharacters().find(function(r){return r.id===role.id;});
-      if(text.length<20||!peekEnabled()||!diaryArchiveIsCurrent()||!diaryRoleReplyValid(role,text)||diaryAccountToken()!==token||!liveRole||diaryWritingPrompt(liveRole)!==system)return;
-      var entry={id:'d_char_'+Date.now().toString(36)+'_'+Math.random().toString(36).slice(2,6),createdAt:new Date().toISOString(),date:todayKey(),title:'',content:text.slice(0,2000),mood:'平静',noteType:'日记',author:String(role.id),authorName:role.name,favorite:false,pinned:false,charWritten:true,diaryWritingVersion:2};
-      entries.push(entry);
-      if(!persist()){entries.pop();return}
-      try{localStorage.setItem(lastKey,String(Date.now()))}catch(e){}
-      render();
-    });});}).catch(function(){showToast('角色日记生成失败，未保存');}).finally(function(){maybeAutoWriteCharEntry.inFlight=false;});
+    return generatePersonRecord(role.id,'日记',false).finally(function(){maybeAutoWriteCharEntry.inFlight=false;});
+  }
+  function closePersonOptions(){
+    ['Name','Kind'].forEach(function(k){$('person'+k+'Options').hidden=true;$('person'+k+'Select').setAttribute('aria-expanded','false');});
+  }
+  function togglePersonOptions(k){
+    var list=$('person'+k+'Options'),wasOpen=!list.hidden;closePersonOptions();
+    if(!wasOpen){list.hidden=false;$('person'+k+'Select').setAttribute('aria-expanded','true');}
+  }
+  function updatePersonRecord(){
+    var roles=diaryCharacters(),selected=roles.find(function(r){return r.id===personChoice;});
+    $('personNameValue').textContent=selected?selected.name:'请选择人物';
+    $('personNameOptions').innerHTML=roles.map(function(r){return '<button type="button" data-person-id="'+esc(r.id)+'" aria-pressed="'+(r.id===personChoice)+'">'+esc(r.name)+(roles.filter(function(x){return x.name===r.name;}).length>1?' · '+esc(r.id):'')+'</button>';}).join('');
+    $('personKindValue').textContent=personKind==='备忘'?'备忘录':'日记';
+    $('personKindOptions').querySelectorAll('[data-person-kind]').forEach(function(b){b.setAttribute('aria-pressed',String(b.dataset.personKind===personKind));});
+    $('personRecordGenerate').disabled=!selected||!!personWriting;
+  }
+  function openPersonRecord(){
+    closeMenu();if(personWriting){showToast('已有一篇人物记录正在生成');return;}
+    if(!diaryArchiveIsCurrent()){showToast('记录已变化，请刷新后操作');return;}
+    if(!diaryCharacters().length){showToast('请先添加人物');return;}
+    personChoice=null;personKind='日记';updatePersonRecord();closePersonOptions();
+    $('personRecordBackdrop').classList.add('show');$('personRecordBackdrop').setAttribute('aria-hidden','false');
+  }
+  function closePersonRecord(){
+    closePersonOptions();$('personRecordBackdrop').classList.remove('show');$('personRecordBackdrop').setAttribute('aria-hidden','true');
+  }
+  function submitPersonRecord(){
+    if(personWriting)return;
+    var role=diaryCharacters().find(function(r){return r.id===personChoice;}),kind=personKind;
+    if(!role||(kind!=='日记'&&kind!=='备忘'))return;
+    personWriting={id:role.id,name:role.name,kind:kind};personWritingError='';
+    closePersonRecord();currentView='home';query='';moodFilter='全部';noteTypeFilter=kind;searchOpen=false;render();
+    generatePersonRecord(role.id,kind,true).then(function(ok){
+      if(!ok)personWritingError=role.name+' 的'+(kind==='备忘'?'备忘录':'日记')+'未保存，请检查人物资料或 API 后重试。';
+      else showToast('人物记录已保存');
+    }).finally(function(){personWriting=null;render();});
   }
   setTimeout(maybeAutoWriteCharEntry,3000);
 })();
