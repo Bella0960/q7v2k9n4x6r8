@@ -2093,7 +2093,7 @@ button{font:inherit;color:inherit;cursor:pointer;border:0;background:transparent
     }
     if(route.indexOf('read-detail-')===0){
       var parts=route.slice(12).split('?'),detailReader=findBook(parts[0]);
-      if(detailReader){readerReturnRoute='detail-'+detailReader.id;var match=/^chapter=(\d+)$/.exec(parts[1]||'');openReader(detailReader,match?Number(match[1]):undefined);return;}
+      if(detailReader){readerReturnRoute='detail-'+detailReader.id;var match=/^chapter=(\d+)$/.exec(parts[1]||'');openReader(detailReader,match?Number(match[1]):undefined);if(match)history.replaceState(null,'','#read-detail-'+detailReader.id);return;}
       route='home';
     }
     if (route.indexOf('read-') === 0) {
