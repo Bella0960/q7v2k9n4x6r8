@@ -1783,8 +1783,12 @@
 
       // 1. Touch Events
       var pendingGlassTouchTarget = null;
-      document.addEventListener('touchstart', function (e) {
+      function clearPendingGlassTouch() {
         pendingGlassTouchTarget = null;
+        if (!isDragging) document.removeEventListener('touchmove', handleActiveDragTouch);
+      }
+      document.addEventListener('touchstart', function (e) {
+        clearPendingGlassTouch();
         if (e.touches.length !== 1) {
           if (pressTimer) { clearTimeout(pressTimer); pressTimer = null; }
           if (isDragging) cancelDrag();
@@ -1803,7 +1807,11 @@
         if (editing) {
           // Preserve short taps; a fast move in glass edit mode must start, not cancel, the drag.
           if (document.documentElement.getAttribute('data-theme') === 'liquid-glass' &&
-              t.matches('.app-tile, .dock-item')) pendingGlassTouchTarget = t;
+              t.matches('.app-tile, .dock-item')) {
+            pendingGlassTouchTarget = t;
+            // Install before the first move; a listener added during that event cannot claim it.
+            document.addEventListener('touchmove', handleActiveDragTouch, { passive: false });
+          }
           pressTimer = setTimeout(function () {
             pressTimer = null;
             pendingGlassTouchTarget = null;
@@ -1823,32 +1831,40 @@
         var touch = e.touches[0];
         var cx = touch.clientX, cy = touch.clientY;
 
-        if (pressTimer) {
+        if (pressTimer && !pendingGlassTouchTarget) {
           if (Math.hypot(cx - startX, cy - startY) > 9) {
             clearTimeout(pressTimer);
             pressTimer = null;
-            var target = pendingGlassTouchTarget;
-            pendingGlassTouchTarget = null;
-            if (editing && target && target.isConnected) {
-              startDrag(target, startX, startY);
-              queueDragMove(cx, cy);
-            }
-            // Outside glass edit mode preserve the existing paging/long-press arbitration.
           }
         }
 
       }, { passive: true });
 
-      // Only a confirmed long-press drag needs scroll cancellation. Ordinary
-      // swipes stay on the browser's passive/compositor scrolling path.
+      // Ordinary swipes remain passive. A glass edit tile claims its first
+      // moving touch synchronously, before the browser starts native scrolling.
       function handleActiveDragTouch(e) {
-        if (!isDragging || !e.touches || e.touches.length !== 1) return;
+        if (!e.touches || e.touches.length !== 1) return;
+        var touch = e.touches[0];
+        if (!isDragging && pendingGlassTouchTarget) {
+          if (!editing || !pendingGlassTouchTarget.isConnected) {
+            if (pressTimer) { clearTimeout(pressTimer); pressTimer = null; }
+            clearPendingGlassTouch();
+            return;
+          }
+          if (Math.hypot(touch.clientX - startX, touch.clientY - startY) <= 9) return;
+          if (e.cancelable) e.preventDefault();
+          var target = pendingGlassTouchTarget;
+          pendingGlassTouchTarget = null;
+          if (pressTimer) { clearTimeout(pressTimer); pressTimer = null; }
+          startDrag(target, startX, startY);
+        }
+        if (!isDragging) return;
         if (e.cancelable) e.preventDefault();
-        queueDragMove(e.touches[0].clientX, e.touches[0].clientY);
+        queueDragMove(touch.clientX, touch.clientY);
       }
 
       document.addEventListener('touchend', function (e) {
-        pendingGlassTouchTarget = null;
+        clearPendingGlassTouch();
         if (pressTimer) {
           clearTimeout(pressTimer);
           pressTimer = null;
@@ -1860,7 +1876,7 @@
       });
 
       document.addEventListener('touchcancel', function () {
-        pendingGlassTouchTarget = null;
+        clearPendingGlassTouch();
         if (pressTimer) {
           clearTimeout(pressTimer);
           pressTimer = null;
@@ -1872,7 +1888,7 @@
 
       // Interruption outside the page must not leave a hidden source or a ghost.
       function interruptHomeDrag() {
-        pendingGlassTouchTarget = null;
+        clearPendingGlassTouch();
         if (pressTimer) {
           clearTimeout(pressTimer);
           pressTimer = null;
