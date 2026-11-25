@@ -1,0 +1,1071 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'unsafe-inline'; style-src 'unsafe-inline'; connect-src 'none'; form-action 'none'; base-uri 'none'">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>飞行棋 · 独立预览</title>
+<style>
+.mao-ludo{box-sizing:border-box;width:100%;max-width:480px;margin-inline:auto;color:#222;background:#fff;padding:12px;font:14px/1.45 system-ui,sans-serif}
+.mao-ludo *{box-sizing:border-box}
+.mao-ludo__title{font-family:Georgia,'Songti SC',serif;font-size:24px;font-weight:500;margin:0 0 3px}
+.mao-ludo__status,.mao-ludo__notice{margin:4px 0 10px;color:#555;font-size:12px}
+.mao-ludo__roster{display:flex;flex-wrap:wrap;gap:4px 12px;margin-bottom:12px;font-size:12px}
+.mao-ludo__player{overflow-wrap:anywhere;min-width:0;flex:1 1 42%;padding:4px 6px;border-left:2px solid transparent}
+.mao-ludo__active{border-left-color:#222;background:#f7f7f7;font-weight:600}
+.mao-ludo__board{display:grid;grid-template-columns:repeat(15,minmax(0,1fr));grid-template-rows:repeat(15,minmax(0,1fr));aspect-ratio:1;width:100%;gap:1px;background:#fafafa;border:1px solid #eee;padding:2px;border-radius:12px}
+.mao-ludo__slot-0{--seat-bg:#e2e2e2;--seat-border:#777;--seat-ink:#111}
+.mao-ludo__slot-1{--seat-bg:#f7f7f7;--seat-border:#999;--seat-ink:#333}
+.mao-ludo__slot-2{--seat-bg:#bcbcbc;--seat-border:#555;--seat-ink:#111}
+.mao-ludo__slot-3{--seat-bg:#444;--seat-border:#444;--seat-ink:#fff}
+.mao-ludo__cell{display:flex;align-items:center;justify-content:center;flex-wrap:wrap;min-width:0;min-height:0;border:1px solid #ddd;background:#fff;border-radius:2px}
+.mao-ludo__track{border-bottom-color:var(--seat-border)}
+.mao-ludo__start,.mao-ludo__home,.mao-ludo__finished,.mao-ludo__hangar{background:var(--seat-bg);border-color:var(--seat-border)}
+.mao-ludo__piece{display:inline-flex;align-items:center;justify-content:center;min-width:0;max-width:100%;height:90%;aspect-ratio:1;border-radius:50%;border:1px solid var(--seat-border);background:var(--seat-bg);color:var(--seat-ink);font-size:clamp(6px,1.9vw,10px);line-height:1;padding:0;white-space:nowrap}
+.mao-ludo__cell.mao-ludo__stack{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));grid-template-rows:repeat(2,minmax(0,1fr));gap:0}
+.mao-ludo__stack .mao-ludo__piece{width:100%;height:100%;aspect-ratio:auto;font-size:6px}
+.mao-ludo button{font:inherit;cursor:pointer;touch-action:manipulation}
+.mao-ludo button.mao-ludo__piece{min-width:0;min-height:0;max-width:100%;padding:0;font-size:clamp(6px,1.9vw,10px);outline:1px solid #111;outline-offset:-1px}
+.mao-ludo__stack button.mao-ludo__piece{font-size:6px}
+.mao-ludo button:focus-visible{outline:2px solid #111;outline-offset:2px}
+.mao-ludo button:disabled{opacity:.45;cursor:default}
+.mao-ludo__controls{display:flex;align-items:center;flex-wrap:wrap;gap:6px;margin-top:12px}
+.mao-ludo__die,.mao-ludo__action{min-height:44px;min-width:44px;display:inline-flex;align-items:center;justify-content:center;border:1px solid #ddd;border-radius:10px;background:#fff;color:#222;padding:0 12px}
+.mao-ludo__die{font-size:20px;font-variant-numeric:tabular-nums}
+.mao-ludo__action{flex:1 1 62px;font-size:12px;min-width:44px;min-height:44px;padding:0 8px}
+.mao-ludo__event{font-size:12px;color:#555;line-height:1.5;min-height:1.5em;margin:8px 0 0;overflow-wrap:anywhere}
+.mao-ludo__notice{min-height:1.45em;margin:6px 0 0}
+
+</style>
+<style>
+*{box-sizing:border-box}body{margin:0;background:#fff;color:#222;font:14px/1.5 system-ui,sans-serif}main{max-width:430px;margin:auto;padding:22px 14px}
+h1{font:400 29px/1.2 Georgia,"Songti SC",serif;margin:8px 0 12px}p{margin:8px 0;color:#666;font-size:12px}
+[hidden]{display:none!important}fieldset{border:0;margin:18px 0;padding:0}legend{font-size:13px;margin-bottom:10px}label{display:flex;gap:12px;align-items:center;min-height:44px}input{accent-color:#222}main>section button:not(.mao-ludo__piece){font:inherit;color:#222;background:#fff;border:1px solid #ddd;border-radius:10px;min-height:44px;padding:0 16px;cursor:pointer}button:disabled{opacity:.5}.primary{background:#222;color:#fff;border-color:#222;width:100%}
+#board .mao-ludo{padding:4px 0 10px}#board .mao-ludo__title{display:none}.toolbar{display:flex;gap:8px;justify-content:flex-end;margin:8px 0}details{padding:12px 0;border-top:1px solid #eee}summary{cursor:pointer;min-height:44px;padding:10px 0}ul{padding:0;list-style:none;max-height:120px;overflow:auto}li{padding:6px 0;overflow-wrap:anywhere}form{display:flex;gap:6px}form input{min-width:0;flex:1;min-height:44px;border:1px solid #ddd;border-radius:8px;padding:10px;font:inherit}#preview-status{min-height:1.5em}small{font-size:12px;color:#666}
+</style>
+</head>
+<body><main>
+<header><h1>飞行棋</h1><small>离线试玩 · 本地测试棋手，不联网、不保存</small></header>
+<section id="setup"><fieldset><legend>选择同行棋手（1—3 位）</legend>
+<label><input type="checkbox" name="player" value="fixture-1" checked>测试棋手 1</label>
+<label><input type="checkbox" name="player" value="fixture-2">测试棋手 2</label>
+<label><input type="checkbox" name="player" value="fixture-3">测试棋手 3</label>
+</fieldset><p id="selection-count" aria-live="polite"></p><button id="start" type="button" class="primary">开始游戏</button></section>
+<section id="game" hidden><div id="board"></div><div class="toolbar"><button id="resume" type="button" hidden>继续自动回合</button><button id="end" type="button">结束本局</button></div>
+<details id="chat"><summary>游戏聊天</summary><p>本地规则演示回复，不使用真实角色人设或 AI 服务。</p><ul id="messages" aria-live="polite"></ul><form id="message-form"><input id="message" aria-label="游戏发言" maxlength="1000" autocomplete="off" placeholder="说点什么"><button type="submit">发送</button></form><div class="toolbar"><button id="discuss" type="button">讨论棋局</button><button id="stop-speech" type="button" hidden>停止</button></div><p id="speaker" role="status"></p><p id="chat-status" role="status"></p></details></section>
+<p id="preview-status" role="status"></p>
+<details><summary>玩法</summary><p>每人四架飞机，掷六点起飞并再掷一次。选择可移动的飞机，同色格跳跃，特殊格飞行，落点碰撞对手返回停机区。终点需要准确抵达，超出则反弹。四架飞机全部抵达即获胜。当前为暂定规则。</p></details>
+</main><script>
+'use strict';
+const modules=Object.create(null);
+modules["ludo-rules.js"]=(()=>{
+// GAME-TABLE-001: standalone aeroplane chess rules, no storage, UI or AI calls.
+// Version 1 provisional variant: 52 shared squares, 6 private home squares,
+// launch on six, own-colour +4, shortcut 16->28, exact finish with bounce.
+// Same-colour stacking is allowed; capture all opponents at final landing only.
+const LUDO_RULES_V1=Object.freeze({schema:1,trackLength:52,finish:57,planesPerSeat:4,launchRoll:6,jump:4,flightFrom:16,flightTo:28,bonusOnSix:true});
+const fail=code=>{throw new Error(code);};
+const {trackLength,finish,planesPerSeat,launchRoll,jump,flightFrom,flightTo}=LUDO_RULES_V1;
+const integer=(n,min,max)=>Number.isInteger(n)&&n>=min&&n<=max;
+const slots=n=>n===2?[0,2]:Array.from({length:n},(_,i)=>i);
+const clone=v=>JSON.parse(JSON.stringify(v));
+const square=(slot,p)=>p>=0&&p<trackLength?(slot*13+p)%trackLength:null;
+const players=room=>{
+  if(room?.gameId!=='ludo'||!Array.isArray(room.seats)||room.seats.length<2||room.seats.length>4||!Array.from(room.seats).every(s=>s?.mode==='player'&&typeof s.seatId==='string'&&s.seatId.length)) fail('LUDO_INVALID_ROOM');
+  const ids=room.seats.map(s=>s.seatId);if(new Set(ids).size!==ids.length) fail('LUDO_INVALID_ROOM');return ids;
+};
+function validate(state,room){
+  const ids=players(room),positions=slots(ids.length);
+  if(state?.schema!==1||!['roll','choose','finished'].includes(state.stage)||!Array.isArray(state.players)||state.players.length!==ids.length||!Array.from(state.players).every((p,i)=>p?.seatId===ids[i]&&p.slot===positions[i]&&Array.isArray(p.planes)&&p.planes.length===planesPerSeat&&Array.from(p.planes).every(v=>integer(v,-1,finish)))|| (state.stage==='choose'?!integer(state.die,1,6):state.die!==null)) fail('LUDO_INVALID_STATE');
+  const won=state.players.filter(p=>p.planes.every(v=>v===finish));
+  if(state.stage==='finished'?won.length!==1:won.length!==0) fail('LUDO_INVALID_STATE');
+  if(state.stage==='finished'?room.phase!=='finished':room.phase!=='playing'||!ids.includes(room.turnSeatId)) fail('LUDO_INVALID_PHASE');
+  return ids;
+}
+function destination(p,die){
+  if(p===finish||(p===-1&&die!==launchRoll)) return null;
+  if(p===-1) return {to:0,effects:['launch']};
+  let to=p+die;const effects=[];
+  if(to>finish){to=2*finish-to;effects.push('bounce');}
+  // Slot-relative colour repeats every four squares. Special movement must
+  // remain on the shared track; neither jump nor flight enters a home lane.
+  if(to<trackLength&&to===flightFrom){to=flightTo;effects.push('flight');}
+  else if(to<trackLength&&to%4===0&&to+jump<trackLength){to+=jump;effects.push('jump');if(to===flightFrom){to=flightTo;effects.push('flight');}}
+  if(to===finish)effects.push('finish');
+  return {to,effects};
+}
+function choices(player,die){return player.planes.flatMap((p,i)=>{const target=destination(p,die);return target===null?[]:[{kind:'choose',plane:i,from:p,...target}];});}
+function strictMove(move,kind,keys){return move&&typeof move==='object'&&!Array.isArray(move)&&move.kind===kind&&Object.keys(move).length===keys.length&&keys.every(k=>Object.hasOwn(move,k));}
+// Inject only a trusted dice source for reproducible tests. A move never carries
+// dice values, destinations, capture results, or a caller-selected next turn.
+function createLudoRules({rollDie=()=>1+Math.floor(Math.random()*6)}={}){
+  if(typeof rollDie!=='function') fail('LUDO_INVALID_DICE_SOURCE');
+  return Object.freeze({gameId:'ludo',
+    init(room){const ids=players(room);return {schema:1,stage:'roll',die:null,players:ids.map((seatId,i)=>({seatId,slot:slots(ids.length)[i],planes:Array(planesPerSeat).fill(-1)})),last:null};},
+    step({state,room,actorSeatId,move}){
+      const ids=validate(state,room);
+      if(state.stage==='finished'||room.turnSeatId!==actorSeatId) fail('LUDO_NOT_YOUR_TURN');
+      const next=clone(state),actor=next.players.find(p=>p.seatId===actorSeatId),following=ids[(ids.indexOf(actorSeatId)+1)%ids.length];
+      if(state.stage==='roll'){
+        if(!strictMove(move,'roll',['kind'])) fail('LUDO_EXPECT_ROLL');
+        const die=rollDie();if(!integer(die,1,6)) fail('LUDO_INVALID_DIE');
+        const legal=choices(actor,die);next.last={kind:'roll',seatId:actorSeatId,die,skipped:legal.length===0};
+        next.die=legal.length?die:null;next.stage=legal.length?'choose':'roll';
+        return {state:next,nextSeatId:legal.length||die===launchRoll?actorSeatId:following};
+      }
+      if(!strictMove(move,'choose',['kind','plane'])||!integer(move.plane,0,planesPerSeat-1)) fail('LUDO_EXPECT_PLANE');
+      const selected=choices(actor,state.die).find(m=>m.plane===move.plane);if(!selected) fail('LUDO_ILLEGAL_PLANE');
+      actor.planes[move.plane]=selected.to;
+      const landed=square(actor.slot,selected.to),captures=[];
+      if(landed!==null)for(const opponent of next.players){if(opponent===actor)continue;opponent.planes.forEach((p,i)=>{if(square(opponent.slot,p)===landed){opponent.planes[i]=-1;captures.push({seatId:opponent.seatId,plane:i});}});}
+      next.last={kind:'move',seatId:actorSeatId,plane:move.plane,die:state.die,from:selected.from,to:selected.to,effects:selected.effects,captures};
+      next.die=null;
+      if(actor.planes.every(p=>p===finish)){next.stage='finished';return {state:next,result:{kind:'win',winnerSeatIds:[actorSeatId]}};}
+      next.stage='roll';return {state:next,nextSeatId:state.die===launchRoll?actorSeatId:following};
+    },
+    project({state,room,actorSeatId}){
+      const ids=validate(state,room);if(!ids.includes(actorSeatId)) fail('LUDO_UNKNOWN_SEAT');
+      const active=room.turnSeatId===actorSeatId&&state.stage!=='finished';
+      return {schema:1,stage:state.stage,die:state.die,players:state.players.map(p=>({seatId:p.seatId,slot:p.slot,planes:p.planes.map((progress,i)=>({plane:i,progress,zone:progress===-1?'hangar':progress===finish?'finished':progress>=trackLength?'home':'track',square:square(p.slot,progress)}))})),last:clone(state.last),legalMoves:!active?[]:state.stage==='roll'?[{kind:'roll'}]:choices(state.players.find(p=>p.seatId===actorSeatId),state.die)};
+    }
+  });
+}
+
+return {LUDO_RULES_V1,createLudoRules};
+})();
+modules["ludo-board.js"]=(()=>{
+const {LUDO_RULES_V1:rules}=modules["ludo-rules.js"];
+
+// Geometry for the provisional V1 cross board. Grid coordinates are 0-based.
+const rotate=(x,y,n)=>{for(let i=0;i<n;i++) [x,y]=[14-y,x];return {x,y};};
+const segment=[...Array.from({length:6},(_,x)=>[x,6]),...Array.from({length:6},(_,i)=>[6,5-i]),[7,0]];
+const hangar=[[2,2],[4,2],[2,4],[4,4]];
+const pos=(x,y)=>`${x}:${y}`;
+const slots=Array.from({length:4},(_,i)=>i);
+const cells=Object.freeze([
+  ...slots.flatMap(slot=>segment.map(([x,y],i)=>Object.freeze({...rotate(x,y,slot),zone:'track',square:slot*13+i,slot:(slot*13+i)%4}))),
+  ...slots.flatMap(slot=>Array.from({length:6},(_,i)=>Object.freeze({...rotate(i+1,7,slot),zone:i===5?'finished':'home',slot,progress:52+i}))),
+  ...slots.flatMap(slot=>hangar.map(([x,y],plane)=>Object.freeze({...rotate(x,y,slot),zone:'hangar',slot,plane})))
+]);
+const track=cells.slice(0,rules.trackLength);
+const LUDO_BOARD_CELLS=cells;
+const fail=()=>{throw new Error('LUDO_INVALID_BOARD_VIEW');};
+const range=(n,min,max)=>Number.isInteger(n)&&n>=min&&n<=max;
+const seatNames=['甲','乙','丙','丁'];
+
+// Presentation only: no move legality calculations, no mutable game state.
+function buildLudoBoard(view){
+  const g=view?.game;
+  if(view?.gameId!=='ludo'||!['playing','finished'].includes(view.phase)||g?.schema!==rules.schema||!Array.isArray(g.players)||!range(g.players.length,2,4)||!Array.isArray(g.legalMoves)||!Number.isSafeInteger(view.revision)) fail();
+  const ids=new Set(),used=new Set(),pieces=[];
+  for(const p of g.players){
+    if(typeof p?.seatId!=='string'||!p.seatId||ids.has(p.seatId)||!range(p.slot,0,3)||used.has(p.slot)||!Array.isArray(p.planes)||p.planes.length!==rules.planesPerSeat) fail();
+    ids.add(p.seatId);used.add(p.slot);
+    for(let i=0;i<p.planes.length;i++){
+      const v=p.planes[i];if(v?.plane!==i||!range(v.progress,-1,rules.finish)) fail();
+      const z=v.progress===-1?'hangar':v.progress===rules.finish?'finished':v.progress>=rules.trackLength?'home':'track';
+      const square=z==='track'?(p.slot*13+v.progress)%rules.trackLength:null;
+      if(v.zone!==z||v.square!==square) fail();
+      const cell=z==='track'?track[square]:cells.find(c=>c.slot===p.slot&&c.zone===z&&(z==='hangar'?c.plane===i:c.progress===v.progress));
+      if(!cell)fail();pieces.push({seatId:p.seatId,slot:p.slot,plane:i,progress:v.progress,zone:z,x:cell.x,y:cell.y,cellKey:pos(cell.x,cell.y)});
+    }
+  }
+  if(!ids.has(view.selfSeatId)|| (view.phase==='playing'&&!ids.has(view.turnSeatId))) fail();
+  const active=view.phase==='playing'&&view.selfSeatId===view.turnSeatId;
+  const moves=active?g.legalMoves:[];
+  const canRoll=moves.some(m=>m?.kind==='roll');
+  const choices=moves.filter(m=>m?.kind==='choose').map(m=>m.plane);
+  if(choices.some(i=>!range(i,0,3))||new Set(choices).size!==choices.length||moves.length!==choices.length+Number(canRoll)|| (canRoll&&choices.length)) fail();
+  const selectable=new Set(choices);
+  return {roomId:view.roomId,revision:view.revision,phase:view.phase,selfSeatId:view.selfSeatId,turnSeatId:view.turnSeatId,stage:g.stage,die:g.die??g.last?.die??null,last:g.last??null,winners:[...(view.result?.winnerSeatIds??[])],canRoll,choices,
+    cells,pieces:pieces.map(p=>({...p,selectable:p.seatId===view.selfSeatId&&selectable.has(p.plane)})),players:g.players.map(p=>({seatId:p.seatId,slot:p.slot,label:seatNames[p.slot],finished:p.planes.filter(v=>v.zone==='finished').length}))};
+}
+
+// Role proposals are restricted to the existing projected legal actions. The
+// deterministic local policy is a fallback, not an AI request or a new rule engine.
+function chooseLudoRoleMove(view,proposal){
+  const b=buildLudoBoard(view);
+  if(!b.selfSeatId.startsWith('role:')||b.selfSeatId!==b.turnSeatId||b.phase!=='playing')return null;
+  if(b.canRoll)return {kind:'roll'};
+  if(!b.choices.length)return null;
+  if(proposal&&typeof proposal==='object'&&!Array.isArray(proposal)&&Object.keys(proposal).length===2&&Object.hasOwn(proposal,'kind')&&Object.hasOwn(proposal,'plane')&&proposal.kind==='choose'&&b.choices.includes(proposal.plane)) return {kind:'choose',plane:proposal.plane};
+  const self=b.players.find(p=>p.seatId===b.selfSeatId);
+  const score=m=>{
+    const landing=m.to<rules.trackLength?(self.slot*13+m.to)%rules.trackLength:null;
+    const captures=landing===null?0:b.pieces.filter(p=>p.seatId!==self.seatId&&p.zone==='track'&&(p.slot*13+p.progress)%rules.trackLength===landing).length;
+    return (m.to===rules.finish?1000:0)+captures*200+(m.from===-1?70:0)+(m.to-m.from);
+  };
+  const ranked=view.game.legalMoves.filter(m=>m.kind==='choose'&&b.choices.includes(m.plane)).sort((a,c)=>score(c)-score(a)||a.plane-c.plane);
+  return {kind:'choose',plane:ranked[0].plane};
+}
+
+return {LUDO_BOARD_CELLS,buildLudoBoard,chooseLudoRoleMove};
+})();
+modules["room-engine.js"]=(()=>{
+// Trusted in-memory coordinator; no runtime authentication, storage or AI calls.
+const ROOM_SCHEMA = 2;
+const USER = 'user';
+const fail = code => { throw new Error(code); };
+const id = v => typeof v === 'string' && v.length > 0 && v.length <= 256 && v.trim() === v;
+const requireId = v => { if (!id(v)) fail('INVALID_ID'); return v; };
+const copy = v => JSON.parse(JSON.stringify(v));
+const policies = Object.freeze({
+  ludo: Object.freeze({min:2,max:4,observers:0,moderator:false,phased:false}),
+  gomoku: Object.freeze({min:2,max:2,observers:6,moderator:false,phased:false}),
+  turtle: Object.freeze({min:2,max:8,observers:0,moderator:true,phased:true}),
+  werewolf: Object.freeze({min:6,max:12,observers:0,moderator:false,phased:true,exact:Object.freeze([6,9,12])})
+});
+function gamePolicy(gameId) {
+  if (!Object.hasOwn(policies,gameId)) fail('UNKNOWN_GAME');
+  return copy(policies[gameId]);
+}
+function checkContext(ctx) {
+  if (!ctx || !id(ctx.accountId) || !id(ctx.sessionId) || !Array.isArray(ctx.roleIds) || !Array.from(ctx.roleIds).every(id)) fail('INVALID_SCOPE');
+}
+function authorize(room,ctx) {
+  checkContext(ctx);
+  if (!room || room.schema !== ROOM_SCHEMA || room.accountId !== ctx.accountId || room.sessionId !== ctx.sessionId) fail('SCOPE_MISMATCH');
+}
+function checkRoster(room,ctx) {
+  if (room.seats.some(s=>s.kind==='role'&&!ctx.roleIds.includes(s.roleId))) fail('ROLE_UNAVAILABLE');
+}
+const mode = s => s.mode;
+const participants = r => r.seats.filter(s=>mode(s)!=='observer');
+const players = r => r.seats.filter(s=>mode(s)==='player');
+function checkCapacity(r) {
+  if (participants(r).length>r.maxSeats || r.seats.filter(s=>mode(s)==='observer').length>r.observerLimit) fail('ROOM_FULL');
+}
+// The generic constructor is for trusted rule adapters and tests only.
+function createRoom(ctx,spec) {
+  checkContext(ctx);
+  const {roomId,gameId,minSeats,maxSeats}=spec||{};
+  requireId(roomId); requireId(gameId);
+  const p=Object.hasOwn(policies,gameId)?gamePolicy(gameId):null;
+  const min=p?p.min:minSeats, max=p?p.max:maxSeats;
+  if (!Number.isInteger(min)||!Number.isInteger(max)||min<2||min>max||max>12) fail('INVALID_CAPACITY');
+  return {schema:ROOM_SCHEMA,accountId:ctx.accountId,sessionId:ctx.sessionId,roomId,gameId,minSeats:min,maxSeats:max,observerLimit:p?p.observers:0,revision:0,phase:'lobby',seats:[{seatId:USER,kind:'user',mode:'player'}],turnSeatId:null};
+}
+function createGameRoom(ctx,spec) {
+  gamePolicy(spec?.gameId);
+  return createRoom(ctx,spec);
+}
+function roomToken(room,ctx,seatId) {
+  authorize(room,ctx);
+  if(seatId!==USER) checkRoster(room,ctx);
+  if(!room.seats.some(s=>s.seatId===seatId)) fail('UNKNOWN_SEAT');
+  return {accountId:room.accountId,sessionId:room.sessionId,roomId:room.roomId,revision:room.revision,seatId};
+}
+// actorSeatId is trusted dispatch metadata. 'advance' must follow a validated game move.
+function reduceRoom(room,ctx,actorSeatId,token,action) {
+  authorize(room,ctx);
+  if(!token||token.accountId!==room.accountId||token.sessionId!==room.sessionId||token.roomId!==room.roomId||token.revision!==room.revision||token.seatId!==actorSeatId) fail('STALE_ACTION');
+  if(!room.seats.some(s=>s.seatId===actorSeatId)) fail('UNKNOWN_SEAT');
+  if(!action||typeof action.type!=='string') fail('INVALID_ACTION');
+  const next=copy(room), p=Object.hasOwn(policies,room.gameId)?policies[room.gameId]:null;
+  const host=()=>{if(actorSeatId!==USER) fail('HOST_ONLY');};
+  const lobby=()=>{host();if(room.phase!=='lobby') fail('NOT_IN_LOBBY');};
+  const getSeat=seatId=>{const s=next.seats.find(x=>x.seatId===seatId);if(!s) fail('UNKNOWN_SEAT');return s;};
+  switch(action.type){
+    case 'invite': {
+      lobby();checkRoster(room,ctx);
+      const roleId=requireId(action.roleId), requested=action.mode??'player';
+      if(!ctx.roleIds.includes(roleId)) fail('ROLE_UNAVAILABLE');
+      if(room.seats.some(s=>s.kind==='role'&&s.roleId===roleId)) fail('DUPLICATE_ROLE');
+      if(requested!=='player'&&(requested!=='observer'||!room.observerLimit)) fail('INVALID_SEAT_MODE');
+      next.seats.push({seatId:'role:'+roleId,kind:'role',roleId,mode:requested});checkCapacity(next);break;
+    }
+    case 'remove': {
+      lobby();const i=room.seats.findIndex(s=>s.kind==='role'&&s.seatId===action.seatId);
+      if(i<0) fail('UNKNOWN_ROLE_SEAT');next.seats.splice(i,1);break;
+    }
+    case 'reorder': {
+      lobby();checkRoster(room,ctx);const order=action.seatIds;
+      if(!Array.isArray(order)||order.length!==room.seats.length||new Set(order).size!==order.length||Array.from(order).some(s=>!room.seats.some(x=>x.seatId===s))) fail('INVALID_ORDER');
+      next.seats=order.map(s=>getSeat(s));break;
+    }
+    case 'swapSeats': {
+      lobby();checkRoster(room,ctx);if(!room.observerLimit) fail('OBSERVERS_UNSUPPORTED');
+      const a=getSeat(action.playerSeatId), b=getSeat(action.observerSeatId);
+      if(mode(a)!=='player'||mode(b)!=='observer') fail('INVALID_SWAP');
+      a.mode='observer';b.mode='player';break;
+    }
+    case 'setModerator': {
+      lobby();checkRoster(room,ctx);if(!p?.moderator) fail('MODERATOR_UNSUPPORTED');
+      const target=getSeat(action.seatId);for(const s of next.seats) if(mode(s)==='moderator') s.mode='player';
+      target.mode='moderator';break;
+    }
+    case 'start': {
+      lobby();checkRoster(room,ctx);const n=participants(room).length;
+      if(n<room.minSeats) fail('NOT_ENOUGH_PLAYERS');
+      if(p?.exact&&!p.exact.includes(n)) fail('INVALID_PLAYER_COUNT');
+      if(p?.moderator&&room.seats.filter(s=>mode(s)==='moderator').length!==1) fail('MODERATOR_REQUIRED');
+      if(!players(room).length) fail('NOT_ENOUGH_PLAYERS');
+      checkCapacity(room);next.phase='playing';next.turnSeatId=p?.phased?null:players(room)[0].seatId;break;
+    }
+    case 'advance': {
+      checkRoster(room,ctx);if(p?.phased) fail('PHASE_ENGINE_REQUIRED');
+      if(room.phase!=='playing'||room.turnSeatId!==actorSeatId) fail('NOT_YOUR_TURN');
+      const order=players(room),i=order.findIndex(s=>s.seatId===actorSeatId);if(i<0) fail('NOT_YOUR_TURN');
+      next.turnSeatId=order[(i+1)%order.length].seatId;break;
+    }
+    case 'close': host();if(room.phase==='closed') fail('ROOM_CLOSED');next.phase='closed';next.turnSeatId=null;break;
+    default: fail('UNKNOWN_ACTION');
+  }
+  next.revision+=1;return next;
+}
+function seatView(room,ctx,seatId) {
+  authorize(room,ctx);checkRoster(room,ctx);
+  if(!room.seats.some(s=>s.seatId===seatId)) fail('UNKNOWN_SEAT');
+  return {schema:ROOM_SCHEMA,roomId:room.roomId,gameId:room.gameId,revision:room.revision,phase:room.phase,turnSeatId:room.turnSeatId,selfSeatId:seatId,seats:room.seats.map(s=>s.kind==='user'?{seatId:s.seatId,kind:s.kind,mode:s.mode}:{seatId:s.seatId,kind:s.kind,roleId:s.roleId,mode:s.mode})};
+}
+
+return {ROOM_SCHEMA,gamePolicy,createRoom,createGameRoom,roomToken,reduceRoom,seatView};
+})();
+modules["room-dispatcher.js"]=(()=>{
+const {createGameRoom, gamePolicy, reduceRoom, roomToken, seatView}=modules["room-engine.js"];
+
+// Trusted, synchronous, single-room coordinator. The future runtime adapter must
+// verify session/actor identity and use one authoritative instance per room.
+const clone = value => JSON.parse(JSON.stringify(value));
+const fail = code => { throw new Error(code); };
+const lobbyActions = new Set(['invite','remove','reorder','swapSeats','setModerator','start','close']);
+const terminal = r => r.phase === 'finished' || r.phase === 'closed';
+function sameToken(a,b) {
+  return a && ['accountId','sessionId','roomId','revision','seatId'].every(k=>a[k]===b[k]);
+}
+function jsonState(value) {
+  if (value === undefined || (value && typeof value.then === 'function')) fail('INVALID_RULE_STATE');
+  return clone(value);
+}
+function validateResult(result, room) {
+  if (!result || !['win','draw'].includes(result.kind) || !Array.isArray(result.winnerSeatIds)) fail('INVALID_RESULT');
+  const winners = result.winnerSeatIds;
+  if (new Set(winners).size !== winners.length || (result.kind==='win' ? !winners.length : winners.length!==0) || Array.from(winners).some(id=>!room.seats.some(s=>s.seatId===id&&s.mode==='player'))) fail('INVALID_RESULT');
+  return {kind:result.kind,winnerSeatIds:[...winners]};
+}
+function createRoomDispatcher({getContext, spec, rules}) {
+  if (typeof getContext!=='function' || !rules || typeof rules.init!=='function' || typeof rules.step!=='function' || rules.gameId!==spec?.gameId) fail('INVALID_RULE_ADAPTER');
+  const policy=gamePolicy(spec.gameId);
+  if(rules.project!==undefined && typeof rules.project!=='function') fail('INVALID_RULE_ADAPTER');
+  const init=rules.init.bind(rules), step=rules.step.bind(rules), project=rules.project?.bind(rules);
+  let room=createGameRoom(getContext(),spec), state=null, result=null, busy=false;
+  function guarded(fn) {
+    if(busy) fail('DISPATCH_BUSY');
+    busy=true;try{return fn();}finally{busy=false;}
+  }
+  function check(actor,token,ctx) {
+    const expected=roomToken(room,ctx,actor);
+    if(!sameToken(token,expected)) fail('STALE_ACTION');
+  }
+  function baseView(actor,ctx,r=room,outcome=result) {
+    const v=seatView(r,ctx,actor);
+    return {...v,result:outcome===null?null:clone(outcome)};
+  }
+  // Trusted game rules must explicitly allowlist each seat's visible state.
+  // No projector means no board/hidden state is exposed; never return raw state.
+  function view(actor,ctx,r=room,outcome=result,snapshot=state) {
+    const v=baseView(actor,ctx,r,outcome);
+    if(!project || !['playing','finished'].includes(r.phase)) return v;
+    const visible=project({state:clone(snapshot),room:clone(v),actorSeatId:actor});
+    if(!visible || typeof visible!=='object' || Array.isArray(visible) || typeof visible.then==='function') fail('INVALID_RULE_PROJECTION');
+    const detached=clone(visible);
+    if(!detached || typeof detached!=='object' || Array.isArray(detached)) fail('INVALID_RULE_PROJECTION');
+    // The projector is trusted synchronous code, but its execution must not
+    // bypass a context/roster change before the result is returned.
+    seatView(r,getContext(),actor);
+    return {...v,game:detached};
+  }
+  // Re-check the authoritative context just before publishing any transition.
+  function commit(next,nextState,nextResult,actor,token,cleanup=false) {
+    const ctx=getContext();check(actor,token,ctx);
+    // A host must be able to remove deleted roles or close even with an invalid roster.
+    // Do not expose any unverified roster details through this recovery response.
+    const projected=cleanup && next.seats.some(s=>s.kind==='role'&&!ctx.roleIds.includes(s.roleId))
+      ? {roomId:next.roomId,revision:next.revision,phase:next.phase,recoveryRequired:next.phase!=='closed'}
+      : view(actor,ctx,next,nextResult,nextState);
+    room=next;state=nextState;result=nextResult;return projected;
+  }
+  return Object.freeze({
+    view(actor){return guarded(()=>view(actor,getContext()));},
+    token(actor){return guarded(()=>{if(terminal(room)) fail('ROOM_TERMINAL');return roomToken(room,getContext(),actor);});},
+    dispatch(actor,token,action){return guarded(()=>{
+      const ctx=getContext();check(actor,token,ctx);
+      if(terminal(room)) fail('ROOM_TERMINAL');
+      if(!action || typeof action.type!=='string') fail('INVALID_ACTION');
+      if(lobbyActions.has(action.type)) {
+        const next=reduceRoom(room,ctx,actor,token,action);
+        const nextState=action.type==='start'?jsonState(init(baseView(actor,ctx,next,null))):action.type==='close'?null:state;
+        return commit(next,nextState,result,actor,token,action.type==='remove'||action.type==='close');
+      }
+      if(action.type!=='move') fail('UNKNOWN_ACTION');
+      if(room.phase!=='playing') fail('NOT_PLAYING');
+      const actorView=baseView(actor,ctx), seat=actorView.seats.find(s=>s.seatId===actor);
+      if(seat.mode==='observer') fail('OBSERVER_CANNOT_MOVE');
+      if(!policy.phased && room.turnSeatId!==actor) fail('NOT_YOUR_TURN');
+      // Rules are trusted local code. They must check phase/legality before returning.
+      // AI output is only a move payload, never a room-state or result replacement.
+      const transition=step({state:clone(state),room:actorView,actorSeatId:actor,move:jsonState(action.move)});
+      if(!transition || typeof transition.then==='function' || !Object.hasOwn(transition,'state')) fail('INVALID_RULE_TRANSITION');
+      const nextState=jsonState(transition.state);
+      let nextResult=null, nextTurn=null, phase='playing';
+      if(transition.result!=null) {
+        nextResult=validateResult(transition.result,room);phase='finished';
+        if(transition.nextSeatId!=null) fail('INVALID_NEXT_SEAT');
+      } else {
+        nextTurn=transition.nextSeatId;
+        if(nextTurn===null && !policy.phased) fail('INVALID_NEXT_SEAT');
+        if(nextTurn!==null && !room.seats.some(s=>s.seatId===nextTurn&&s.mode==='player')) fail('INVALID_NEXT_SEAT');
+      }
+      const next={...room,phase,turnSeatId:nextTurn,revision:room.revision+1};
+      return commit(next,nextState,nextResult,actor,token);
+    });}
+  });
+}
+
+return {createRoomDispatcher};
+})();
+modules["room-lifetime.js"]=(()=>{
+// Internal page-runtime boundary. The context provider and dispatcher factory
+// must be trusted local adapters. This module is not an authentication source.
+const fail = code => { throw new Error(code); };
+const validId = v => typeof v === 'string' && v.length > 0 && v.length <= 256 && v.trim() === v;
+function readContext(getContext) {
+  const c = getContext();
+  if (!c || !validId(c.accountId) || !validId(c.sessionId) || !Array.isArray(c.roleIds) || !Array.from(c.roleIds).every(validId)) fail('UNVERIFIED_CONTEXT');
+  return {accountId:c.accountId,sessionId:c.sessionId,roleIds:[...new Set(c.roleIds)]};
+}
+function createRoomLifetime({getContext,createDispatcher,spec,rules}) {
+  if (typeof getContext !== 'function' || typeof createDispatcher !== 'function') fail('INVALID_RUNTIME_ADAPTER');
+  const initial = readContext(getContext);
+  const accountId = initial.accountId, sessionId = initial.sessionId;
+  let disposed = false, dispatcher = null;
+  function dispose() { disposed = true; dispatcher = null; }
+  function scopedContext() {
+    if (disposed) fail('ROOM_DISPOSED');
+    let c;
+    try { c = readContext(getContext); } catch { dispose(); fail('UNVERIFIED_CONTEXT'); }
+    if (c.accountId !== accountId || c.sessionId !== sessionId) { dispose(); fail('SCOPE_CHANGED'); }
+    return c;
+  }
+  dispatcher = createDispatcher({getContext:scopedContext,spec,rules});
+  scopedContext();
+  function current() { scopedContext(); if (!dispatcher) fail('ROOM_DISPOSED'); return dispatcher; }
+  function prepare(actor,roleId) {
+    const d = current();
+    if (roleId !== null && !scopedContext().roleIds.includes(roleId)) fail('ROLE_UNAVAILABLE');
+    const token = d.token(actor);
+    let consumed = false;
+    return payload => {
+      const active = current();
+      if (consumed) fail('CALLBACK_CONSUMED');
+      consumed = true;
+      if (roleId !== null && !scopedContext().roleIds.includes(roleId)) fail('ROLE_UNAVAILABLE');
+      // Role output is a move payload only; it cannot select an actor or action.
+      return active.dispatch(actor,token,roleId === null ? payload : {type:'move',move:payload});
+    };
+  }
+  // Trusted discussion scheduler: read a seat projection without a move token.
+  function viewRole(roleId) {
+    if (!validId(roleId)) fail('INVALID_ROLE_ID');
+    const c = scopedContext();
+    if (!c.roleIds.includes(roleId)) fail('ROLE_UNAVAILABLE');
+    const v = current().view('role:'+roleId);
+    if (!['playing','finished'].includes(v.phase)) fail('ROLE_CANNOT_VIEW');
+    return v;
+  }
+  // Trusted scheduler only: pair a seat-specific view with the capability
+  // for that exact turn, before any asynchronous role generation starts.
+  function prepareRoleTurn(roleId) {
+    if (!validId(roleId)) fail('INVALID_ROLE_ID');
+    const c = scopedContext();
+    if (!c.roleIds.includes(roleId)) fail('ROLE_UNAVAILABLE');
+    const actor = 'role:'+roleId, v = current().view(actor);
+    const seat = v.seats.find(s=>s.seatId===actor && s.kind==='role' && s.roleId===roleId);
+    if (v.phase!=='playing' || !seat || seat.mode==='observer') fail('ROLE_CANNOT_MOVE');
+    // Sequential games must not schedule a role request before its turn.
+    if (['ludo','gomoku'].includes(v.gameId) && v.turnSeatId!==actor) fail('NOT_YOUR_TURN');
+    return Object.freeze({view:v,commit:prepare(actor,roleId)});
+  }
+  return Object.freeze({
+    viewUser: () => current().view('user'),
+    viewRole,
+    prepareUserAction: () => prepare('user',null),
+    prepareRoleTurn,
+    prepareRoleMove: roleId => prepareRoleTurn(roleId).commit,
+    dispose
+  });
+}
+
+return {createRoomLifetime};
+})();
+modules["room-chat-log.js"]=(()=>{
+// Pure in-memory game conversation log. Only a trusted future room adapter
+// may provide seats, sender metadata and the game's authorized audience.
+// No authentication, AI requests, persistence or daily-chat integration here.
+const ROOM_CHAT_SCHEMA = 1;
+const fail=code=>{throw new Error(code);};
+const validId=v=>typeof v==='string'&&v.length>0&&v.length<=256&&v.trim()===v;
+const limit=(v,max)=>Number.isSafeInteger(v)&&v>0&&v<=max;
+
+function createRoomChatLog({roomId,seats,maxMessages=4096,maxTextLength=4000}={}) {
+  if(!validId(roomId)||!Array.isArray(seats)||!seats.length||seats.length>12||
+     !limit(maxMessages,10000)||!limit(maxTextLength,16000)) fail('INVALID_CHAT_SPEC');
+  const members=new Map();
+  for(const seat of seats) {
+    if(!seat||!validId(seat.seatId)||members.has(seat.seatId)) fail('INVALID_CHAT_SEAT');
+    let sender;
+    if(seat.kind==='user'&&seat.seatId==='user'&&seat.roleId===undefined) sender={seatId:'user',kind:'user'};
+    else if(seat.kind==='role'&&validId(seat.roleId)&&seat.seatId==='role:'+seat.roleId) sender={seatId:seat.seatId,kind:'role',roleId:seat.roleId};
+    else fail('INVALID_CHAT_SEAT');
+    members.set(seat.seatId,Object.freeze(sender));
+  }
+  if(!members.has('user')) fail('INVALID_CHAT_SEAT');
+  const entries=[], byId=new Map();
+  let closed=false;
+  function member(seatId) {
+    if(closed) fail('CHAT_CLOSED');
+    if(!members.has(seatId)) fail('CHAT_UNKNOWN_SEAT');
+    return members.get(seatId);
+  }
+  function audience(ids,senderSeatId) {
+    // Explicit allowlist only: the rule adapter, not the role output, chooses it.
+    if(!Array.isArray(ids)||!ids.length||ids.length>members.size||!Array.from(ids).every(id=>members.has(id))||new Set(ids).size!==ids.length||!ids.includes(senderSeatId)) fail('INVALID_CHAT_AUDIENCE');
+    return new Set(ids);
+  }
+  // Read-only admission check for a new generated message. No reservation:
+  // user messages may still arrive before generation finishes, so append
+  // must independently enforce all existing checks.
+  function assertAppendable({senderSeatId,messageId,audienceSeatIds}={}) {
+    member(senderSeatId);
+    if(!validId(messageId)) fail('INVALID_CHAT_MESSAGE');
+    audience(audienceSeatIds,senderSeatId);
+    if(byId.has(messageId)) fail('CHAT_MESSAGE_ID_CONFLICT');
+    if(entries.length>=maxMessages) fail('CHAT_CAPACITY_REACHED');
+  }
+  function append({senderSeatId,messageId,audienceSeatIds,time}={},text) {
+    const sender=member(senderSeatId);
+    if(!validId(messageId)||!Number.isSafeInteger(time)||time<0||typeof text!=='string'||!text.trim()||text.length>maxTextLength) fail('INVALID_CHAT_MESSAGE');
+    const readers=audience(audienceSeatIds,senderSeatId);
+    const prior=byId.get(messageId);
+    if(prior) {
+      if(prior.message.sender.seatId!==senderSeatId||prior.message.text!==text||prior.readers.size!==readers.size||[...readers].some(id=>!prior.readers.has(id))) fail('CHAT_MESSAGE_ID_CONFLICT');
+      return Object.freeze({message:prior.message,duplicate:true});
+    }
+    // Fail visibly instead of deleting history. Future persistence is a separate gate.
+    if(entries.length>=maxMessages) fail('CHAT_CAPACITY_REACHED');
+    const message=Object.freeze({schema:ROOM_CHAT_SCHEMA,roomId,id:messageId,sender,text,time});
+    const entry={message,readers};entries.push(entry);byId.set(messageId,entry);
+    return Object.freeze({message,duplicate:false});
+  }
+  function read(seatId,{limit:count=maxMessages}={}) {
+    member(seatId);
+    if(!limit(count,maxMessages)) fail('INVALID_CHAT_LIMIT');
+    // Project only the reader's messages, in authoritative append order.
+    // No global sequence, recipient list, total count or hidden-message gaps.
+    return entries.filter(entry=>entry.readers.has(seatId)).slice(-count).map(entry=>entry.message);
+  }
+  return Object.freeze({roomId,maxMessages,assertAppendable,append,read,close(){closed=true;}});
+}
+
+return {ROOM_CHAT_SCHEMA,createRoomChatLog};
+})();
+modules["ludo-turn-driver.js"]=(()=>{
+const {chooseLudoRoleMove}=modules["ludo-board.js"];
+
+// A local, bounded role-turn driver over the existing verified room adapter.
+// No network model, new account, storage, dice source or authority of its own.
+function createLudoTurnDriver({session,onView=()=>{},pace=()=>{},maxActions=32}={}){
+  const fail=code=>{throw Error(code);};
+  if(!session||typeof session.viewUser!=='function'||typeof session.prepareRoleTurn!=='function'||typeof onView!=='function'||typeof pace!=='function'||!Number.isInteger(maxActions)||maxActions<1||maxActions>128)fail('LUDO_INVALID_DRIVER');
+  let running=false,disposed=false,epoch=0;
+  const check=stamp=>{if(disposed||stamp!==epoch)fail('LUDO_DRIVER_STOPPED');};
+  async function runUntilUser(){
+    if(disposed)fail('LUDO_DRIVER_DISPOSED');
+    if(running)fail('LUDO_DRIVER_BUSY');
+    running=true;const stamp=epoch;let actions=0;
+    try{
+      let view=await session.viewUser();check(stamp);
+      const roomId=view.roomId;
+      function validate(v){
+        if(v?.gameId!=='ludo'||v.roomId!==roomId||v.selfSeatId!=='user'||!Number.isSafeInteger(v.revision))fail('LUDO_STALE_VIEW');
+      }
+      validate(view);await onView(view);check(stamp);
+      while(view.phase==='playing'&&view.turnSeatId!=='user'&&actions<maxActions){
+        const role=view.seats.find(s=>s.seatId===view.turnSeatId&&s.kind==='role'&&s.mode==='player');
+        if(!role||role.seatId!=='role:'+role.roleId)fail('LUDO_INVALID_ROLE_TURN');
+        await pace();check(stamp);
+        const turn=await session.prepareRoleTurn(role.roleId);check(stamp);
+        const own=turn?.view;
+        if(own?.roomId!==roomId||own.gameId!=='ludo'||own.revision!==view.revision||own.selfSeatId!==role.seatId||own.turnSeatId!==role.seatId||typeof turn.commit!=='function')fail('LUDO_STALE_VIEW');
+        const move=chooseLudoRoleMove(own);
+        if(!move)fail('LUDO_NO_ROLE_MOVE');
+        check(stamp);
+        // The session rechecks scope/roster and the turn token at commit.
+        // A commit already in progress is not rolled back by stop().
+        await turn.commit(move);actions++;check(stamp);
+        const next=await session.viewUser();check(stamp);validate(next);
+        if(next.revision!==view.revision+1)fail('LUDO_STALE_VIEW');
+        view=next;await onView(view);check(stamp);
+      }
+      return {actions,status:view.phase!=='playing'?view.phase:view.turnSeatId==='user'?'user':'yield'};
+    }finally{running=false;}
+  }
+  return Object.freeze({runUntilUser,stop(){epoch++;},dispose(){disposed=true;epoch++;},status:()=>disposed?'disposed':running?'running':'idle'});
+}
+
+return {createLudoTurnDriver};
+})();
+modules["room-speech-queue.js"]=(()=>{
+// Pure scheduling state for one room's discussion. The trusted future adapter
+// supplies eligible role seats and job IDs; no model, storage or board calls.
+const fail=code=>{throw new Error(code);};
+const id=v=>typeof v==='string'&&v.length>0&&v.length<=256&&v.trim()===v;
+const roleSeat=v=>id(v)&&v.startsWith('role:')&&id(v.slice(5));
+const limit=(v,max)=>Number.isSafeInteger(v)&&v>0&&v<=max;
+
+function createRoomSpeechQueue({roleSeatIds,maxPerRound=6,maxPerRoom=128}={}) {
+  if(!Array.isArray(roleSeatIds)||roleSeatIds.length>12||!Array.from(roleSeatIds).every(roleSeat)||
+     new Set(roleSeatIds).size!==roleSeatIds.length||!limit(maxPerRound,32)||
+     !limit(maxPerRoom,4096)||maxPerRoom<maxPerRound) fail('INVALID_SPEECH_SPEC');
+  const roles=new Set(roleSeatIds),seen=new Set();
+  let pending=[],active=null,closed=false,stopping=false;
+  function open(){if(closed) fail('SPEECH_CLOSED');if(stopping) fail('SPEECH_STOPPING');}
+  function beginRound(jobs) {
+    open();
+    if(active||pending.length) fail('SPEECH_ROUND_BUSY');
+    if(!Array.isArray(jobs)||!jobs.length||jobs.length>maxPerRound) fail('INVALID_SPEECH_ROUND');
+    const next=[],ids=new Set();
+    for(const job of jobs) {
+      const jobId=job?.jobId,seatId=job?.seatId;
+      if(!id(jobId)||!roles.has(seatId)) fail('INVALID_SPEECH_JOB');
+      if(seen.has(jobId)||ids.has(jobId)) fail('DUPLICATE_SPEECH_JOB');
+      ids.add(jobId);next.push({jobId,seatId});
+    }
+    // Reserve a bounded number of distinct jobs, including cancelled jobs.
+    // This is a local scheduling limit, not a provider or monetary charge.
+    if(seen.size+next.length>maxPerRoom) fail('SPEECH_BUDGET_EXHAUSTED');
+    for(const jobId of ids) seen.add(jobId);
+    pending=next;
+  }
+  function take() {
+    open();
+    if(active||!pending.length) return null;
+    const controller=new AbortController(),job=pending.shift();
+    const ticket=Object.freeze({...job,signal:controller.signal});
+    active={ticket,controller};return ticket;
+  }
+  // Only the original in-flight ticket may settle. The caller must verify
+  // current account, room and audience before synchronously publishing output.
+  function settle(ticket) {
+    if(closed||stopping||!active||active.ticket!==ticket) return false;
+    active=null;return true;
+  }
+  function stop() {
+    if(stopping) return;
+    stopping=true;
+    const old=active;active=null;pending=[];
+    try {old?.controller.abort();} finally {stopping=false;}
+  }
+  return Object.freeze({beginRound,take,settle,stop,
+    close(){closed=true;stop();},
+    status:()=>Object.freeze({closed,active:active!==null,queued:pending.length,remaining:maxPerRoom-seen.size})
+  });
+}
+
+return {createRoomSpeechQueue};
+})();
+modules["room-speech-context.js"]=(()=>{
+// Pure prompt-data preparation, not authentication or model invocation.
+// A trusted caller must pair the live room instance's log with that same
+// instance's rule-projected seat view. Game-specific rules own disclosure.
+const fail=code=>{throw new Error(code);};
+const id=v=>typeof v==='string'&&v.length>0&&v.length<=256&&v.trim()===v;
+const clone=v=>JSON.parse(JSON.stringify(v));
+const bounded=(v,max)=>Number.isSafeInteger(v)&&v>0&&v<=max;
+
+function buildRoomSpeechContext({roleSeatId,view,chatLog,historyLimit=24,historyChars=12000}={}) {
+  if(!id(roleSeatId)||!roleSeatId.startsWith('role:')||!id(roleSeatId.slice(5))||
+     !bounded(historyLimit,100)||!bounded(historyChars,64000)) fail('INVALID_SPEECH_CONTEXT');
+  if(!view||!id(view.roomId)||!id(view.gameId)||view.selfSeatId!==roleSeatId||
+     !Number.isSafeInteger(view.revision)||view.revision<0||!['playing','finished'].includes(view.phase)||
+     !Array.isArray(view.seats)||view.seats.length<2||view.seats.length>12) fail('INVALID_SPEECH_VIEW');
+  if(!chatLog||chatLog.roomId!==view.roomId||typeof chatLog.read!=='function'||!bounded(chatLog.maxMessages,10000)) fail('SPEECH_ROOM_MISMATCH');
+  const seen=new Set();
+  const seats=Array.from(view.seats,s=>{
+    if(!s||!id(s.seatId)||seen.has(s.seatId)||!['player','observer','moderator'].includes(s.mode)) fail('INVALID_SPEECH_VIEW');
+    seen.add(s.seatId);
+    if(s.kind==='user'&&s.seatId==='user') return {seatId:'user',kind:'user',mode:s.mode};
+    if(s.kind==='role'&&id(s.roleId)&&s.seatId==='role:'+s.roleId) return {seatId:s.seatId,kind:'role',roleId:s.roleId,mode:s.mode};
+    fail('INVALID_SPEECH_VIEW');
+  });
+  if(!seen.has('user')||!seen.has(roleSeatId)|| (view.turnSeatId!==null&&!seen.has(view.turnSeatId))) fail('INVALID_SPEECH_VIEW');
+  // Only the existing per-seat log reader; never read user history as fallback.
+  const visible=chatLog.read(roleSeatId,{limit:Math.min(historyLimit,chatLog.maxMessages)});
+  const messages=[];let chars=0;
+  for(let i=visible.length-1;i>=0;i--) {
+    const m=visible[i],sender=seats.find(s=>s.seatId===m?.sender?.seatId);
+    if(!m||m.roomId!==view.roomId||!sender||m.sender.kind!==sender.kind||m.sender.roleId!==sender.roleId||!id(m.id)||typeof m.text!=='string') fail('INVALID_SPEECH_HISTORY');
+    if(chars+m.text.length>historyChars) break;
+    chars+=m.text.length;
+    messages.unshift({id:m.id,senderSeatId:sender.seatId,kind:sender.kind,text:m.text});
+  }
+  const context={roomId:view.roomId,gameId:view.gameId,phase:view.phase,revision:view.revision,selfSeatId:roleSeatId,turnSeatId:view.turnSeatId,seats,messages};
+  if(Object.hasOwn(view,'game')) {
+    if(!view.game||typeof view.game!=='object'||Array.isArray(view.game)) fail('INVALID_SPEECH_VIEW');
+    context.game=clone(view.game);
+  }
+  return context;
+}
+
+return {buildRoomSpeechContext};
+})();
+modules["room-speech-runner.js"]=(()=>{
+const {createRoomSpeechQueue}=modules["room-speech-queue.js"];
+
+// Unwired orchestration for one live room. All callbacks are trusted adapters.
+// prepare and authorize must check current scope, seat, phase and disclosure.
+// validateCommit must synchronously re-check the live permission after all awaits.
+// generate receives only the prepared request and cancellation signal.
+const fail=code=>{throw new Error(code);};
+function audience(value,seatId) {
+  if(!Array.isArray(value)||!value.length||value.length>12||
+     !Array.from(value).every(v=>typeof v==='string'&&v.length>0)||
+     new Set(value).size!==value.length||!value.includes(seatId)) fail('INVALID_SPEECH_AUDIENCE');
+  return [...value];
+}
+function createRoomSpeechRunner({chatLog,roleSeatIds,prepare,generate,authorize,validateCommit,timeoutMs=30000,maxPerRound=6,maxPerRoom=128,now=Date.now}={}) {
+  if(!chatLog||typeof chatLog.append!=='function'||typeof chatLog.assertAppendable!=='function'||typeof prepare!=='function'||typeof generate!=='function'||typeof authorize!=='function'||typeof validateCommit!=='function'||typeof now!=='function'||!Number.isSafeInteger(timeoutMs)||timeoutMs<1||timeoutMs>120000) fail('INVALID_SPEECH_RUNNER');
+  const queue=createRoomSpeechQueue({roleSeatIds,maxPerRound,maxPerRoom});
+  let running=false;
+  function check(ticket){if(ticket.signal.aborted) fail('SPEECH_CANCELLED');}
+  async function execute(ticket) {
+    const {signal}=ticket;
+    let timer,abort;
+    const deadline=new Promise((_,reject)=>{
+      abort=()=>reject(new Error('SPEECH_CANCELLED'));
+      signal.addEventListener('abort',abort,{once:true});
+      timer=setTimeout(()=>{reject(new Error('SPEECH_TIMEOUT'));queue.stop();},timeoutMs);
+    });
+    async function work() {
+      check(ticket);
+      let prepared;
+      try {prepared=await prepare(ticket);} catch {fail('SPEECH_PREPARE_FAILED');}
+      check(ticket);
+      if(!prepared||!Object.hasOwn(prepared,'request')) fail('INVALID_SPEECH_REQUEST');
+      const initial=audience(prepared.audienceSeatIds,ticket.seatId);
+      // Avoid a provider call when the trusted log already knows this message
+      // cannot be accepted. This is not a reservation or a monetary budget.
+      chatLog.assertAppendable({senderSeatId:ticket.seatId,messageId:ticket.jobId,audienceSeatIds:initial});
+      check(ticket);
+      let text;
+      try {text=await generate(prepared.request,{signal});} catch {fail('SPEECH_GENERATION_FAILED');}
+      check(ticket);
+      if(typeof text!=='string'||!text.trim()||text.length>16000) fail('INVALID_SPEECH_REPLY');
+      let allowed;
+      try {allowed=await authorize(ticket,{text,audienceSeatIds:[...initial]});} catch {fail('SPEECH_AUTHORIZATION_FAILED');}
+      check(ticket);
+      const final=audience(allowed,ticket.seatId);
+      if(final.length!==initial.length||final.some(id=>!initial.includes(id))) fail('SPEECH_AUDIENCE_CHANGED');
+      return {text,final};
+    }
+    try {return await Promise.race([work(),deadline]);}
+    finally {clearTimeout(timer);signal.removeEventListener('abort',abort);}
+  }
+  async function runRound(jobs,{signal}={}) {
+    if(running) fail('SPEECH_ROUND_BUSY');
+    if(signal!==undefined&&(!(signal instanceof AbortSignal))) fail('INVALID_SPEECH_SIGNAL');
+    if(signal?.aborted) fail('SPEECH_CANCELLED');
+    queue.beginRound(jobs);running=true;
+    const onAbort=()=>queue.stop();
+    signal?.addEventListener('abort',onAbort,{once:true});
+    let committed=0;
+    try {
+      if(signal?.aborted) fail('SPEECH_CANCELLED');
+      for(let ticket;(ticket=queue.take());) {
+        const {text,final}=await execute(ticket);
+        const time=now();
+        // No await between final permission check, settlement and append. The
+        // caller's synchronous guard must not return an async approval or
+        // mutate the authorized audience. Abort still wins during the guard.
+        check(ticket);
+        let valid;
+        try {
+          valid=validateCommit(ticket,Object.freeze({text,audienceSeatIds:Object.freeze([...final])}));
+          if(valid&&typeof valid.then==='function') Promise.resolve(valid).catch(()=>{});
+        } catch {fail('SPEECH_COMMIT_DENIED');}
+        if(valid!==true) fail('SPEECH_COMMIT_DENIED');
+        if(!queue.settle(ticket)) fail('SPEECH_CANCELLED');
+        const result=chatLog.append({senderSeatId:ticket.seatId,messageId:ticket.jobId,audienceSeatIds:final,time},text);
+        if(!result.duplicate) committed++;
+      }
+      return {committed};
+    } catch(error) {queue.stop();throw error;}
+    finally {signal?.removeEventListener('abort',onAbort);running=false;}
+  }
+  return Object.freeze({runRound,stop:()=>queue.stop(),close:()=>{queue.close();chatLog.close();},status:()=>({...queue.status(),running})});
+}
+
+return {createRoomSpeechRunner};
+})();
+modules["ludo-board-view.js"]=(()=>{
+const {buildLudoBoard}=modules["ludo-board.js"];
+
+// Mountable user board; the host owns verified session, dispatch and rendering.
+// Include ludo-board.css in the host. No account, storage, network or route access.
+function createLudoBoardView(root,{onMove,labelForSeat}={}){
+  if(!root?.ownerDocument||typeof onMove!=='function')throw Error('LUDO_INVALID_BOARD_HOST');
+  const doc=root.ownerDocument;
+  let model=null,pending=false,destroyed=false,accepted=null,errorText='';
+  let actionButtons=[],chips=new Map(),dieNode=null,animations=[];
+  function element(tag,cls,text){const e=doc.createElement(tag);if(cls)e.className=cls;if(text!==undefined)e.textContent=text;return e;}
+  const host=element('section','mao-ludo');host.setAttribute('aria-label','飞行棋');root.replaceChildren(host);
+  const title=element('h2','mao-ludo__title','飞行棋'),status=element('p','mao-ludo__status'),eventLine=element('p','mao-ludo__event'),roster=element('div','mao-ludo__roster'),board=element('div','mao-ludo__board'),controls=element('div','mao-ludo__controls'),notice=element('p','mao-ludo__notice');
+  status.setAttribute('aria-live','polite');notice.setAttribute('role','status');board.setAttribute('aria-label','游戏棋盘');host.append(title,status,roster,board,controls,eventLine,notice);
+  const label=id=>{const p=model.players.find(p=>p.seatId===id);return id==='user'?'我':String(labelForSeat?.(id)??p?.label??'玩家');};
+  const key=m=>JSON.stringify([m.roomId,m.revision]);
+  const locked=()=>pending||accepted===key(model);
+  function button(text,cls,action,disabled=false){const b=element('button',cls,text);b.type='button';b.disabled=disabled;actionButtons.push(b);const at=key(model);b.addEventListener('click',()=>{if(!destroyed&&model&&key(model)===at)void submit(action);});return b;}
+  async function submit(move){
+    if(destroyed||!model||locked()||!(move.kind==='roll'?model.canRoll:model.choices.includes(move.plane)))return;
+    const sent=model;pending=true;errorText='';syncControls();
+    try{await onMove({roomId:sent.roomId,revision:sent.revision,seatId:'user',move:{...move}});if(!destroyed)accepted=key(sent);}
+    catch{if(!destroyed&&key(model)===key(sent))errorText='操作未完成，请重试。';}
+    finally{pending=false;if(!destroyed)syncControls();}
+  }
+  function syncControls(){
+    for(const b of actionButtons)b.disabled=locked();
+    notice.textContent=errorText||(pending?'操作处理中…':'');
+  }
+  const pieceKey=p=>JSON.stringify([p.seatId,p.plane]);
+  function stopAnimations(){for(const a of animations.splice(0))a?.cancel?.();}
+  function play(node,frames,duration){
+    if(typeof node?.animate!=='function')return;
+    try{animations.push(node.animate(frames,{duration,easing:'ease-out'}));}catch{/* Presentation only; committed state remains visible. */}
+  }
+  function eventText(last){
+    if(!last)return '本局已开始。';
+    const who=label(last.seatId);
+    if(last.kind==='roll')return who+' 掷出 '+last.die+' 点'+(last.skipped?'，没有可移动的飞机，跳过本回合。':'。');
+    if(last.kind!=='move')return '';
+    const effects=Array.isArray(last.effects)?last.effects:[];
+    const terms={launch:'起飞',jump:'同色跳格',flight:'飞行捷径',bounce:'终点反弹',finish:'抵达终点'};
+    const details=effects.filter(e=>Object.hasOwn(terms,e)).map(e=>terms[e]);
+    if(last.captures?.length)details.push('撞回 '+last.captures.length+' 架对手机');
+    return who+' 的 '+(last.plane+1)+' 号飞机'+(details.length?'：'+details.join('、'):'完成移动')+'。';
+  }
+  function draw(){
+    actionButtons=[];chips=new Map();
+    const b=model;const busy=locked();
+    status.textContent=b.phase==='finished'?`${label(b.winners[0])} 获胜`:b.turnSeatId==='user'?(b.canRoll?'轮到我掷骰':'选择要移动的飞机'):`轮到${label(b.turnSeatId)}`;
+    roster.replaceChildren(...b.players.map(p=>{
+      const active=b.phase==='playing'&&b.turnSeatId===p.seatId;
+      const item=element('span','mao-ludo__player mao-ludo__slot-'+p.slot+(active?' mao-ludo__active':''),p.label+' · '+label(p.seatId)+' '+p.finished+'/4');
+      if(active)item.setAttribute('aria-current','true');
+      return item;
+    }));
+    eventLine.textContent=eventText(b.last);
+    const groups=new Map();for(const p of b.pieces){const group=groups.get(p.cellKey)??[];group.push(p);groups.set(p.cellKey,group);}
+    board.replaceChildren(...b.cells.map(c=>{
+      const tile=element('div',`mao-ludo__cell mao-ludo__${c.zone} mao-ludo__slot-${c.slot}`);tile.style.gridColumn=String(c.x+1);tile.style.gridRow=String(c.y+1);
+      if(c.zone==='track'&&c.square%13===0)tile.classList.add('mao-ludo__start');
+      const pieces=groups.get(`${c.x}:${c.y}`)??[];
+      if(pieces.length>1)tile.classList.add('mao-ludo__stack');
+      if(!pieces.length){tile.setAttribute('aria-hidden','true');return tile;}
+      for(const p of pieces){const text=`${b.players.find(x=>x.slot===p.slot).label}${p.plane+1}`,cls=`mao-ludo__piece mao-ludo__slot-${p.slot}`;
+        const chip=p.selectable?button(text,cls,{kind:'choose',plane:p.plane},busy):element('span',cls,text);chip.setAttribute('aria-label',`${label(p.seatId)}的${p.plane+1}号飞机`);chips.set(pieceKey(p),chip);tile.append(chip);}
+      return tile;
+    }));
+    dieNode=element('span','mao-ludo__die',b.die===null?'—':String(b.die));dieNode.setAttribute('aria-label',b.die===null?'尚未掷骰':'骰子 '+b.die+' 点');controls.replaceChildren(dieNode);
+    if(b.canRoll)controls.append(button('掷骰子','mao-ludo__action',{kind:'roll'},busy));
+    for(const p of b.choices)controls.append(button(`${p+1}号飞机`,'mao-ludo__action',{kind:'choose',plane:p},busy));
+    syncControls();
+  }
+  function render(view){
+    if(destroyed)throw Error('LUDO_BOARD_DISPOSED');
+    if(view?.selfSeatId!=='user')throw Error('LUDO_BOARD_USER_ONLY');
+    const next=buildLudoBoard(view),before=model;
+    const transition=before&&before.roomId===next.roomId&&next.revision===before.revision+1;
+    const motion=transition&&!doc.defaultView?.matchMedia?.('(prefers-reduced-motion: reduce)')?.matches;
+    stopAnimations();
+    const positions=new Map();
+    if(motion&&next.last?.kind==='move'){
+      const oldPieces=new Map(before.pieces.map(p=>[pieceKey(p),p]));
+      for(const p of next.pieces){
+        const k=pieceKey(p),old=oldPieces.get(k),node=chips.get(k);
+        if(old&&old.cellKey!==p.cellKey&&typeof node?.getBoundingClientRect==='function')positions.set(k,node.getBoundingClientRect());
+      }
+    }
+    model=next;errorText='';draw();
+    if(motion&&next.last?.kind==='roll')play(dieNode,[{transform:'scale(.82)',opacity:.55},{transform:'scale(1)',opacity:1}],200);
+    for(const [k,old] of positions){
+      const node=chips.get(k);if(typeof node?.getBoundingClientRect!=='function')continue;
+      const rect=node.getBoundingClientRect(),x=old.left-rect.left,y=old.top-rect.top;
+      if(Number.isFinite(x)&&Number.isFinite(y)&&(x||y))play(node,[{transform:'translate('+x+'px,'+y+'px)'},{transform:'translate(0,0)'}],240);
+    }
+  }
+  return Object.freeze({render,destroy(){destroyed=true;stopAnimations();model=null;host.remove();}});
+}
+
+return {createLudoBoardView};
+})();
+modules["ludo-preview-round.js"]=(()=>{
+// Test-only, in-memory preview. Never import this into the production app.
+// The fixed fixture identities below are NOT an authenticated account adapter.
+const {createRoomLifetime}=modules["room-lifetime.js"];
+const {createRoomDispatcher}=modules["room-dispatcher.js"];
+const {createLudoRules}=modules["ludo-rules.js"];
+const {createLudoTurnDriver}=modules["ludo-turn-driver.js"];
+const {createRoomChatLog}=modules["room-chat-log.js"];
+const {createRoomSpeechRunner}=modules["room-speech-runner.js"];
+const {buildRoomSpeechContext}=modules["room-speech-context.js"];
+
+const PREVIEW_PLAYERS=Object.freeze(['fixture-1','fixture-2','fixture-3']);
+// Deliberately deterministic fixture replies, never a real model or persona.
+function previewComment(context){
+  const self=context.game.players.find(p=>p.seatId===context.selfSeatId);
+  const done=self.planes.filter(p=>p.zone==='finished').length;
+  const flying=self.planes.filter(p=>p.zone==='track'||p.zone==='home').length;
+  return '我的飞机已有 '+done+' 架抵达，'+flying+' 架在途中。'+(context.phase==='finished'?'本局结束了。':context.turnSeatId===context.selfSeatId?'现在轮到我。':'继续看这一回合。');
+}
+function createPreviewRound({roomId,selectedIds,render=()=>{},pace=()=>{},rollDie,speechPace=()=>{},onSpeech=()=>{}}={}){
+  const fail=code=>{throw Error(code);};
+  if(typeof roomId!=='string'||!roomId.startsWith('preview-')||!Array.isArray(selectedIds)||selectedIds.length<1||selectedIds.length>3||new Set(selectedIds).size!==selectedIds.length||!Array.from(selectedIds).every(id=>PREVIEW_PLAYERS.includes(id))||typeof render!=='function')fail('PREVIEW_INVALID_PLAYERS');
+  const ids=[...selectedIds],ctx={accountId:'preview-fixture-only',sessionId:roomId,roleIds:ids};
+  const room=createRoomLifetime({getContext:()=>ctx,createDispatcher:createRoomDispatcher,spec:{roomId,gameId:'ludo'},rules:createLudoRules({rollDie})});
+  for(const roleId of ids)room.prepareUserAction()({type:'invite',roleId});
+  room.prepareUserAction()({type:'start'});
+  const seats=room.viewUser().seats.map(s=>s.seatId);
+  const chat=createRoomChatLog({roomId,seats:room.viewUser().seats,maxMessages:256,maxTextLength:1000});
+  let disposed=false,busy=false,revision=-1,seq=0;
+  function alive(){if(disposed)fail('PREVIEW_DISPOSED');}
+  function publish(view){alive();if(view.revision!==revision){render(view);revision=view.revision;}}
+  const driver=createLudoTurnDriver({session:room,onView:publish,pace});
+  let speechSeq=0,discussing=false,speaker=null;
+  const roleSeatIds=seats.filter(id=>id!=='user');
+  const runner=createRoomSpeechRunner({chatLog:chat,roleSeatIds,maxPerRound:3,maxPerRoom:60,
+    prepare(ticket){
+      alive();speaker=ticket.seatId;onSpeech();
+      return {request:buildRoomSpeechContext({roleSeatId:ticket.seatId,view:room.viewRole(ticket.seatId.slice(5)),chatLog:chat}),audienceSeatIds:seats};
+    },
+    async generate(context,{signal}){await speechPace(signal);if(signal.aborted)fail('PREVIEW_SPEECH_CANCELLED');return previewComment(context);},
+    authorize(ticket,p){alive();room.viewRole(ticket.seatId.slice(5));return p.audienceSeatIds;},
+    validateCommit(ticket){if(disposed)return false;try{return room.viewRole(ticket.seatId.slice(5)).roomId===roomId;}catch{return false;}}
+  });
+  async function discuss(){
+    alive();if(discussing)fail('PREVIEW_SPEECH_BUSY');discussing=true;
+    try{return await runner.runRound(roleSeatIds.map(seatId=>({seatId,jobId:'speech-'+(++speechSeq)})));}
+    finally{discussing=false;speaker=null;if(!disposed)onSpeech();}
+  }
+  async function advanceRoles(){
+    alive();if(busy)fail('PREVIEW_BUSY');busy=true;
+    try{return await driver.runUntilUser();}finally{busy=false;}
+  }
+  function userMove(action){
+    alive();if(busy)fail('PREVIEW_BUSY');const view=room.viewUser();
+    if(action?.roomId!==roomId||action?.revision!==view.revision||action?.seatId!=='user'||view.turnSeatId!=='user'||view.phase!=='playing')fail('PREVIEW_STALE_ACTION');
+    const next=room.prepareUserAction()({type:'move',move:action.move});publish(next);return next;
+  }
+  return Object.freeze({
+    view(){alive();return room.viewUser();},
+    show(){publish(room.viewUser());},
+    userMove,advanceRoles,
+    send(text){alive();return chat.append({senderSeatId:'user',messageId:'message-'+(++seq),audienceSeatIds:seats,time:Date.now()},text).message;},
+    messages(){alive();return chat.read('user');},
+    discuss,stopSpeech(){alive();runner.stop();},
+    speechStatus(){alive();return {running:discussing,speaker,remaining:runner.status().remaining};},
+    dispose(){if(disposed)return;disposed=true;driver.dispose();room.dispose();runner.close();},
+    status:()=>disposed?'disposed':busy?'running':'idle'
+  });
+}
+
+return {PREVIEW_PLAYERS,previewComment,createPreviewRound};
+})();
+modules["ludo-preview-page.js"]=(()=>{
+const {createPreviewRound,PREVIEW_PLAYERS}=modules["ludo-preview-round.js"];
+const {createLudoBoardView}=modules["ludo-board-view.js"];
+
+function mountLudoPreview({doc=document,win=window,delay=300,rollDie}={}){
+const $=id=>doc.getElementById(id);
+const setup=$('setup'),game=$('game'),start=$('start'),end=$('end'),resume=$('resume'),status=$('preview-status'),chat=$('chat'),messages=$('messages'),form=$('message-form'),input=$('message'),chatStatus=$('chat-status'),selection=$('selection-count'),discussButton=$('discuss'),stopButton=$('stop-speech'),speaker=$('speaker');
+let current=null,counter=0;
+const label=id=>id==='user'?'我':'测试棋手 '+(PREVIEW_PLAYERS.indexOf(id.slice(5))+1);
+const pace=()=>delay===0?Promise.resolve():new Promise(resolve=>win.setTimeout(resolve,delay));
+const selected=()=>Array.from(setup.querySelectorAll('input[name=player]:checked'),e=>e.value);
+function updateSelection(){const n=selected().length;selection.textContent='已选 '+n+' 位'+(n?' · '+(n+1)+' 人局':'');start.disabled=n===0||current!==null;}
+function finished(){status.textContent='本局结束。';end.textContent='再来一局';resume.hidden=true;}
+function showMessages(entry){
+  if(current!==entry)return;
+  const rows=entry.round.messages().map(m=>{const li=doc.createElement('li');li.textContent=label(m.sender.seatId)+'：'+m.text;return li;});
+  messages.replaceChildren(...rows);
+}
+function updateSpeech(entry){
+  if(current!==entry)return;
+  const state=entry.round.speechStatus();showMessages(entry);
+  discussButton.disabled=state.running||state.remaining<entry.selectedCount;
+  stopButton.hidden=!state.running;
+  speaker.textContent=state.speaker?label(state.speaker)+' 正在准备本地回复…':'';
+}
+async function discuss(entry){
+  if(current!==entry||entry.round.speechStatus().running)return;
+  chatStatus.textContent='';
+  try{await entry.round.discuss();}
+  catch(error){if(current===entry)chatStatus.textContent=error.message==='SPEECH_CANCELLED'?'已停止本次讨论。':'本次讨论未完成。';}
+  finally{if(current===entry)updateSpeech(entry);}
+}
+async function advance(entry){
+  if(current!==entry||entry.running)return;
+  entry.running=true;resume.hidden=true;
+  try{
+    const outcome=await entry.round.advanceRoles();
+    if(current!==entry)return;
+    if(outcome.status==='finished')finished();
+    else{status.textContent=outcome.status==='yield'?'自动回合已暂停，可继续。':'';resume.hidden=outcome.status!=='yield';}
+  }catch{
+    if(current===entry){status.textContent='自动回合暂停，请继续或结束本局。';resume.hidden=false;}
+  }finally{entry.running=false;}
+}
+function close(){
+  const old=current;current=null;
+  if(old){old.round.dispose();old.board.destroy();}
+  game.hidden=true;setup.hidden=false;resume.hidden=true;status.textContent='';chatStatus.textContent='';messages.replaceChildren();input.value='';chat.open=false;speaker.textContent='';stopButton.hidden=true;discussButton.disabled=false;end.textContent='结束本局';updateSelection();
+}
+function begin(){
+  if(current)return;
+  const selectedIds=selected();
+  if(!selectedIds.length){status.textContent='请至少选择一位测试棋手。';return;}
+  start.disabled=true;status.textContent='';
+  let board,round;
+  try{
+    const entry={round:null,board:null,running:false,selectedCount:selectedIds.length};
+    board=createLudoBoardView($('board'),{labelForSeat:label,onMove:async action=>{
+      if(current!==entry)throw Error('PREVIEW_STALE_ACTION');
+      const next=entry.round.userMove(action);
+      if(next.phase==='finished')finished();
+      else if(next.turnSeatId!=='user')await advance(entry);
+    }});
+    round=createPreviewRound({roomId:'preview-'+(++counter),selectedIds,pace,rollDie,speechPace:pace,onSpeech:()=>updateSpeech(entry),render:v=>board.render(v)});
+    entry.round=round;entry.board=board;current=entry;
+    setup.hidden=true;game.hidden=false;round.show();updateSpeech(entry);
+  }catch{
+    round?.dispose();board?.destroy();current=null;setup.hidden=false;game.hidden=true;updateSelection();status.textContent='无法开始，请重试。';
+  }
+}
+setup.addEventListener('change',updateSelection);
+start.addEventListener('click',begin);
+end.addEventListener('click',()=>{if(current&&(current.round.view().phase==='finished'||win.confirm('结束本局？预览进度不会保存。')))close();});
+resume.addEventListener('click',()=>{if(current)void advance(current);});
+discussButton.addEventListener('click',()=>{if(current)void discuss(current);});
+stopButton.addEventListener('click',()=>{if(current)current.round.stopSpeech();});
+form.addEventListener('submit',event=>{
+  event.preventDefault();const entry=current;if(!entry)return;
+  try{entry.round.send(input.value);input.value='';chatStatus.textContent='';showMessages(entry);}
+  catch{chatStatus.textContent='发言未发送，请检查内容或本局消息容量。';}
+});
+win.addEventListener('pagehide',close);
+updateSelection();
+}
+if(typeof document!=='undefined'&&typeof window!=='undefined')mountLudoPreview();
+
+return {mountLudoPreview};
+})();
+</script></body></html>
