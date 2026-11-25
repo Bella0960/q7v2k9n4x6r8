@@ -691,3 +691,11 @@ test('corrupt group list does not hide decline action',()=>{
  h.values.set('phone_groups','{broken');assert.equal(h.api.pendingInvitations()[0].id,offered.invitation.id);
  assert.ok(h.api.resolveInvitation({id:offered.invitation.id,accept:false}).ok);
 });
+
+
+test('resolved invitations do not permanently block a new offer at the pending limit',()=>{
+ const g=group();g.userMembership='left';const h=harness([g]);
+ h.values.set('phone_group_invitations',JSON.stringify(Array.from({length:100},(_,i)=>({id:'resolved-'+i,status:'declined'}))));
+ assert.ok(h.api.offerInvitation({groupId:'g1',inviterId:'c1'}).ok);
+ assert.equal(JSON.parse(h.values.get('phone_group_invitations')).length,101);
+});

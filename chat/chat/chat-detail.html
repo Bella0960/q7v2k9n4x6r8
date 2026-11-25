@@ -5284,7 +5284,7 @@
             } catch(e) {}
         }
         // 命中红包/转账标记：在 AI 侧插入对应卡片并落库，role='assistant' 可被用户领取
-        function insertPayCards(historyList, items) {
+        function insertPayCards(historyList, items, speaker) {
             if (!items || !items.length) return;
             var previousLength = historyList.length;
             var previousTransferStates = [];
@@ -5314,6 +5314,8 @@
                     status: 'unopened',
                     timestamp: Date.now()
                 };
+                if(speaker){payMsg.memberId=String(speaker.id);payMsg.name=String(speaker.name||'群成员');}
+                ensureMid(payMsg);
                 historyList.push(payMsg);
             });
             if (!saveMessages(historyList)) {
@@ -8424,7 +8426,8 @@
                     }
                     if (streamResult.ok && replySaved && parsedPay.items.length) {
                         // AI 侧插入红包/转账卡片并落库，role='assistant' 可被用户点击领取
-                        insertPayCards(historyList, parsedPay.items);
+                        if(!isGroupChat||(groupReplyPick&&currentGroupSpeaker(String(groupReplyPick.id))))
+                            insertPayCards(historyList, parsedPay.items,isGroupChat?groupReplyPick:null);
                     }
                     if (streamResult.ok && replySaved && parsedRoleFamilyCard.cards.length) {
                         insertRoleFamilyCardInvitations(historyList, parsedRoleFamilyCard.cards);
@@ -9621,30 +9624,27 @@
         }
 
         // ========== 钱包余额 workData：安全读写 ==========
-        // 结构非法 / 余额非有限数字时一律回落 { balance: 1000 }，绝不把脏数据带进计算
+        // Missing wallet is a new wallet; damaged wallet must never be reset by a receipt.
         const WORK_DATA_KEY = 'workData';
         function getWorkData() {
-            let wd = null;
             try {
-                const raw = localStorage.getItem(WORK_DATA_KEY);
-                if (raw) wd = JSON.parse(raw);
-            } catch (e) {}
-            if (!wd || typeof wd !== 'object' || Array.isArray(wd)) {
-                wd = { balance: 1000 };
-            }
-            if (typeof wd.balance !== 'number' || !isFinite(wd.balance)) {
-                wd.balance = 1000;
-            }
-            // 交易明细：history 缺失或非法时补空数组（老数据自动兼容）
-            if (!Array.isArray(wd.history)) wd.history = [];
-            return wd;
+                const raw=localStorage.getItem(WORK_DATA_KEY);
+                if(raw===null)return {balance:1000,history:[]};
+                const wd=JSON.parse(raw);
+                if(!wd||typeof wd!=='object'||Array.isArray(wd)||typeof wd.balance!=='number'||!Number.isFinite(wd.balance)||wd.balance<0||
+                   (wd.history!=null&&!Array.isArray(wd.history)))return null;
+                if(wd.history==null)wd.history=[];
+                return wd;
+            }catch(error){return null;}
         }
         function saveWorkData(wd) {
             try {
-                localStorage.setItem(WORK_DATA_KEY, JSON.stringify(wd));
+                const raw=JSON.stringify(wd);
+                localStorage.setItem(WORK_DATA_KEY,raw);
+                if(localStorage.getItem(WORK_DATA_KEY)!==raw){showToast('钱包保存结果待核对，请勿重复操作');return false;}
                 return true;
             } catch (e) {
-                showToast('保存失败：本地存储空间不足');
+                showToast('钱包保存失败，请检查本地存储');
                 return false;
             }
         }
@@ -9675,19 +9675,24 @@
         function handlePayCardClick(event) {
             const cardEl = event && event.currentTarget;
             if (!cardEl) return;
-            const mid = cardEl.getAttribute('data-mid') || '';
-            const indexStr = cardEl.getAttribute('data-index');
-
-            // 必须按稳定 mid 查全量历史，不能把过滤了 silent/date 的显示序号当数组下标。
-            const list = loadMessages();
-            let index = mid ? list.findIndex(function (item) { return item && ensureMid(item) === mid; }) : -1;
-            if (index < 0 && indexStr !== '' && indexStr != null) {
-                const legacyIndex = parseInt(indexStr, 10);
-                if (!isNaN(legacyIndex) && legacyIndex >= 0) index = legacyIndex;
-            }
-            if (index < 0 || index >= list.length) return;
-            const msg = list[index];
-            if (!msg || (msg.type !== 'redpacket' && msg.type !== 'transfer')) return;
+            const mid=cardEl.getAttribute('data-mid')||'',type=cardEl.getAttribute('data-type')||'';
+            const id=String(currentCharacter&&currentCharacter.id||'');
+            const scope=captureForwardTarget(id),locks=window.navigator&&window.navigator.locks;
+            if(!mid||!scope||!locks||typeof locks.request!=='function'){showToast('无法确认交易或安全锁定钱包，请刷新后重试');return;}
+            return Promise.resolve(locks.request('maomao-wallet-workData-v1',{mode:'exclusive',ifAvailable:true},function(lock){
+                if(!lock){showToast('钱包正在处理其他交易');return;}
+                if(String(currentCharacter&&currentCharacter.id||'')!==id||!forwardTargetCurrent(id,scope)||(isGroupChat&&!readGroupScope())){showToast('会话已变化，未收款');return;}
+                return handlePayCardClickLocked(mid,type);
+            })).catch(function(){showToast('收款状态未确认，请检查钱包记录');});
+        }
+        function handlePayCardClickLocked(mid,type) {
+            // A stale or duplicated stable ID must never fall back to a different card.
+            const list=loadMessages();
+            const matched=Array.isArray(list)?list.filter(item=>item&&String(item.mid||'')===mid):[];
+            if(matched.length!==1){showToast('交易卡片已变化，请刷新后重试');return;}
+            const msg=matched[0];
+            if(msg.type!==type||(type!=='redpacket'&&type!=='transfer'))return;
+            if(isGroupChat&&(!window.ChatContextPolicy||typeof window.ChatContextPolicy.groupPublicHistory!=='function'||window.ChatContextPolicy.groupPublicHistory([msg],String(currentCharacter.id)).length!==1)){showToast('该交易不属于当前公开群聊');return;}
             const isRed = msg.type === 'redpacket';
 
             if (msg.type === 'transfer' && msg.status === 'returned') {

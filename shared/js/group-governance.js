@@ -190,7 +190,7 @@
     var invitation = { id: 'gi_' + Date.now().toString(36) + '_' + Math.random().toString(36).slice(2, 10),
       groupId: id(g.id), inviterId: id(req.inviterId), status: 'pending', createdAt: Date.now() };
     inbox.push(invitation);
-    if(inbox.length>100)return fail('INBOX_FULL','邀请记录已满，请先处理已有邀请');
+    if(inbox.filter(function(x){return x&&x.status==='pending';}).length>100)return fail('INBOX_FULL','待处理邀请已满，请先处理已有邀请');
     if(!invitationWrite(storage,INVITATIONS,box.raw,JSON.stringify(inbox),scope,function(){return invitationMatches(storage,'phone_groups',groups.raw,scope);}))return fail('SAVE_FAILED','邀请保存失败或数据已变化');
     emit('invitation:offered', invitation);
     return { ok: true, invitation: invitation };
@@ -233,7 +233,7 @@
     var invitation = { id: 'gi_' + Date.now().toString(36) + Math.random().toString(36).slice(2, 9),
       groupId: gid, inviterId: id(inviter.id), status: 'pending', createdAt: Date.now(), draftGroup: draft };
     inbox.push(invitation);
-    if(inbox.length>100)return fail('INBOX_FULL','邀请记录已满，请先处理已有邀请');
+    if(inbox.filter(function(x){return x&&x.status==='pending';}).length>100)return fail('INBOX_FULL','待处理邀请已满，请先处理已有邀请');
     if(!invitationWrite(storage,INVITATIONS,box.raw,JSON.stringify(inbox),scope,function(){return invitationMatches(storage,'phone_groups',groups.raw,scope)&&invitationMatches(storage,'ai_custom_characters',roleBox.raw,scope)&&invitationMatches(storage,'chat_history_'+gid,null,scope);}))return fail('SAVE_FAILED','入群邀请未保存或数据已变化');
     emit('invitation:offered', { id: invitation.id, groupId: gid, inviterId: id(inviter.id), draft: true });
     return { ok: true, invitation: invitation };

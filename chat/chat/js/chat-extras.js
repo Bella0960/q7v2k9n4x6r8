@@ -1120,7 +1120,11 @@
     var cardSaved = false;
     try {
       history = loadMessages();
-      if (Array.isArray(history)) cardSaved = saveMessages(history.concat([specialMsg])) === true;
+      if (Array.isArray(history)) {
+        history.push(specialMsg);
+        cardSaved = saveMessages(history) === true;
+        if(!cardSaved&&history[history.length-1]===specialMsg)history.pop();
+      }
     } catch (error) {
       cardSaved = false;
     }
@@ -1167,6 +1171,9 @@
       if (typeof showToast === 'function') showToast('上一笔交易还在处理，请不要重复点击');
       return Promise.resolve(false);
     }
+    var paymentRoleId=currentCharacter&&String(currentCharacter.id||'');
+    var paymentScope=typeof captureForwardTarget==='function'?captureForwardTarget(paymentRoleId):null;
+    if(!paymentScope){if(typeof showToast==='function')showToast('无法确认当前会话与账号，未操作钱包');return Promise.resolve(false);}
     var locks = window.navigator && window.navigator.locks;
     if (!locks || typeof locks.request !== 'function') {
       if (typeof showToast === 'function') {
@@ -1186,6 +1193,9 @@
               showToast('钱包正在另一个页面处理交易，请稍后重试');
             }
             return false;
+          }
+          if(!currentCharacter||String(currentCharacter.id)!==paymentRoleId||typeof forwardTargetCurrent!=='function'||!forwardTargetCurrent(paymentRoleId,paymentScope)){
+            if(sending&&typeof showToast==='function')showToast('会话或账号已变化，未操作钱包');return false;
           }
           action(); // Read balance and perform all wallet/chat writes while holding the lock.
           return true;
