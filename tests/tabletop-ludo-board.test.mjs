@@ -72,3 +72,31 @@ test('reduced motion and skipped revisions render authoritative positions withou
   host.render(d.view('user'));act(d,'user',{kind:'roll'});host.render(d.view('user'));assert.equal(count,0);
   doc.defaultView.matchMedia=()=>({matches:false});act(d,'user',{kind:'choose',plane:0});act(d,'user',{kind:'roll'});host.render(d.view('user'));assert.equal(count,0);host.destroy();
 });
+
+test('board presents authoritative last event and active seat without inventing results',()=>{
+  const d=setup(),root=makeRoot(),host=createLudoBoardView(root,{onMove:()=>{},labelForSeat:()=> '测试棋手'});
+  host.render(d.view('user'));assert.equal(all(root,'mao-ludo__event')[0].textContent,'本局已开始。');
+  assert.equal(all(root,'mao-ludo__active').length,1);
+  act(d,'user',{kind:'roll'});host.render(d.view('user'));
+  assert.match(all(root,'mao-ludo__event')[0].textContent,/掷出 6 点/);
+  assert.equal(all(root,'mao-ludo__die')[0].attrs['aria-label'],'骰子 6 点');
+  act(d,'user',{kind:'choose',plane:0});host.render(d.view('user'));
+  assert.match(all(root,'mao-ludo__event')[0].textContent,/1 号飞机：起飞/);
+  host.destroy();
+});
+test('stacked aircraft retain individual action controls and grid marker',()=>{
+  const d=setup(),root=makeRoot(),host=createLudoBoardView(root,{onMove:()=>{}});
+  act(d,'user',{kind:'roll'});act(d,'user',{kind:'choose',plane:0});
+  act(d,'user',{kind:'roll'});act(d,'user',{kind:'choose',plane:1});
+  act(d,'user',{kind:'roll'});host.render(d.view('user'));
+  assert.equal(all(root,'mao-ludo__stack').length,1);
+  assert.equal(all(all(root,'mao-ludo__stack')[0],'mao-ludo__piece').length,2);
+  assert.equal(all(root,'mao-ludo__action').length,4);host.destroy();
+});
+test('skipped roll identifies the next player and keeps board read-only for user',()=>{
+  const d=setup(2,()=>3),root=makeRoot(),host=createLudoBoardView(root,{onMove:()=>{},labelForSeat:()=> '测试棋手'});
+  act(d,'user',{kind:'roll'});host.render(d.view('user'));
+  assert.match(all(root,'mao-ludo__event')[0].textContent,/没有可移动的飞机/);
+  assert.match(all(root,'mao-ludo__active')[0].textContent,/测试棋手/);
+  assert.equal(all(root,'mao-ludo__action').length,0);host.destroy();
+});

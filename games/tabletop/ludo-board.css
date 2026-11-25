@@ -3,7 +3,8 @@
 .mao-ludo__title{font-family:Georgia,'Songti SC',serif;font-size:24px;font-weight:500;margin:0 0 3px}
 .mao-ludo__status,.mao-ludo__notice{margin:4px 0 10px;color:#555;font-size:12px}
 .mao-ludo__roster{display:flex;flex-wrap:wrap;gap:4px 12px;margin-bottom:12px;font-size:12px}
-.mao-ludo__player{overflow-wrap:anywhere;min-width:0}
+.mao-ludo__player{overflow-wrap:anywhere;min-width:0;flex:1 1 42%;padding:4px 6px;border-left:2px solid transparent}
+.mao-ludo__active{border-left-color:#222;background:#f7f7f7;font-weight:600}
 .mao-ludo__board{display:grid;grid-template-columns:repeat(15,minmax(0,1fr));grid-template-rows:repeat(15,minmax(0,1fr));aspect-ratio:1;width:100%;gap:1px;background:#fafafa;border:1px solid #eee;padding:2px;border-radius:12px}
 .mao-ludo__slot-0{--seat-bg:#e2e2e2;--seat-border:#777;--seat-ink:#111}
 .mao-ludo__slot-1{--seat-bg:#f7f7f7;--seat-border:#999;--seat-ink:#333}
@@ -13,13 +14,16 @@
 .mao-ludo__track{border-bottom-color:var(--seat-border)}
 .mao-ludo__start,.mao-ludo__home,.mao-ludo__finished,.mao-ludo__hangar{background:var(--seat-bg);border-color:var(--seat-border)}
 .mao-ludo__piece{display:inline-flex;align-items:center;justify-content:center;min-width:0;max-width:100%;height:90%;aspect-ratio:1;border-radius:50%;border:1px solid var(--seat-border);background:var(--seat-bg);color:var(--seat-ink);font-size:clamp(6px,1.9vw,10px);line-height:1;padding:0;white-space:nowrap}
-.mao-ludo__cell:has(.mao-ludo__piece:nth-child(2)) .mao-ludo__piece{width:48%;height:48%;aspect-ratio:auto;font-size:6px}
+.mao-ludo__cell.mao-ludo__stack{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));grid-template-rows:repeat(2,minmax(0,1fr));gap:0}
+.mao-ludo__stack .mao-ludo__piece{width:100%;height:100%;aspect-ratio:auto;font-size:6px}
 .mao-ludo button{font:inherit;cursor:pointer;touch-action:manipulation}
-.mao-ludo button.mao-ludo__piece{font-size:clamp(6px,1.9vw,10px);outline:1px solid #111;outline-offset:-1px}
+.mao-ludo button.mao-ludo__piece{min-width:0;min-height:0;max-width:100%;padding:0;font-size:clamp(6px,1.9vw,10px);outline:1px solid #111;outline-offset:-1px}
+.mao-ludo__stack button.mao-ludo__piece{font-size:6px}
 .mao-ludo button:focus-visible{outline:2px solid #111;outline-offset:2px}
 .mao-ludo button:disabled{opacity:.45;cursor:default}
 .mao-ludo__controls{display:flex;align-items:center;flex-wrap:wrap;gap:6px;margin-top:12px}
 .mao-ludo__die,.mao-ludo__action{min-height:44px;min-width:44px;display:inline-flex;align-items:center;justify-content:center;border:1px solid #ddd;border-radius:10px;background:#fff;color:#222;padding:0 12px}
 .mao-ludo__die{font-size:20px;font-variant-numeric:tabular-nums}
-.mao-ludo__action{flex:1 1 62px;font-size:12px}
+.mao-ludo__action{flex:1 1 62px;font-size:12px;min-width:44px;min-height:44px;padding:0 8px}
+.mao-ludo__event{font-size:12px;color:#555;line-height:1.5;min-height:1.5em;margin:8px 0 0;overflow-wrap:anywhere}
 .mao-ludo__notice{min-height:1.45em;margin:6px 0 0}
