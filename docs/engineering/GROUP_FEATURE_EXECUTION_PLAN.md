@@ -87,3 +87,6 @@ Owner explicitly requested one shared music catalog and NetEase/QQ source channe
 ### M03 结项与 M04a（2026-11-26）
 - 固定 QA verify 45658330013 对 4a7d5520bad3e0e2f403be9ba9ac9613078261b4 全部通过（含 post-test-guard），M03 结项。无部署。
 - M04a 先修原 music/music.html 的切歌失败与暂停并发，仍仅用原 audioPlayer。新增六项源归属测试，当前模拟音频运行通过；真实 Chromium 待复验。后续才抽取共享播放控制契约、单一所有者仲裁及群聊挂载。M04 未结项，不进入 M05。
+
+### M04a 浏览器验收补强（2026-11-26）
+- 原音乐页真实 Chromium 专项增加播放/暂停、原进度条 seek、受控播放拒绝后的恢复、真实 Blob 读取延迟期间取消、切歌及原 URL 释放验证（375/390/430px）。仅测试注入可控异常；正式页面不改。等待实际 QA 结果，不以语法检查代替通过。

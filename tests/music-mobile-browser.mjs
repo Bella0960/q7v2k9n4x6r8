@@ -257,6 +257,73 @@ try {
       assert.equal(await page.locator('.np-controls').isVisible(), true,
         width + 'px short phone hides controls');
       await page.screenshot({ path: join(shots, 'player-short-' + width + '.png') });
+      // M04a: actual HTMLAudioElement + the same original UI player. Only the
+      // rejected play and delayed file-read cases inject a controlled fault.
+      const playbackChecks = await page.evaluate(async firstId => {
+        const media = window.audio;
+        const secondId = JSON.parse(localStorage.getItem('music_local_tracks')).find(t => t.id !== firstId).id;
+        const read = getAudioBlob;
+        const nativeRevoke = URL.revokeObjectURL;
+        const revoked = [];
+        const check = (value, label) => { if (!value) throw Error(label); };
+        const state = () => window.MAOMAOMusicPlayback.getState();
+        const results = [];
+        const originalLoop = media.loop;
+        media.loop = true; // one-second WAV must not naturally advance during assertions
+        URL.revokeObjectURL = function(url) { revoked.push(url); return nativeRevoke.call(URL,url); };
+        try {
+          check(await playTrack(firstId), 'native first play');
+          check(media instanceof HTMLAudioElement && !media.paused && state().trackId === firstId && state().playing, 'actual playback state');
+          await togglePlay();
+          check(media.paused && state().playing === false, 'native pause');
+          results.push('play/pause');
+          const bar = document.getElementById('progressBar');
+          const rect = bar.getBoundingClientRect();
+          check(rect.width > 0 && Number.isFinite(media.duration), 'seek geometry and duration');
+          const target = media.duration * 0.5;
+          bar.dispatchEvent(new MouseEvent('click', {clientX:rect.left + rect.width * 0.5, bubbles:true}));
+          check(Math.abs(media.currentTime-target) < 0.12, 'native seek');
+          check(Math.abs(state().currentTime-target) < 0.12, 'seek state');
+          results.push('seek');
+          const originalSource = media.src;
+          Object.defineProperty(media,'play',{configurable:true,value:()=>Promise.reject(new DOMException('Synthetic policy rejection','NotAllowedError'))});
+          try {
+            check(await playTrack(secondId) === false, 'rejected native switch');
+            check(media.paused && !media.getAttribute('src') && state().trackId === firstId && !state().playing, 'no false track ownership');
+            check(revoked.includes(originalSource), 'old object URL released');
+            check(JSON.parse(localStorage.getItem('music_state')).id === firstId, 'failed track not persisted');
+          } finally { delete media.play; }
+          await togglePlay();
+          check(!media.paused && state().trackId === firstId && media.src.startsWith('blob:'), 'retry opens prior song');
+          results.push('rejected switch/retry');
+          const prior = media.src;
+          const blob = await read(secondId);
+          check(blob instanceof Blob, 'real second file');
+          let release;
+          getAudioBlob = id => id === secondId ? new Promise(resolve => { release=resolve; }) : read(id);
+          try {
+            const pending = playTrack(secondId);
+            check(typeof release === 'function', 'pending read started');
+            await togglePlay();
+            release(blob);
+            check(await pending === false && media.paused && media.src === prior, 'pause cancels delayed switch');
+            check(state().trackId === firstId && !state().playing, 'old metadata retained while paused');
+          } finally { getAudioBlob = read; }
+          results.push('cancel pending switch');
+          check(await playTrack(secondId), 'real second play');
+          check(state().trackId === secondId && state().playing && media.src !== prior && revoked.includes(prior), 'successful switch and prior URL release');
+          results.push('switch/release');
+          await togglePlay();
+          return results;
+        } finally {
+          getAudioBlob=read;
+          delete media.play;
+          URL.revokeObjectURL=nativeRevoke;
+          media.loop=originalLoop;
+          musicPauseNative();
+        }
+      }, trackId);
+      assert.deepEqual(playbackChecks, ['play/pause','seek','rejected switch/retry','cancel pending switch','switch/release']);
       assert.deepEqual(pageErrors, [], 'no uncaught JS errors at ' + width);
       console.log('PASS Chromium ' + width + 'px: viewport, import Blob, reload, playback, cover, LRC, playlist');
     } finally {
