@@ -90,15 +90,20 @@ export function mountTabletopHall(root,{win=root?.ownerDocument?.defaultView,gam
    }catch{if(!disposed&&stamp===epoch){page?.destroy();showHome();note.textContent='无法进入游戏，请重新验证账号。';}}
    finally{busy=false;drainFinish();}
  }
- async function save(){
-   const e=current,stamp=epoch;if(disposed||busy||needsRefresh||e?.kind!=='game')return;
+ async function save({automatic=false}={}){
+   const e=current,stamp=epoch;if(disposed||busy||needsRefresh||e?.kind!=='game')return 'unavailable';
    busy=true;try{
      await verified(stamp);const saved=await e.page.saveMatch();check(stamp);await verified(stamp);
      if(current!==e||saved?.board?.gameId!==e.id||saved.board.accountId!==context.accountId)fail('TABLETOP_HALL_SCOPE');
      // One temporary slot per game. Explicit replacement confirmation.
-     if(saves.has(e.id)&&saves.get(e.id).board.roomId!==saved.board.roomId&&replaceArmed!==saved.board.roomId){replaceArmed=saved.board.roomId;note.textContent='该游戏已有暂存对局，再点一次暂存将替换它。';return;}
-     saves.set(e.id,JSON.parse(JSON.stringify(saved)));if(e.archived===JSON.stringify([saved.board.roomId,saved.board.startRevision+saved.board.moves.length]))finishedSaves.add(e.id);else finishedSaves.delete(e.id);replaceArmed=null;exitArmed=false;note.textContent='已暂存到当前大厅会话，关闭页面后不会保留。';
-   }catch{if(!disposed&&stamp===epoch)note.textContent='暂存未完成，请等待当前回合结束后重试。';}finally{busy=false;drainFinish();}
+     const prior=saves.get(e.id);
+     if(prior&&prior.board.roomId!==saved.board.roomId){
+       if(automatic)return 'other-match';
+       if(replaceArmed!==saved.board.roomId){replaceArmed=saved.board.roomId;note.textContent='该游戏已有暂存对局，再点一次暂存将替换它。';return 'other-match';}
+     }
+     if(prior&&prior.board.roomId===saved.board.roomId&&!isPrefix(prior,saved)){note.textContent='暂存进度存在冲突，已保留原记录。';return 'conflict';}
+     saves.set(e.id,JSON.parse(JSON.stringify(saved)));if(e.archived===JSON.stringify([saved.board.roomId,saved.board.startRevision+saved.board.moves.length]))finishedSaves.add(e.id);else finishedSaves.delete(e.id);replaceArmed=null;exitArmed=false;note.textContent='已暂存到当前大厅会话，关闭页面后不会保留。';return 'saved';
+   }catch{if(!disposed&&stamp===epoch)note.textContent='暂存未完成，请等待当前回合结束后重试。';return 'unavailable';}finally{busy=false;drainFinish();}
  }
  function isPrefix(prior,terminal){
    const a=prior.board,b=terminal.board;
@@ -138,7 +143,12 @@ export function mountTabletopHall(root,{win=root?.ownerDocument?.defaultView,gam
  }
  async function exit(){
    if(disposed||busy||needsRefresh)return;
-   if(current?.kind==='game'&&!exitArmed){exitArmed=true;note.textContent='返回会结束当前页面。请先暂存或归档，再点击返回确认。';return;}
+   if(current?.kind==='game'&&!exitArmed){
+     const e=current,stamp=epoch,result=await save({automatic:true});
+     if(disposed||stamp!==epoch||current!==e||needsRefresh)return;
+     exitArmed=true;
+     note.textContent=result==='saved'?'本局已暂存到当前大厅会话，再点一次返回。':result==='other-match'?'已有另一局暂存，未覆盖。可手动暂存并确认替换，或再次返回放弃当前进度。':result==='conflict'?'进度冲突，已保留原暂存。再次返回将放弃当前未保存进度。':'当前未能暂存，可重试暂存或再次返回放弃未保存进度。';return;
+   }
    if(current){epoch++;showHome();return;}
    if((saves.size||journal)&&!exitArmed){exitArmed=true;note.textContent='离开将清除本次会话的暂存与手账，再点一次返回确认。';return;}
    destroy();onExit();
