@@ -996,6 +996,7 @@
         var mergeOnly = arguments[4] === true;
         var blobFields = storeDef.blobFields || [];
         var strict = arguments[5] === true;
+        var sharedTx = arguments[6] || null;
         return new Promise(function (resolve, reject) {
             // 无 clearOnRestore 且记录为空 → 跳过（原有行为，不影响非媒体库）
             if (!Array.isArray(records) || (!records.length && (!clearOnRestore || mergeOnly))) {
@@ -1003,7 +1004,7 @@
                 return;
             }
             var storeName = storeDef.store;
-            var tx = db.transaction(storeName, 'readwrite');
+            var tx = sharedTx || db.transaction(storeName, 'readwrite');
             var store = tx.objectStore(storeName);
             if (!mergeOnly) {
                 try { store.clear(); } catch (e) {
@@ -1013,6 +1014,7 @@
             }
             // 空数组 + clearOnRestore：只执行 clear()，不 put 任何记录
             if (!records.length) {
+                if (sharedTx) { resolve({ written:0, skipped:0 }); return; }
                 tx.oncomplete = function () { resolve({ written: 0, skipped: 0 }); };
                 tx.onerror = function () { reject(tx.error || new Error('Store clear failed')); };
                 tx.onabort = function () { reject(tx.error || new Error('Store clear aborted')); };
@@ -1066,6 +1068,15 @@
                     skipped++;
                 }
             });
+            if (sharedTx) {
+                // Requests are queued synchronously in the common transaction.
+                // Do not replace the database-level commit/abort listeners.
+                if (skipped) {
+                    try { tx.abort(); } catch (_) {}
+                    reject(new Error('Store record could not be restored'));
+                } else resolve({ written:written, skipped:0 });
+                return;
+            }
             tx.oncomplete = function () { resolve({ written: written, skipped: skipped }); };
             tx.onerror = function () { reject(tx.error || new Error('Store write failed')); };
             tx.onabort = function () { reject(tx.error || new Error('Store write aborted')); };
@@ -1077,46 +1088,51 @@
         });
     }
 
-    // 恢复一个 DB：顺序处理备份里有的 store，一个 store 一个事务。
-    // 备份里有我们没登记的 store（兼容性/未来字段）→ 静默跳过。
-    // 返回 Promise<{ written: number, skipped: number, dbRestored: boolean }>
+    // 恢复一个 DB：同一数据库内所有选中表共享一次事务。
+    // 任一表失败必须撤销本数据库的全部写入；跨 DB 不具有原子性。
     function restoreDatabase(dbName, version, storeDefs, incomingDb) {
         var mergeOnly = arguments[4] === true;
-        if (!incomingDb || typeof incomingDb !== 'object') return Promise.resolve({ written: 0, skipped: 0, dbRestored: true });
-        var db = null;
-        // 已登记的扩展数据库和内置数据库使用同样的恢复语义。
-        var targetDef = null;
-        var allTargets = typeof backupTargets === 'function' ? backupTargets() : IDB_TARGETS;
-        for (var t = 0; t < allTargets.length; t++) {
-            if (allTargets[t].db === dbName) { targetDef = allTargets[t]; break; }
-        }
-        var clearOnRestore = targetDef && targetDef.clearOnRestore;
-        return idbOpen(dbName, version, storeDefs).then(function (_db) {
-            db = _db;
-            var storeMap = {};
-            storeDefs.forEach(function (d) { storeMap[d.store] = d; });
-            var storeNames = Object.keys(incomingDb);
-            var i = 0, totalWritten = 0, totalSkipped = 0;
-            function next() {
-                if (i >= storeNames.length) { db.close(); return { written: totalWritten, skipped: totalSkipped, dbRestored: true }; }
-                var sn = storeNames[i++];
-                var def = storeMap[sn];
-                if (!def) return next();
-                var records = incomingDb[sn];
-                // clearOnRestore: 空数组也调用 restoreStore（会执行 clear()），确保恢复状态与备份一致
-                if (!Array.isArray(records) ||
-                    (!records.length && (!clearOnRestore || mergeOnly))) return next();
-                return restoreStore(db, def, records, clearOnRestore, mergeOnly, true).then(function (res) {
-                    totalWritten += res.written;
-                    totalSkipped += res.skipped;
-                    return next();
-                });
-            }
-            return next();
-        }).catch(function (e) {
-            if (db) { try { db.close(); } catch (e2) {} }
-            throw e;
+        if (!incomingDb || typeof incomingDb !== 'object' || Array.isArray(incomingDb))
+            return Promise.reject(new Error('Invalid database payload'));
+        var targets = typeof backupTargets === 'function' ? backupTargets() : IDB_TARGETS;
+        var target = targets.find(function(t) { return t.db === dbName; });
+        var clearOnRestore = !!(target && target.clearOnRestore);
+        var defs = new Map(storeDefs.map(function(d) { return [d.store,d]; }));
+        var names = Object.keys(incomingDb);
+        if (names.some(function(sn) { return !defs.has(sn) || !Array.isArray(incomingDb[sn]); }))
+            return Promise.reject(new Error('Unknown or invalid store payload'));
+        names = names.filter(function(sn) {
+            return incomingDb[sn].length || (clearOnRestore && !mergeOnly);
         });
+        if (!names.length) return Promise.resolve({written:0,skipped:0,dbRestored:true});
+        var db = null;
+        return idbOpen(dbName,version,storeDefs).then(function(opened) {
+            db = opened;
+            if (names.length === 1) {
+                var def = defs.get(names[0]), records = incomingDb[names[0]];
+                return restoreStore(db, def, records, clearOnRestore, mergeOnly, true)
+                    .then(function(res) { return {written:res.written,skipped:res.skipped,dbRestored:true}; });
+            }
+            var tx = db.transaction(names,'readwrite');
+            var completion = new Promise(function(resolve,reject) {
+                tx.oncomplete = function() { resolve(); };
+                tx.onabort = function() { reject(tx.error || new Error('Database restore aborted')); };
+                // IndexedDB's default request-error behavior aborts the shared
+                // transaction. Do not preventDefault or resolve on request success.
+            });
+            var jobs = names.map(function(sn) {
+                return restoreStore(db,defs.get(sn),incomingDb[sn],clearOnRestore,mergeOnly,true,tx);
+            });
+            // All requests are queued before yielding. Handle a rejected queue
+            // (including objectStore/clear failure) by aborting the common tx.
+            var queued = Promise.all(jobs).catch(function(e) {
+                try { tx.abort(); } catch (_) {}
+                throw e;
+            });
+            return Promise.all([completion,queued]).then(function(results) {
+                return {written:results[1].reduce(function(n,r) {return n+r.written;},0),skipped:0,dbRestored:true};
+            });
+        }).finally(function() { if(db) db.close(); });
     }
 
     // 导入兜底：备份文件通常不含 API 密钥（见 SECRET_KEYS），而 restore() 会先 clear()。
@@ -1381,6 +1397,33 @@
         return true;
     }
 
+    // JSON.parse silently accepts duplicate object keys. Scan the already
+    // syntactically valid source, decoding only object keys (not large blobs).
+    // This checks the backup envelope, not JSON strings stored as user data.
+    function validateUniqueBackupKeys(raw) {
+        var stack = [];
+        for (var i=0;i<raw.length;i++) {
+            var ch=raw[i], top=stack[stack.length-1];
+            if (ch === '"') {
+                var start=i++;
+                while (i<raw.length && raw[i] !== '"') {
+                    if (raw[i] === '\\') i++;
+                    i++;
+                }
+                if (top && top.keys && top.expectKey) {
+                    var key=JSON.parse(raw.slice(start,i+1));
+                    if (top.keys.has(key)) return '备份包含重复字段，无法确定正确数据';
+                    top.keys.add(key); top.expectKey=false;
+                }
+            } else if (ch === '{' || ch === '[') {
+                if (stack.length>=128) return '备份结构嵌套过深';
+                stack.push(ch === '{' ? {keys:new Set(),expectKey:true} : {});
+            } else if (ch === '}' || ch === ']') stack.pop();
+            else if (ch === ',' && top && top.keys) top.expectKey=true;
+        }
+        return '';
+    }
+
     function handleImportFile(file) {
         var requestedScope = arguments[1];
         if (!file) return;
@@ -1393,6 +1436,8 @@
                 toast('导入失败：' + (!trimmed ? '备份文件为空' : /^</.test(trimmed) ? '文件是网页而非备份' : '文件不是完整合法的 JSON'));
                 return;
             }
+            var duplicateError = validateUniqueBackupKeys(rawText);
+            if (duplicateError) { toast('导入失败：' + duplicateError + '，本机数据未改动'); return; }
             var err = validateBackup(obj);
             if (err) { toast('导入失败：' + err); return; }
             if (obj.__backup.complete === false) {
@@ -1579,7 +1624,8 @@
                         dbRestored += res.written;
                         dbSkippedBlob += res.skipped;
                     } catch (e) {
-                        dbFailed.push(tgt.db + '（' + ((e && e.message) || '未知错误') + '）');
+                        dbFailed.push(tgt.db + '（恢复失败）');
+                        break; // Do not modify subsequent databases after a failure.
                     }
                 }
             } else {
