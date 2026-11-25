@@ -48,3 +48,27 @@ test('user board sends only canonical action and revision, locks duplicate click
 test('failed action is retryable without moving pieces; successful unchanged revision stays locked',async()=>{
   const d=setup(),root=makeRoot();let n=0;const host=createLudoBoardView(root,{onMove:()=>{if(++n===1)throw Error('private');}});host.render(d.view('user'));all(root,'mao-ludo__action')[0].click();await tick();assert.match(all(root,'mao-ludo__notice')[0].textContent,/重试/);assert.equal(all(root,'mao-ludo__action')[0].disabled,false);all(root,'mao-ludo__action')[0].click();await tick();assert.equal(all(root,'mao-ludo__action')[0].disabled,true);assert.equal(n,2);assert.throws(()=>host.render(d.view('role:r1')),/LUDO_BOARD_USER_ONLY/);
 });
+
+test('committed roll and movement animate once; control unlocking does not rebuild the moving nodes',async()=>{
+  const d=setup(),root=makeRoot(),animations=[];
+  const doc=root.ownerDocument;
+  const original=doc.createElement;
+  doc.createElement=tag=>{const e=original(tag);e.animate=(frames,options)=>{const a={node:e,frames,options,cancelled:false,cancel(){this.cancelled=true;}};animations.push(a);return a;};e.getBoundingClientRect=()=>({left:Number(e.parent?.style.gridColumn??0)*20,top:Number(e.parent?.style.gridRow??0)*20});return e;};
+  const host=createLudoBoardView(root,{onMove:async a=>{act(d,'user',a.move);host.render(d.view('user'));}});
+  host.render(d.view('user'));assert.equal(animations.length,0);
+  all(root,'mao-ludo__action')[0].click();await tick();
+  assert.equal(animations.length,1);assert.equal(animations[0].options.duration,200);
+  all(root,'mao-ludo__action')[0].click();await tick();
+  assert.equal(animations.length,2);assert.equal(animations[1].options.duration,240);assert.equal(animations[1].cancelled,false);
+  host.render(d.view('user'));assert.equal(animations.length,2);assert.equal(animations[1].cancelled,true);
+  host.destroy();
+});
+test('reduced motion and skipped revisions render authoritative positions without animation',()=>{
+  const d=setup(),root=makeRoot(),doc=root.ownerDocument;let count=0;
+  doc.defaultView={matchMedia:()=>({matches:true})};
+  const original=doc.createElement;
+  doc.createElement=tag=>{const e=original(tag);e.animate=()=>{count++;return {cancel(){}};};return e;};
+  const host=createLudoBoardView(root,{onMove:()=>{}});
+  host.render(d.view('user'));act(d,'user',{kind:'roll'});host.render(d.view('user'));assert.equal(count,0);
+  doc.defaultView.matchMedia=()=>({matches:false});act(d,'user',{kind:'choose',plane:0});act(d,'user',{kind:'roll'});host.render(d.view('user'));assert.equal(count,0);host.destroy();
+});
