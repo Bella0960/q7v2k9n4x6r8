@@ -6,6 +6,17 @@ import {createRoomSpeechRunner} from './room-speech-runner.js';
 // model budget and output policy belong to separately injected trusted adapters.
 const fail=code=>{throw Error(code);};
 const id=v=>typeof v==='string'&&v.length>0&&v.length<=128&&v.trim()===v;
+// Only committed public game events merit an unsolicited reaction.
+export function ludoEventPriority(view){
+  const last=view?.game?.last;
+  if(view?.gameId!=='ludo'||view.phase!=='playing'||!last)return 0;
+  if(last.kind==='move'){
+    if(last.captures?.length||last.effects?.includes('blocked'))return 3;
+    if(last.effects?.some(e=>['finish','flight'].includes(e)))return 2;
+    if(last.card||last.gained||last.effects?.some(e=>['supply','wind'].includes(e)))return 1;
+  }
+  return last.kind==='roll'&&last.cruise===true?1:0;
+}
 export function createLudoDiscussion({session,view,generateRole=null,generateBot=null,allowOutput=null,onChange=()=>{},timeoutMs=30000,now=Date.now}={}){
   if(!session||!['viewUser','viewRole','viewBot','discussionSignal','discussionCurrent'].every(k=>typeof session[k]==='function')||
     view?.gameId!=='ludo'||view.phase!=='playing'||view.selfSeatId!=='user'||
@@ -17,6 +28,7 @@ export function createLudoDiscussion({session,view,generateRole=null,generateBot
   const eligible=seats.filter(s=>s.kind!=='user');
   const generator=s=>s.kind==='bot'?generateBot:generateRole;
   let closed=false,epoch=0,tail=Promise.resolve(),pending=0,roundSignal=null,sequence=0;
+  let roundEvent=null,automatic=null,lastObserved=view.revision,lastAutomatic=-Infinity,automaticCount=0;
   function check(stamp){if(closed||stamp!==epoch)fail('LUDO_DISCUSSION_STOPPED');}
   function verify(v,allowFinished=false){
     if(v?.roomId!==roomId||v.gameId!=='ludo'||!(v.phase==='playing'||allowFinished&&v.phase==='finished')||
@@ -40,6 +52,7 @@ export function createLudoDiscussion({session,view,generateRole=null,generateBot
       const v=verify(await (s.kind==='bot'?session.viewBot(s.seatId):session.viewRole(s.roleId)));
       if(v.selfSeatId!==s.seatId||!session.discussionCurrent(signal)||ticket.signal.aborted)fail('LUDO_DISCUSSION_SCOPE');
       const context=buildRoomSpeechContext({roleSeatId:s.seatId,view:v,chatLog:log});
+      if(roundEvent)context.trigger=JSON.parse(JSON.stringify(roundEvent));
       return {request:{seat:s,context},audienceSeatIds:[...audience]};
     },
     async generate({seat,context},{signal}){
@@ -61,6 +74,8 @@ export function createLudoDiscussion({session,view,generateRole=null,generateBot
     let target;
     try{target=replyToSeatId===null?null:find(replyToSeatId);}catch(error){return Promise.reject(error);}
     if(pending>=16)return Promise.reject(Error('LUDO_DISCUSSION_BUSY'));
+    // Explicit messages take precedence over optional commentary.
+    if(automatic){automatic.cancelled=true;if(automatic.running)runner.stop();}
     const stamp=epoch;pending++;
     const task=tail.then(async()=>{
       check(stamp);
@@ -87,11 +102,48 @@ export function createLudoDiscussion({session,view,generateRole=null,generateBot
     }).finally(()=>{pending--;});
     tail=task.catch(()=>{});return task;
   }
+  // Trusted page host only: pass a detached snapshot of a committed move,
+  // never a user/model supplied event. The latest live view is reverified.
+  function react(eventView){
+    if(closed)return Promise.resolve({committed:0,reason:'CLOSED'});
+    try{verify(eventView);}catch{return Promise.resolve({committed:0,reason:'STALE_EVENT'});}
+    const revision=eventView.revision,priority=ludoEventPriority(eventView);
+    if(eventView.selfSeatId!=='user'||!Number.isSafeInteger(revision)||revision<=lastObserved)return Promise.resolve({committed:0,reason:'STALE_EVENT'});
+    lastObserved=revision;
+    if(!priority||pending||automaticCount>=12||revision-lastAutomatic<4)return Promise.resolve({committed:0,reason:'QUIET'});
+    const last=eventView.game.last;
+    if(!audience.includes(last.seatId))return Promise.resolve({committed:0,reason:'STALE_EVENT'});
+    const victims=last.kind==='move'&&Array.isArray(last.captures)?last.captures.filter(c=>audience.includes(c?.seatId)&&Number.isInteger(c.plane)&&c.plane>=0&&c.plane<4).map(c=>({seatId:c.seatId,plane:c.plane})):[];
+    const preferred=[...new Set([...victims.map(v=>v.seatId),last.seatId,...eligible.map(s=>s.seatId)])];
+    const speaker=preferred.map(id=>eligible.find(s=>s.seatId===id)).find(s=>s&&generator(s));
+    if(!speaker)return Promise.resolve({committed:0,reason:'MODEL_UNAVAILABLE'});
+    const event={kind:'game-event',revision,actorSeatId:last.seatId,action:last.kind,
+      effects:Array.isArray(last.effects)?last.effects.filter(e=>['launch','jump','flight','bounce','finish','blocked','supply','wind'].includes(e)):[],
+      captures:victims,
+      ...(Number.isInteger(last.plane)&&last.plane>=0&&last.plane<4?{plane:last.plane}:{}),
+      ...(['boost','shield'].includes(last.card)?{card:last.card}:{}),
+      ...(last.cruise===true?{cruise:true}:{})};
+    const stamp=epoch,job={cancelled:false,running:false};automatic=job;pending++;automaticCount++;lastAutomatic=revision;
+    const task=tail.then(async()=>{
+      check(stamp);if(job.cancelled)return {committed:0,reason:'QUIET'};
+      const signal=await session.discussionSignal(),latest=await current(signal);check(stamp);
+      if(job.cancelled||latest.revision<revision||latest.revision-revision>8)return {committed:0,reason:'STALE_EVENT'};
+      roundSignal=signal;roundEvent=event;job.running=true;
+      try{
+        return await runner.runRound([{jobId:'event:'+revision+':'+speaker.seatId,seatId:speaker.seatId}],{signal,allowSilence:true});
+      }finally{
+        job.running=false;roundEvent=null;
+        if(roundSignal===signal)roundSignal=null;
+        notify(signal,true);
+      }
+    }).finally(()=>{pending--;if(automatic===job)automatic=null;});
+    tail=task.catch(()=>{});return task;
+  }
   async function read(){
     const stamp=epoch,signal=await session.discussionSignal();await current(signal,true);check(stamp);
     return log.read('user');
   }
-  function stop(){epoch++;roundSignal=null;runner.stop();}
+  function stop(){epoch++;if(automatic)automatic.cancelled=true;roundSignal=null;roundEvent=null;runner.stop();}
   function close(){if(closed)return;closed=true;stop();runner.close();}
-  return Object.freeze({send,read,stop,close,status:()=>({closed,pending,...runner.status()})});
+  return Object.freeze({send,react,read,stop,close,status:()=>({closed,pending,...runner.status()})});
 }

@@ -2,7 +2,7 @@ import {createBrowserRoomSession} from './browser-room-session.js';
 import {createLudoRules} from './ludo-rules.js';
 import {createLudoBoardView} from './ludo-board-view.js';
 import {createLudoTurnDriver} from './ludo-turn-driver.js';
-import {createLudoDiscussion} from './ludo-discussion.js';
+import {createLudoDiscussion,ludoEventPriority} from './ludo-discussion.js';
 
 // Opt-in page controller. The host must load the canonical account scope and
 // PhoneStorage first. No fixture identities, storage writes or route registration.
@@ -17,7 +17,7 @@ export function createLudoPageHost(root,{win=root?.ownerDocument?.defaultView,on
   function clear(e){e?.board?.destroy();if(e){e.board=null;e.revision=-1;}root.replaceChildren();}
   function pause(reason){
     if(!entry)return;
-    epoch++;entry.driver.stop();entry.discussion?.stop();clear(entry);report(reason);
+    epoch++;entry.eventView=null;entry.driver.stop();entry.discussion?.stop();clear(entry);report(reason);
   }
   function end(){
     const old=entry;entry=null;epoch++;
@@ -38,12 +38,20 @@ export function createLudoPageHost(root,{win=root?.ownerDocument?.defaultView,on
     if(view.roomId!==e.roomId||view.gameId!=='ludo'||view.selfSeatId!=='user'||!['playing','finished'].includes(view.phase))fail('LUDO_PAGE_INVALID_VIEW');
     if(e.revision===view.revision&&e.board)return;
     if(!e.board)e.board=createLudoBoardView(root,{onMove:action=>move(e,action),labelForSeat:id=>/^bot:[1-3]$/.test(id)?'普通棋手 '+id.slice(4):labelForSeat(id)});
+    const priority=ludoEventPriority(view);
+    if(e.revision>=0&&view.revision===e.revision+1&&priority&&priority>=ludoEventPriority(e.eventView))e.eventView=view;
     e.board.render(view);e.revision=view.revision;
-    if(view.phase==='finished')e.discussion?.stop();
+    if(view.phase==='finished'){e.eventView=null;e.discussion?.stop();}
+  }
+  function flushEvent(e,stamp){
+    check(e,stamp);const event=e.eventView;e.eventView=null;
+    // Do not wait for optional speech or feed raw model decision text into chat.
+    if(event&&e.discussion)void e.discussion.react(event).catch(()=>{});
   }
   async function runRoles(e,stamp){
     check(e,stamp);e.runStamp=stamp;
     const result=await e.driver.runUntilUser();check(e,stamp);
+    if(result.status==='user')flushEvent(e,stamp);
     report(result.status==='yield'?'yield':result.status==='finished'?'finished':'ready');
     return result;
   }
@@ -58,7 +66,7 @@ export function createLudoPageHost(root,{win=root?.ownerDocument?.defaultView,on
       if(action?.roomId!==e.roomId||action?.seatId!=='user'||action?.revision!==current.revision||current.turnSeatId!=='user'||current.phase!=='playing')fail('LUDO_PAGE_STALE_ACTION');
       const next=await commit({type:'move',move:action.move});check(e,stamp);publish(e,next,stamp);
       if(next.phase==='playing'&&next.turnSeatId!=='user')await runRoles(e,stamp);
-      else report(next.phase==='finished'?'finished':'ready');
+      else {if(next.phase==='playing')flushEvent(e,stamp);report(next.phase==='finished'?'finished':'ready');}
     }catch(error){if(entry===e&&stamp===epoch){pause('paused');if(e.session.status()==='disposed')end();}throw error;}
     finally{busy=false;}
   }
@@ -69,7 +77,7 @@ export function createLudoPageHost(root,{win=root?.ownerDocument?.defaultView,on
     let e;
     try{
       const session=createBrowserRoomSession({win,spec:{roomId,gameId:'ludo'},expectedIdentity,rules:createLudoRules({rollDie,mode})});
-      e={roomId,session,board:null,revision:-1,driver:null,discussion:null,runStamp:stamp};
+      e={roomId,session,board:null,revision:-1,driver:null,discussion:null,eventView:null,runStamp:stamp};
       e.driver=createLudoTurnDriver({session,pace,decide:decideRole,onView:view=>publish(e,view,e.runStamp)});
       entry=e;report('opening');
       await session.refresh();check(e,stamp);

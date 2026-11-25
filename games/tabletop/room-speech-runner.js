@@ -16,7 +16,7 @@ export function createRoomSpeechRunner({chatLog,roleSeatIds,prepare,generate,aut
   const queue=createRoomSpeechQueue({roleSeatIds,maxPerRound,maxPerRoom});
   let running=false;
   function check(ticket){if(ticket.signal.aborted) fail('SPEECH_CANCELLED');}
-  async function execute(ticket) {
+  async function execute(ticket,allowSilence) {
     const {signal}=ticket;
     let timer,abort;
     const deadline=new Promise((_,reject)=>{
@@ -38,6 +38,7 @@ export function createRoomSpeechRunner({chatLog,roleSeatIds,prepare,generate,aut
       let text;
       try {text=await generate(prepared.request,{signal});} catch {fail('SPEECH_GENERATION_FAILED');}
       check(ticket);
+      if(allowSilence&&text===null)return {silent:true};
       if(typeof text!=='string'||!text.trim()||text.length>16000) fail('INVALID_SPEECH_REPLY');
       let allowed;
       try {allowed=await authorize(ticket,{text,audienceSeatIds:[...initial]});} catch {fail('SPEECH_AUTHORIZATION_FAILED');}
@@ -49,7 +50,8 @@ export function createRoomSpeechRunner({chatLog,roleSeatIds,prepare,generate,aut
     try {return await Promise.race([work(),deadline]);}
     finally {clearTimeout(timer);signal.removeEventListener('abort',abort);}
   }
-  async function runRound(jobs,{signal}={}) {
+  async function runRound(jobs,{signal,allowSilence=false}={}) {
+    if(typeof allowSilence!=='boolean')fail('INVALID_SPEECH_ROUND');
     if(running) fail('SPEECH_ROUND_BUSY');
     if(signal!==undefined&&(!(signal instanceof AbortSignal))) fail('INVALID_SPEECH_SIGNAL');
     if(signal?.aborted) fail('SPEECH_CANCELLED');
@@ -60,7 +62,8 @@ export function createRoomSpeechRunner({chatLog,roleSeatIds,prepare,generate,aut
     try {
       if(signal?.aborted) fail('SPEECH_CANCELLED');
       for(let ticket;(ticket=queue.take());) {
-        const {text,final}=await execute(ticket);
+        const {text,final,silent}=await execute(ticket,allowSilence);
+        if(silent){check(ticket);if(!queue.settle(ticket))fail('SPEECH_CANCELLED');continue;}
         const time=now();
         // No await between final permission check, settlement and append. The
         // caller's synchronous guard must not return an async approval or
