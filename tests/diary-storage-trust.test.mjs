@@ -22,7 +22,7 @@ function slice(from, to) {
 const identityBlock = slice('  function diaryAuthorKind(', '  function diaryCharacters(');
 const personaBlock = slice('  function diaryRoleContext(', '  function openAnnotation()');
 const manualBlock = slice('  function generateCharComment(){', '  function renderReader(){');
-const persistBlock = slice('  function persist(){', '  function hydratePhotos(');
+const persistBlock = slice('  function diaryArchiveIsCurrent(){', '  function hydratePhotos(');
 const flagBlock = slice('  function toggleEntryFlag(', '  function renderPhotoPreview(');
 const autoWriteBlock = slice('  function diaryRecentOwnWriting(', '  setTimeout(maybeAutoWriteCharEntry,3000);');
 const autoPeekBlock = slice('  function maybeAutoPeek(){', '  setTimeout(maybeAutoPeek,1800);');
@@ -47,6 +47,8 @@ function makeSandbox({ store, entries = [], role = { id: 'roleA', name: '阿岚'
   const sandbox = {
     localStorage: store,
     STORAGE_KEY: 'maomao_diary_entries_v1',
+    diaryArchiveSnapshot:store.getItem('maomao_diary_entries_v1'),
+    diaryPageAccount:JSON.stringify(['fixture-account',null]),
     entries,
     peekBusy: false,
     showToast: (m) => toasts.push(m),
@@ -311,8 +313,9 @@ test('personal remark is independent of diary body, role comments and memo recor
 });
 test('natural writing prompt includes only the selected role own prior diaries and not personal remarks, other roles, or memo bodies',()=>{
  const entries=[
- {id:'d_char_a',date:'2026-11-24',author:'roleA',content:'OWN_PRIOR_LIFE',personalRemark:{text:'PRIVATE_REMARK'},charComments:[{text:'OLD_COMMENT'}]},
- {id:'d_char_b',date:'2026-11-24',author:'roleB',content:'OTHER_ROLE_LIFE'},
+ {id:'d_char_a',date:'2026-11-24',author:'roleA',diaryWritingVersion:2,content:'OWN_PRIOR_LIFE',personalRemark:{text:'PRIVATE_REMARK'},charComments:[{text:'OLD_COMMENT'}]},
+ {id:'d_char_b',date:'2026-11-24',author:'roleB',diaryWritingVersion:2,content:'OTHER_ROLE_LIFE'},
+ {id:'d_char_old',date:'2026-11-24',author:'roleA',content:'OLD_GENERIC_TEMPLATE'},
  {id:'d_char_memo',date:'2026-11-24',author:'roleA',noteType:'备忘',content:'MEMO_PRIVATE'},
  {id:'d_user',date:'2026-11-25',author:'me',content:'USER_PRIVATE',personalRemark:{text:'USER_REMARK'}}
  ];
@@ -321,7 +324,7 @@ test('natural writing prompt includes only the selected role own prior diaries a
  assert.match(prompt,/OWN_PRIOR_LIFE/);
  assert.match(prompt,/不要求起承转合/);
  assert.match(prompt,/不默认上班、喝咖啡、加班、通勤/);
- assert.doesNotMatch(prompt,/200-400字|PRIVATE_REMARK|OLD_COMMENT|OTHER_ROLE_LIFE|MEMO_PRIVATE|USER_PRIVATE|USER_REMARK/);
+ assert.doesNotMatch(prompt,/200-400字|PRIVATE_REMARK|OLD_COMMENT|OTHER_ROLE_LIFE|MEMO_PRIVATE|USER_PRIVATE|USER_REMARK|OLD_GENERIC_TEMPLATE/);
 });
 test('automatic and manual role comments never include private remark fields and label memo distinctly',async()=>{
  for(const noteType of ['日记','备忘']){
@@ -339,4 +342,48 @@ test('backup import and export preserve the dedicated private remark field',()=>
  assert.match(importer,/clean\.personalRemark=\{text:e\.personalRemark\.text/);
  const exporter=slice('  function exportBackup(){','  function importBackup(file){');
  assert.match(exporter,/Object\.assign\(\{\},entry/);
+});
+
+test('stale page cannot overwrite another tab archive or a newly switched account',()=>{
+ const entry={id:'u',author:'me',date:'2026-11-25',content:'old'};
+ const store=makeStore({maomao_diary_entries_v1:JSON.stringify([entry])});
+ const {sb}=makeSandbox({store,entries:[{...entry}]});
+ const newest=JSON.stringify([{...entry,content:'newest'}]);store.setItem('maomao_diary_entries_v1',newest);
+ assert.equal(sb.savePersonalRemark('u',sb.diaryAccountToken(),'stale'),false);
+ assert.equal(store.getItem('maomao_diary_entries_v1'),newest);
+ sb.diaryArchiveSnapshot=newest;sb.account='other';
+ assert.equal(sb.persist(),false);assert.equal(store.getItem('maomao_diary_entries_v1'),newest);
+});
+test('in-flight comments are not stored after content or persona changes',async()=>{
+ for(const manual of [false,true])for(const change of ['content','persona']){
+  const role={id:'roleA',name:'A',persona:'研究植物，喜欢自然观察。',tone:'简练'};
+  const entry={id:'u',author:'me',date:'2026-11-25',content:'original'};
+  const {sb}=makeSandbox({store:makeStore(),entries:[entry],role});
+  let finish;sb.PhoneAPI.complete=()=>new Promise(r=>finish=r);sb.readerId='u';
+  if(manual)sb.generateCharComment();else sb.maybeAutoPeek();
+  assert.equal(typeof finish,'function');
+  if(change==='content')entry.content='changed';else role.persona='研究音乐，喜欢作曲。';
+  finish('测试留言');await new Promise(r=>setTimeout(r,10));
+  assert.equal(entry.charComments?.length||0,0);
+ }
+});
+test('in-flight role diary is discarded after saved role context changes',async()=>{
+ const role={id:'roleA',name:'A',persona:'从事植物研究，记录自然观察。',tone:'简练'};
+ const {sb}=makeSandbox({store:makeStore(),role});let finish;
+ sb.PhoneAPI.complete=()=>new Promise(r=>finish=r);
+ const pending=sb.maybeAutoWriteCharEntry();await Promise.resolve();
+ assert.equal(typeof finish,'function');role.persona='从事音乐研究，记录作曲过程。';
+ finish('今天记录了植物叶片的变化，正在整理观察记录。');await pending;
+ assert.equal(sb.entries.length,0);
+});
+test('current-role selector refuses invalid contacts, ambiguous roles and duplicate IDs',()=>{
+ const code=slice('  function diaryCharacters(){','  // A read-only, diary-specific adapter')+'\n'+slice('  function peekCurrentRole(){','  function maybeAutoPeek(){');
+ let roles=[{id:'a',name:'A'},{id:'b',name:'B'}],contact='missing';
+ const context=vm.createContext({PhoneStorage:{getCharacters:()=>roles,getCurrentContactId:()=>contact}});context.window=context;
+ vm.runInContext(code,context);
+ assert.equal(context.peekCurrentRole(),null);
+ contact=null;assert.equal(context.peekCurrentRole(),null);
+ contact='b';assert.equal(context.peekCurrentRole().id,'b');
+ roles.push({id:'b',name:'Duplicate'});assert.equal(context.peekCurrentRole(),null);
+ contact=null;assert.equal(context.peekCurrentRole().id,'a');
 });
