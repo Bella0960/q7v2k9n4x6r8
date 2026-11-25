@@ -64,7 +64,8 @@ test('group management exposes existing administrator and title controls',()=>{
   assert.ok(play.indexOf('id="memberManagement"')<play.indexOf('id="settingsList"'));
   assert.equal((play.match(/data-member-field="isAdmin"/g)||[]).length,1);
   assert.equal((play.match(/data-member-field="title"/g)||[]).length,1);
-  assert.match(play,/if\(field==='isAdmin'&&String\(group\.ownerId/);
+  assert.match(play,/if\(field==='isAdmin'\)/);
+  assert.ok(play.includes("canManage('admin',String(member.id))"));
 });
 
 test('directory routes preserve all original controls and scoped subpages',()=>{
@@ -453,4 +454,28 @@ test('all six preferences refuse late competing writes and late account changes'
     {const {s,g}=setup();const snap=g.readPreference(g.read('g1'),kind);let sawKey=false;s.hook=(key)=>{if(key===prefix+'g1')sawKey=true;else if(key==='phone_groups'&&sawKey)s.data.set(prefix+'g1',newer)};assert.equal(g.writePreference(snap,val).ok,false);assert.equal(s.writes,0);assert.equal(s.data.get(prefix+'g1'),newer);}
     {const {s,g}=setup();const snap=g.readPreference(g.read('g1'),kind);let n=0;s.hook=(key)=>{if(key===prefix+'g1'&&++n===2)s.owner='B'};assert.equal(g.writePreference(snap,val).ok,false);assert.equal(s.writes,0);}
   }
+});
+
+test('role-owned and departed groups cannot be taken over from old settings',()=>{
+  const ctx={};ctx.window=ctx;vm.runInNewContext(read('shared/js/phone/group-admin-policy.js'),ctx);
+  const p=ctx.MAOGroupAdminPolicy,group=(extra={})=>({members:[{id:'r1',memberRole:'admin'},{id:'r2'}],settings:{allowRoleActions:true},...extra});
+  for(const action of ['transfer','admin','mute','remove','invite']){
+    assert.equal(p.userCanManage(group(),action,'r1'),true);
+    for(const extra of [{ownerId:'r1'},{userMembership:'left'},{userMembership:'declined'}])assert.equal(p.userCanManage(group(extra),action,'r2'),false);
+  }
+  for(const id of ['r1','__user','unknown'])assert.equal(p.userCanManage(group({members:[{id:'r1'},{id:'r1'}]}),'admin',id),false);
+  assert.equal(p.userCanManage(group({members:[{id:'r1'}]}),'remove','r1'),false);
+  assert.equal(p.role(group(),'r1'),'admin');
+  assert.equal(p.role(group({members:[{id:'r1',memberRole:'admin',isAdmin:false}]}),'r1'),'member');
+  assert.equal(p.role(group({userMembership:'left'}),'__user'),'');
+  assert.equal(p.isMuted({isMuted:true},100),true);
+  assert.equal(p.isMuted({muted:true,mutedUntil:99},100),false);
+  assert.equal(p.isMuted({muted:false,isMuted:true},100),false);
+  const g=group({ownerId:'r3',members:[{id:'r1',memberRole:'admin'},{id:'r2',isAdmin:true},{id:'r3'}]});
+  assert.equal(p.can(g,'r1','移除','r2'),false);assert.equal(p.can(g,'r1','移除','r3'),false);
+  const settings=read('chat/chat/chat-settings.html'),play=read('chat/chat/group-play.html');
+  assert.ok(settings.includes("userCanManage(g2,'remove',mid)"));
+  assert.ok(settings.includes("userCanManage(g,'invite')"));
+  assert.ok(play.includes("canManage('transfer',String(nextOwnerId))"));
+  assert.ok(play.includes("member.memberRole=input.checked?'admin':'member'"));
 });
