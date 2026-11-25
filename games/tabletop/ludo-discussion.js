@@ -185,7 +185,11 @@ export function createLudoDiscussion({session,view,generateRole=null,generateBot
     return log.read('user');
   }
   async function save(expectedRevision){
-    const stamp=epoch,signal=await session.discussionSignal(),v=await current(signal,true);check(stamp);
+    const stamp=epoch,signal=await session.discussionSignal();let v=await current(signal,true);check(stamp);
+    // At settlement the host has already cancelled ongoing speech. Drain
+    // that cancelled queue before capturing the committed transcript.
+    // Mid-game saves remain non-blocking and reject active generation.
+    if(v.phase==='finished'&&(pending||runner.status().running)){await tail;check(stamp);v=await current(signal,true);check(stamp);}
     if(pending||runner.status().running||!Number.isSafeInteger(expectedRevision)||v.revision!==expectedRevision)fail('LUDO_CHAT_CHECKPOINT_BUSY');
     return {schema:1,roomId,revision:v.revision,sequence,automaticCount,lastAutomatic:Number.isFinite(lastAutomatic)?lastAutomatic:null,
       jobIds:runner.checkpoint(),messages:log.read('user').map(m=>({id:m.id,senderSeatId:m.sender.seatId,text:m.text,time:m.time}))};

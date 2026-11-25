@@ -23,7 +23,7 @@ export function mountTabletopHall(root,{win=root?.ownerDocument?.defaultView,gam
  const el=(tag,cls='',text)=>{const n=doc.createElement(tag);n.className=cls;if(text!==undefined)n.textContent=text;return n;};
  const btn=(text,cls,fn)=>{const n=el('button',cls,text);n.type='button';n.addEventListener('click',fn);return n;};
  let disposed=false,epoch=0,context=null,journal=null,current=null,checking=null,busy=false,exitArmed=false,replaceArmed=null,needsRefresh=false;
- const saves=new Map(),listeners=[];
+ const saves=new Map(),finishedSaves=new Set(),listeners=[];
  const wrap=el('section','mao-table-hall'),top=el('header','mao-table-hall__top'),title=el('h1','','多人游戏'),back=btn('返回游戏大厅','mao-table-link',()=>void exit());top.append(title,back);
  const main=el('div','mao-table-hall__main'),toolbar=el('div','mao-table-hall__tools'),note=el('p','mao-table-note');note.setAttribute('role','status');
  const reverify=btn('重新验证','mao-table-link',()=>void recover());reverify.hidden=true;
@@ -34,7 +34,7 @@ export function mountTabletopHall(root,{win=root?.ownerDocument?.defaultView,gam
    if(!context||s?.ready!==true||s.accountId!==context.accountId||doc.querySelector('meta[name="mao-account-id"]')?.content!==s.accountId||doc.querySelector('meta[name="mao-account-role"]')?.content!==s.role)fail('TABLETOP_HALL_SCOPE');
    return context;
  }
- function purge(){journal?.close();journal=null;context=null;saves.clear();replaceArmed=null;exitArmed=false;}
+ function purge(){journal?.close();journal=null;context=null;saves.clear();finishedSaves.clear();replaceArmed=null;exitArmed=false;}
  async function verified(stamp){
    check(stamp);const ac=new AbortController();checking=ac;
    try{
@@ -49,7 +49,7 @@ export function mountTabletopHall(root,{win=root?.ownerDocument?.defaultView,gam
    const list=el('div','mao-table-hall__list');for(const game of TABLETOP_GAMES){
      const row=el('div','mao-table-hall__row'),open=btn(game.name,'mao-table-hall__open',()=>void launch(game.id,false));
      const copy=el('span','mao-table-hall__meta',game.meta+' · '+game.description);open.append(copy);row.append(open);
-     if(saves.has(game.id))row.append(btn('继续暂存','mao-table-link',()=>void launch(game.id,true)));
+     if(saves.has(game.id))row.append(btn(finishedSaves.has(game.id)?'查看已结束对局':'继续暂存','mao-table-link',()=>void launch(game.id,true)));
      list.append(row);
    }
    main.append(list,btn('游戏手账','mao-table-hall__journal',()=>void openJournal()),el('p','mao-table-note','暂存与手账仅保留于当前大厅会话，尚未接入永久存储。'));
@@ -97,8 +97,17 @@ export function mountTabletopHall(root,{win=root?.ownerDocument?.defaultView,gam
      if(current!==e||saved?.board?.gameId!==e.id||saved.board.accountId!==context.accountId)fail('TABLETOP_HALL_SCOPE');
      // One temporary slot per game. Explicit replacement confirmation.
      if(saves.has(e.id)&&saves.get(e.id).board.roomId!==saved.board.roomId&&replaceArmed!==saved.board.roomId){replaceArmed=saved.board.roomId;note.textContent='该游戏已有暂存对局，再点一次暂存将替换它。';return;}
-     saves.set(e.id,JSON.parse(JSON.stringify(saved)));replaceArmed=null;exitArmed=false;note.textContent='已暂存到当前大厅会话，关闭页面后不会保留。';
+     saves.set(e.id,JSON.parse(JSON.stringify(saved)));if(e.archived===JSON.stringify([saved.board.roomId,saved.board.startRevision+saved.board.moves.length]))finishedSaves.add(e.id);else finishedSaves.delete(e.id);replaceArmed=null;exitArmed=false;note.textContent='已暂存到当前大厅会话，关闭页面后不会保留。';
    }catch{if(!disposed&&stamp===epoch)note.textContent='暂存未完成，请等待当前回合结束后重试。';}finally{busy=false;drainFinish();}
+ }
+ function isPrefix(prior,terminal){
+   const a=prior.board,b=terminal.board;
+   if(a.roomId!==b.roomId||a.moves.length>b.moves.length)return false;
+   const {moves:am,...ai}=a,{moves:bm,...bi}=b;
+   if(JSON.stringify(ai)!==JSON.stringify(bi)||!am.every((m,i)=>JSON.stringify(m)===JSON.stringify(bm[i])))return false;
+   if(prior.chat&&!terminal.chat)return false;
+   if(prior.chat&&!prior.chat.messages.every((m,i)=>JSON.stringify(m)===JSON.stringify(terminal.chat.messages[i])))return false;
+   return prior.difficulty===terminal.difficulty;
  }
  function drainFinish(){
    const e=current;if(disposed||busy||needsRefresh||e?.kind!=='game'||!e.terminal||e.attempted===e.terminal.key||e.archived===e.terminal.key)return;
@@ -110,6 +119,10 @@ export function mountTabletopHall(root,{win=root?.ownerDocument?.defaultView,gam
      await verified(stamp);const saved=await e.page.saveMatch();check(stamp);await verified(stamp);if(current!==e||saved.board.accountId!==context.accountId)fail('TABLETOP_HALL_STALE');if(expected&&(saved.board.roomId!==expected.roomId||saved.board.startRevision+saved.board.moves.length!==expected.revision))fail('TABLETOP_HALL_STALE');
      const result=journal.recordSavedMatch(saved);check(stamp);
      e.archived=JSON.stringify([saved.board.roomId,saved.board.startRevision+saved.board.moves.length]);
+     // Advance only an earlier temporary snapshot of this exact match.
+     // Never replace another match or a divergent branch of the same room.
+     const prior=saves.get(e.id);
+     if(prior&&isPrefix(prior,saved)){saves.set(e.id,JSON.parse(JSON.stringify(saved)));finishedSaves.add(e.id);}
      note.textContent=result.duplicate?'本局已归档，无需重复记录。':'已自动或手动记入本次会话的游戏手账。';
    }catch{if(!disposed&&stamp===epoch)note.textContent=expected?'自动归档未完成，请点击归档重试。':'仅可归档已结束且当前可验证的对局。';}finally{busy=false;drainFinish();}
  }

@@ -136,7 +136,8 @@ export function createGomokuDiscussion({session,view,generateRole=null,generateB
   }
   async function read(){const stamp=epoch,signal=await session.discussionSignal();await current(signal,true);check(stamp);return log.read('user');}
   async function save(revision){
-    const stamp=epoch,signal=await session.discussionSignal(),v=await current(signal,true);check(stamp);
+    const stamp=epoch,signal=await session.discussionSignal();let v=await current(signal,true);check(stamp);
+    if(v.phase==='finished'&&(pending||runner.status().running)){await tail;check(stamp);v=await current(signal,true);check(stamp);}
     if(pending||runner.status().running||v.revision!==revision)fail('GOMOKU_CHAT_CHECKPOINT_BUSY');
     return {schema:1,roomId,revision,sequence,jobIds:runner.checkpoint(),messages:log.read('user').map(m=>({id:m.id,senderSeatId:m.sender.seatId,text:m.text,time:m.time}))};
   }
