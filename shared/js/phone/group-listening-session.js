@@ -129,13 +129,18 @@
       const denied=authorize(token,true);if(denied)return denied;
       if(!getTrack(id))return fail('TRACK_UNAVAILABLE');
       if(!ensure())return fail('SCOPE_CHANGED');
+      return applySelection(id,session.queue.includes(id)?session.queue.slice():[id]);
+    }
+    // Validate the whole picker transaction before releasing the current source.
+    // Expose one revision and one notification, never an intermediate queue.
+    function applySelection(id,queue){
       busy=true;session.revision++;
       try{player.release();}catch{return invalidate('PLAYER_RELEASE_FAILED');}
       if(!ensure())return fail('SCOPE_CHANGED');
       const n=native();if(!n||n.playing||n.pending||n.trackId!==null)return invalidate('PLAYER_RELEASE_FAILED');
       if(!ensure())return fail('SCOPE_CHANGED');
       session.trackId=id;session.status='ready';session.error=null;session.time=0;session.duration=0;
-      if(!session.queue.includes(id))session.queue=[id];
+      session.queue=queue;
       busy=false;return ok('selected');
     }
     function validQueueTracks(ids){
@@ -147,6 +152,14 @@
         const available=new Set(snapshot.tracks.map(t=>t.id));
         return ids.every(id=>available.has(id));
       }catch{return false;}
+    }
+    function selectQueue(token,ids){
+      const denied=authorize(token,true);if(denied)return denied;
+      if(!Array.isArray(ids)||!ids.length||ids.length>100)return fail('INVALID_QUEUE');
+      const queue=Array.from(ids);
+      if(new Set(queue).size!==queue.length||!validQueueTracks(queue))return fail('INVALID_QUEUE');
+      if(!ensure())return fail('SCOPE_CHANGED');
+      return applySelection(queue[0],queue);
     }
     function setQueue(token,ids){
       const denied=authorize(token);if(denied)return denied;
@@ -240,7 +253,7 @@
       root.removeEventListener('storage',onStorage);root.removeEventListener('pagehide',onExit);
       if(typeof unsubscribe==='function')unsubscribe();listeners.clear();owners.delete(player);
     }
-    return Object.freeze({version:1,start,selectTrack,setQueue,join,leave,play,pause,seek,end,reconcile,getSnapshot:reconcile,destroy,
+    return Object.freeze({version:1,start,selectTrack,selectQueue,setQueue,join,leave,play,pause,seek,end,reconcile,getSnapshot:reconcile,destroy,
       subscribe(fn){if(disposed||typeof fn!=='function')return ()=>{};listeners.add(fn);return ()=>listeners.delete(fn);}});
   }
   // Product composition: both source lookup and native start are guarded by

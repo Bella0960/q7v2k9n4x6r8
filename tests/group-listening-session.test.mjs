@@ -148,3 +148,28 @@ test('batch queue validates through one catalog scan and rejects unavailable tra
  broken=true;assert.equal(h.api.setQueue(result.snapshot,['a']).code,'INVALID_QUEUE');
  assert.deepEqual(h.api.getSnapshot().queue,queue);h.api.destroy();
 });
+
+test('picker queue commit validates before release and publishes one complete revision',async()=>{
+ const h=fixture();let s=(await h.api.play(ready(h))).snapshot;
+ const src=h.audio.src,seen=[];h.api.subscribe(e=>seen.push(e));
+ // The original two-step picker would already release a here if b existed.
+ const refused=h.api.selectQueue(s,['b','deleted']);
+ assert.equal(refused.code,'INVALID_QUEUE');assert.equal(h.audio.src,src);assert.equal(h.audio.paused,false);
+ assert.equal(h.api.getSnapshot().revision,s.revision);assert.deepEqual(h.api.getSnapshot().queue,['a']);assert.equal(seen.length,0);
+ for(const invalid of [[],['b','b'],Array(1),Array.from({length:101},()=> 'b')]){
+  assert.equal(h.api.selectQueue(s,invalid).code,'INVALID_QUEUE');assert.equal(h.audio.src,src);
+ }
+ const done=h.api.selectQueue(s,['b','a']);
+ assert.equal(done.ok,true);assert.equal(done.snapshot.status,'ready');assert.equal(done.snapshot.trackId,'b');
+ assert.deepEqual(done.snapshot.queue,['b','a']);assert.equal(done.snapshot.revision,s.revision+1);assert.equal(seen.length,1);
+ assert.deepEqual(seen[0].snapshot.queue,['b','a']);assert.equal(h.audio.src,'');
+ assert.equal(h.api.selectQueue(s,['a']).code,'STALE_COMMAND');
+ assert.equal((await h.api.play(done.snapshot)).ok,true);h.api.destroy();
+});
+test('queue replacement cancels an outstanding old source and copies caller queue',async()=>{
+ const h=fixture(),s=ready(h),release=h.defer(),pending=h.api.play(s);
+ const queue=['b','a'],done=h.api.selectQueue(h.api.getSnapshot(),queue);
+ assert.equal(done.ok,true);queue[0]='a';release();
+ assert.equal((await pending).ok,false);assert.deepEqual(h.api.getSnapshot().queue,['b','a']);
+ assert.equal(h.audio.src,'');assert.equal((await h.api.play(done.snapshot)).ok,true);h.api.destroy();
+});

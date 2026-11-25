@@ -127,8 +127,7 @@
       if(valid.size!==selected.size){rows=latest.tracks;selected=valid;renderPicker();warn('TRACK_UNAVAILABLE');return;}
       const ids=[...valid];
       if(!ensureSession())return;const s=snapshot();if(!s)return;
-      const picked=api.selectTrack(s,ids[0]);if(!picked.ok){warn(picked.code);return;}
-      const queued=api.setQueue(picked.snapshot,ids);if(!queued.ok){warn(queued.code);return;}
+      const queued=api.selectQueue(s,ids);if(!queued.ok){warn(queued.code);return;}
       dialog.close();render();await play(queued.snapshot);
     }
     async function play(s){
