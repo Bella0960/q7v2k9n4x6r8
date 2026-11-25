@@ -20,7 +20,7 @@ test('mobile admin uses the native status bar and a compact, functional heading'
 test('editorial admin assets use fresh URLs and never enter the shared PWA shell', () => {
   assert.ok(html.includes('./admin-center.css?v=20261117-ui1'));
   assert.ok(html.includes('./admin-center-editorial.css?v=20261123-v1'));
-  assert.ok(html.includes('./admin-center.js?v=20261124-account-recovery1'));
+  assert.ok(html.includes('./admin-center.js?v=20261126-account-recovery2'));
   assert.ok(html.includes('./admin-workspace.css?v=20261123-v1'));
   assert.ok(!html.includes('./admin-center.js?v=20261117-ui3'));
   assert.ok(!sw.includes("'./admin/admin-center.css?v="));
