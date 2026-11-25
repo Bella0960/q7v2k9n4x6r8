@@ -28,6 +28,37 @@ async function runArchiveLabTests(report=()=>{},total=100000){
   interrupt=true;shadowCalls=0;await rejects(()=>a.copyLegacySnapshot(raw,crypto),'SCOPE_DENIED');interrupt=false;const checkpoint=(await a.page({shadow:true,limit:1})).count;assert(checkpoint>0&&checkpoint<10000,'checkpoint');db.close();db=await MaoArchiveLab.open(options);a=db.bind(base);
   const r=await a.copyLegacySnapshot(raw,crypto);assert(r.status==='verified-shadow'&&r.active===false&&r.count===10000,'verification');assert(JSON.stringify((await a.get('legacy:1',{shadow:true})).payload)===JSON.stringify(snapshot[0]),'first');assert(JSON.stringify((await a.get('legacy:10000',{shadow:true})).payload)===JSON.stringify(snapshot[9999]),'last');assert((await a.page()).count===21,'shadow became active');const again=await a.copyLegacySnapshot(raw,crypto);assert(again.count===10000&&again.sourceHash===r.sourceHash,'replay');await rejects(()=>a.copyLegacySnapshot('[{"text":"changed"}]',crypto),'SNAPSHOT_CHANGED');
  });
+ // Direct database mutation below is synthetic fault injection only.
+ const tamper=async(work)=>{
+  const raw=await new Promise((resolve,reject)=>{const r=indexedDB.open(name,1);r.onsuccess=()=>resolve(r.result);r.onerror=()=>reject(r.error)});
+  try{await new Promise((resolve,reject)=>{const tx=raw.transaction(['records','partitions'],'readwrite');tx.oncomplete=resolve;tx.onabort=()=>reject(tx.error||Error('tamper abort'));work(tx.objectStore('records'),tx.objectStore('partitions'))})}finally{raw.close()}
+ };
+ const partition=(s,lane='active-lab')=>JSON.stringify([s.accountId,s.kind,s.conversationId,s.generation,s.domain,lane]);
+ await test('large records respect page byte limit without gaps',async()=>{
+  const h=db.bind({...base,conversationId:'byte-pages'});
+  for(let i=0;i<3;i++)await h.append([{id:'big-'+i,payload:{text:'x'.repeat(2200000)}}]);
+  const first=await h.page({limit:40});assert(first.items.length===1&&first.nextBefore===3,'byte cap');
+  const second=await h.page({limit:40,before:first.nextBefore});assert(second.items[0].sequence===2&&second.nextBefore===2,'byte cursor');
+  const last=await h.page({limit:40,before:second.nextBefore});assert(last.items[0].sequence===1&&last.nextBefore===null,'tail');
+ });
+ await test('missing manifest never appears as empty archive',async()=>{
+  const s={...base,conversationId:'orphan'},h=db.bind(s),p=partition(s);
+  await h.append([{id:'orphan1',payload:{text:'original'}}]);
+  await tamper((records,meta)=>meta.delete(p));
+  await rejects(()=>h.page(),'CORRUPT_PARTITION');
+  await rejects(()=>h.append([{id:'new',payload:{text:'new'}}]),'CORRUPT_PARTITION');
+  await rejects(()=>h.get('orphan1'),'CORRUPT_RECORD');
+ });
+ await test('missing sequence and corrupt shadow manifest fail closed',async()=>{
+  const s={...base,conversationId:'gap'},h=db.bind(s),p=partition(s);
+  await h.append([{id:'one',payload:{i:1}},{id:'two',payload:{i:2}},{id:'three',payload:{i:3}}]);
+  await tamper(records=>records.delete([p,2]));
+  await rejects(()=>h.page(),'CORRUPT_PARTITION');
+  const raw='[{"text":"legacy"}]';await h.copyLegacySnapshot(raw,crypto);
+  const shadow=partition(s,'shadow');
+  await tamper((records,meta)=>{const r=meta.get(shadow);r.onsuccess=()=>meta.put({...r.result,count:-1})});
+  await rejects(()=>h.copyLegacySnapshot(raw,crypto),'CORRUPT_PARTITION');
+ });
  await test('large archive bounded paging and indexed oldest-message lookup',async()=>{
   const h=db.bind({...base,conversationId:'large'});for(let start=0;start<total;start+=200){await h.append(Array.from({length:Math.min(200,total-start)},(_,j)=>({id:'large-'+(start+j),payload:{role:'sent',text:'synthetic '+(start+j)}})))}
   const start=performance.now(),p=await h.page({limit:40});const pageMs=Math.round(performance.now()-start);assert(p.count===total&&p.items.length===40&&p.items[0].sequence===total,'latest');const second=await h.page({limit:40,before:p.nextBefore});assert(second.items[0].sequence===total-40,'page gap');assert((await h.get('large-0')).sequence===1,'oldest');const tail=await h.page({limit:40,before:2});assert(tail.items.length===1&&tail.nextBefore===null,'tail boundary');report({name:'large archive metrics',rows:total,pageMs});
