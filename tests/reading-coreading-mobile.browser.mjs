@@ -82,7 +82,7 @@ try{
    await page.locator('#ctrlSet').click();
    await page.locator('#readSettings.is-open').waitFor();
   };
-  // Header must remain visible and outside the moving chapter in both reading modes.
+  // Header hides on a real scrolling gesture, not on a mere chapter render. A tap restores it.
   const assertHeader=async()=>{
    const h=await page.locator('#readerTitle').evaluate(e=>{
     const r=e.getBoundingClientRect(),head=e.closest('.reader-head').getBoundingClientRect();
@@ -97,16 +97,24 @@ try{
   phase=width+2;
   await page.waitForFunction(()=>{const e=document.getElementById('readerView');return getComputedStyle(e).visibility==='visible'&&Number(getComputedStyle(e).opacity)===1;});
   const top=await assertHeader();
-  await page.locator('#readerBody').evaluate(e=>{e.scrollTop=e.scrollHeight;});
-  await page.waitForTimeout(450);
-  assert.ok(Math.abs(await assertHeader()-top)<2);
+  const scrollGesture=async(dx,dy)=>{
+   const box=await page.locator('#readerBody').boundingBox();
+   await page.mouse.move(box.x+box.width/2,box.y+box.height/2);
+   await page.mouse.wheel(dx,dy);
+   await page.locator('#readerTitle').waitFor({state:'hidden'});
+   await page.waitForTimeout(400);
+   assert.equal(await page.locator('#readerTitle').isVisible(),false);
+   const current=await page.locator('#readerBody').boundingBox();
+   await page.touchscreen.tap(current.x+30,current.y+30);
+   await page.locator('#readerTitle').waitFor({state:'visible'});
+   assert.ok(Math.abs(await assertHeader()-top)<2);
+  };
+  await scrollGesture(0,320);
   await page.locator('#readerBody').evaluate(e=>{e.scrollTop=0;});
   await openPrefs();
   await page.locator('[data-mode="smooth"]').click();
   await page.locator('#sheetBackdrop').click({position:{x:10,y:10}});
-  await page.locator('#readerBody').evaluate(e=>{e.scrollLeft=e.scrollWidth;});
-  await page.waitForTimeout(500);
-  assert.ok(Math.abs(await assertHeader()-top)<2);
+  await scrollGesture(320,0);
   await page.locator('#readerBody').evaluate(e=>{e.scrollLeft=0;});
   await page.waitForTimeout(500);
   await openPrefs();
@@ -204,12 +212,18 @@ try{
   await page.locator('#shelfView[aria-hidden=false]').waitFor();
   await book.waitFor();
   phase=width+7;
-  const holdBook=async()=>{
-   await book.scrollIntoViewIfNeeded();
-   const box=await book.boundingBox();await page.mouse.move(box.x+box.width/2,box.y+box.height/2);
+  const holdBook=async(card=book)=>{
+   await card.scrollIntoViewIfNeeded();
+   const box=await card.boundingBox();await page.mouse.move(box.x+box.width/2,box.y+box.height/2);
    await page.mouse.down();await page.waitForTimeout(650);await page.mouse.up();
    await page.locator('#bookActionSheet.is-open').waitFor();
   };
+  await holdBook();
+  await page.locator('#showShelfBookDetail').click();
+  await page.locator('#bookDetailView[aria-hidden=false]').waitFor();
+  assert.equal(await page.locator('[data-detail-chapter]').count(),2);
+  await page.locator('#bookDetailBack').click();
+  await page.locator('#shelfView[aria-hidden=false]').waitFor();
   await holdBook();
   const png=await page.evaluate(()=>{const c=document.createElement('canvas');c.width=80;c.height=120;const g=c.getContext('2d');g.fillStyle='#444';g.fillRect(0,0,80,120);return c.toDataURL('image/png').split(',')[1];});
   const chooser=page.waitForEvent('filechooser');
@@ -226,6 +240,32 @@ try{
   await page.reload();
   assert.equal(await page.locator('#shelfGrid .book-card').count(),before-1);
   assert.equal(await book.count(),0);
+  const defaultBook=page.locator('#shelfGrid [data-book-id="b2"]');
+  await defaultBook.click();
+  await page.locator('#readerView[aria-hidden=false]').waitFor();
+  await page.locator('#readerBack').click();
+  await page.locator('.tab-item[data-route="home"]').click();
+  await page.waitForFunction(()=>document.querySelector('#homeGrid .book-card')?.dataset.bookId==='b2');
+  await page.reload();
+  await page.waitForFunction(()=>document.querySelector('#homeGrid .book-card')?.dataset.bookId==='b2');
+  await page.locator('.tab-item[data-route="shelf"]').click();
+  await holdBook(defaultBook);
+  const defaultChooser=page.waitForEvent('filechooser');
+  await page.locator('#changeBookCover').click();
+  await (await defaultChooser).setFiles({name:'cover.png',mimeType:'image/png',buffer:Buffer.from(png,'base64')});
+  await defaultBook.locator('.has-custom img').waitFor();
+  await page.reload();
+  await defaultBook.locator('.has-custom img').waitFor();
+  await holdBook(defaultBook);
+  page.once('dialog',d=>d.accept());
+  await page.locator('#deleteShelfBook').click();
+  await defaultBook.waitFor({state:'detached'});
+  await page.reload();
+  await page.locator('#shelfGrid [data-book-id="b1"]').waitFor();
+  assert.equal(await defaultBook.count(),0);
+  await page.locator('.tab-item[data-route="home"]').click();
+  assert.equal(await page.locator('#homeGrid [data-book-id="b2"]').count(),0);
+  assert.equal(await page.locator('#homeGrid .book-card').count(),2);
   assert.deepEqual(errors,[]);
   await context.close();
   console.log('READING_BROWSER_PASS:'+width);
