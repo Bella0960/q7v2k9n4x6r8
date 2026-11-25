@@ -1322,10 +1322,13 @@ button:focus-visible,input:focus-visible,select:focus-visible{outline:1px solid 
         return Math.max(jaccard, cover);
     }
     // 快速去重：候选 = 非 fixed、非 key/anniversary；找出高度相似（≥0.8）的重复条目
-    function findDupes() {
-        const arr = loadMemories(currentMemId);
+    function findDupes(arr) {
+        arr = Array.isArray(arr) ? arr : loadMemories(currentMemId);
         const cands = arr.map((m, i) => ({ m, i }))
-            .filter(x => x.m.status !== 'fixed' && x.m.category !== 'key' && x.m.category !== 'anniversary');
+            .filter(x => x.m && typeof x.m === 'object' && ['confirmed','pending'].includes(x.m.status) &&
+                x.m.sourceRoleId === String(currentMemId) && x.m.source !== 'user-correction' &&
+                !arr.some(m => m && m.source === 'user-correction' && Array.isArray(m.sourceMemoryIds) && m.sourceMemoryIds.includes(x.m.id)) &&
+                x.m.category !== 'key' && x.m.category !== 'anniversary');
         const dupePairs = [];
         for (let a = 0; a < cands.length; a++) {
             for (let b = a + 1; b < cands.length; b++) {
@@ -1345,7 +1348,11 @@ button:focus-visible,input:focus-visible,select:focus-visible{outline:1px solid 
     }
     function renderDedupPreview() {
         const box = document.getElementById('toolResult');
-        const pairs = findDupes();
+        const previewRole = String(currentMemId || '');
+        const previewAccount = window.__MAO_ACCOUNT_SCOPE__;
+        const previewRecords = loadMemories(previewRole);
+        const previewSnapshot = JSON.stringify(previewRecords);
+        const pairs = findDupes(previewRecords);
         if (!pairs.length) {
             box.innerHTML = '<div class="merge-est">未发现高度相似的重复记忆。</div>';
             return;
@@ -1376,9 +1383,13 @@ button:focus-visible,input:focus-visible,select:focus-visible{outline:1px solid 
                 if (!isNaN(idx) && pairs[idx]) delIdx.add(pairs[idx].dupe.i);
             });
             if (!delIdx.size) { alert('没有勾选任何条目'); return; }
-            let arr = loadMemories(currentMemId);
+            let arr = loadMemories(previewRole);
+            if (!previewAccount || previewAccount.ready !== true || window.__MAO_ACCOUNT_SCOPE__ !== previewAccount ||
+                String(currentMemId) !== previewRole || JSON.stringify(arr) !== previewSnapshot) {
+                box.innerHTML = ''; alert('记忆已变化，请重新检查重复条目'); return;
+            }
             arr = arr.filter((m, i) => !delIdx.has(i));
-            if (!saveMemories(currentMemId, arr)) { alert('删除未保存，请刷新后重试'); return; }
+            if (!saveMemories(previewRole, arr)) { alert('删除未保存，请刷新后重试'); return; }
             box.innerHTML = '';
             alert('已删除 ' + delIdx.size + ' 条重复记忆');
             renderLib();
