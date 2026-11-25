@@ -768,7 +768,7 @@ button:focus-visible,input:focus-visible,select:focus-visible{outline:1px solid 
 .mem-header{padding:calc(38px + env(safe-area-inset-top,0px)) 24px 18px!important}
 .mem-header-row{display:flex!important;align-items:center!important;gap:12px!important}
 .mem-title{font:500 30px/1.25 "Songti SC","Noto Serif CJK SC",Georgia,serif!important;letter-spacing:.015em!important}
-.mem-back{position:static!important;width:44px!important;height:44px!important;flex:0 0 44px!important;border-radius:50%!important;background:#f7f7f9!important;justify-content:center!important;opacity:1!important}
+.mem-back{position:static!important;width:44px!important;height:44px!important;flex:0 0 44px!important;border-radius:50%!important;background:#f7f7f9!important;justify-content:center!important;opacity:1!important;text-decoration:none!important;position:relative!important;inset:auto!important;z-index:2;touch-action:manipulation}
 .mem-back svg{width:17px!important;height:17px!important;stroke-width:1.5!important}
 .mem-tabs{gap:28px!important;border-bottom:1px solid #eee!important}
 .mem-tab{font:500 14px/1.5 var(--sans)!important;letter-spacing:0!important;min-height:44px!important}
@@ -827,11 +827,11 @@ button:focus-visible,input:focus-visible,select:focus-visible{outline:1px solid 
     <div class="mem-page" id="memory-page">
         <div class="mem-header">
             <div class="mem-header-row">
-                <div class="mem-back" onclick="window.location.href='../../index.html';">
+                <a class="mem-back back-btn" href="../../index.html" aria-label="返回" title="返回桌面">
                     <svg viewBox="0 0 24 24" fill="none" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
                         <polyline points="15 18 9 12 15 6"></polyline>
                     </svg>
-                </div>
+                </a>
                 <span class="mem-title">记忆空间</span>
             </div>
         </div>
@@ -972,7 +972,7 @@ button:focus-visible,input:focus-visible,select:focus-visible{outline:1px solid 
                                 <button type="button" class="btn-primary" id="btnMerge">智能合并</button>
                             </div>
                             <div id="toolResult"></div>
-                            <div class="tool-note">快速去重为纯本地算法，不消耗额度；智能合并会调用 AI，固定记忆与关键事件、纪念日不会被合并。</div>
+                            <div class="tool-note">快速去重为纯本地算法，不消耗额度；智能合并会调用 AI，仅生成待确认的概括，不删除原记忆。固定记忆与关键事件、纪念日不参与。</div>
                         </div>
                     </div>
                 </div>
@@ -1033,7 +1033,7 @@ button:focus-visible,input:focus-visible,select:focus-visible{outline:1px solid 
     </div>
 </div>
 
-<script src="../../shared/js/memory.js?v=20261013c"></script>
+<!-- Legacy global preview is intentionally not loaded here. Its stored data is retained. -->
 <script>
     // ===== 记忆总结设置 =====
     const SUM_KEY = 'memory_summary_config';
@@ -1279,6 +1279,12 @@ button:focus-visible,input:focus-visible,select:focus-visible{outline:1px solid 
         // Keep the original target across the asynchronous AI request and any UI selection changes.
         const summaryRoleId = currentMemId;
         if (!summaryRoleId) return;
+        if (String(summaryRoleId).charAt(0) === 'g') { alert('群聊需要独立的发言身份校验，暂不支持自动提取记忆。'); return; }
+        if (historySlice.some(m => m && !m.isError && m.role !== 'system_error' && !['sent','user','received','assistant'].includes(m.role))) { alert('这批记录存在未识别发言身份，未调用 API。'); return; }
+        const sourceSnapshot = JSON.stringify(historySlice);
+        const sourceEnd = isAll ? Number(processedTo) : readHistory(summaryRoleId).length;
+        const sourceStart = sourceEnd - historySlice.length;
+        if (!Number.isInteger(sourceStart) || sourceStart < 0 || JSON.stringify(readHistory(summaryRoleId).slice(sourceStart,sourceEnd)) !== sourceSnapshot) { alert('原始记录已变化，请重新选择范围。'); return; }
         const config = getAiConfig();
         const apiKey = (config.apiKey || '').trim();
         if (!apiKey) { alert('请先到设置页配置 API Key'); return; }
@@ -1327,6 +1333,7 @@ button:focus-visible,input:focus-visible,select:focus-visible{outline:1px solid 
             try { items = JSON.parse(jsonMatch[0]); } catch (e) { throw new Error('memory-json-invalid'); }
             if (!Array.isArray(items)) throw new Error('memory-json-invalid');
 
+            if (JSON.stringify(readHistory(summaryRoleId).slice(sourceStart,sourceEnd)) !== sourceSnapshot) { alert('原始记录已变化，本次结果未保存。'); return; }
             const mems = loadMemories(summaryRoleId);
             const now = Date.now();
             let autoN = 0, pendingN = 0, reinforcedN = 0;
@@ -1340,14 +1347,9 @@ button:focus-visible,input:focus-visible,select:focus-visible{outline:1px solid 
                 });
                 const imp = Math.max(1, Math.min(5, parseInt(it.importance, 10) || 3));
                 if (duplicate) {
-                    duplicate.reinforcementCount = Math.max(1, Number(duplicate.reinforcementCount) || 1) + 1;
-                    duplicate.lastReinforcedAt = now;
-                    duplicate.updatedAt = now;
-                    duplicate.importance = Math.max(Number(duplicate.importance) || 3, imp);
-                    reinforcedN++;
-                    return;
+                    return; // A generated duplicate is not independent evidence.
                 }
-                const st = imp >= 4 ? 'confirmed' : 'pending';
+                const st = 'pending';
                 if (st === 'confirmed') autoN++; else pendingN++;
                 mems.push({
                     id: 'mem_' + now.toString(36) + '_' + mems.length.toString(36),
@@ -1360,7 +1362,9 @@ button:focus-visible,input:focus-visible,select:focus-visible{outline:1px solid 
                     reinforcementCount: 1,
                     source: 'manual-summary',
                     sourceRoleId: String(summaryRoleId),
-                    sourceMessageCount: historySlice.length
+                    sourceMessageCount: historySlice.length,
+                    sourceStartIndex: sourceStart,
+                    sourceEndIndex: sourceEnd - 1
                 });
             });
             if (!saveMemories(summaryRoleId, mems)) return;
@@ -1504,6 +1508,7 @@ button:focus-visible,input:focus-visible,select:focus-visible{outline:1px solid 
         // The picker may change while the AI request is pending.
         const mergeRoleId = currentMemId;
         if (!mergeRoleId) return;
+        if (String(mergeRoleId).charAt(0) === 'g') { alert('群聊记忆需要独立身份校验，暂不支持智能合并。'); return; }
         const est = mergeEstimate();
         const box = document.getElementById('toolResult');
         if (!est.length) {
@@ -1519,7 +1524,7 @@ button:focus-visible,input:focus-visible,select:focus-visible{outline:1px solid 
         const totalTo = est.reduce((s, e) => s + e.to, 0);
         box.innerHTML = '<div class="merge-est">合并预估：<br>' +
             est.map(e => CAT_LABEL[e.cat] + '：' + e.from + ' 条 → ' + e.to + ' 条').join('<br>') +
-            '<br><br>合计 ' + totalFrom + ' 条 → ' + totalTo + ' 条，固定记忆与关键事件、纪念日不会被合并。</div>' +
+            '<br><br>合计 ' + totalFrom + ' 条 → ' + totalTo + ' 条概括（待确认），原记忆保留。</div>' +
             '<div style="display:flex;gap:10px;margin-top:12px;">' +
                 '<button type="button" class="btn-ghost" id="btnMergeCancel">取消</button>' +
                 '<button type="button" class="btn-primary" id="btnMergeConfirm">确认合并</button>' +
@@ -1527,6 +1532,7 @@ button:focus-visible,input:focus-visible,select:focus-visible{outline:1px solid 
         document.getElementById('btnMergeCancel').addEventListener('click', () => { box.innerHTML = ''; });
         document.getElementById('btnMergeConfirm').addEventListener('click', async () => {
             const btn = document.getElementById('btnMergeConfirm');
+            if (String(currentMemId) !== String(mergeRoleId)) { alert('角色已切换，请重新选择。'); return; }
             btn.disabled = true;
             btn.textContent = '合并中...';
             try {
@@ -1536,6 +1542,8 @@ button:focus-visible,input:focus-visible,select:focus-visible{outline:1px solid 
                         && m.category !== 'key' && m.category !== 'anniversary');
                     if (pool.length < 3) continue;
                     const src = pool.map(m => m.content).join('\n');
+                    if (src.length > 4000 || pool.some(m => !m.id)) { alert('记忆范围过大或缺少来源编号，未发送该批请求。'); return; }
+                    const poolSnapshot = JSON.stringify(pool);
                     const controller = new AbortController();
                     const timer = setTimeout(() => controller.abort(), 30000);
                     const resp = await fetch(baseUrl + '/chat/completions', {
@@ -1561,23 +1569,29 @@ button:focus-visible,input:focus-visible,select:focus-visible{outline:1px solid 
                     if (jsonMatch) { try { items = JSON.parse(jsonMatch[0]); } catch (err2) {} }
                     if (!Array.isArray(items) || !items.length) continue;
                     let arr = loadMemories(mergeRoleId);
-                    // 删除该类原已确认记忆
-                    arr = arr.filter(m => !(m.status === 'confirmed' && m.category === e.cat));
-                    // 追加合并结果
+                    const latestPool = arr.filter(m => m.status === 'confirmed' && m.category === e.cat);
+                    if (JSON.stringify(latestPool) !== poolSnapshot) { alert('原记忆已变化，本批结果未保存。'); return; }
+                    // Preserve originals; AI output is an unverified candidate with source references.
                     items.forEach(it => {
                         if (!it || !it.content) return;
+                        const content = String(it.content).trim().slice(0, 160);
+                        if (!content || arr.some(m => m.content === content)) return;
                         arr.push({
-                            content: String(it.content).slice(0, 160),
+                            id: 'mem_merge_' + Date.now().toString(36) + '_' + arr.length.toString(36),
+                            content,
                             category: e.cat,
                             importance: Math.max(1, Math.min(5, parseInt(it.importance, 10) || 3)),
-                            status: 'confirmed',
+                            status: 'pending',
+                            source: 'merge-candidate',
+                            sourceRoleId: String(mergeRoleId),
+                            sourceMemoryIds: pool.map(m => m.id),
                             createdAt: Date.now()
                         });
                     });
                     if (!saveMemories(mergeRoleId, arr)) return;
                 }
                 box.innerHTML = '';
-                alert('合并完成');
+                alert('概括已生成，请在记忆库确认；原记忆未删除。');
                 renderLib();
             } catch (err) {
                 alert('合并失败：' + (err.name === 'AbortError' ? '请求超时' : '网络错误'));
