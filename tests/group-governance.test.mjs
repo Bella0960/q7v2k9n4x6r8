@@ -479,3 +479,35 @@ test('scoped group wallpaper transaction and reset preserve unrelated data',asyn
  ];
  for(const [name,fn] of cases)assert.equal(await fn(),true,name);
 });
+
+
+test('legacy group settings reject stale data, permission changes and missing groups',()=>{
+  const html=load('chat/chat/chat-settings.html'),guard=load('shared/js/phone/group-write-guard.js'),governance=load('shared/js/group-governance.js');
+  for(const [,code] of html.matchAll(/<script(?:\s[^>]*)?>([\s\S]*?)<\/script>/g))if(code.trim())new vm.Script(code);
+  const a=html.indexOf('    function legacyPageCurrent()'),b=html.indexOf('    // ===== 邀请角色',a);
+  assert.ok(a>=0&&b>a);
+  const adapter=html.slice(a,b),A='MAO-AAAAAAAAAAAA',B='MAO-BBBBBBBBBBBB';
+  function harness(){
+    const state={id:A,ready:true,writes:0,fail:false};
+    const map=new Map([['phone_groups',JSON.stringify([{id:'g1',name:'old',ownerId:'__user',members:[{id:'r1'},{id:'r2'}]},{id:'g2',name:'other'}])]]);
+    const w={document:{querySelector(q){return {content:q.includes('role')?'member':state.id};}},location:{hostname:'preview.mao520.com'},get __MAO_ACCOUNT_SCOPE__(){return {accountId:state.id,role:'member',ready:state.ready};},localStorage:{getItem:k=>map.get(k)??null,setItem(k,v){state.writes++;if(state.fail)throw Error('quota');map.set(k,v);}}};
+    new Function('window',guard)(w);new Function('window',governance)(w);
+    const api=new Function('window','legacyGuard','legacyAccount','legacySnapshots','roleId',adapter+';return {loadCurrentGroup,saveCurrentGroup,applyLegacyGroup,saveLegacyPreference,legacyGroupCurrent,legacySnapshots};')(w,w.MAOGroupWriteGuard,A,new WeakMap(),'g1');
+    return {state,map,api,w,rows:()=>JSON.parse(map.get('phone_groups'))};
+  }
+  {const h=harness(),x=h.api.loadCurrentGroup(),r=h.rows();r[1].name='newer';h.map.set('phone_groups',JSON.stringify(r));assert.equal(h.api.applyLegacyGroup(x,'rename','new').ok,true);assert.equal(h.rows()[0].name,'new');assert.equal(h.rows()[1].name,'newer');}
+  {const h=harness(),x=h.api.loadCurrentGroup(),r=h.rows();r[0].name='newer';h.map.set('phone_groups',JSON.stringify(r));assert.equal(h.api.applyLegacyGroup(x,'rename','old edit').ok,false);assert.equal(h.state.writes,0);}
+  {const h=harness(),x=h.api.loadCurrentGroup();h.map.set('phone_groups',JSON.stringify(h.rows().slice(1)));x.name='bad';assert.equal(h.api.saveCurrentGroup(x),false);assert.equal(h.rows().length,1);assert.equal(h.state.writes,0);}
+  {const h=harness(),x=h.api.loadCurrentGroup();h.state.id=B;assert.equal(h.api.applyLegacyGroup(x,'rename','new').ok,false);assert.equal(h.state.writes,0);}
+  {const h=harness(),r=h.rows();r[0].members.push({id:'r1'});h.map.set('phone_groups',JSON.stringify(r));assert.equal(h.api.loadCurrentGroup(),null);}
+  {const h=harness(),r=h.rows();r[0].members=[{id:'r1'}];h.map.set('phone_groups',JSON.stringify(r));assert.equal(h.api.applyLegacyGroup(h.api.loadCurrentGroup(),'remove','r1').ok,false);assert.equal(h.state.writes,0);}
+  {const h=harness(),r=h.rows();r[0].ownerId='r1';h.map.set('phone_groups',JSON.stringify(r));assert.equal(h.api.applyLegacyGroup(h.api.loadCurrentGroup(),'rename','new').ok,false);assert.equal(h.state.writes,0);}
+  {const h=harness(),x=h.api.loadCurrentGroup();h.state.fail=true;assert.equal(h.api.applyLegacyGroup(x,'rename','new').ok,false);assert.equal(x.name,'old');assert.equal(h.rows()[0].name,'old');}
+  {const h=harness(),x=h.api.loadCurrentGroup(),snap=h.w.MAOGroupWriteGuard.readPreference(h.api.legacySnapshots.get(x),'alias');h.map.set('chat_group_alias_g1','new');assert.equal(h.api.saveLegacyPreference(snap,'old',false),false);assert.equal(h.map.get('chat_group_alias_g1'),'new');assert.equal(h.state.writes,0);}
+  {const h=harness(),r=h.rows();r[0].ownerId='r1';h.map.set('phone_groups',JSON.stringify(r));const x=h.api.loadCurrentGroup(),snap=h.w.MAOGroupWriteGuard.readPreference(h.api.legacySnapshots.get(x),'notice');assert.equal(h.api.saveLegacyPreference(snap,'new',true),false);assert.equal(h.state.writes,0);}
+  const dismiss=html.slice(html.indexOf("    document.getElementById('actionGpDismiss').addEventListener"),html.indexOf('    var gpAdvancedEntry'));
+  assert.ok(dismiss.indexOf('!legacyGuard.remove(snap).ok')>=0&&dismiss.indexOf('!legacyGuard.remove(snap).ok')<dismiss.indexOf('clearConversationMemory'));
+  assert.ok(dismiss.includes('storedRole'));
+  assert.ok(html.includes('if (requestedGroup && (!isGroupSetting || !explicitGroupOptions))'));
+  assert.ok(html.includes('var g=captured;'));
+});
