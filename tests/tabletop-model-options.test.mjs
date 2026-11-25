@@ -51,3 +51,25 @@ test('game recall is explicit even without protocol memory placeholder and revoc
  const g=fixture();let memory='授权事实';g.services.readGameMemory=async()=>memory;g.services.charge=async()=>{memory='';return true;};
  await assert.rejects(g.make('gomoku').decideRole(g.view(),new AbortController().signal),/MEMORY_CHANGED/);assert.equal(g.calls.length,0);
 });
+
+test('Ludo canonical choice accepts preview metadata without trusting it and rejects forged fields',async()=>{
+ const signal=new AbortController().signal;
+ const f=fixture({answer:{move:{kind:'choose',plane:1,card:'boost'}}}),v=f.view('ludo');
+ v.game.legalMoves=[{kind:'choose',plane:1,from:4,to:10,effects:['boost'],card:'boost'},{kind:'choose',plane:0,from:1,to:5,effects:[]}];
+ assert.deepEqual(await f.make('ludo').decideRole(v,signal),{move:{kind:'choose',plane:1,card:'boost'}});
+ const bad=fixture({answer:{move:{kind:'choose',plane:1,card:'boost',to:999}}});
+ await assert.rejects(bad.make('ludo').decideRole(v,signal),/ILLEGAL_MOVE/);
+ const unavailable=fixture({answer:{move:{kind:'choose',plane:0,card:'shield'}}});
+ await assert.rejects(unavailable.make('ludo').decideRole(v,signal),/ILLEGAL_MOVE/);
+});
+test('changed worldbook or protocol after debit blocks network; changed sources during request block response',async()=>{
+ const f=fixture(),signal=new AbortController().signal;let book='初始世界书';
+ f.win.MAOMAOChatRoleContext.buildSavedSourceEnvelope=o=>({ok:true,persona:o.role.persona,tone:'',worldbook:book,protocol:'协议',expandedProtocol:'协议',worldbookPolicyReady:true});
+ f.win.MAOMAOChatRoleContext.validateFinalApiMessages=()=>({ok:true});
+ f.services.charge=async()=>{book='更改后的世界书';return true;};
+ await assert.rejects(f.make('gomoku').decideRole(f.view(),signal),/SOURCE_CHANGED/);assert.equal(f.calls.length,0);
+ const g=fixture();let agreement='协议一';
+ g.win.MAOMAOChatRoleContext.buildSavedSourceEnvelope=o=>({ok:true,persona:o.role.persona,tone:'',worldbook:'绑定世界书',protocol:agreement,expandedProtocol:agreement,worldbookPolicyReady:true});
+ g.win.PhoneAPI.complete=async()=>{agreement='协议二';return '{"move":{"kind":"place","x":7,"y":7}}';};
+ await assert.rejects(g.make('gomoku').decideRole(g.view(),signal),/SOURCE_CHANGED/);
+});

@@ -31,6 +31,7 @@ export function createTabletopModelOptions({win,identity,gameId,charge,authorize
  }
  function publicInput(v){return {gameId,revision:v.revision,selfSeatId:v.selfSeatId,turnSeatId:v.turnSeatId??null,
    seats:v.seats.map(({seatId,kind,mode})=>({seatId,kind,mode})),game:v.game,...(Array.isArray(v.messages)?{messages:v.messages.slice(-24)}:{}),...(v.trigger?{trigger:v.trigger}:{})};}
+ function sourceKey(source){return JSON.stringify([source.persona,source.tone,source.protocol,source.expandedProtocol,source.worldbook,source.worldbookPolicyReady]);}
  function sameRole(before,after){
    // Check authored sources changed during an asynchronous request.
    return JSON.stringify(before)===JSON.stringify(after);
@@ -56,20 +57,27 @@ export function createTabletopModelOptions({win,identity,gameId,charge,authorize
    if(system.length>64000||input.length>64000)fail('TABLETOP_MODEL_CONTEXT_TOO_LONG');
    const messages=[{role:'system',content:system},{role:'user',content:input}];
    if(source&&policy.validateFinalApiMessages({...source,role,speakerId:s.roleId,messages})?.ok!==true)fail('TABLETOP_MODEL_CONTEXT_INVALID');
+   function verifySources(c){
+     if(!role)return;
+     const fresh=readRole(s.roleId,c);
+     if(!sameRole(role,fresh))fail('TABLETOP_MODEL_ROLE_CHANGED');
+     const current=policy.buildSavedSourceEnvelope({role:fresh,conversationId:s.roleId,currentText:input,recentMessages:[],memory:memoryText||'暂无已授权游戏记忆'});
+     if(current?.ok!==true||sourceKey(current)!==sourceKey(source))fail('TABLETOP_MODEL_SOURCE_CHANGED');
+   }
    const latest=await verified(signal);
-   if(role&&!sameRole(role,readRole(s.roleId,latest)))fail('TABLETOP_MODEL_ROLE_CHANGED');
+   verifySources(latest);
    // Atomic debit/authorization is provided by the existing approved service.
    // No retry and no call if authorization is missing or denied.
    if(await charge({accountId:c.accountId,sessionId:c.sessionId,gameId,roomId:v.roomId,revision:v.revision,seatId:s.seatId,task},{signal})!==true)fail('TABLETOP_MODEL_BUDGET_DENIED');
    live(signal);
    const final=await verified(signal);
-   if(role&&!sameRole(role,readRole(s.roleId,final)))fail('TABLETOP_MODEL_ROLE_CHANGED');
+   verifySources(final);
    if(role&&readGameMemory&&await readGameMemory({roleId:s.roleId,gameId,excludePuzzleId:gameId==='turtle'?v.game.puzzle?.id:null},{signal})!==memoryText)fail('TABLETOP_MODEL_MEMORY_CHANGED');
    live(signal);
    const currentCfg=win.PhoneStorage?.result?.getApiConfig?.();
    if(currentCfg?.ok!==true||JSON.stringify(currentCfg.value)!==JSON.stringify(config))fail('TABLETOP_MODEL_CONFIG_CHANGED');
    let raw;try{raw=await api.complete({messages,apiConfig:config,signal,timeoutMs:12000,onDiagnostic:()=>{}});}catch{fail('TABLETOP_MODEL_REQUEST_FAILED');}
-   live(signal);const after=await verified(signal);if(role&&!sameRole(role,readRole(s.roleId,after)))fail('TABLETOP_MODEL_ROLE_CHANGED');
+   live(signal);const after=await verified(signal);verifySources(after);
    if(role&&readGameMemory&&await readGameMemory({roleId:s.roleId,gameId,excludePuzzleId:gameId==='turtle'?v.game.puzzle?.id:null},{signal})!==memoryText)fail('TABLETOP_MODEL_MEMORY_CHANGED');
    let result;try{if(typeof raw!=='string'||raw.length>16000)fail('TABLETOP_MODEL_BAD_JSON');result=JSON.parse(raw);}catch{fail('TABLETOP_MODEL_BAD_JSON');}
    // Public text must pass the approved disclosure policy with its exact
@@ -80,8 +88,12 @@ export function createTabletopModelOptions({win,identity,gameId,charge,authorize
  }
  async function move(v,signal){
    const g=v.game;if(!Array.isArray(g.legalMoves)||!g.legalMoves.length)fail('TABLETOP_MODEL_NO_MOVES');
-   const result=await request(v,signal,'从 legalMoves 中选择一项符合你性格和局势的行动。','格式：{"move":合法行动对象}');
-   if(!exact(result,['move'])||!g.legalMoves.some(m=>JSON.stringify(m)===JSON.stringify(result.move)||Object.keys(m).length===Object.keys(result.move??{}).length&&Object.keys(m).every(k=>m[k]===result.move[k])))fail('TABLETOP_MODEL_ILLEGAL_MOVE');
+   // Ludo projections contain preview metadata (from/to/effects), not
+   // command fields. Only canonical commands may cross the rule boundary.
+   const commands=g.legalMoves.map(m=>gameId==='ludo'?(m.kind==='choose'?{kind:m.kind,plane:m.plane,...(m.card?{card:m.card}:{})}:{kind:m.kind}):{kind:m.kind,x:m.x,y:m.y});
+   const format=gameId==='ludo'?'格式：{"move":{"kind":"choose","plane":棋子编号}}；使用道具时增加 card（boost 或 shield）；roll/cruise 只返回 kind。不要返回落点、骰子或效果。':'格式：{"move":{"kind":"place","x":横坐标,"y":纵坐标}}';
+   const result=await request(v,signal,'从 legalMoves 中选择一项符合你性格和局势的行动。落点和效果只是规则引擎提供的参考。',format);
+   if(!exact(result,['move'])||!commands.some(m=>exact(result.move,Object.keys(m))&&Object.keys(m).every(k=>m[k]===result.move[k])))fail('TABLETOP_MODEL_ILLEGAL_MOVE');
    return result;
  }
  async function speak(v,{signal}={}){
