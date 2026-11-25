@@ -1177,7 +1177,7 @@ class CloudStore {
          ON sharing.user_id = s.user_id AND sharing.enabled = 1
        INNER JOIN character_context_versions current
          ON current.user_id = s.user_id AND current.character_id = s.character_id
-        AND current.version = s.context_version
+        AND current.version = s.context_version AND current.updated_by_device_id = s.source_device_id
        INNER JOIN devices source
          ON source.id = s.source_device_id AND source.user_id = s.user_id
         AND source.revoked_at IS NULL
@@ -1899,8 +1899,9 @@ class CloudStore {
         if(rows.length!==prepared.length||rows.some((row,i)=>row.device_id!==sourceDeviceId||row.character_id!==task.character_id||row.server_message_id!==prepared[i].serverMessageId||row.dedupe_key!==prepared[i].dedupeKey||row.payload_json!==JSON.stringify(prepared[i].payload)||Number(row.group_index)!==i+1||Number(row.group_count)!==prepared.length))return null;
         return {completed:true,alreadyCompleted:true,groupId,messageCount:prepared.length,serverMessageIds:prepared.map(m=>m.serverMessageId),outboundInserted:0,outboundIdempotent:prepared.length};
       }
+      const snapshot=this.getCharacterContextSnapshot({userId:task.user_id,characterId:task.character_id,contextVersion});
       if(task.status!=='running'||task.locked_by!==owner||Number(task.locked_until)<=now||
-         !this.getCharacterContextSnapshot({userId:task.user_id,characterId:task.character_id,contextVersion})) return null;
+         !snapshot||snapshot.source_device_id!==sourceDeviceId) return null;
       const updated=this.exec(`UPDATE activity_queue SET status='completed',locked_by=NULL,locked_until=NULL,next_attempt_at=NULL,
         updated_at=?,result_json=?,result_server_message_id=?,result_dedupe_key=?,result_group_id=?,result_message_count=?
         WHERE id=? AND status='running' AND locked_by=? AND attempt_count=? AND locked_until>? RETURNING id`,
