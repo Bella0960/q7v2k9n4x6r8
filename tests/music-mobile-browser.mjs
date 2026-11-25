@@ -638,6 +638,16 @@ try {
     assert.ok(card.contained&&card.height>0&&card.height<=60&&card.overflow<=1,'compact card stays within desktop chat shell');
     await strip.getByRole('button',{name:'打开一起听歌详情'}).click();
     await assertDialogLayout();
+    // Metadata changes in the sibling music library refresh the mounted card
+    // even without a session revision. They never switch the native source.
+    await library.evaluate(id=>{
+      const rows=JSON.parse(localStorage.getItem('music_local_tracks'));
+      const row=rows.find(x=>x.id===id);row.name='QA 已更新曲名';
+      localStorage.setItem('music_local_tracks',JSON.stringify(rows));
+    },firstId);
+    await chat.waitForFunction(()=>document.querySelector('#groupListeningStrip strong')?.textContent==='QA 已更新曲名');
+    assert.equal(await dialog.locator('.glisten-now strong').textContent(),'QA 已更新曲名');
+    assert.deepEqual(await chat.evaluate(()=>{const a=document.querySelector('[data-group-listening-audio]');return {src:a.src,paused:a.paused};}),{src:source,paused:false});
     await dialog.getByRole('button',{name:'重新选歌'}).click();
     await trackRow(secondId).check();
     console.log('SEALED_BROWSER_CHECKPOINT:600'); // desktop initial playback and layout complete

@@ -18,6 +18,15 @@
     const available=new Set(tracks.map(t=>t.id));
     return new Set([...ids].filter(id=>available.has(id)).slice(0,100));
   }
+  // Native StorageEvent keys for ordinary accounts retain their scoped prefix.
+  // The account scope wrapper blocks events belonging to other accounts.
+  function catalogChanged(key,account){
+    if(key===null)return true;
+    if(typeof key!=='string'||typeof account!=='string')return false;
+    const prefix='__mao_account_v1__'+encodeURIComponent(account)+'__';
+    const logical=key.startsWith(prefix)?key.slice(prefix.length):key;
+    return logical==='music_local_tracks'||logical==='music_cover_assets_v1';
+  }
   function mount(o){
     const {host,menu,header,getGroupScope,hasRole,memberName,paintAvatar,notify}=o||{};
     if(!host||!menu||!header||typeof getGroupScope!=='function'||typeof hasRole!=='function'||!root.MAOGroupListeningSession||!root.MAOMusicCatalogAdapter)return null;
@@ -214,9 +223,16 @@
       if(mode==='detail'&&dialog.open)updateProgress(s);
     }
     function tick(){if(!scope()){destroy();return;}if(api)render();}
+    function onStorage(event){
+      // A metadata-only edit need not change the session revision. Refresh the
+      // card/detail from the authoritative catalog without releasing audio or
+      // committing a picker selection. Existing picker confirmation still revalidates.
+      if(catalogChanged(event?.key,account))lastKey='';
+      tick();
+    }
     function syncTimer(){const needed=!dead&&(!!api||dialog.open);if(needed&&timer===null)timer=root.setInterval(tick,1000);else if(!needed&&timer!==null){root.clearInterval(timer);timer=null;}}
-    function destroy(){if(dead)return;dead=true;if(timer!==null)root.clearInterval(timer);timer=null;root.removeEventListener('pagehide',destroy);root.removeEventListener('storage',tick);disposeSession();clearListUrls();if(dialog.open)dialog.close();entry.remove();strip.remove();dialog.remove();mounted.delete(host);}
-    root.addEventListener('pagehide',destroy);root.addEventListener('storage',tick);
+    function destroy(){if(dead)return;dead=true;if(timer!==null)root.clearInterval(timer);timer=null;root.removeEventListener('pagehide',destroy);root.removeEventListener('storage',onStorage);disposeSession();clearListUrls();if(dialog.open)dialog.close();entry.remove();strip.remove();dialog.remove();mounted.delete(host);}
+    root.addEventListener('pagehide',destroy);root.addEventListener('storage',onStorage);
     const out=Object.freeze({destroy,getSnapshot:snapshot});mounted.set(host,out);return out;
   }
   root.MAOGroupListeningView=Object.freeze({version:1,mount});
