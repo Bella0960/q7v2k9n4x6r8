@@ -587,7 +587,7 @@ test('group turns fence requests, writes, followups and deferred actions against
 test('group integration pages and precache use one canonical script revision',()=>{
   const sw=load('sw.js');
   const pages=['chat/chat/chat.html','chat/chat/chat-detail.html','chat/chat/chat-settings.html','chat/chat/group-play.html'];
-  const expected={"group-governance.js":"20261125scope3","group-memory-events.js":"20261125public1","chat-context-policy.js":"20261125public1","chat-history-atomic.js":"20261125scope1","wallpaper-store.js":"20261125group2","group-turn-effects.js":"20261125scope1","group-private-receipt-recovery.js":"20261125scope1","group-settings-home.js":"20261125scope4","group-write-guard.js":"20261125g10","group-portraits.js":"20261125scope1"};
+  const expected={"group-governance.js":"20261125scope3","group-memory-events.js":"20261125public2","chat-context-policy.js":"20261125public1","chat-history-atomic.js":"20261125scope1","wallpaper-store.js":"20261125group2","group-turn-effects.js":"20261125scope1","group-private-receipt-recovery.js":"20261125scope1","group-settings-home.js":"20261125scope4","group-write-guard.js":"20261125g10","group-portraits.js":"20261125scope1"};
   for(const [name,rev] of Object.entries(expected)){
     assert.ok(sw.includes(name+'?v='+rev),name+' precache');
     for(const page of pages){const html=load(page);for(const match of html.matchAll(/<script[^>]+src="([^"]+)"/g)){if(match[1].includes('/'+name+'?v='))assert.ok(match[1].endsWith(name+'?v='+rev),page+' '+name);}}
