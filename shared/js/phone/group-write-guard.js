@@ -56,7 +56,18 @@
   }
   function preferenceKey(expected,kind){
     if(!expected||typeof expected.id!=='string'||expected.id.charAt(0)!=='g')return '';
-    return kind==='alias'||kind==='notice'?'chat_group_'+kind+'_'+expected.id:'';
+    var prefixes={alias:'chat_group_alias_',notice:'chat_group_notice_',pin:'chat_pin_',memory:'chat_memory_limit_',time:'chat_time_config_',sound:'sound_char_'};
+    return Object.prototype.hasOwnProperty.call(prefixes,kind)?prefixes[kind]+expected.id:'';
+  }
+  function validPreference(kind,value){
+    if(typeof value!=='string')return false;
+    if(kind==='pin')return value==='true'||value==='false';
+    if(kind==='memory')return ['10','20','30','50'].indexOf(value)!==-1;
+    if(kind==='time'){
+      try{var parsed=JSON.parse(value);return !!parsed&&['off','real','virtual'].indexOf(parsed.mode)!==-1&&typeof parsed.virtualTimeStr==='string'&&(parsed.mode!=='virtual'||!!parsed.virtualTimeStr.trim());}catch(error){return false;}
+    }
+    if(kind==='sound')return !!value&&value.length<=128;
+    return kind==='alias'||kind==='notice';
   }
   function readPreference(expected,kind){
     try{
@@ -68,7 +79,7 @@
   }
   function writePreference(snapshot,value){
     try{
-      if(!snapshot||typeof value!=='string')return {ok:false,reason:'invalid'};
+      if(!snapshot||!validPreference(snapshot.kind,value))return {ok:false,reason:'invalid'};
       var key=preferenceKey(snapshot.group,snapshot.kind);
       if(!key||!matches(snapshot.group))return {ok:false,reason:'scope'};
       if(global.localStorage.getItem(key)!==snapshot.raw||!matches(snapshot.group))return {ok:false,reason:'stale'};
