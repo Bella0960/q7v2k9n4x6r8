@@ -1281,6 +1281,7 @@ button:focus-visible,input:focus-visible,select:focus-visible{outline:1px solid 
         // Keep the original target across the asynchronous AI request and any UI selection changes.
         const summaryRoleId = currentMemId;
         if (!summaryRoleId) return;
+        if (runSummary.busy) { alert('已有记忆整理任务正在执行。'); return; }
         if (String(summaryRoleId).charAt(0) === 'g') { alert('群聊需要独立的发言身份校验，暂不支持自动提取记忆。'); return; }
         if (historySlice.some(m => m && !m.isError && m.role !== 'system_error' && !['sent','user','received','assistant'].includes(m.role))) { alert('这批记录存在未识别发言身份，未调用 API。'); return; }
         const sourceSnapshot = JSON.stringify(historySlice);
@@ -1294,15 +1295,18 @@ button:focus-visible,input:focus-visible,select:focus-visible{outline:1px solid 
         const baseUrl = (config.baseUrl || 'https://api.openai.com/v1').trim().replace(/\/+$/, '');
         const apiModel = (config.model || 'gpt-3.5-turbo').trim();
         const cats = getSelectedCats();
+        if (!cats.length) { alert('请至少选择一个总结分类。'); return; }
         const catNames = cats.map(c => CAT_LABEL[c]).join('、');
         let transcript = historySlice.map(m => {
             if (!m || m.isError || m.role === 'system_error') return '';
             const who = (m.role === 'sent' || m.role === 'user') ? '用户' : '角色';
             return who + '：' + String(m.text || m.content || m.desc || '').trim();
         }).filter(Boolean).join('\n');
+        if (!transcript.trim()) { alert('本批没有可整理的文字。'); return; }
         // Keep summary input bounded. The original messages are never changed or deleted.
         if (transcript.length > 4000) { alert('本批文字超过整理上限，请缩小范围；原记录及进度均保留。'); return; }
         const btn = isAll ? document.getElementById('btnManualAll') : document.getElementById('btnManualRecent');
+        runSummary.busy = true;
         btn.disabled = true;
         const oldText = btn.textContent;
         btn.textContent = '正在总结...';
@@ -1333,10 +1337,12 @@ button:focus-visible,input:focus-visible,select:focus-visible{outline:1px solid 
             if (!jsonMatch) throw new Error('memory-json-invalid');
             let items;
             try { items = JSON.parse(jsonMatch[0]); } catch (e) { throw new Error('memory-json-invalid'); }
-            if (!Array.isArray(items)) throw new Error('memory-json-invalid');
+            if (!Array.isArray(items) || items.length > 30 || items.some(it => !it || typeof it.content !== 'string' || !it.content.trim() || !cats.includes(it.category) || !Number.isInteger(it.importance) || it.importance < 1 || it.importance > 5)) throw new Error('memory-json-invalid');
 
             if (JSON.stringify(readHistory(summaryRoleId).slice(sourceStart,sourceEnd)) !== sourceSnapshot) { alert('原始记录已变化，本次结果未保存。'); return; }
+            if (String(currentMemId) !== String(summaryRoleId)) { alert('角色已切换，本次结果未保存。'); return; }
             const mems = loadMemories(summaryRoleId);
+            if (mems.some(m => !m || typeof m !== 'object' || (m.sourceRoleId != null && String(m.sourceRoleId) !== String(summaryRoleId)))) { alert('记忆库存在身份异常记录，未写入。'); return; }
             const now = Date.now();
             let autoN = 0, pendingN = 0, reinforcedN = 0;
             items.forEach(it => {
@@ -1385,6 +1391,7 @@ button:focus-visible,input:focus-visible,select:focus-visible{outline:1px solid 
         } catch (err) {
             alert('总结失败：' + (err.name === 'AbortError' ? '请求超时' : (err.message === 'memory-json-invalid' ? '返回格式不正确，进度未推进，可以重试' : '网络错误')));
         } finally {
+            runSummary.busy = false;
             btn.disabled = false;
             btn.textContent = oldText;
         }
@@ -1493,7 +1500,7 @@ button:focus-visible,input:focus-visible,select:focus-visible{outline:1px solid 
         const arr = loadMemories(currentMemId);
         const pools = { plot: [], detail: [], preference: [] };
         arr.forEach(m => {
-            if (m.status === 'fixed' || m.status === 'pending') return;
+            if (!m || m.status !== 'confirmed' || !m.id || String(m.sourceRoleId || '') !== String(currentMemId)) return;
             if (m.category === 'key' || m.category === 'anniversary') return;
             if (pools[m.category]) pools[m.category].push(m);
         });
@@ -1534,12 +1541,15 @@ button:focus-visible,input:focus-visible,select:focus-visible{outline:1px solid 
         document.getElementById('btnMergeConfirm').addEventListener('click', async () => {
             const btn = document.getElementById('btnMergeConfirm');
             if (String(currentMemId) !== String(mergeRoleId)) { alert('角色已切换，请重新选择。'); return; }
+            if (runSummary.busy) { alert('已有记忆整理任务正在执行。'); return; }
+            runSummary.busy = true;
             btn.disabled = true;
             btn.textContent = '合并中...';
             try {
                 for (const e of est) {
+                    if (String(currentMemId) !== String(mergeRoleId)) { alert('角色已切换，剩余请求已停止。'); return; }
                     const mems = loadMemories(mergeRoleId);
-                    const pool = mems.filter(m => m.status === 'confirmed' && m.category === e.cat
+                    const pool = mems.filter(m => m && m.status === 'confirmed' && m.category === e.cat && m.id && String(m.sourceRoleId || '') === String(mergeRoleId)
                         && m.category !== 'key' && m.category !== 'anniversary');
                     if (pool.length < 3) continue;
                     const src = pool.map(m => m.content).join('\n');
@@ -1568,9 +1578,11 @@ button:focus-visible,input:focus-visible,select:focus-visible{outline:1px solid 
                     const jsonMatch = text.match(/\[[\s\S]*\]/);
                     let items = [];
                     if (jsonMatch) { try { items = JSON.parse(jsonMatch[0]); } catch (err2) {} }
-                    if (!Array.isArray(items) || !items.length) continue;
+                    if (!Array.isArray(items) || !items.length || items.length > e.to || items.some(it => !it || typeof it.content !== 'string' || !it.content.trim() || !Number.isInteger(it.importance) || it.importance < 1 || it.importance > 5)) { alert('合并返回格式错误，原记忆未修改。'); return; }
+                    if (String(currentMemId) !== String(mergeRoleId)) { alert('角色已切换，本批结果未保存。'); return; }
                     let arr = loadMemories(mergeRoleId);
-                    const latestPool = arr.filter(m => m.status === 'confirmed' && m.category === e.cat);
+                    const latestPool = arr.filter(m => m && m.status === 'confirmed' && m.category === e.cat && m.id && String(m.sourceRoleId || '') === String(mergeRoleId));
+                    if (arr.some(m => !m || typeof m !== 'object' || (m.sourceRoleId != null && String(m.sourceRoleId) !== String(mergeRoleId)))) { alert('记忆库存在身份异常记录，未写入。'); return; }
                     if (JSON.stringify(latestPool) !== poolSnapshot) { alert('原记忆已变化，本批结果未保存。'); return; }
                     // Preserve originals; AI output is an unverified candidate with source references.
                     items.forEach(it => {
@@ -1597,6 +1609,7 @@ button:focus-visible,input:focus-visible,select:focus-visible{outline:1px solid 
             } catch (err) {
                 alert('合并失败：' + (err.name === 'AbortError' ? '请求超时' : '网络错误'));
             } finally {
+                runSummary.busy = false;
                 btn.disabled = false;
                 btn.textContent = '确认合并';
             }
