@@ -372,6 +372,108 @@
         return writeMemoryList(contactId,list).state === 'ok';
     };
 
+    // Explicit review operation: derive the new list internally, never accept
+    // arbitrary replacement records. No migration or legacy-only write.
+    NS.reviewMemoryRevision = function (contactId, operation, expected, replacement, options) {
+        function fail(reason) { return {ok:false,reason:reason}; }
+        var account = global.__MAO_ACCOUNT_SCOPE__;
+        function authorized() {
+            try {
+                return !!(account && account.ready === true && typeof account.accountId === 'string' &&
+                    account.accountId && global.__MAO_ACCOUNT_SCOPE__ === account &&
+                    options && options.confirmed === true && options.accountId === account.accountId &&
+                    typeof options.getCurrentRoleId === 'function' && String(options.getCurrentRoleId()) === contactId);
+            } catch (_) { return false; }
+        }
+        if (typeof contactId !== 'string' || !contactId.trim() || contactId !== contactId.trim() ||
+            contactId.charAt(0) === 'g' || ['__proto__','prototype','constructor'].includes(contactId) ||
+            !authorized() || !['revise','undo'].includes(operation)) return fail('invalid-scope');
+        var key = 'chat_memories_' + contactId, raw, records;
+        try {
+            raw = localStorage.getItem(key);
+            if (typeof raw !== 'string') return fail('primary-unavailable');
+            records = JSON.parse(raw);
+        } catch (_) { return fail('read-failed'); }
+        if (!Array.isArray(records) || records.some(function(m) {return !m || typeof m !== 'object' || Array.isArray(m);}))
+            return fail('invalid-existing-data');
+        function owned(m) {
+            return m && typeof m.id === 'string' && !!m.id && String(m.sourceRoleId || '') === contactId &&
+                (m.roleId == null || String(m.roleId) === contactId);
+        }
+        function active(m) { return m && ['fixed','confirmed'].includes(m.status); }
+        function superseded(m) { return m && ['superseded-fixed','superseded-confirmed'].includes(m.status); }
+        function inspectChain(list) {
+            var ids = new Map(), links = new Map(), children = new Map();
+            for (var m of list) {
+                if (m.id == null) continue;
+                var id = String(m.id);
+                ids.set(id,ids.has(id)?null:m);
+            }
+            for (var m of list) {
+                if (m.source !== 'user-correction' && !superseded(m) && m.status !== 'withdrawn') continue;
+                if (!owned(m) || ids.get(m.id) !== m) return null;
+                if (m.source !== 'user-correction') {
+                    if (m.status === 'withdrawn') return null;
+                    continue;
+                }
+                if ((!active(m) && !superseded(m) && m.status !== 'withdrawn') ||
+                    !Array.isArray(m.sourceMemoryIds) || m.sourceMemoryIds.length !== 1 ||
+                    typeof m.sourceMemoryIds[0] !== 'string') return null;
+                var parent = ids.get(m.sourceMemoryIds[0]);
+                if (!owned(parent) || parent === m) return null;
+                links.set(m.id,parent.id);
+                if (m.status !== 'withdrawn') {
+                    if (!superseded(parent) || children.has(parent.id) ||
+                        (m.status !== parent.status && m.status !== parent.status.slice('superseded-'.length))) return null;
+                    children.set(parent.id,m.id);
+                }
+            }
+            for (var m of list) if (superseded(m) && !children.has(m.id)) return null;
+            for (var id of links.keys()) {
+                var seen = new Set(), cur = id;
+                while (links.has(cur)) {
+                    if (seen.has(cur)) return null;
+                    seen.add(cur); cur = links.get(cur);
+                }
+            }
+            return {ids:ids,children:children};
+        }
+        var chain = inspectChain(records);
+        if (!chain) return fail('revision-conflict');
+        var target = expected && chain.ids.get(expected.id);
+        if (!owned(target) || !active(target) || JSON.stringify(target) !== JSON.stringify(expected)) return fail('stale-memory');
+        var next = records.slice(), index = records.indexOf(target), result;
+        if (operation === 'revise') {
+            if (typeof replacement !== 'string' || !replacement.trim() || replacement.length > 600) return fail('invalid-content');
+            var content = replacement.trim();
+            if (content === String(target.content || target.text || '').trim()) return fail('unchanged');
+            if (records.length >= 300) return fail('capacity');
+            var now = Date.now(), n = records.length, id;
+            do { id = 'mem_revision_' + now.toString(36) + '_' + (n++).toString(36); } while (chain.ids.has(id));
+            next[index] = Object.assign({},target,{status:'superseded-' + target.status});
+            result = {id:id,content:content,category:target.category || 'detail',
+                importance:Math.max(1,Math.min(5,Number(target.importance)||3)),
+                status:target.status,source:'user-correction',sourceRoleId:contactId,
+                sourceMemoryIds:[target.id],createdAt:now,lastReinforcedAt:now,reinforcementCount:1};
+            next.push(result);
+        } else {
+            if (target.source !== 'user-correction') return fail('not-revision');
+            var parent = chain.ids.get(target.sourceMemoryIds[0]);
+            if (!owned(parent) || !superseded(parent) || chain.children.get(parent.id) !== target.id) return fail('revision-conflict');
+            result = Object.assign({},parent,{status:parent.status.slice('superseded-'.length)});
+            next[records.indexOf(parent)] = result;
+            next[index] = Object.assign({},target,{status:'withdrawn'});
+        }
+        if (!inspectChain(next)) return fail('revision-conflict');
+        try {
+            if (!authorized() || localStorage.getItem(key) !== raw) return fail('stale-memory');
+            var serialized = JSON.stringify(next);
+            localStorage.setItem(key,serialized);
+            if (localStorage.getItem(key) !== serialized) return fail('readback-failed');
+        } catch (_) { return fail('save-failed'); }
+        return {ok:true,memory:result};
+    };
+
     NS.deleteMemoryEntry = function (contactId, expected) {
         if (!contactId || !expected) return false;
         var list = NS.getMemories(contactId);
