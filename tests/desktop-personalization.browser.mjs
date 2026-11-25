@@ -27,7 +27,7 @@ const server=createServer(async(req,res)=>{
 await new Promise((accept,reject)=>{server.once('error',reject);server.listen(0,'127.0.0.1',accept);});
 const origin='http://127.0.0.1:'+server.address().port;
 const browser=await chromium.launch({headless:true});
-let step='init',count=0;
+let step='init',count=0,diagnosticPhase=0;
 const pass=(name)=>{count++;console.log('DESKTOP_AUDIT_PASS '+name);};
 const go=async(page,pathname)=>{
   const response=await page.goto(origin+pathname,{waitUntil:'load',timeout:40000});
@@ -57,6 +57,7 @@ function assessHeavyDragBudget(profile, result) {
 try{
   for(const [width,height] of [[375,667],[390,844],[430,932]]){
     step='open_'+width;
+    diagnosticPhase=width;
     const context=await browser.newContext({viewport:{width,height},isMobile:true,hasTouch:true,serviceWorkers:'block',deviceScaleFactor:3});
     const page=await context.newPage();
     const errors=[];
@@ -365,9 +366,12 @@ try{
     // Only synthetic local assets are used; the real user account is never opened.
     if(width===390){
       step='heavy_personalization_'+width;
+      diagnosticPhase=391;
+      console.log('SEALED_BROWSER_CHECKPOINT:391');
       const heavy=await browser.newContext({viewport:{width,height},isMobile:true,hasTouch:true,deviceScaleFactor:3,serviceWorkers:'block',reducedMotion:'no-preference'});
       try{
         const hp=await heavy.newPage(), heavyErrors=[];
+        await hp.bringToFront();
         hp.on('pageerror',e=>heavyErrors.push(e.message));
         await go(hp,'/index.html');
         const fontBytes=await readFile('/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf');
@@ -411,11 +415,15 @@ try{
           return {widgetCount:widgetSlots.length,wallpaperLength:wallpaper.length};
         },fontBytes.toString('base64'));
         assert.ok(setup.widgetCount>=2,'heavy profile needs multiple live widget photos');
+        diagnosticPhase=392;
+        console.log('SEALED_BROWSER_CHECKPOINT:392');
         await go(hp,'/index.html');
         await hp.waitForFunction(()=>document.documentElement.getAttribute('data-home-wallpaper')==='custom' &&
           document.documentElement.getAttribute('data-theme')==='liquid-glass' &&
           document.querySelectorAll('#gridPage0 .maomao-liquid-glass-icon').length>=3 &&
           !!document.getElementById('maomao-global-custom-font-style'),null,{timeout:20000});
+        // Photo restores are asynchronous IndexedDB reads, independent of the font and wallpaper.
+        await hp.waitForFunction(expected=>Array.from(document.querySelectorAll('#gridPage0 [data-upload][id]')).filter(el=>el.style.backgroundImage.includes('data:image')).length===expected,setup.widgetCount,{timeout:20000});
         const loaded=await hp.evaluate(async()=>{
           const src=await window.MAOMAOWallpaperStore.get(), image=new Image();
           image.src=src;await image.decode();
@@ -434,11 +442,14 @@ try{
         const ht=(type,x,y)=>hc.send('Input.dispatchTouchEvent',{type,touchPoints:type==='touchEnd'||type==='touchCancel'?[]:[{x,y,id:1}]});
         const inventory=l=>[...l.pages.flat(),...l.dock,...l.removed].sort();
         const measure=async(label,commit)=>{
+          diagnosticPhase=commit?395:393;
+          if(!commit)console.log('SEALED_BROWSER_CHECKPOINT:393');
           const point=await hp.evaluate(()=>{
             const bounds=document.getElementById('homeScreen').getBoundingClientRect();
             const tiles=Array.from(document.querySelectorAll('#gridPage0 .app-tile[data-drag]')).map(el=>{
-              const r=el.getBoundingClientRect();return {x:r.left+r.width/2,y:r.top+r.height/2,id:el.dataset.drag};
-            }).filter(p=>p.x>bounds.left+45&&p.x<bounds.right-45&&p.y>bounds.top+45&&p.y<bounds.bottom-45);
+              const r=el.getBoundingClientRect(),x=r.left+r.width/2,y=r.top+r.height/2;
+              return {x,y,id:el.dataset.drag,hit:document.elementFromPoint(x,y)?.closest('[data-drag]')===el};
+            }).filter(p=>p.hit&&p.x>bounds.left+45&&p.x<bounds.right-45&&p.y>bounds.top+45&&p.y<bounds.bottom-45);
             return tiles[0]||null;
           });
           assert.ok(point,'no visible drag source in heavy home grid');
@@ -492,6 +503,13 @@ try{
             }
           }finally{result=await hp.evaluate(()=>window.__stopHeavyDragProbe());}
           assert.ok(result.samples>=20&&result.changes>=1,'heavy probe did not exercise real reordering');
+          // CDP touch dispatch can resolve before the final queued rAF runs.
+          // Do not compare a stale placeholder with the subsequently committed slot.
+          await hp.waitForFunction(({x,y})=>{
+            const ghost=document.querySelector('.drag-avatar');
+            return !!ghost&&Math.abs(parseFloat(ghost.style.getPropertyValue('--drag-x'))-x)<2&&
+              Math.abs(parseFloat(ghost.style.getPropertyValue('--drag-y'))-y)<2;
+          },from,{timeout:5000});
           // Snapshot exact intended grid order, not just item membership. The
           // hidden source is replaced by its current placeholder at release.
           const expected=await hp.evaluate(()=>{
@@ -516,6 +534,8 @@ try{
             assert.deepEqual(after.pages,expected.pages,'saved grid order differs from the intended drop');
             assert.deepEqual(after.dock,expected.dock,'saved Dock order differs from the intended drop');
           }
+          diagnosticPhase=commit?396:394;
+          if(!commit)console.log('SEALED_BROWSER_CHECKPOINT:394');
           assert.equal(verdict.ok,true,'DESKTOP_HEAVY_DRAG_BUDGET '+label+' '+verdict.reason);
           return after;
         };
@@ -525,12 +545,15 @@ try{
         try{committed=await measure('hd-glass-font-cpu4x',true);}
         finally{await hc.send('Emulation.setCPUThrottlingRate',{rate:1});}
         await hc.detach();
+        diagnosticPhase=397;
         await go(hp,'/index.html');
         assert.deepEqual(await readLayout(hp),committed,'heavy drag layout did not persist after reload');
         assert.deepEqual(heavyErrors,[],'heavy profile page errors');
         pass('heavy_hd_glass_font_widget_drag_'+width);
       }finally{await heavy.close();}
+      await page.bringToFront();
     }
+    diagnosticPhase=width;
     step='reset_wallpaper_'+width;
     await go(page,'/settings/appearance.html');
     await page.locator('#resetWallpaperBtn').click();
@@ -545,6 +568,11 @@ try{
   console.log('DESKTOP_AUDIT_ALL_PASS checks='+count);
 }catch(error){
   console.log('DESKTOP_AUDIT_FAIL stage='+step+' kind='+String(error.name||'Error').replace(/[^A-Za-z]/g,''));
+  const category=error.name==='TimeoutError'?'timeout':error.code==='ERR_ASSERTION'?'assertion':error.code==='ENOENT'?'browser-environment':'other';
+  // Fixed numeric phases only, accepted by the existing public QA summary.
+  // 391 fixture; 392 restored assets; 393 normal function; 394 normal budget;
+  // 395 CPU4x function; 396 CPU4x budget; 397 reload/persistence.
+  console.log('SEALED_BROWSER_FAILURE:'+diagnosticPhase+':'+category);
   throw error;
 }finally{
   await browser.close();
