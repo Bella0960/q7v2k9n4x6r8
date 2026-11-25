@@ -37,6 +37,7 @@
     live.className = 'group-settings-status';
     live.setAttribute('role', 'status');
     var wallpaper = root.MAOMAOWallpaperStore;
+    var portraits=root.MAOGroupPortraits;
     var bgKey = 'chat_bg_' + gid;
     var selectedAction;
     var activeView = 'home';
@@ -120,6 +121,15 @@
         image.alt = '';
         tile.append(image);
       } else tile.textContent = label.slice(0, 1);
+      return tile;
+    }
+    function memberAvatar(member,label,current){
+      var tile=avatar(member.avatar,label);
+      if(portraits&&current&&isCurrent(current)){
+        portraits.resolve(current.group,String(member.id)).then(function(url){
+          if(url&&tile.isConnected&&isCurrent(current))tile.replaceChildren(avatar(url,label).firstChild);
+        }).catch(function(){});
+      }
       return tile;
     }
     function row(label, action, value) {
@@ -207,7 +217,7 @@
         var label = displayName(member);
         var item = button('', member.id === '__user' ? 'myNickname' : 'member', member.id);
         item.className = 'group-home-member';
-        item.append(avatar(member.avatar, label), node('span', label));
+        item.append(memberAvatar(member,label,current), node('span', label));
         memberRow.append(item);
       });
       [['invite', '+', '邀请'], ['remove', '−', '移除']].forEach(function (entry) {
@@ -245,6 +255,7 @@
       rows.append(row('群组管理', 'manage'), row('群组名称', 'name', name),
         row('备注', 'alias', read('chat_group_alias_' + gid, '') || '未填写'),
         row('我在群组的昵称', 'myNickname', (group.preferences || {}).myNickname || '未设置'),
+        row('我在群组的头像', 'member-portrait', '专属头像'),
         toggle(group, 'showMemberNicknames', '显示成员昵称'),
         row('群聊玩法与记忆', 'advanced'), row('其他群聊选项', 'legacy'));
       inside.append(node('h2', '群组设置'), rows);
@@ -299,7 +310,8 @@
         var muted = governance.isMuted(member);
         var admin = governance.isAdmin(member);
         var meta = isOwner ? '群主' : admin ? '管理员' : '成员';
-        item.append(avatar(member.avatar, label), node('strong', label));
+        item.append(mode==='invite'?avatar(member.avatar,label):memberAvatar(member,label,current),node('strong',label));
+        if(mode!=='invite'&&canManage&&portraits)item.append(button('群内头像','member-portrait',String(member.id)));
         if (mode !== 'invite') item.append(node('small', meta + (muted ? ' · 禁言中' : '')));
         if (canManage && !isOwner) {
           if (mode === 'invite') item.append(button('邀请', 'invite-confirm', member.id));
@@ -321,6 +333,46 @@
         back.className = 'group-home-row';
         home.replaceChildren(back, node('h2', '群组管理'), list, live);
       } else show({invite:'邀请成员',remove:'移除成员',member:'成员资料'}[mode], [list]);
+    }
+    function chooseMemberPortrait(id){
+      id=String(id||'__user');
+      var current=state();
+      if(!portraits||!current||!isCurrent(current)||(id!=='__user'&&(governance.rank(current.group,'__user')<2||!current.group.members.some(function(m){return String(m.id)===id;}))))return report('当前无法修改此群内头像。');
+      var snapshot;
+      try{snapshot=portraits.snapshot(gid);}catch(error){return report(error.message||'头像存储不可用。');}
+      if(snapshot.expected.serialized!==current.snapshot.serialized||snapshot.account!==pageAccount)return report('群资料已变化，请重新打开。');
+      var editState={kind:'member-portrait',busy:false,current:current,snapshot:snapshot,id:id};
+      var file=node('input');file.type='file';file.accept='image/*';file.setAttribute('aria-label','选择群内头像');editState.file=file;
+      function valid(){return imageEdit===editState&&dialog.open&&isCurrent(current);}
+      async function write(blob){
+        if(!valid())throw Error('群资料或图片编辑已变化');
+        if(!await portraits.save(snapshot,new Map([[id,blob]]),valid))throw Error('保存失败');
+        if(imageEdit===editState&&pageCurrent()&&dialog.open){imageEdit=null;dialog.close();render();report(blob?'群内头像已更新。':'已恢复原头像。');}
+      }
+      file.addEventListener('change',async function(){
+        if(!file.files[0]||editState.busy||!valid())return;
+        editState.busy=true;file.disabled=true;
+        var url='';
+        try{
+          url=URL.createObjectURL(file.files[0]);var image=new Image();image.src=url;await image.decode();
+          if(!valid())throw Error('群资料已变化');
+          var canvas=node('canvas'),side=Math.min(image.naturalWidth,image.naturalHeight);
+          if(!side)throw Error('图片无效');
+          canvas.width=canvas.height=320;
+          canvas.getContext('2d').drawImage(image,(image.naturalWidth-side)/2,(image.naturalHeight-side)/2,side,side,0,0,320,320);
+          var blob=await new Promise(function(resolve,reject){canvas.toBlob(function(value){if(value)resolve(value);else reject(Error('图片处理失败'));},'image/jpeg',.85);});
+          await write(blob);
+        }catch(error){if(imageEdit===editState)report(error.message||'头像保存失败。');}
+        finally{if(url)URL.revokeObjectURL(url);editState.busy=false;file.disabled=false;}
+      });
+      var reset=button('恢复原头像','reset-member-portrait');
+      editState.reset=async function(){
+        if(!valid()||editState.busy)return;
+        editState.busy=true;file.disabled=true;reset.disabled=true;
+        try{await write(null);}catch(error){if(imageEdit===editState)report(error.message||'恢复失败。');}
+        finally{editState.busy=false;file.disabled=false;reset.disabled=false;}
+      };
+      show('群内专属头像',[node('p','只影响本群，不改变角色库或个人资料。'),file,reset]);imageEdit=editState;
     }
     async function chooseImage(kind) {
       var current = state();
@@ -440,6 +492,8 @@
       demote: function (id) { apply('demote', id); },
       mute: function (id) { apply('mute', id); },
       unmute: function (id) { apply('unmute', id); },
+      'member-portrait': function(id){chooseMemberPortrait(id);},
+      'reset-member-portrait': function(){if(imageEdit&&imageEdit.kind==='member-portrait')void imageEdit.reset();},
       avatar: function () { chooseImage('avatar'); },
       background: function () { chooseImage('background'); },
       'reset-background': async function () {
