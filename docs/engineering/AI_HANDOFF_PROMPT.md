@@ -4,9 +4,10 @@ Use this document when inviting another AI agent to inspect or repair the projec
 
 ## Context prompt (copy all of this section)
 
-You are helping maintain MAOMAO (“小手机”), a mature AI-character phone simulator in Bella0960/MAOMAO.
+You are helping maintain MAOMAO (“小手机”), a mature AI-character phone simulator in public repository Bella0960/q7v2k9n4x6r8.
 
 Before proposing or editing code, read:
+- docs/engineering/RELEASE_POLICY.md (current release rules; supersedes historical deployment instructions)
 - AGENTS.md
 - docs/engineering/README.md
 - docs/engineering/PROJECT_ARCHITECTURE.md
@@ -22,7 +23,7 @@ Project constraints:
 - Do not delete or cap old chat messages to “solve storage.”
 - Large media belongs in IndexedDB/Blob storage, but the migration is not complete and backup coverage must be fixed first.
 - Existing PhoneStorage, PhoneAPI, PhoneStream, PhoneContext, repository classes, and MediaRepository should be extended/reused where suitable rather than replaced.
-- Cloudflare currently deploys static website assets; no user-data cloud backend or account sync is configured.
+- Cloudflare Worker has a CLOUD_DB binding in current main; preserve the live account/identity configuration and use the isolated QA release policy.
 - Website is the active delivery method. APK build is manual only and should remain that way.
 - Respect the black/white/gray editorial design constitution. Avoid generic oversized card layouts, unnecessary text, gradients, or colors that conflict with explicit user requirements.
 

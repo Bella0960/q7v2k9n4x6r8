@@ -17,18 +17,9 @@ Do not force-push main. Never overwrite a newer main commit. Rebase/merge agains
 
 ## 2. Current automation inventory
 
-| Workflow | Current trigger | Purpose | Policy |
-|---|---|---|---|
-| deploy-cloudflare-worker.yml | Push to main with matching app/source paths; manual | Vite build and Cloudflare Worker static-asset deployment | Keep automatic website deployment |
-| chat-regression-contract.yml | Push/PR for chat-related paths; manual | npm run test:chat:contract | Keep and expand |
-| perf-gate.yml | Push/PR for chat/shared phone/perf paths; manual | Playwright performance budget gate | Keep; inspect runtime/cost and maintain |
-| build-android-apk.yml | Manual workflow_dispatch only | Build debug APK | Do not restore push trigger; output retained 3 days |
-| cleanup-apk-artifacts.yml | Manual workflow_dispatch only | Delete artifacts whose exact name is MAOMAO-Android-APK in this repo | Run manually to clean existing APK outputs; scope does not include other repos |
-| npm-publish-github-packages.yml | GitHub release created | Runs npm ci, npm test, npm publish | Unverified; package.json has no generic test script and the project is not currently operated as an npm package. Do not publish/release until the workflow is reviewed and explicitly approved |
+> 当前发布流程以 [2026-11-24 发布规范](RELEASE_POLICY.md) 为准；旧日期的版本、部署方式和测试范围不得当成现行指令。
 
-The previous APK artifact-upload failure reported GitHub Artifact storage quota reached. That failure happened after the Build debug APK step succeeded. The failed run itself had no uploaded artifact. The cleanup workflow is repository-scoped. If account-wide usage is still full after cleanup and GitHub's usage refresh window, inspect artifacts in other repositories/account scope.
-
-No routine workflow should upload an APK. Build APK only after an explicit need.
+The existing production deployment is manual-only; QA uses the reusable request path. Old per-version workflows and npm publishing are not routine release paths. Existing test implementations remain available until their replacement coverage has been verified. APK and APK cleanup remain manual-only.
 
 ## 3. Current quality commands and limitations
 
@@ -42,12 +33,7 @@ package.json currently exposes:
 
 tests/ contains two primary test entry scripts plus additional manual/reproduction scripts and fixtures. A green contract test does not mean every page or user journey was exercised.
 
-Required check for every code PR:
-1. npm ci
-2. npm run build
-3. the relevant test script(s)
-4. related performance gate if chat/shared phone behavior changes
-5. manual acceptance on affected views; for major storage/chat work, phone viewport and real-device browser testing.
+Required checks are risk-scoped according to RELEASE_POLICY.md. Preserve full safety gates for high-risk changes and actual affected-device verification; do not repeat identical build/test work.
 
 Do not cite npm run lint as evidence until a real linter is configured.
 
@@ -138,5 +124,5 @@ Rules:
 
 Website deploy is the normal release channel.
 APK build is manual and exceptional.
-Do not create GitHub releases or publish packages until npm-publish-github-packages.yml and package.json scripts have been reviewed and approved.
+Do not publish npm packages. Follow RELEASE_POLICY.md for QA and production releases.
 Before a significant migration release: full backup test, migration canary, regression checks, production deploy check, and rollback instructions.

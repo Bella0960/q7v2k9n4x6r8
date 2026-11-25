@@ -4,6 +4,8 @@
 
 > 工程协作入口：所有 AI/开发者先读根目录 AGENTS.md，再读 docs/engineering/README.md 及其架构、储存、开发治理和任务文档。当前事实以源码与工程手册为准；历史审查报告须按日期复核。
 
+> 发布与 QA 任务必须先读 `docs/engineering/RELEASE_POLICY.md`；本文历史架构与版本快照不得覆盖现行发布规范。
+
 ## 技术栈与架构
 
 - **纯原生 HTML/CSS/JS**：零框架（无 React/Vue/jQuery）、零运行时依赖、无 TypeScript。开发依赖包括 Vite 和 Playwright；项目没有 React/Vue 等前端运行时框架。

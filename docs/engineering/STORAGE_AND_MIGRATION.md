@@ -1,5 +1,7 @@
 # MAOMAO Storage Architecture, Backup, and Migration Plan
 
+> Release instructions: always read the latest main [RELEASE_POLICY.md](RELEASE_POLICY.md). Historical workflow names, versions, and checkpoints are not active instructions.
+
 ## 1. Scope: three different storage systems
 
 Never combine these into one “storage-full” diagnosis.
