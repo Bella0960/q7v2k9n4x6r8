@@ -42,13 +42,17 @@ function makeStore(seed = {}) {
   };
 }
 
-function makeSandbox({ store, entries = [], role = { id: 'roleA', name: '阿岚', persona:'从事植物研究，记录自然观察。', tone:'简练、克制' }, aiText = '今天风很大，窗台上的绿植被吹得一直点头。我把咖啡放在窗边，看它慢慢凉掉，忽然很想跟你说一句没什么用的废话。' }) {
+function makeLocks(){
+ const held=new Set();return {request(name,options,fn){if(held.has(name)){try{return Promise.resolve(fn(null));}catch(e){return Promise.reject(e);}}held.add(name);try{return Promise.resolve(fn({name})).finally(()=>held.delete(name));}catch(e){held.delete(name);return Promise.reject(e);}}};
+}
+function makeSandbox({ store, locks=makeLocks(), entries = [], role = { id: 'roleA', name: '阿岚', persona:'从事植物研究，记录自然观察。', tone:'简练、克制' }, aiText = '今天风很大，窗台上的绿植被吹得一直点头。我把咖啡放在窗边，看它慢慢凉掉，忽然很想跟你说一句没什么用的废话。' }) {
   const toasts = [];
   const sandbox = {
     localStorage: store,
     STORAGE_KEY: 'maomao_diary_entries_v1',
     diaryArchiveSnapshot:store.getItem('maomao_diary_entries_v1'),
     diaryPageAccount:JSON.stringify(['fixture-account',null]),
+    navigator:{locks},
     entries,
     peekBusy: false,
     showToast: (m) => toasts.push(m),
@@ -386,4 +390,33 @@ test('current-role selector refuses invalid contacts, ambiguous roles and duplic
  contact='b';assert.equal(context.peekCurrentRole().id,'b');
  roles.push({id:'b',name:'Duplicate'});assert.equal(context.peekCurrentRole(),null);
  contact=null;assert.equal(context.peekCurrentRole().id,'a');
+});
+
+test('shared browser lock prevents duplicate paid writes from two tabs',async()=>{
+ const store=makeStore(),locks=makeLocks();
+ const a=makeSandbox({store,locks}).sb,b=makeSandbox({store,locks}).sb;
+ let calls=0,finish;
+ a.PhoneAPI.complete=b.PhoneAPI.complete=()=>{calls++;return new Promise(r=>finish=r)};
+ const p=a.maybeAutoWriteCharEntry(),q=b.maybeAutoWriteCharEntry();
+ await Promise.resolve();assert.equal(calls,1);
+ finish('植物叶片出现了新的变化，今天把观察记录整理了一遍。');
+ await Promise.all([p,q]);
+ assert.equal(JSON.parse(store.getItem('maomao_diary_entries_v1')).length,1);
+ b.maybeAutoWriteCharEntry();await Promise.resolve();assert.equal(calls,1);
+});
+test('missing browser request lock fails closed without paid request',async()=>{
+ const {sb}=makeSandbox({store:makeStore()});
+ sb.navigator={};let calls=0;sb.PhoneAPI.complete=()=>{calls++;return Promise.resolve('fixture')};
+ await sb.maybeAutoWriteCharEntry();assert.equal(calls,0);
+});
+test('failed backup import never leaves staged entries in memory',()=>{
+ const original={id:'u',date:'2026-11-25',content:'original'};
+ const store=makeStore({maomao_diary_entries_v1:JSON.stringify([original])});
+ const {sb}=makeSandbox({store,entries:[original]});
+ sb.confirm=()=>true;sb.FileReader=class {readAsText(file){this.result=file;this.onload();}};
+ vm.runInContext(slice('  function importBackup(file){','  function openMenu()'),sb);
+ store.failWrites(true);
+ sb.importBackup(JSON.stringify({entries:[{id:'new',date:'2026-11-25',content:'incoming'}]}));
+ assert.equal(sb.entries.length,1);assert.equal(sb.entries[0].id,'u');
+ assert.equal(JSON.parse(store.getItem('maomao_diary_entries_v1')).length,1);
 });
