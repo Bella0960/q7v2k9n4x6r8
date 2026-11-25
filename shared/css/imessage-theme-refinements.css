@@ -87,3 +87,11 @@ body.chat-light-detail .phone-mockup[data-chat-theme-preset="imessage"] .message
 body.chat-light-detail .phone-mockup[data-chat-theme-preset="imessage"] form#chat-form .input-capsule {
   border-radius: 20px !important;
 }
+
+/* Bubble material: iMessage bubbles read flat, without the legacy frosted blur.
+   Fill, radius, tail and color still resolve through the ChatBeauty variables;
+   this only removes the glass backdrop on plain message bubbles. */
+body.chat-light-detail .phone-mockup[data-chat-theme-preset="imessage"] .msg-bubble:not(.bubble-pay):not(.bubble-media) {
+  backdrop-filter: none !important;
+  -webkit-backdrop-filter: none !important;
+}
