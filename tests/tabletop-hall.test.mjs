@@ -37,3 +37,13 @@ test('terminal game archive deduplicates, journal exposes role recall controls a
  await f.click('授权读取');assert.ok(f.cls('mao-table-journal__grant').length>=1);await f.click('撤回');assert.equal(f.cls('mao-table-journal__grant').length,0);
  await f.click('停用记忆');assert.ok(f.button('恢复记忆'));await f.click('恢复记忆');assert.ok(f.button('停用记忆'));f.page.destroy();
 });
+
+test('automatic settlement advances only matching temporary checkpoint and restores it as finished',async()=>{
+ const f=fixture();await f.click('海龟汤');f.pick();f.one('mao-turtle__host').value='role:r1';f.one('mao-turtle__start').click();await wait();
+ f.one('mao-turtle__question').click();await wait();await f.click('暂存本局');
+ f.one('mao-turtle__reveal').click();f.one('mao-turtle__reveal').click();await wait();
+ assert.ok(f.one('mao-table-note').textContent.includes('记入本次会话'));
+ await f.click('返回多人游戏');await f.click('返回多人游戏');assert.equal(f.button('继续暂存'),undefined);assert.ok(f.button('查看已结束对局'));
+ await f.click('查看已结束对局');assert.ok(f.one('mao-turtle__turn').textContent.includes('本局结束'));assert.ok(f.one('mao-turtle__solution').textContent);assert.equal(f.one('mao-turtle__controls').hidden,true);
+ await f.click('返回多人游戏');await f.click('返回多人游戏');await f.click('游戏手账');assert.equal(f.cls('mao-table-journal__row').length,1);f.page.destroy();
+});
