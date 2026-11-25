@@ -443,3 +443,14 @@ test('account switch during final storage reread blocks creation and modificatio
 test('all four group pages load the same current write guard',()=>{
   for(const path of ['chat/chat/chat.html','chat/chat/chat-detail.html','chat/chat/chat-settings.html','chat/chat/group-play.html'])assert.ok(read(path).includes('group-write-guard.js?v=20261125g8'),path);
 });
+
+
+test('all six preferences refuse late competing writes and late account changes',()=>{
+  const cases=[['pin','chat_pin_','true','false'],['memory','chat_memory_limit_','50','20'],['time','chat_time_config_',JSON.stringify({mode:'virtual',virtualTimeStr:'明天'}),JSON.stringify({mode:'real',virtualTimeStr:''})],['sound','sound_char_','default','bell'],['alias','chat_group_alias_','甲','乙'],['notice','chat_group_notice_','公告甲','公告乙']];
+  function setup(){const state={owner:'A',data:new Map([['phone_groups',JSON.stringify([{id:'g1',members:[{id:'r1'}]},{id:'g2'}])]]),writes:0};
+    const ctx={location:{hostname:'preview.mao520.com'},document:{querySelector:()=>({content:state.owner})},localStorage:{getItem(k){state.hook?.(k,state);return state.data.get(k)??null},setItem(k,v){state.writes++;state.data.set(k,v)}}};ctx.window=ctx;vm.runInNewContext(read('shared/js/phone/group-write-guard.js'),ctx);return {s:state,g:ctx.MAOGroupWriteGuard};}
+  for(const [kind,prefix,val,newer] of cases){
+    {const {s,g}=setup();const snap=g.readPreference(g.read('g1'),kind);let sawKey=false;s.hook=(key)=>{if(key===prefix+'g1')sawKey=true;else if(key==='phone_groups'&&sawKey)s.data.set(prefix+'g1',newer)};assert.equal(g.writePreference(snap,val).ok,false);assert.equal(s.writes,0);assert.equal(s.data.get(prefix+'g1'),newer);}
+    {const {s,g}=setup();const snap=g.readPreference(g.read('g1'),kind);let n=0;s.hook=(key)=>{if(key===prefix+'g1'&&++n===2)s.owner='B'};assert.equal(g.writePreference(snap,val).ok,false);assert.equal(s.writes,0);}
+  }
+});
