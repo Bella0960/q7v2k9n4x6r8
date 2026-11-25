@@ -206,6 +206,7 @@ const resolveBubble = (page, scope) => page.evaluate(s => {
 
 let count = 0;
 let browser = null;
+const specialBubbleObs = [];
 
 try {
   await waitForServer();
@@ -315,7 +316,7 @@ try {
     await page.reload({ waitUntil: 'domcontentloaded' });
     await page.waitForSelector('.chat-slim-card', { timeout: 15000 });
     await delay(300);
-    list = await readList(page);
+    list = readList(page);
     assert.equal(list.flag, '1', width + 'px list flag survives reload');
     assert.equal(list.cardRadius, '22px', width + 'px card radius survives reload');
     assert.equal(list.headerBg, hexToRgb('#111111'), width + 'px header bg survives reload');
@@ -410,7 +411,11 @@ try {
     // The previously released lease blob must no longer be referenced by the stage.
     const stageBgAfter = await page.evaluate(() => getComputedStyle(document.querySelector('.chat-stage')).backgroundImage);
     assert.ok(!stageBgAfter.includes(stageBlob), width + 'px released stage blob URL is no longer referenced');
-    const assetKept = await page.evaluate(id => window.MAOMAOThemeStudioAssets.resolve(id).then(a => !!(a && a.url)), bgAssetId);
+    const assetKept = await page.evaluate(id => window.MAOMAOThemeStudioAssets.resolve(id).then(a => {
+      const ok = !!(a && a.url);
+      if (a && a.revoke) a.revoke(); // release the lease this test just requested
+      return ok;
+    }), bgAssetId);
     assert.equal(assetKept, true, width + 'px underlying background asset survives workbench disable');
     const historyAfter = await page.evaluate(() =>
       JSON.parse(localStorage.getItem('chat_history_role-a') || '[]').map(m => [m.role, m.text]));
@@ -467,6 +472,32 @@ try {
     assert.equal(dA.beauty, '1', width + 'px beauty marker set for saved global/role customization');
     assertColor(dA.taBg, '#333333', width + 'px role-a received bubble uses global partner background');
     assertColor(dA.myBg, '#444444', width + 'px role-a sent bubble uses role-A override background');
+
+    // Payment / media bubbles must not be painted by the beauty runtime: the
+    // beauty rules exclude `.bubble-pay` / `.bubble-media`, so the resolved
+    // override colors must not land on them. A pre-existing built-in inline
+    // iMessage block may still layer its own translucent pin over the card reset
+    // at baseline; that layer is recorded as an observation, not counted as a
+    // beauty-layer regression.
+    const special = await page.evaluate(() => {
+      const stage = document.querySelector('.chat-stage');
+      const mk = (cls, role) => {
+        const row = document.createElement('div');
+        row.className = 'msg-row ' + role;
+        const b = document.createElement('div');
+        b.className = 'msg-bubble ' + cls;
+        row.appendChild(b);
+        stage.appendChild(row);
+        const cs = getComputedStyle(b);
+        return { bg: cs.backgroundColor, border: cs.borderStyle };
+      };
+      const pay = mk('bubble-pay', 'received');
+      const media = mk('bubble-media', 'sent');
+      return { pay, media };
+    });
+    assert.notEqual(special.pay.bg, 'rgb(51, 51, 51)', width + 'px pay bubble not painted by beauty partner override (#333333)');
+    assert.notEqual(special.media.bg, 'rgb(68, 68, 68)', width + 'px media bubble not painted by beauty my override (#444444)');
+    specialBubbleObs.push({ width, payBg: special.pay.bg, mediaBg: special.media.bg });
 
     // Role B does not inherit role-A: it falls back to the global my-bubble value.
     await page.goto(origin + '/chat/chat/chat-detail.html?id=role-b', { waitUntil: 'domcontentloaded' });
@@ -699,4 +730,5 @@ try {
   vite.kill('SIGTERM');
   setTimeout(() => process.exit(count === 3 ? 0 : 1), 300);
 }
+console.log('special bubble baseline observation:', JSON.stringify(specialBubbleObs));
 console.log(count + ' live-acceptance scenarios passed');
