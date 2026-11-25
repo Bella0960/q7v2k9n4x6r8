@@ -367,7 +367,7 @@ test('drag input coalesces into a single frame and flushes the last point on dro
   const calls = [], frames = new Map();
   let serial = 0;
   const ctx = {
-    isDragging: true, pendingDragPoint: null, dragFrame: null,
+    isDragging: true, pendingDragPoint: null, latestDragPoint: null, dragFrame: null,
     requestAnimationFrame(fn) { frames.set(++serial, fn); return serial; },
     cancelAnimationFrame(id) { frames.delete(id); },
     moveDrag(x,y) { calls.push([x,y]); }
@@ -495,4 +495,38 @@ test('reorder visual animation preserves final hit geometry and cancels without 
   assert.equal(ctx.getDragTileRect(tile).left,40);
   ctx.window.matchMedia=()=>({matches:true});
   assert.equal(ctx.canAnimateDragReorder(),false);
+});
+
+
+test('cross-page edge intent is cancelled over Dock, invalid boundaries and newer unpainted input', () => {
+  const start=index.indexOf('      function clearDragEdgeIntent()');
+  const end=index.indexOf('      function updateDragTarget(',start);
+  assert.ok(start>=0&&end>start);
+  const bounds={home:{left:0,right:390,top:50,bottom:720},dock:{left:0,right:390,top:700,bottom:780,width:390,height:80}};
+  let flip=0;const timers=new Map();let seq=0;
+  const grid={};const pages=[{querySelector:()=>grid},{querySelector:()=>grid}];
+  const ctx={MAX_PAGES:4,activePageIndex:0,edgeTimer:null,lastEdgeSide:null,edgeCooldown:false,isDragging:true,placeholder:{},latestDragPoint:{x:380,y:300},getDragBounds:()=>bounds,getPages:()=>pages,setTimeout(fn){timers.set(++seq,fn);return seq;},clearTimeout(id){timers.delete(id);},goToPage(i){flip++;ctx.activePageIndex=i;},placeDragPlaceholder(){},vibrate(){},lockDragEdge(){ctx.edgeCooldown=true;}};
+  runInNewContext(index.slice(start,end),ctx);
+  assert.equal(ctx.getDragEdgeSide(bounds,10,300,0,2),null);
+  assert.equal(ctx.getDragEdgeSide(bounds,380,740,0,2),null);
+  assert.equal(ctx.getDragEdgeSide(bounds,380,300,3,4),null);
+  ctx.updateDragEdgeIntent(380,300);assert.equal(timers.size,1);
+  ctx.latestDragPoint={x:10,y:300};
+  let [id,fn]=[...timers.entries()][0];timers.delete(id);fn();
+  assert.equal(flip,0);assert.equal(ctx.lastEdgeSide,null);
+  ctx.latestDragPoint={x:380,y:300};ctx.updateDragEdgeIntent(380,300);
+  ctx.updateDragEdgeIntent(380,740);assert.equal(timers.size,0);
+  ctx.updateDragEdgeIntent(380,300);
+  [id,fn]=[...timers.entries()][0];timers.delete(id);fn();
+  assert.equal(flip,1);assert.equal(ctx.activePageIndex,1);
+});
+
+test('drop consumes final touch and mouse position and interruption is a cancellation', () => {
+  assert.match(index,/function endDrag\(finalPoint\)/);
+  assert.match(index,/latestDragPoint = pendingDragPoint = finalPoint;[\s\S]*?flushDragMove\(\)/);
+  assert.match(index,/endDrag\(touch \? \{ x: touch\.clientX, y: touch\.clientY \} : null\)/);
+  assert.match(index,/endDrag\(\{ x: e\.clientX, y: e\.clientY \}\)/);
+  assert.match(index,/window\.addEventListener\('pagehide', interruptHomeDrag\)/);
+  assert.match(index,/if \(document\.hidden\) interruptHomeDrag\(\)/);
+  assert.match(index,/if \(isDragging\) \{ endDrag\(\); return; \}/);
 });

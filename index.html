@@ -661,6 +661,7 @@
       var dragOriginPage = null;
       var dragFrame = null;
       var pendingDragPoint = null;
+      var latestDragPoint = null;
       var dragBounds = null;
       var dragGeometry = null;
       var dragResizeObserver = null;
@@ -1114,11 +1115,12 @@
         }
         // 如果当前正停留在被清掉的页，退回到最后一页
         var left = getPages().length;
-        if (activePageIndex >= left) {
+        var pageChanged = activePageIndex >= left;
+        if (pageChanged) {
           activePageIndex = left - 1;
           homeScreen.scrollTo({ left: activePageIndex * (homeScreen.clientWidth || 360) });
         }
-        updateDotsUI();
+        if (pageChanged || left !== pages.length) updateDotsUI();
       }
 
       // ===== 进入与退出编辑模式 =====
@@ -1137,7 +1139,7 @@
         document.body.classList.remove('home-editing');
         if (editModeIndicator) editModeIndicator.style.display = 'none';
 
-        if (isDragging) endDrag();
+        if (isDragging) { endDrag(); return; }
         cleanupEmptyTrailingPages();
         persistCurrentDOM();
       }
@@ -1269,6 +1271,8 @@
       // ===== 拖拽系统核心实现 =====
       function startDrag(targetItem, cx, cy) {
         if (!targetItem || isDragging) return;
+        stopDragReorderAnimations();
+        latestDragPoint = { x: cx, y: cy };
         if (!editing) enterEdit();
 
         // Capture source geometry before hiding/reparenting it. Detached
@@ -1465,7 +1469,7 @@
       // Keep the newest coordinate and do at most one layout/collision pass per frame.
       function queueDragMove(cx, cy) {
         if (!isDragging) return;
-        pendingDragPoint = { x: cx, y: cy };
+        latestDragPoint = pendingDragPoint = { x: cx, y: cy };
         if (dragFrame !== null) return;
         dragFrame = requestAnimationFrame(function () {
           dragFrame = null;
@@ -1483,6 +1487,8 @@
         if (dragFrame !== null) cancelAnimationFrame(dragFrame);
         dragFrame = null;
         pendingDragPoint = null;
+        latestDragPoint = null;
+        clearDragEdgeIntent();
         if (edgeCooldownTimer !== null) clearTimeout(edgeCooldownTimer);
         edgeCooldownTimer = null;
         lastEdgeSide = null;
@@ -1508,82 +1514,57 @@
         finally { setDragAvatarPosition(cx, cy); }
       }
 
+      function clearDragEdgeIntent() {
+        if (edgeTimer !== null) clearTimeout(edgeTimer);
+        edgeTimer = null;
+        lastEdgeSide = null;
+      }
+      function pointOverDragDock(rect, cx, cy) {
+        return rect.width > 0 && rect.height > 0 &&
+          cy >= rect.top - 16 && cy <= rect.bottom + 20 &&
+          cx >= rect.left - 10 && cx <= rect.right + 10;
+      }
+      function getDragEdgeSide(bounds, cx, cy, pageIndex, pageCount) {
+        if (pointOverDragDock(bounds.dock, cx, cy)) return null;
+        if (cy < bounds.home.top || cy > bounds.home.bottom) return null;
+        if (cx < bounds.home.left + 42) return pageIndex > 0 ? 'left' : null;
+        if (cx > bounds.home.right - 42) return pageIndex < MAX_PAGES - 1 ? 'right' : null;
+        return null;
+      }
+      function updateDragEdgeIntent(cx, cy) {
+        var side = getDragEdgeSide(getDragBounds(), cx, cy, activePageIndex, getPages().length);
+        if (!side) { clearDragEdgeIntent(); return; }
+        if (side !== lastEdgeSide) clearDragEdgeIntent();
+        if (edgeCooldown || lastEdgeSide === side) return;
+        lastEdgeSide = side;
+        edgeTimer = setTimeout(function () {
+          edgeTimer = null;
+          // Validate the most recent input even if its rAF has not executed.
+          if (!isDragging || !placeholder || !latestDragPoint) return;
+          var pages = getPages();
+          if (getDragEdgeSide(getDragBounds(), latestDragPoint.x, latestDragPoint.y,
+              activePageIndex, pages.length) !== side) {
+            clearDragEdgeIntent();
+            return;
+          }
+          var targetIdx = activePageIndex + (side === 'left' ? -1 : 1);
+          if (targetIdx === pages.length && pages.length < MAX_PAGES) {
+            createPageIfNeeded();
+            pages = getPages();
+          }
+          var target = pages[targetIdx];
+          var grid = target && target.querySelector('.desktop-grid');
+          if (!grid) { clearDragEdgeIntent(); return; }
+          goToPage(targetIdx);
+          placeDragPlaceholder(grid, null);
+          vibrate(15);
+          lockDragEdge();
+        }, 320);
+      }
       function updateDragTarget(cx, cy) {
-        // 2. 跨页边缘触发检测（拖拽至左右边缘停留时滑向上一页/下一页）
-        var cRect = getDragBounds().home;
-        var edgeThreshold = 42;
+        updateDragEdgeIntent(cx, cy);
         var pages = getPages();
-
-        if (cx < cRect.left + edgeThreshold) {
-          // 左边缘
-          if (activePageIndex > 0 && !edgeCooldown) {
-            if (lastEdgeSide !== 'left') {
-              lastEdgeSide = 'left';
-              clearTimeout(edgeTimer);
-              edgeTimer = setTimeout(function () {
-                if (!isDragging) return;
-                var targetIdx = activePageIndex - 1;
-                goToPage(targetIdx);
-                // 把占位符带到新页
-                var newGrid = pages[targetIdx] ? pages[targetIdx].querySelector('.desktop-grid') : null;
-                if (newGrid && placeholder.parentNode !== newGrid) {
-                  placeDragPlaceholder(newGrid, null);
-                }
-                vibrate(15);
-                lockDragEdge();
-              }, 320);
-            }
-          }
-        } else if (cx > cRect.right - edgeThreshold) {
-          // 右边缘
-          if (!edgeCooldown) {
-            if (lastEdgeSide !== 'right') {
-              lastEdgeSide = 'right';
-              clearTimeout(edgeTimer);
-              edgeTimer = setTimeout(function () {
-                if (!isDragging) return;
-                var targetIdx = activePageIndex + 1;
-                if (targetIdx < pages.length) {
-                  goToPage(targetIdx);
-                  var newGrid = pages[targetIdx] ? pages[targetIdx].querySelector('.desktop-grid') : null;
-                  if (newGrid && placeholder.parentNode !== newGrid) {
-                    placeDragPlaceholder(newGrid, null);
-                  }
-                  vibrate(15);
-                } else if (pages.length < MAX_PAGES) {
-                  // 在末尾拉出新页
-                  createPageIfNeeded();
-                  pages = getPages();
-                  targetIdx = pages.length - 1;
-                  goToPage(targetIdx);
-                  var freshGrid = pages[targetIdx] ? pages[targetIdx].querySelector('.desktop-grid') : null;
-                  if (freshGrid && placeholder.parentNode !== freshGrid) {
-                    placeDragPlaceholder(freshGrid, null);
-                  }
-                  vibrate(15);
-                }
-                lockDragEdge();
-              }, 320);
-            }
-          }
-        } else {
-          // 离开了边缘区
-          lastEdgeSide = null;
-          if (edgeTimer) {
-            clearTimeout(edgeTimer);
-            edgeTimer = null;
-          }
-        }
-
-        // 3. 实时碰撞检测与自动让位
-        var dockRect = getDragBounds().dock;
-        var isOverDock = (
-          dockRect.width > 0 && dockRect.height > 0 &&
-          cy >= dockRect.top - 16 &&
-          cy <= dockRect.bottom + 20 &&
-          cx >= dockRect.left - 10 &&
-          cx <= dockRect.right + 10
-        );
+        var isOverDock = pointOverDragDock(getDragBounds().dock, cx, cy);
 
         var isWidget = dragEl.classList.contains('ds-widget');
 
@@ -1719,8 +1700,19 @@
         dragOriginPage = null;
       }
 
-      function endDrag() {
+      function endDrag(finalPoint) {
         if (!isDragging) return;
+        // Release coordinates may be newer than the last move event. Settle
+        // a pending page flip before hit-testing the actual final position.
+        var pageWidth = homeScreen.clientWidth || 360;
+        if (Math.abs(homeScreen.scrollLeft - activePageIndex * pageWidth) > 4) {
+          homeScreen.scrollTo({ left: activePageIndex * pageWidth, behavior: 'instant' });
+          invalidateDragGeometry();
+        }
+        if (finalPoint && Number.isFinite(finalPoint.x) && Number.isFinite(finalPoint.y) &&
+            (!latestDragPoint || finalPoint.x !== latestDragPoint.x || finalPoint.y !== latestDragPoint.y)) {
+          latestDragPoint = pendingDragPoint = finalPoint;
+        }
         // The final touch may arrive before the scheduled paint.
         flushDragMove();
         resetDragMotion();
@@ -1834,13 +1826,14 @@
         queueDragMove(e.touches[0].clientX, e.touches[0].clientY);
       }
 
-      document.addEventListener('touchend', function () {
+      document.addEventListener('touchend', function (e) {
         if (pressTimer) {
           clearTimeout(pressTimer);
           pressTimer = null;
         }
         if (isDragging) {
-          endDrag();
+          var touch = e.changedTouches && e.changedTouches[0];
+          endDrag(touch ? { x: touch.clientX, y: touch.clientY } : null);
         }
       });
 
@@ -1855,12 +1848,18 @@
       });
 
       // Interruption outside the page must not leave a hidden source or a ghost.
-      window.addEventListener('blur', function () {
+      function interruptHomeDrag() {
         if (pressTimer) {
           clearTimeout(pressTimer);
           pressTimer = null;
         }
         if (isDragging) cancelDrag();
+        else stopDragReorderAnimations();
+      }
+      window.addEventListener('blur', interruptHomeDrag);
+      window.addEventListener('pagehide', interruptHomeDrag);
+      document.addEventListener('visibilitychange', function () {
+        if (document.hidden) interruptHomeDrag();
       });
 
       // 2. Mouse Events
@@ -1900,13 +1899,13 @@
         }
       });
 
-      document.addEventListener('mouseup', function () {
+      document.addEventListener('mouseup', function (e) {
         if (pressTimer) {
           clearTimeout(pressTimer);
           pressTimer = null;
         }
         if (isDragging) {
-          endDrag();
+          endDrag({ x: e.clientX, y: e.clientY });
         }
       });
 

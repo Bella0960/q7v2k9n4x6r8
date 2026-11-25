@@ -246,6 +246,12 @@ try{
     // Retry immediately from the same page, move across the left edge and commit.
     await touch('touchStart',x,y);
     await page.waitForSelector('.drag-avatar',{timeout:3000});
+    // Briefly enter the edge, then leave for the centre before the dwell expires.
+    await touch('touchMove',screen.x+12,y);
+    await pause(80);
+    await touch('touchMove',screen.x+screen.width*.5,y);
+    await pause(420);
+    assert.ok(await page.evaluate(()=>{const h=document.getElementById('homeScreen');return Math.abs(h.scrollLeft-h.clientWidth)<4;}),'stale edge timer flipped page after leaving edge');
     await touch('touchMove',screen.x+12,y);
     await page.waitForFunction(()=>{
       const h=document.getElementById('homeScreen');
