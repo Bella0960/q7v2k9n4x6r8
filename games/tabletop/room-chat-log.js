@@ -53,5 +53,5 @@ export function createRoomChatLog({roomId,seats,maxMessages=4096,maxTextLength=4
     // No global sequence, recipient list, total count or hidden-message gaps.
     return entries.filter(entry=>entry.readers.has(seatId)).slice(-count).map(entry=>entry.message);
   }
-  return Object.freeze({append,read,close(){closed=true;}});
+  return Object.freeze({roomId,maxMessages,append,read,close(){closed=true;}});
 }
