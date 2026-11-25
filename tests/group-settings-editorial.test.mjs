@@ -310,3 +310,36 @@ test('chat list create menu reaches original modal and waits for verified save',
   assert.ok(handler.indexOf('if(!result.ok)')<handler.indexOf('closeModal();'));
   assert.equal(handler.includes("localStorage.setItem('phone_groups'"),false);
 });
+
+
+test('group reply snapshot rejects removed, muted, duplicate and cross-account speakers',()=>{
+  const state={account:'001',groups:[{id:'g1',members:[{id:'r1',name:'同名'},{id:'r2',name:'同名'}]},{id:'g2',members:[{id:'r1'}]}]};
+  const ctx={document:{querySelector:()=>({content:state.account})},location:{hostname:'preview.mao520.com'},localStorage:{getItem:()=>state.raw??JSON.stringify(state.groups)}};ctx.window=ctx;
+  vm.runInNewContext(read('shared/js/phone/group-write-guard.js'),ctx);
+  const api=ctx.MAOGroupWriteGuard,snap=api.read('g1'),original=JSON.stringify(state.groups);
+  assert.equal(api.matches(snap,'r1'),true);
+  state.groups[1].name='other changed';assert.equal(api.matches(snap,'r1'),true);
+  for(const owner of ['002','']){state.account=owner;assert.equal(api.matches(snap,'r1'),false);}state.account='001';
+  state.groups.shift();assert.equal(api.matches(snap,'r1'),false);state.groups=JSON.parse(original);
+  state.groups[0].members.shift();assert.equal(api.matches(snap,'r1'),false);state.groups=JSON.parse(original);
+  state.groups[0].members[0].muted=true;assert.equal(api.matches(snap,'r1'),false);assert.equal(api.matches(api.read('g1'),'r1'),false);state.groups=JSON.parse(original);
+  state.groups[0].settings={allowPrivateMessages:false};assert.equal(api.matches(snap,'r1'),false);state.groups=JSON.parse(original);
+  state.groups[0].members.push({id:'r1'});assert.equal(api.matches(api.read('g1'),'r1'),false);state.groups=JSON.parse(original);
+  assert.equal(api.matches(snap,'同名'),false);
+  state.groups[0].members.push({id:'__user'});assert.equal(api.matches(api.read('g1'),'__user'),false);
+  state.raw='{broken';assert.equal(api.matches(snap,'r1'),false);
+});
+test('group reply is guarded before request, after stream, on pagehide and before delayed followup',()=>{
+  const detail=read('chat/chat/chat-detail.html');
+  assert.ok(detail.includes('const groupPageAccount=groupWriteBase?groupWriteBase.account:null'));
+  assert.ok(detail.includes('singleChatTurnSnapshots.set(historyList, localStorage.getItem(storageKey))'));
+  const send=detail.slice(detail.indexOf('async function sendMsgTurn(opts)'),detail.indexOf('// 暴露给 chat-extras.js'));
+  const request=send.indexOf('await PhoneStream.chat('),marker=send.indexOf('fullText = processGroupInteractionMarkers(');
+  assert.ok(request>0&&marker>request);
+  assert.ok(send.slice(0,request).includes('MAOGroupWriteGuard.matches(groupTurnScope'));
+  assert.ok(send.slice(request,marker).includes('MAOGroupWriteGuard.matches(groupTurnScope'));
+  assert.ok(send.includes('followupToken !== groupAutoFollowupToken || !readPageGroup() || !singleChatTurnIsCurrent(historyList)'));
+  assert.ok(detail.includes('!singleChatTurnIsCurrent(inflightSnapshot.historyList)'));
+  assert.ok(detail.includes("exactId!==String(speaker.id)||exactId==='__user'"));
+  assert.ok(detail.includes('privateActionSeen||isRegeneration'));
+});
