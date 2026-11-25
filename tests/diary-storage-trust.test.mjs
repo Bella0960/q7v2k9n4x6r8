@@ -420,3 +420,36 @@ test('failed backup import never leaves staged entries in memory',()=>{
  assert.equal(sb.entries.length,1);assert.equal(sb.entries[0].id,'u');
  assert.equal(JSON.parse(store.getItem('maomao_diary_entries_v1')).length,1);
 });
+
+test('explicit generation uses the selected role ID and selected kind without changing active chat contact or requiring auto-write enabled',async()=>{
+ const roleA={id:'roleA',name:'同名',persona:'植物研究员，平时观察植物。',tone:'简练'};
+ const roleB={id:'roleB',name:'同名',persona:'音乐研究员，平时整理乐谱。',tone:'直接'};
+ const entries=[{id:'old',date:'2026-11-24',author:'roleB',diaryWritingVersion:2,content:'DIARY_ONLY'},{id:'memo',date:'2026-11-24',author:'roleB',noteType:'备忘',diaryWritingVersion:2,content:'MEMO_ONLY',personalRemark:{text:'PRIVATE_REMARK'}},{id:'other',date:'2026-11-24',author:'roleA',noteType:'备忘',diaryWritingVersion:2,content:'OTHER_ROLE_ONLY'}];
+ const {sb}=makeSandbox({store:makeStore(),role:roleA,entries});
+ sb.diaryCharacters=()=>[roleA,roleB];sb.peekEnabled=()=>false;
+ const calls=[];sb.PhoneAPI.complete=opts=>{calls.push(opts);return Promise.resolve('整理乐谱')};
+ assert.equal(await sb.generatePersonRecord('roleB','备忘',true),true);
+ assert.equal(calls.length,1);
+ assert.match(calls[0].system,/音乐研究员/);
+ assert.match(calls[0].system,/MEMO_ONLY/);
+ assert.doesNotMatch(calls[0].system,/植物研究员|DIARY_ONLY|OTHER_ROLE_ONLY|PRIVATE_REMARK/);
+ const saved=sb.entries.at(-1);
+ assert.equal(saved.author,'roleB');assert.equal(saved.noteType,'备忘');assert.equal(saved.charWritten,true);assert.equal(saved.personalRemark,undefined);
+ assert.equal(sb.peekCurrentRole().id,'roleA');
+ assert.equal(sb.localStorage.getItem('char_last_wrote_roleB'),null);
+ assert.equal(await sb.generatePersonRecord('missing','日记',true),false);
+ assert.equal(await sb.generatePersonRecord('roleB','invalid',true),false);
+ assert.equal(calls.length,1);
+ sb.PhoneAPI.complete=opts=>{calls.push(opts);return Promise.resolve('整理新收集的乐谱时发现了一些有趣的节奏变化。')};
+ assert.equal(await sb.generatePersonRecord('roleB','日记',true),true);
+ assert.equal(sb.entries.at(-1).noteType,'日记');
+ assert.match(calls[1].system,/DIARY_ONLY/);assert.doesNotMatch(calls[1].system,/MEMO_ONLY|PRIVATE_REMARK|OTHER_ROLE_ONLY/);
+});
+test('manual person generation and automatic generation share a write lock',async()=>{
+ const {sb}=makeSandbox({store:makeStore()});let calls=0,finish;
+ sb.PhoneAPI.complete=()=>{calls++;return new Promise(r=>finish=r)};
+ const p=sb.generatePersonRecord('roleA','备忘',true),q=sb.maybeAutoWriteCharEntry();
+ await Promise.resolve();assert.equal(calls,1);
+ finish('整理今天的植物观察记录，记录叶片变化。');await Promise.all([p,q]);
+ assert.equal(sb.entries.length,1);assert.equal(sb.entries[0].noteType,'备忘');
+});
