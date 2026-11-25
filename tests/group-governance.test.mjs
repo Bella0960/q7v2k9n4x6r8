@@ -443,3 +443,39 @@ test('legacy group-play uses the captured account-ready snapshot and never write
   assert.ok(play.includes('!nextOwner||String(nextOwner.id)!==nextOwnerId'));
   assert.ok(play.includes("if(!currentSnapshot()){rejectWrite();return;}"));
 });
+
+
+
+test('scoped group wallpaper transaction and reset preserve unrelated data',async()=>{
+ const source=load('shared/js/wallpaper-store.js'),home=load('shared/js/group-settings-home.js'),settings=load('chat/chat/chat-settings.html');
+ const A="data:image/png;base64,AAAA",B="data:image/png;base64,BBBB",C="data:image/png;base64,CCCC",K="chat_bg_g1";
+ function harness(){
+ const records=new Map([[K,{dataUrl:A,updatedAt:1}],["chat_bg_g2",{dataUrl:C}],["home_custom_wallpaper",{dataUrl:C}]]),legacy=new Map(),state={ready:true,writes:0,reads:0,dbFail:false,failMutation:false};
+ const db={transaction(name,mode){let pending=0,staged=null,aborted=false,completed=false;const tx={abort(){if(completed)throw Error("complete");aborted=true;Promise.resolve().then(()=>tx.onabort?.())},objectStore(){return {get(key){state.reads++;return schedule(()=>records.get(key))},put(value,key){return schedule(()=>{if(state.failMutation)throw Error("quota");staged=[key,value];state.onMutation?.()})},delete(key){return schedule(()=>{if(state.failMutation)throw Error("quota");staged=[key,undefined];state.onMutation?.()})}}}};
+ function finish(){if(!pending&&!aborted&&!completed){completed=true;if(staged){state.writes++;if(staged[1]===undefined)records.delete(staged[0]);else records.set(...staged)}state.beforeComplete?.();tx.oncomplete?.()}}
+ function schedule(action){const req={};pending++;Promise.resolve().then(()=>{if(aborted)return;try{req.result=action();req.onsuccess?.()}catch(e){req.error=e;req.onerror?.();tx.error=e;tx.onerror?.();aborted=true;}finally{pending--;finish()}});return req}return tx}};
+ const w={indexedDB:{open(){const req={};Promise.resolve().then(()=>{if(state.dbFail){req.error=Error("offline");req.onerror?.()}else{req.result=db;req.onsuccess?.()}});return req}},localStorage:{getItem:k=>legacy.get(k)??null,removeItem:k=>{if(state.failCleanup)throw Error("cleanup");legacy.delete(k)},setItem:(k,v)=>legacy.set(k,v)}};
+ new Function("window","document",source)(w,{});return {state,records,legacy,api:w.MAOMAOWallpaperStore,valid:()=>state.ready};
+}
+ async function rejected(p){try{await p;return false}catch(e){return true}}
+ const cases=[
+  ["legacy read does not migrate",async()=>{let h=harness();h.records.delete(K);h.legacy.set(K,A);return await h.api.getByKey(K)===A&&h.state.writes===0&&!h.records.has(K)}],
+  ["snapshot reads legacy without writing",async()=>{let h=harness();h.records.delete(K);h.legacy.set(K,A);let s=await h.api.snapshotGroupBackground(K,h.valid);return s.legacy===A&&s.image===""&&h.state.writes===0}],
+  ["save preserves other groups and desktop",async()=>{let h=harness(),s=await h.api.snapshotGroupBackground(K,h.valid);return await h.api.saveGroupBackground(s,B,h.valid)&&h.records.get(K).dataUrl===B&&h.records.get("chat_bg_g2").dataUrl===C&&h.records.get("home_custom_wallpaper").dataUrl===C}],
+  ["stale image cannot overwrite newer image",async()=>{let h=harness(),s=await h.api.snapshotGroupBackground(K,h.valid);h.records.set(K,{dataUrl:C,updatedAt:2});return await rejected(h.api.saveGroupBackground(s,B,h.valid))&&h.records.get(K).dataUrl===C&&h.state.writes===0}],
+  ["same bytes newer revision rejected",async()=>{let h=harness(),s=await h.api.snapshotGroupBackground(K,h.valid);h.records.set(K,{dataUrl:A,updatedAt:2});return await rejected(h.api.saveGroupBackground(s,B,h.valid))&&h.state.writes===0}],
+  ["reset removes matching image only",async()=>{let h=harness();h.legacy.set(K,A);let s=await h.api.snapshotGroupBackground(K,h.valid);return await h.api.resetGroupBackground(s,h.valid)&&!h.records.has(K)&&!h.legacy.has(K)&&h.records.has("chat_bg_g2")}],
+  ["stale reset preserves latest image",async()=>{let h=harness(),s=await h.api.snapshotGroupBackground(K,h.valid);h.records.set(K,{dataUrl:C,updatedAt:2});return await rejected(h.api.resetGroupBackground(s,h.valid))&&h.records.get(K).dataUrl===C&&h.state.writes===0}],
+  ["changed legacy preserved",async()=>{let h=harness(),s=await h.api.snapshotGroupBackground(K,h.valid);h.legacy.set(K,C);return await rejected(h.api.resetGroupBackground(s,h.valid))&&h.legacy.get(K)===C&&h.state.writes===0}],
+  ["scope loss before save zero writes",async()=>{let h=harness(),s=await h.api.snapshotGroupBackground(K,h.valid);h.state.ready=false;return await rejected(h.api.saveGroupBackground(s,B,h.valid))&&h.state.writes===0}],
+  ["scope loss during mutation aborts",async()=>{let h=harness(),s=await h.api.snapshotGroupBackground(K,h.valid);h.state.onMutation=()=>h.state.ready=false;return await rejected(h.api.saveGroupBackground(s,B,h.valid))&&h.state.writes===0&&h.records.get(K).dataUrl===A}],
+  ["quota failure no fallback",async()=>{let h=harness(),s=await h.api.snapshotGroupBackground(K,h.valid);h.state.failMutation=true;return await rejected(h.api.saveGroupBackground(s,B,h.valid))&&!h.legacy.has(K)&&h.records.get(K).dataUrl===A}],
+  ["legacy cleanup failure is not success",async()=>{let h=harness();h.legacy.set(K,A);let s=await h.api.snapshotGroupBackground(K,h.valid);h.state.failCleanup=true;return await rejected(h.api.resetGroupBackground(s,h.valid))&&h.legacy.get(K)===A}],
+  ["changed legacy after commit not removed",async()=>{let h=harness();h.legacy.set(K,A);let s=await h.api.snapshotGroupBackground(K,h.valid);h.state.beforeComplete=()=>h.legacy.set(K,C);return await rejected(h.api.resetGroupBackground(s,h.valid))&&h.legacy.get(K)===C}],
+  ["non-group keys rejected before read",async()=>{let h=harness();for(const key of ["chat_bg_r1","home_custom_wallpaper","chat_bg_g"])if(!await rejected(h.api.snapshotGroupBackground(key,h.valid)))return false;return h.state.reads===0}],
+  ["invalid scope no image read",async()=>{let h=harness();h.state.ready=false;return await h.api.readGroupBackground(K,h.valid)===""&&h.state.reads===0}],
+  ["IDB unavailable legacy read only",async()=>{let h=harness();h.state.dbFail=true;h.legacy.set(K,A);return await h.api.readGroupBackground(K,h.valid)===A&&await rejected(h.api.snapshotGroupBackground(K,h.valid))&&h.state.writes===0}],
+  ["new and legacy settings use guarded writer",()=>home.includes("wallpaper.saveGroupBackground(snapshot,data,validEdit)")&&home.includes("wallpaper.resetGroupBackground(snapshot,valid)")&&settings.includes("wallpaperStore.saveGroupBackground(snapshot,dataUrl")&&settings.includes("return saveBackgroundImage(dataUrl,selection)")&&!home.includes("wallpaper.saveByKey(bgKey")&&!home.includes("wallpaper.removeByKey(bgKey")]
+ ];
+ for(const [name,fn] of cases)assert.equal(await fn(),true,name);
+});
