@@ -214,3 +214,45 @@ test('portrait saves preserve other group writes during upload and retry safely 
   await api.save(retry,new Map([['r',null]]));
   assert.equal(JSON.parse(data)[0].portraitOverridesV1.entries.length,0);
 });
+
+test('group deletion refuses stale or failed writes, preserves other groups',()=>{
+  let data=JSON.stringify([{id:'g1',name:'old'},{id:'g2',name:'other'}]),account='001',fail=false;
+  const ctx={document:{querySelector:()=>({content:account})},localStorage:{getItem:()=>data,setItem:(_key,v)=>{if(fail)throw Error('quota');data=v;}}};ctx.window=ctx;
+  vm.runInNewContext(read('shared/js/phone/group-write-guard.js'),ctx);
+  const api=ctx.MAOGroupWriteGuard,stale=api.read('g1');
+  assert.equal(api.commit(stale,{...stale.group,name:'new'}).ok,true);
+  assert.equal(api.remove(stale).reason,'stale');
+  const now=api.read('g1'),before=data;fail=true;
+  assert.equal(api.remove(now).reason,'storage');
+  assert.equal(data,before);
+  fail=false;account='002';
+  assert.equal(api.remove(now).reason,'scope');
+  account='001';
+  assert.equal(api.remove(now).ok,true);
+  assert.equal(JSON.parse(data).length,1);
+  assert.equal(JSON.parse(data)[0].id,'g2');
+  assert.equal(api.commit(now,now.group).reason,'stale');
+  const deletion=html.slice(html.indexOf("document.getElementById('actionGpDismiss').addEventListener"),html.indexOf('var gpAdvancedEntry'));
+  assert.ok(deletion.indexOf('MAOGroupWriteGuard.remove(snapshot)')<deletion.indexOf("var keys=['chat_history_'"));
+  assert.match(deletion,/if\(!result\.ok\).*return;/);
+});
+test('AI invitation uses exact identity and complete existing member defaults',()=>{
+ const ctx={};ctx.window=ctx;vm.runInNewContext(read('shared/js/phone/group-admin-policy.js'),ctx);
+ const api=ctx.MAOGroupAdminPolicy;
+ const pool=[{id:'c1',name:'同名'},{id:'c2',name:'同名'},{id:'c3',name:'独立'},{id:'__user',name:'我'}];
+ assert.equal(api.findInviteRole(pool,'同名'),null);
+ assert.equal(api.findInviteRole(pool,'c2').id,'c2');
+ assert.equal(api.findInviteRole(pool,'独立').id,'c3');
+ assert.equal(api.findInviteRole(pool,'__user'),null);
+ assert.equal(api.findInviteRole([...pool,{id:'c2',name:'另名'}],'c2'),null);
+ assert.equal(api.findInviteRole([...pool,{id:'c3',name:'其他'}],'独立'),null);
+ const member=api.defaultMember(pool[0]);
+ assert.equal(member.id,'c1');assert.equal(member.isAdmin,false);
+ assert.equal(member.talkativeness,0.5);assert.equal(member.replyThreshold,55);
+ assert.equal(member.interestTags.length,0);assert.equal(member.expertiseTags.length,0);assert.equal(member.backgroundTags.length,0);
+ assert.equal(api.defaultMember(pool[3]),null);
+ const detail=read('chat/chat/chat-detail.html');
+ assert.match(detail,/policy\.findInviteRole\(pool,target\)/);
+ assert.match(detail,/policy\.defaultMember\(targetRole\)/);
+ assert.match(detail,/JSON\.stringify\(managementRoster\)/);
+});
