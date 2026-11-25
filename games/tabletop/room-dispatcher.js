@@ -25,14 +25,14 @@ export function createRoomDispatcher({getContext, spec, rules, checkpoint=null})
   if(rules.project!==undefined && typeof rules.project!=='function') fail('INVALID_RULE_ADAPTER');
   const init=rules.init.bind(rules), step=rules.step.bind(rules), project=rules.project?.bind(rules);
   let room=createGameRoom(getContext(),spec), state=null, result=null, busy=false;
-  const gomoku=spec.gameId==='gomoku',turtle=spec.gameId==='turtle';
-  const replayable=['ludo','gomoku','turtle'].includes(spec.gameId)&&rules.checkpointVersion===1&&typeof rules.replayStep==='function';
+  const gomoku=spec.gameId==='gomoku',turtle=spec.gameId==='turtle',wolf=spec.gameId==='werewolf';
+  const replayable=['ludo','gomoku','turtle','werewolf'].includes(spec.gameId)&&rules.checkpointVersion===1&&typeof rules.replayStep==='function';
   const issued=new WeakSet();let initial=null,history=[];
   const maxMoves=20000;
   const exact=(o,keys)=>o&&typeof o==='object'&&!Array.isArray(o)&&Object.keys(o).length===keys.length&&keys.every(k=>Object.hasOwn(o,k));
   const validId=v=>typeof v==='string'&&v.length>0&&v.length<=256&&v.trim()===v;
   function recordMove(actor,move,transition){
-    if(turtle)return {actorSeatId:actor,move:clone(move)};
+    if(turtle||wolf)return {actorSeatId:actor,move:clone(move)};
     if(gomoku)return {actorSeatId:actor,move:{kind:'place',x:move.x,y:move.y}};
     const kind=move.kind,record={actorSeatId:actor,move:kind==='choose'?{kind,plane:move.plane,...(move.card?{card:move.card}:{})}:{kind},die:kind==='choose'?null:transition.state.last.die};
     return record;
@@ -77,7 +77,7 @@ export function createRoomDispatcher({getContext, spec, rules, checkpoint=null})
     checkpoint(){return guarded(()=>{
       if(!replayable||!initial||!['playing','finished'].includes(room.phase))fail('CHECKPOINT_UNAVAILABLE');
       seatView(room,getContext(),'user');
-      return clone({schema:1,gameId:spec.gameId,mode:rules.checkpointMode,accountId:room.accountId,roomId:room.roomId,startRevision:initial.revision,seats:initial.seats,moves:history});
+      return clone({schema:1,gameId:spec.gameId,mode:rules.checkpointMode,accountId:room.accountId,roomId:room.roomId,startRevision:initial.revision,seats:initial.seats,moves:history,...(wolf?{privateInit:initial.privateInit}:{})});
     });},
     view(actor){return guarded(()=>view(actor,getContext()));},
     token(actor){return guarded(()=>{if(terminal(room)) fail('ROOM_TERMINAL');const t=roomToken(room,getContext(),actor);if(replayable){Object.freeze(t);issued.add(t);}return t;});},
@@ -89,7 +89,7 @@ export function createRoomDispatcher({getContext, spec, rules, checkpoint=null})
         const next=reduceRoom(room,ctx,actor,token,action);
         const nextState=action.type==='start'?jsonState(init(baseView(actor,ctx,next,null))):action.type==='close'?null:state;
         const projected=commit(next,nextState,result,actor,token,action.type==='remove'||action.type==='close');
-        if(replayable&&action.type==='start')initial={revision:room.revision,seats:clone(room.seats)};
+        if(replayable&&action.type==='start')initial={revision:room.revision,seats:clone(room.seats),...(wolf?{privateInit:jsonState(rules.checkpointInitial(state))}:{})};
         return projected;
       }
       if(action.type!=='move') fail('UNKNOWN_ACTION');
@@ -123,18 +123,18 @@ export function createRoomDispatcher({getContext, spec, rules, checkpoint=null})
   if(checkpoint!==null){
     // Restore only from a trusted, account-scoped repository. Replay is semantic
     // validation, not a signature or authorization for arbitrary imported data.
-    if(!replayable||!exact(checkpoint,['schema','gameId','mode','accountId','roomId','startRevision','seats','moves'])||
+    if(!replayable||!exact(checkpoint,['schema','gameId','mode','accountId','roomId','startRevision','seats','moves',...(wolf?['privateInit']:[])])||
       checkpoint.schema!==1||checkpoint.gameId!==spec.gameId||checkpoint.mode!==rules.checkpointMode||
       checkpoint.accountId!==room.accountId||checkpoint.roomId!==room.roomId||
       !Number.isSafeInteger(checkpoint.startRevision)||checkpoint.startRevision<2||checkpoint.startRevision>maxMoves||
-      !Array.isArray(checkpoint.seats)||checkpoint.seats.length<2||checkpoint.seats.length>(gomoku||turtle?8:4)||
-      !Array.isArray(checkpoint.moves)||checkpoint.moves.length>(gomoku?225:turtle?243:maxMoves))fail('INVALID_CHECKPOINT');
+      !Array.isArray(checkpoint.seats)||checkpoint.seats.length<2||checkpoint.seats.length>(wolf?12:gomoku||turtle?8:4)||
+      !Array.isArray(checkpoint.moves)||checkpoint.moves.length>(wolf?900:gomoku?225:turtle?243:maxMoves))fail('INVALID_CHECKPOINT');
     const ctx=getContext(),seats=[],ids=new Set();
     for(const seat of checkpoint.seats){
       if(!seat||!(seat.mode==='player'||gomoku&&seat.mode==='observer'||turtle&&seat.mode==='moderator')||!validId(seat.seatId)||ids.has(seat.seatId))fail('INVALID_CHECKPOINT_SEAT');
       if(seat.kind==='user'&&seat.seatId==='user'&&exact(seat,['seatId','kind','mode'])){}
       else if(seat.kind==='role'&&validId(seat.roleId)&&seat.seatId==='role:'+seat.roleId&&exact(seat,['seatId','kind','mode','roleId'])&&ctx.roleIds.includes(seat.roleId)){}
-      else if(!gomoku&&!turtle&&seat.kind==='bot'&&/^bot:[1-3]$/.test(seat.seatId)&&exact(seat,['seatId','kind','mode'])){}
+      else if(!gomoku&&!turtle&&!wolf&&seat.kind==='bot'&&/^bot:[1-3]$/.test(seat.seatId)&&exact(seat,['seatId','kind','mode'])){}
       else fail('INVALID_CHECKPOINT_SEAT');
       seats.push(clone(seat));ids.add(seat.seatId);
     }
@@ -142,19 +142,19 @@ export function createRoomDispatcher({getContext, spec, rules, checkpoint=null})
     const bots=seats.filter(s=>s.kind==='bot').map(s=>s.seatId);
     if(bots.some((_,i)=>!bots.includes('bot:'+(i+1))))fail('INVALID_CHECKPOINT_SEAT');
     if(checkpoint.startRevision<seats.filter(s=>s.kind==='role').length+Number(bots.length>0)+1+Number(turtle))fail('INVALID_CHECKPOINT');
-    room={...room,seats,phase:'playing',turnSeatId:turtle?null:seats.find(s=>s.mode==='player').seatId,revision:checkpoint.startRevision};
-    initial={revision:room.revision,seats:clone(seats)};
-    state=jsonState(init(baseView('user',ctx,room,null)));
+    room={...room,seats,phase:'playing',turnSeatId:turtle||wolf?null:seats.find(s=>s.mode==='player').seatId,revision:checkpoint.startRevision};
+    initial={revision:room.revision,seats:clone(seats),...(wolf?{privateInit:clone(checkpoint.privateInit)}:{})};
+    state=jsonState(wolf?rules.restoreInitial(baseView('user',ctx,room,null),initial.privateInit):init(baseView('user',ctx,room,null)));
     for(const entry of checkpoint.moves){
-      if(!exact(entry,gomoku||turtle?['actorSeatId','move']:['actorSeatId','move','die'])||room.phase!=='playing'||(turtle?!ids.has(entry.actorSeatId):entry.actorSeatId!==room.turnSeatId))fail('INVALID_CHECKPOINT_MOVE');
+      if(!exact(entry,gomoku||turtle||wolf?['actorSeatId','move']:['actorSeatId','move','die'])||room.phase!=='playing'||(turtle||wolf?!ids.has(entry.actorSeatId):entry.actorSeatId!==room.turnSeatId))fail('INVALID_CHECKPOINT_MOVE');
       const move=entry.move;
       if(gomoku){if(!exact(move,['kind','x','y'])||move.kind!=='place'||!Number.isInteger(move.x)||!Number.isInteger(move.y)||move.x<0||move.x>=15||move.y<0||move.y>=15)fail('INVALID_CHECKPOINT_MOVE');}
-      else if(!turtle&&!(exact(move,['kind'])&&['roll','cruise'].includes(move.kind)||
+      else if(!turtle&&!wolf&&!(exact(move,['kind'])&&['roll','cruise'].includes(move.kind)||
         (exact(move,['kind','plane'])||exact(move,['kind','plane','card']))&&move.kind==='choose'&&Number.isInteger(move.plane)&&move.plane>=0&&move.plane<4&&(!Object.hasOwn(move,'card')||['boost','shield'].includes(move.card))))fail('INVALID_CHECKPOINT_MOVE');
       const t=rules.replayStep({state:clone(state),room:baseView(entry.actorSeatId,ctx),actorSeatId:entry.actorSeatId,move:clone(move),die:entry.die});
       state=jsonState(t.state);result=t.result==null?null:validateResult(t.result,room);
       const nextTurn=result?null:t.nextSeatId;
-      if(!result&&!(turtle&&nextTurn===null)&&!seats.some(s=>s.seatId===nextTurn&&s.mode==='player'))fail('INVALID_CHECKPOINT_MOVE');
+      if(!result&&!((turtle||wolf)&&nextTurn===null)&&!seats.some(s=>s.seatId===nextTurn&&s.mode==='player'))fail('INVALID_CHECKPOINT_MOVE');
       room={...room,phase:result?'finished':'playing',turnSeatId:nextTurn,revision:room.revision+1};
       history.push(clone(entry));
     }

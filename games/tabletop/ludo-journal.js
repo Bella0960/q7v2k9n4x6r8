@@ -4,6 +4,7 @@ import {validateLudoChatCheckpoint} from './ludo-discussion.js';
 import {createGomokuRules} from './gomoku-rules.js';
 import {validateGomokuChatCheckpoint} from './gomoku-discussion.js';
 import {createTurtleRulesFromMode} from './turtle-rules.js';
+import {createWerewolfRulesFromMode} from './werewolf-rules.js';
 
 // Internal, account-scoped in-memory journal. The caller must supply an
 // authenticated context and validated repository records, never model output.
@@ -20,8 +21,8 @@ function scope(getContext){
 const fragmentId=(roomId,roleId,source)=>JSON.stringify([roomId,roleId,source]);
 const grantId=(fragmentId,roleId,channel)=>JSON.stringify([fragmentId,roleId,channel]);
 export function createLudoJournal(options={}){return createGameJournal({...options,gameIds:['ludo']});}
-export function createGameJournal({getContext,maxMatches=512,gameIds=['ludo','gomoku','turtle']}={}){
-  if(!Array.isArray(gameIds)||!gameIds.length||!gameIds.every(g=>['ludo','gomoku','turtle'].includes(g)))fail('JOURNAL_SPEC');
+export function createGameJournal({getContext,maxMatches=512,gameIds=['ludo','gomoku','turtle','werewolf']}={}){
+  if(!Array.isArray(gameIds)||!gameIds.length||!gameIds.every(g=>['ludo','gomoku','turtle','werewolf'].includes(g)))fail('JOURNAL_SPEC');
   const allowedGames=new Set(gameIds);
   if(typeof getContext!=='function'||!Number.isInteger(maxMatches)||maxMatches<1||maxMatches>4096)fail('JOURNAL_SPEC');
   const initial=scope(getContext),records=new Map(),fragments=new Map(),grants=new Set();
@@ -46,18 +47,18 @@ export function createGameJournal({getContext,maxMatches=512,gameIds=['ludo','go
   }
   function recordMatch(board,chat=null){
     const c=current();
-    const gomoku=board?.gameId==='gomoku',turtle=board?.gameId==='turtle';
-    if(!board||board.accountId!==c.accountId||!allowedGames.has(board.gameId)||!id(board.roomId)||!(turtle?typeof board.mode==='string'&&board.mode.startsWith('puzzle-v1:'):gomoku?board.mode==='freestyle':['classic','adventure'].includes(board.mode)))fail('JOURNAL_INVALID_MATCH');
+    const gomoku=board?.gameId==='gomoku',turtle=board?.gameId==='turtle',wolf=board?.gameId==='werewolf';
+    if(!board||board.accountId!==c.accountId||!allowedGames.has(board.gameId)||!id(board.roomId)||!(wolf?typeof board.mode==='string'&&board.mode.startsWith('werewolf-v1:'):turtle?typeof board.mode==='string'&&board.mode.startsWith('puzzle-v1:'):gomoku?board.mode==='freestyle':['classic','adventure'].includes(board.mode)))fail('JOURNAL_INVALID_MATCH');
     // The authoritative engine derives the terminal result and all positions.
     // A caller-provided winner, summary or timestamp cannot settle a match.
-    const d=createRoomDispatcher({getContext:()=>c,spec:{gameId:board.gameId,roomId:board.roomId},rules:turtle?createTurtleRulesFromMode(board.mode):gomoku?createGomokuRules():createLudoRules({mode:board.mode}),checkpoint:board});
+    const d=createRoomDispatcher({getContext:()=>c,spec:{gameId:board.gameId,roomId:board.roomId},rules:wolf?createWerewolfRulesFromMode(board.mode):turtle?createTurtleRulesFromMode(board.mode):gomoku?createGomokuRules():createLudoRules({mode:board.mode}),checkpoint:board});
     const v=d.view('user');
-    if(v.phase!=='finished'||!(v.result?.kind==='win'&&v.result.winnerSeatIds.length===1||(gomoku||turtle)&&v.result?.kind==='draw'&&v.result.winnerSeatIds.length===0))fail('JOURNAL_MATCH_UNFINISHED');
+    if(v.phase!=='finished'||!(v.result?.kind==='win'&&(wolf?v.result.winnerSeatIds.length>0:v.result.winnerSeatIds.length===1)||(gomoku||turtle||wolf)&&v.result?.kind==='draw'&&v.result.winnerSeatIds.length===0))fail('JOURNAL_MATCH_UNFINISHED');
     const winner=v.result.winnerSeatIds[0]??null;
     const recordKey=JSON.stringify([board.gameId,v.roomId]);
-    const memoryId=(roleId,source)=>gomoku||turtle?JSON.stringify([board.gameId,v.roomId,roleId,source]):fragmentId(v.roomId,roleId,source);
+    const memoryId=(roleId,source)=>gomoku||turtle||wolf?JSON.stringify([board.gameId,v.roomId,roleId,source]):fragmentId(v.roomId,roleId,source);
     const entry={schema:1,accountId:c.accountId,roomId:v.roomId,gameId:board.gameId,mode:board.mode,revision:v.revision,
-      winnerSeatId:winner,players:v.seats.map(s=>({seatId:s.seatId,kind:s.kind,...(s.kind==='role'?{roleId:s.roleId}:{}),...(turtle?{mode:s.mode}:gomoku?{mode:s.mode,color:v.game.players.find(p=>p.seatId===s.seatId)?.color??null}:{finished:v.game.players.find(p=>p.seatId===s.seatId).planes.filter(p=>p.zone==='finished').length})})),...(turtle?{puzzleId:v.game.puzzle.id,title:v.game.puzzle.title,questions:v.game.questions,endReason:v.game.endReason}:gomoku?{moves:v.game.count}:{} )};
+      winnerSeatId:winner,players:v.seats.map(s=>({seatId:s.seatId,kind:s.kind,...(s.kind==='role'?{roleId:s.roleId}:{}),...(wolf?{mode:s.mode,activeAtEnd:v.game.players.find(p=>p.seatId===s.seatId).alive}:turtle?{mode:s.mode}:gomoku?{mode:s.mode,color:v.game.players.find(p=>p.seatId===s.seatId)?.color??null}:{finished:v.game.players.find(p=>p.seatId===s.seatId).planes.filter(p=>p.zone==='finished').length})})),...(wolf?{winningTeam:v.game.winningTeam,winnerSeatIds:[...v.result.winnerSeatIds],rounds:v.game.round}:turtle?{puzzleId:v.game.puzzle.id,title:v.game.puzzle.title,questions:v.game.questions,endReason:v.game.endReason}:gomoku?{moves:v.game.count}:{} )};
     const publicMessages=chat===null?[]:(gomoku?validateGomokuChatCheckpoint(v,chat):validateLudoChatCheckpoint(v,chat)).log.read('user').filter(m=>m.sender.kind==='role');
     const messageFragments=publicMessages.map(m=>({schema:1,id:memoryId(m.sender.roleId,m.id),roomId:v.roomId,roleId:m.sender.roleId,kind:'public-message',gameId:board.gameId,text:m.text,time:m.time,sourceMessageId:m.id}));
     // Only the role's own public question/guess; never copy the moderator
@@ -67,6 +68,13 @@ export function createGameJournal({getContext,maxMatches=512,gameIds=['ludo','go
       const seat=v.seats.find(s=>s.seatId===item.seatId&&s.kind==='role');
       if(!seat)continue;
       messageFragments.push({schema:1,id:memoryId(seat.roleId,'turn:'+item.id),roomId:v.roomId,roleId:seat.roleId,kind:'public-question',gameId:'turtle',puzzleId:v.game.puzzle.id,action:item.kind,text:item.text});
+    }
+    // Never archive night actions, deck, inspection results, or identities
+    // into model-readable memory. Own public speech only after game ends.
+    if(wolf)for(const [i,item] of v.game.publicEvents.entries()){
+      if(item.kind!=='speech')continue;
+      const seat=v.seats.find(s=>s.seatId===item.seatId&&s.kind==='role');if(!seat)continue;
+      messageFragments.push({schema:1,id:memoryId(seat.roleId,'speech:'+i),roomId:v.roomId,roleId:seat.roleId,kind:'public-message',gameId:'werewolf',text:item.text,round:item.round});
     }
     same(c);
     const prior=records.get(recordKey);
@@ -80,14 +88,14 @@ export function createGameJournal({getContext,maxMatches=512,gameIds=['ludo','go
     // its own result. Bots have no durable identity and receive no fragments.
     const next=entry.players.filter(p=>p.kind==='role').map(p=>({
       schema:1,id:memoryId(p.roleId,'result'),roomId:v.roomId,roleId:p.roleId,kind:'result',
-      gameId:board.gameId,mode:entry.mode,outcome:turtle?p.mode==='moderator'?'hosted':winner===p.seatId?'solved':'participated':gomoku&&p.mode==='observer'?'observed':winner===null?'draw':p.seatId===winner?'win':'loss',...(turtle?{puzzleId:entry.puzzleId,questions:entry.questions,endReason:entry.endReason}:gomoku?{color:p.color,moves:entry.moves}:{finished:p.finished})
+      gameId:board.gameId,mode:entry.mode,outcome:wolf?v.result.kind==='draw'?'draw':v.result.winnerSeatIds.includes(p.seatId)?'win':'loss':turtle?p.mode==='moderator'?'hosted':winner===p.seatId?'solved':'participated':gomoku&&p.mode==='observer'?'observed':winner===null?'draw':p.seatId===winner?'win':'loss',...(wolf?{rounds:entry.rounds,activeAtEnd:p.activeAtEnd}:turtle?{puzzleId:entry.puzzleId,questions:entry.questions,endReason:entry.endReason}:gomoku?{color:p.color,moves:entry.moves}:{finished:p.finished})
     }));
     records.set(recordKey,entry);for(const f of [...next,...messageFragments])fragments.set(f.id,f);
     return {duplicate:false,record:clone(entry)};
   }
   function recordSavedMatch(saved){
     const gomoku=saved?.board?.gameId==='gomoku';
-    if(saved?.board?.gameId==='turtle'){
+    if(['turtle','werewolf'].includes(saved?.board?.gameId)){
       if(!exact(saved,['schema','board'])||saved.schema!==1)fail('JOURNAL_INVALID_MATCH');
       return recordMatch(saved.board);
     }

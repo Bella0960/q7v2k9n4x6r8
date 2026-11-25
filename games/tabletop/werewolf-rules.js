@@ -78,12 +78,20 @@ export function createWerewolfRules({randomIndex=n=>{const max=0x100000000,limit
      default:return {kinds:[],targets:[]};
    }
  }
- return Object.freeze({gameId:'werewolf',
+ function fromDeck(room,deck){
+   const ids=seats(room);
+   if(!Array.isArray(deck)||deck.length!==ids.length||JSON.stringify([...deck].sort())!==JSON.stringify([...WEREWOLF_LINEUPS[ids.length]].sort()))fail('WOLF_INVALID_PRIVATE_INIT');
+   const s={schema:1,players:ids.map((seatId,i)=>({seatId,role:deck[i],alive:true})),round:1,stage:null,queue:[],night:{wolf:[],guard:null},votes:[],inspections:[],publicEvents:[],winningTeam:null};
+   enter(s,'night-wolf');return s;
+ }
+ return Object.freeze({gameId:'werewolf',checkpointVersion:1,checkpointMode:'werewolf-v1:'+maxRounds,
+   checkpointInitial(s){return {deck:s.players.map(p=>p.role)};},
+   restoreInitial(room,value){if(!exact(value,['deck']))fail('WOLF_INVALID_PRIVATE_INIT');return fromDeck(room,value.deck);},
+   replayStep(args){return createWerewolfRules({maxRounds}).step(args);},
    init(room){
      const ids=seats(room),deck=[...WEREWOLF_LINEUPS[ids.length]];
      for(let i=deck.length-1;i>0;i--){const j=randomIndex(i+1);if(!Number.isInteger(j)||j<0||j>i)fail('WOLF_INVALID_RANDOM');[deck[i],deck[j]]=[deck[j],deck[i]];}
-     const s={schema:1,players:ids.map((seatId,i)=>({seatId,role:deck[i],alive:true})),round:1,stage:null,queue:[],night:{wolf:[],guard:null},votes:[],inspections:[],publicEvents:[],winningTeam:null};
-     enter(s,'night-wolf');return s;
+     return fromDeck(room,deck);
    },
    step({state,room,actorSeatId,move}){
      check(state,room);if(room.phase!=='playing'||active(state)!==actorSeatId)fail('WOLF_NOT_YOUR_TURN');
@@ -118,3 +126,6 @@ export function createWerewolfRules({randomIndex=n=>{const max=0x100000000,limit
    }
  });
 }
+
+// The deck belongs exclusively to a trusted account-scoped checkpoint.
+export function createWerewolfRulesFromMode(mode){const m=typeof mode==='string'&&/^werewolf-v1:([1-9][0-9]?)$/.exec(mode);if(!m)fail('WOLF_INVALID_CHECKPOINT_MODE');return createWerewolfRules({maxRounds:Number(m[1])});}
