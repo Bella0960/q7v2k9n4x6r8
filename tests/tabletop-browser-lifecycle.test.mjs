@@ -7,18 +7,33 @@ import {chromium} from 'playwright';
 
 const id='MAO-AAAAAAAAAAAA';
 const key='__mao_account_v1__'+id+'__ai_custom_characters';
-const modules=new Set(['room-engine','room-dispatcher','room-lifetime','account-room-context','room-session','browser-room-session']);
+const modules=new Set(['room-engine','room-dispatcher','room-lifetime','account-room-context','room-session','browser-room-session','room-chat-log','room-speech-queue','room-speech-context','room-speech-runner']);
 const fixture=`<!doctype html><meta name="mao-account-id" content="${id}"><meta name="mao-account-role" content="user"><script type="module">
 import {createBrowserRoomSession} from '/games/tabletop/browser-room-session.js';
+import {createRoomChatLog} from '/games/tabletop/room-chat-log.js';
+import {createRoomSpeechRunner} from '/games/tabletop/room-speech-runner.js';
+import {buildRoomSpeechContext} from '/games/tabletop/room-speech-context.js';
 const key=${JSON.stringify(key)};
 window.__MAO_ACCOUNT_SCOPE__=Object.freeze({ready:true,accountId:${JSON.stringify(id)},role:'user'});
 window.PhoneStorage={result:{getCharacters(){try{const raw=localStorage.getItem(key);if(raw===null)return {ok:false,error:{code:'NOT_FOUND'}};return {ok:true,value:JSON.parse(raw),meta:{source:'ai_custom_characters'}};}catch{return {ok:false,error:{code:'CORRUPT_DATA'}};}}}};
 window.events=[];window.moves=[];
 window.addEventListener('storage',e=>events.push(e.key));
-window.session=createBrowserRoomSession({spec:{roomId:'local-browser-fixture',gameId:'gomoku'},rules:{gameId:'gomoku',init:()=>({n:0}),step:({state,actorSeatId})=>{moves.push(actorSeatId);return {state:{n:state.n+1},nextSeatId:actorSeatId==='user'?'role:r1':'user'};}}});
+window.session=createBrowserRoomSession({spec:{roomId:'local-browser-fixture',gameId:'gomoku'},rules:{gameId:'gomoku',init:()=>({n:0}),step:({state,actorSeatId})=>{moves.push(actorSeatId);return {state:{n:state.n+1},nextSeatId:actorSeatId==='user'?'role:r1':'user'};},project:({state,actorSeatId})=>({count:state.n,seat:actorSeatId})}});
 window.action=async(type,extra={})=>(await session.prepareUserAction())({type,...extra});
 window.begin=async()=>{await action('invite',{roleId:'r1'});await action('start');await action('move',{move:'fixture'});window.reply=await session.prepareRoleMove('r1');};
 window.errorOf=async fn=>{try{await fn();return null;}catch(error){return error.message;}};
+// Test-only wiring of the real discussion modules, no external provider.
+window.startSpeech=async()=>{
+  const view=await session.viewUser(),signal=await session.discussionSignal();
+  const log=createRoomChatLog({roomId:view.roomId,seats:view.seats});
+  window.speechLog=log;window.speechOutcome=null;window.speechCalls=[];
+  const runner=createRoomSpeechRunner({chatLog:log,roleSeatIds:['role:r1'],
+    async prepare(t){const roleView=await session.viewRole(t.seatId.slice(5));return {request:buildRoomSpeechContext({roleSeatId:t.seatId,view:roleView,chatLog:log}),audienceSeatIds:['user','role:r1']};},
+    generate(request,{signal}){speechCalls.push({request,signal});return new Promise(resolve=>{window.releaseSpeech=resolve;});},
+    async authorize(t,p){await session.viewRole(t.seatId.slice(5));return p.audienceSeatIds;},
+    validateCommit:()=>!signal.aborted,now:()=>1});
+  runner.runRound([{jobId:'speech-1',seatId:'role:r1'}],{signal}).then(result=>{speechOutcome=result;},error=>{speechOutcome=error.message;});
+};
 window.fixtureReady=true;
 </script>`;
 
@@ -86,6 +101,23 @@ test('Chromium offline event blocks old callback and online recheck allows fresh
 test('Chromium pagehide event disposes the room, including pending callback',async()=>run(async({page})=>{
   await begin(page);await page.evaluate(()=>window.dispatchEvent(new PageTransitionEvent('pagehide',{persisted:true})));
   assert.equal(await delayed(page),'ROOM_DISPOSED');assert.equal(await page.evaluate(()=>session.status()),'disposed');assert.deepEqual(await moves(page),['user']);
+}));
+
+test('Chromium discussion leaves board usable and publishes only the selected role reply',async()=>run(async({page})=>{
+  await begin(page);await page.evaluate(()=>startSpeech());await page.waitForFunction(()=>speechCalls.length===1);
+  assert.deepEqual(await page.evaluate(()=>speechCalls[0].request.game),{count:1,seat:'role:r1'});
+  await page.evaluate(()=>reply('fixture'));assert.deepEqual(await moves(page),['user','role:r1']);
+  await page.evaluate(()=>releaseSpeech('fixture reply'));await page.waitForFunction(()=>speechOutcome!==null);
+  assert.deepEqual(await page.evaluate(()=>speechOutcome),{committed:1});
+  assert.deepEqual(await page.evaluate(()=>speechLog.read('user').map(m=>[m.id,m.sender.seatId,m.text])),[['speech-1','role:r1','fixture reply']]);
+}));
+test('Chromium native roster event cancels in-flight discussion before late reply',async()=>run(async({page,write})=>{
+  await begin(page);await page.evaluate(()=>startSpeech());await page.waitForFunction(()=>speechCalls.length===1);
+  await write(['r2']);await page.waitForFunction(()=>speechOutcome!==null);
+  assert.equal(await page.evaluate(()=>speechOutcome),'SPEECH_CANCELLED');
+  assert.equal(await page.evaluate(()=>speechCalls[0].signal.aborted),true);
+  await page.evaluate(async()=>{releaseSpeech('late fixture');await new Promise(resolve=>setTimeout(resolve,0));});
+  assert.deepEqual(await page.evaluate(()=>speechLog.read('user')),[]);
 }));
 
 // Integration gate: use actual checked-out shared scripts, never a substitute.
