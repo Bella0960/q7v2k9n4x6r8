@@ -3,7 +3,9 @@ import assert from 'node:assert/strict';
 import {readFile} from 'node:fs/promises';
 import {chromium} from 'playwright';
 
-const origin = 'http://group-settings.local';
+// Loopback is the explicitly supported unscoped local test environment.
+// Every request is fulfilled from synthetic repository fixtures, not a live site.
+const origin = 'http://127.0.0.1:38157';
 const root = new URL('../', import.meta.url);
 const group = {id:'g-test', name:'每周碰面', ownerId:'__user', members:[
   {id:'a',name:'甲'},{id:'b',name:'乙'}
@@ -33,6 +35,7 @@ test('group settings support extension tiles, member controls and persisted pref
       },{group,owner});
       await page.goto(origin + '/chat/chat/chat-settings.html?roleId=g-test');
       await page.waitForURL('**/group-play.html?id=g-test');
+      assert.equal(await page.evaluate(()=>window.MAOGroupWriteGuard.account()), '', 'local test scope must be available');
       // The overview is photo-first and collapsed. Unfold before accessing the controls.
       const expand = page.locator('[data-group-action="expand"]');
       await expand.waitFor({state:'visible'});
@@ -52,7 +55,7 @@ test('group settings support extension tiles, member controls and persisted pref
       const member=page.locator('.group-dialog-member').filter({has:page.getByText('甲',{exact:true})});
       await member.getByRole('button',{name:'设为管理员'}).click();
       await member.getByRole('button',{name:'禁言',exact:true}).click();
-      let saved=await page.evaluate(()=>JSON.parse(localStorage.phone_groups)[0]);
+      let saved=await page.evaluate(()=>JSON.parse(localStorage.getItem('phone_groups'))[0]);
       assert.equal(saved.members[0].memberRole,'admin');
       assert.equal(saved.members[0].isMuted,true);
       await member.getByRole('button',{name:'解除禁言'}).click();
@@ -73,7 +76,7 @@ test('group settings support extension tiles, member controls and persisted pref
         'page reload must default to collapsed overview');
       await reloadExpand.click();
       await page.getByRole('switch',{name:'置顶聊天',checked:true}).waitFor();
-      saved=await page.evaluate(()=>JSON.parse(localStorage.phone_groups)[0]);
+      saved=await page.evaluate(()=>JSON.parse(localStorage.getItem('phone_groups'))[0]);
       assert.equal(saved.preferences.savedToContacts,true);
       assert.equal(saved.preferences.muted,true);
       assert.equal(saved.members.length,2);
