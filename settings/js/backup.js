@@ -722,10 +722,11 @@
             return new Promise(function (resolve, reject) {
                 var tx = db.transaction(RP_STORE_NAME, 'readwrite');
                 tx.objectStore(RP_STORE_NAME).delete(role);
-                tx.oncomplete = function () { resolve(); };
+                tx.oncomplete = function () { resolve(true); };
                 tx.onerror = function () { reject(tx.error); };
-            });
-        }).catch(function () {});  // 恢复点删不掉不应该阻断主流程
+                tx.onabort = function () { reject(tx.error || new Error('Recovery cleanup aborted')); };
+            }).finally(function(){db.close();});
+        }).catch(function () { return false; });
     }
 
     /* ===== IndexedDB 工具函数 =====
@@ -1262,15 +1263,18 @@
             used += n;
             if (used > maxChars) throw new Error('Media recovery point exceeds limit');
         }
-        function plain(value) {
+        function plain(value, depth) {
+            depth = depth || 0;
+            if (depth > 128) throw new Error('Recovery record too deeply nested');
             if (value === null || typeof value === 'string' || typeof value === 'boolean' ||
                 (typeof value === 'number' && Number.isFinite(value) && !Object.is(value,-0))) return;
             if (typeof value !== 'object' || !value ||
                 (!Array.isArray(value) && Object.getPrototypeOf(value) !== Object.prototype &&
                  Object.getPrototypeOf(value) !== null)) throw new Error('Unsupported recovery value');
-            Object.keys(value).forEach(function(k) { plain(value[k]); });
-            if (Array.isArray(value) && Object.keys(value).length !== value.length)
+            var keys = Object.keys(value);
+            if (Array.isArray(value) && (keys.length !== value.length || keys.some(function(k,i){return k !== String(i);})))
                 throw new Error('Unsupported sparse recovery array');
+            keys.forEach(function(k) { plain(value[k],depth+1); });
         }
         function openExisting(name) {
             return new Promise(function(resolve,reject) {
@@ -1312,7 +1316,7 @@
                                 if ((def.blobFields || []).length) {
                                     if (!value || typeof value !== 'object' || Array.isArray(value))
                                         throw new Error('Invalid media recovery record');
-                                    value = Object.assign({},value);
+                                    value = Object.assign(Object.create(null),value);
                                     def.blobFields.forEach(function(field) {
                                         var blob = value[field];
                                         if (!(blob instanceof Blob)) throw new Error('Missing original media');
@@ -1323,6 +1327,7 @@
                                         delete value[field];
                                     });
                                 }
+                                if (def.keyPath && (!value || value[def.keyPath] !== key)) throw new Error('Recovery primary key mismatch');
                                 plain(value);
                                 charge(JSON.stringify({key:key,value:value}).length);
                                 list.push({key:key,value:value,blobs:blobs});
@@ -1362,7 +1367,7 @@
                         if (typeof encoded !== 'string' || encoded.length !== Math.ceil(part.blob.size/3)*4)
                             throw new Error('Incomplete media recovery encoding');
                         row.value[part.field] = encoded;
-                        row.value['__blobMime_'+part.field] = part.blob.type || 'application/octet-stream';
+                        row.value['__blobMime_'+part.field] = part.blob.type;
                     }
                     list.push(def.keyPath ? row.value : {__key:row.key,__value:row.value});
                 }
@@ -1781,7 +1786,9 @@
             var fontOrphanCleaned = (!scope || scope === 'themes') ? await checkFontPresetOrphan() : false;
 
             // 5. 成功路径：清掉本机恢复点（已无需保留）
-            rpDeleteRole(RP_ROLE_PRE);
+            if (window.__MAO_ACCOUNT_SCOPE__ !== account) { alert('账号状态已变化，恢复点保留'); return; }
+            var recoveryCleaned = await rpDeleteRole(RP_ROLE_PRE);
+            if (recoveryCleaned !== true) { alert('数据恢复已完成，但恢复点未能清理。请保留该恢复点并检查本机存储。'); return; }
 
             // 6. 组装最终提示
             var parts = ['导入成功'];
