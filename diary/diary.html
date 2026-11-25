@@ -866,8 +866,14 @@ html,body{background:#f7f7f8}
   function closeReader(){closeReaderMenu();closeAnnotation();closePersonalRemark();reader.classList.remove('show');document.body.style.overflow='';readerId=null}
   // Author identity is independent of the active contact, display name and note type.
   // Older user records have no author; legacy generated records retain d_char_ IDs.
+  function diaryStableId(value){return ((typeof value==='string'&&value.trim()===value&&value.length>0)||(typeof value==='number'&&Number.isFinite(value)))?String(value):'';}
+  function diaryRecordById(id){
+    var key=diaryStableId(id);if(!key)return null;
+    var matches=entries.filter(function(e){return e&&diaryStableId(e.id)===key;});
+    return matches.length===1?matches[0]:null;
+  }
   function diaryAuthorKind(entry){
-    if(!entry||typeof entry!=='object')return 'unknown';
+    if(!entry||typeof entry!=='object'||entry.authorUnverified===true)return 'unknown';
     if(entry.charWritten===true||String(entry.id||'').indexOf('d_char_')===0)return 'character';
     if(entry.author!==undefined&&entry.author!==null&&entry.author!==''){
       if((typeof entry.author!=='string'&&typeof entry.author!=='number')||!String(entry.author).trim()||entry.authorUnverified===true)return 'unknown';
@@ -880,19 +886,19 @@ html,body{background:#f7f7f8}
   function diaryRecordKind(entry){return entry&&entry.noteType==='备忘'?'备忘录':'日记';}
   function personalRemarkText(entry){var value=entry&&entry.personalRemark;return value&&typeof value.text==='string'?value.text:'';}
   function diaryRemarkOwner(entry){
-    if(!entry||diaryAuthorKind(entry)!=='character'||entry.authorUnverified===true||entry.author==null||String(entry.author)==='me'||diaryRecordKind(entry)!=='日记')return null;
+    if(!entry||diaryRecordById(entry.id)!==entry||diaryAuthorKind(entry)!=='character'||!diaryStableId(entry.author)||String(entry.author)==='me'||diaryRecordKind(entry)!=='日记')return null;
     return diaryCharacters().find(function(r){return r.id===String(entry.author);})||null;
   }
   function diarySharedRemark(entry,roleId,explicitUserComment){
-    if(!entry||diaryRecordKind(entry)!=='日记'||!entry.personalRemark)return '';
+    if(!entry||diaryRecordById(entry.id)!==entry||diaryRecordKind(entry)!=='日记'||!entry.personalRemark)return '';
     var remark=entry.personalRemark;
     if(diaryAuthorKind(entry)==='user')return explicitUserComment&&remark.shareOnExplicitComment===true?personalRemarkText(entry):'';
     var owner=diaryRemarkOwner(entry);
     return owner&&owner.id===String(roleId)&&remark.sharedWithRoleId===owner.id?personalRemarkText(entry):'';
   }
   function savePersonalRemark(entryId,token,value){
-    if(token!==diaryAccountToken())return false;
-    var entry=entries.find(function(e){return e.id===entryId;});
+    if(token!==diaryAccountToken()||!diaryArchiveIsCurrent())return false;
+    var entry=diaryRecordById(entryId);
     if(!entry||diaryRecordKind(entry)!=='日记'||diaryAuthorKind(entry)==='unknown'||typeof value!=='string'||value.length>2000)return false;
     var previous=entry.personalRemark,had=Object.prototype.hasOwnProperty.call(entry,'personalRemark');
     if(value.trim()){
@@ -921,7 +927,7 @@ html,body{background:#f7f7f8}
   function diaryCommentTarget(entryId,roleId,token,recordKind){
     if(!diaryArchiveIsCurrent())return null;
     if(token!==diaryAccountToken())return null;
-    var entry=entries.find(function(e){return e.id===entryId;});
+    var entry=diaryRecordById(entryId);
     if(diaryAuthorKind(entry)!=='user'||(recordKind&&diaryRecordKind(entry)!==recordKind)||!diaryCharacters().some(function(role){return role.id===roleId;}))return null;
     return entry;
   }
@@ -929,10 +935,10 @@ html,body{background:#f7f7f8}
     var list=[];
     try{list=window.PhoneStorage&&typeof window.PhoneStorage.getCharacters==='function'?window.PhoneStorage.getCharacters():[]}catch(e){list=[]}
     if(!Array.isArray(list))return [];
-    var counts=new Map();list.forEach(function(role){if(role&&role.id!=null){var id=String(role.id);counts.set(id,(counts.get(id)||0)+1);}});
+    var counts=new Map();list.forEach(function(role){var id=role&&diaryStableId(role.id);if(id)counts.set(id,(counts.get(id)||0)+1);});
     return list.map(function(role,index){
       if(!role||typeof role!=='object')return null;
-      var name=String(role.name||role.nickname||role.characterName||'').trim();if(!name||role.id===undefined||role.id===null||!String(role.id).trim()||String(role.id)==='me'||counts.get(String(role.id))!==1)return null;
+      var name=String(role.name||role.nickname||role.characterName||'').trim();if(!name||!diaryStableId(role.id)||String(role.id)==='me'||counts.get(String(role.id))!==1)return null;
       return Object.assign({},role,{id:String(role.id),name:name,index:index});
     }).filter(Boolean);
   }
@@ -941,18 +947,20 @@ html,body{background:#f7f7f8}
   function diaryRoleContext(role,topic,requirePersona){
     var contract=window.MAOMAOChatRoleContext,policy=window.ChatContextPolicy,binder=window.RoleWorldbookBindings;
     if(!role||!role.id||!contract||!policy||!binder)throw Error('角色资料读取失败');
-    var raw=String(role.persona||role.prompt||'').trim();
+    var raw=[role.persona,role.prompt].filter(function(v){return typeof v==='string'&&v.trim();}).map(function(v){return v.trim();})[0]||'';
     if(!raw)raw=[role.personality,role.description,role.systemPrompt,role.characterPrompt,role.background,role.setting].filter(function(v){return typeof v==='string'&&v.trim();}).join('\n');
     var persona=contract.stripEncounterEditorNote(raw,role).trim();
     var nameOnly=contract.isPersonaIncomplete(Object.assign({},role,{persona:persona,prompt:''}));
     if(nameOnly&&requirePersona)throw Error('请先完善该角色的人设档案');
     if(nameOnly)persona=contract.MINIMAL_PERSONA_PROMPT+'\n'+contract.buildWeakPersonaNameGuard(role.name);
-    var tone=String(role.tone||role.speechStyle||role.speech||'').trim();
+    var tone=[role.tone,role.speechStyle,role.speech].filter(function(v){return typeof v==='string'&&v.trim();}).map(function(v){return v.trim();})[0]||'';
     var rawBooks=localStorage.getItem('phone_worldbooks'),books=rawBooks===null?[]:JSON.parse(rawBooks);
     if(!Array.isArray(books))throw Error('世界书资料异常');
     var selected=binder.filterBooks(role.id,books,role);
     if(!selected||!selected.ok||!Array.isArray(selected.books))throw Error('角色世界书绑定读取失败');
     var lore=policy.buildWorldbookInjectionText(selected.books,{currentText:topic||'',maxEntries:Math.max(1,selected.books.reduce(function(n,b){return n+(Array.isArray(b.entries)&&b.entries.length?b.entries.length:1);},0)),maxChars:1000000});
+    var primaryMemory=localStorage.getItem('chat_memories_'+role.id);
+    if(primaryMemory!==null&&!Array.isArray(JSON.parse(primaryMemory)))throw Error('角色记忆资料异常，未发出请求');
     var memories=window.PhoneStorage&&typeof PhoneStorage.getMemories==='function'?PhoneStorage.getMemories(role.id):[];
     if(!Array.isArray(memories))throw Error('角色记忆读取失败');
     var memory=[typeof role.memory==='string'?role.memory:''].concat(memories.filter(function(m){return m&&(!m.status||m.status==='fixed'||m.status==='confirmed');}).map(function(m){return String(m.content||m.text||'');})).filter(Boolean).join('\n');
@@ -991,7 +999,7 @@ html,body{background:#f7f7f8}
   function generateCharComment(){
     if(annotationBusy)return;
     if(!diaryArchiveIsCurrent()){showToast('日记记录已变化，请刷新后再操作');return;}
-    var entryId=readerId,entry=entries.find(function(e){return e.id===entryId});if(!entry)return;
+    var entryId=readerId,entry=diaryRecordById(entryId);if(!entry){showToast('记录身份无法唯一确认');return;}
     if(diaryAuthorKind(entry)!=='user'){$('annotationStatus').textContent='角色只能阅读并评论你写的日记。';return;}
     var selected=String($('annotationCharacter').value),role=diaryCharacters().find(function(r){return r.id===selected;}),token;
     try{token=diaryAccountToken();}catch(e){$('annotationStatus').textContent='无法确认当前账号。';return;}
@@ -1044,7 +1052,7 @@ html,body{background:#f7f7f8}
   }
   function readSharedRemark(entryId){
     if(remarkReadBusy||!diaryArchiveIsCurrent())return Promise.resolve(false);
-    var entry=entries.find(function(e){return e.id===entryId;}),owner=diaryRemarkOwner(entry);
+    var entry=diaryRecordById(entryId),owner=diaryRemarkOwner(entry);
     var shared=owner&&diarySharedRemark(entry,owner.id,false),token,contextSnapshot,sourceSnapshot;
     if(!shared||!window.PhoneAPI||typeof PhoneAPI.complete!=='function')return Promise.resolve(false);
     if(entry.personalRemark.readReceipt&&entry.personalRemark.readReceipt.roleId===owner.id)return Promise.resolve(false);
@@ -1054,11 +1062,11 @@ html,body{background:#f7f7f8}
     var user='你写的日记：\n'+String(entry.content||'').slice(0,3500)+'\n【用户对本篇的备注】\n'+shared;
     remarkReadBusy=true;
     return diaryWithRequestLock(token,owner.id,'remark:'+entryId,function(){
-      var live=entries.find(function(e){return e.id===entryId;});
+      var live=diaryRecordById(entryId);
       if(!diaryArchiveIsCurrent()||!live||diarySharedRemark(live,owner.id,false)!==shared||diaryCommentSource(live)!==sourceSnapshot||!diaryRoleContextStillCurrent(owner.id,topic,true,contextSnapshot))return false;
       return PhoneAPI.complete({system:system,user:user,temperature:0.75,timeoutMs:30000}).then(function(text){
         text=String(text||'').trim();
-        live=entries.find(function(e){return e.id===entryId;});
+        live=diaryRecordById(entryId);
         if(!text||!diaryRoleReplyValid(owner,text)||!diaryArchiveIsCurrent()||diaryAccountToken()!==token||!live||diarySharedRemark(live,owner.id,false)!==shared||diaryCommentSource(live)!==sourceSnapshot||!diaryRoleContextStillCurrent(owner.id,topic,true,contextSnapshot))return false;
         var previous=live.personalRemark.readReceipt;
         live.personalRemark.readReceipt={roleId:owner.id,roleName:owner.name,text:text.slice(0,2000),readAt:new Date().toISOString()};
@@ -1550,7 +1558,7 @@ html,body{background:#f7f7f8}
     var role=peekCurrentRole(),token;if(!role)return;
     try{token=diaryAccountToken();}catch(e){return;}
     var candidates=sorted(entries).filter(function(e){
-      if(diaryAuthorKind(e)!=='user')return false;
+      if(diaryAuthorKind(e)!=='user'||diaryRecordById(e.id)!==e)return false;
       var cs=Array.isArray(e.charComments)?e.charComments:[];
       return !cs.some(function(c){return String(c.characterId)===String(role.id)});
     });
@@ -1578,7 +1586,7 @@ html,body{background:#f7f7f8}
 
   // ===== Char 自己往本子上写日记 =====
   function diaryRecentOwnWriting(roleId,kind){
-    return entries.filter(function(e){return diaryAuthorKind(e)==='character'&&e.authorUnverified!==true&&String(e.author)===String(roleId)&&diaryRecordKind(e)===(kind==='备忘'?'备忘录':'日记')&&e.diaryWritingVersion===2&&typeof e.content==='string';})
+    return entries.filter(function(e){return diaryRecordById(e.id)===e&&diaryAuthorKind(e)==='character'&&!!diaryStableId(e.author)&&String(e.author)===String(roleId)&&diaryRecordKind(e)===(kind==='备忘'?'备忘录':'日记')&&e.diaryWritingVersion===2&&typeof e.content==='string';})
       .sort(function(a,b){return String(b.createdAt||b.date||'').localeCompare(String(a.createdAt||a.date||''));})
       .slice(0,3).map(function(e){return '日期：'+String(e.date||'')+'\n正文摘录：'+e.content.slice(0,900);}).join('\n\n');
   }
