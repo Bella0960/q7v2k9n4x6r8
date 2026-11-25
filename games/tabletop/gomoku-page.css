@@ -1,0 +1,34 @@
+/* Isolated monochrome mobile page; no global app styling. */
+.mao-gomoku{box-sizing:border-box;max-width:480px;margin:auto;padding:12px 14px max(14px,env(safe-area-inset-bottom));background:#fff;color:#222;font:13px/1.5 system-ui,-apple-system,"PingFang SC",sans-serif}
+.mao-gomoku *{box-sizing:border-box}.mao-gomoku [hidden]{display:none!important}
+.mao-gomoku__heading{font:400 30px/1.25 Georgia,"Songti SC",serif;margin:2px 0 12px}
+.mao-gomoku__setup{display:grid;gap:8px}.mao-gomoku select,.mao-gomoku__setup button,.mao-gomoku__footer button{font:inherit;min-height:44px;border:1px solid #e5e5e5;border-radius:9px;background:#fff;color:#333;padding:8px 10px;max-width:100%}
+.mao-gomoku button:disabled{opacity:.5}.mao-gomoku button:focus-visible,.mao-gomoku select:focus-visible{outline:2px solid #555;outline-offset:2px}
+.mao-gomoku button.mao-gomoku__start{background:#171717;color:#fff;border-color:#171717}
+.mao-gomoku summary{cursor:pointer;padding:10px 0;min-height:44px}
+.mao-gomoku__observer-list{max-height:36vh;overflow:auto;display:grid;gap:4px}
+.mao-gomoku__observer{display:flex;gap:8px;align-items:center;min-height:38px;overflow-wrap:anywhere}
+.mao-gomoku__observer input{accent-color:#222;width:18px;height:18px}
+.mao-gomoku-board__players{display:flex;justify-content:space-between;gap:12px}
+.mao-gomoku-board__player{display:flex;align-items:center;gap:7px;min-width:0;color:#777}
+.mao-gomoku-board__player.is-active{color:#171717;font-weight:600}
+.mao-gomoku-board__name{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:110px}
+.mao-gomoku-board__player small{font-size:10px;white-space:nowrap}
+.mao-gomoku-board__stone{display:block;width:13px;height:13px;border-radius:50%;border:1px solid #aaa;flex:none}
+.mao-gomoku-board__stone.is-black{background:#222;border-color:#222}.mao-gomoku-board__stone.is-white{background:#fff}
+.mao-gomoku-board__status,.mao-gomoku__meta,.mao-gomoku__note{font-size:11px;color:#666;margin:8px 0;overflow-wrap:anywhere}
+.mao-gomoku__note:empty{display:none}
+.mao-gomoku-board__grid{display:grid;grid-template-columns:repeat(15,minmax(0,1fr));grid-template-rows:repeat(15,minmax(0,1fr));aspect-ratio:1;max-width:100%;background:#f7f7f9;border:1px solid #ececef;border-radius:10px;padding:6px;touch-action:manipulation}
+.mao-gomoku-board__cell{position:relative;isolation:isolate;min-width:0;min-height:0;border:0;border-radius:0;padding:0;background:none;cursor:pointer;-webkit-tap-highlight-color:transparent;color:#999}
+.mao-gomoku-board__cell::before{content:"";position:absolute;inset:0;background:linear-gradient(currentColor,currentColor) center/100% 1px no-repeat,linear-gradient(currentColor,currentColor) center/1px 100% no-repeat;opacity:.55;z-index:-1}
+.mao-gomoku-board__cell.is-left::before{background-size:50% 1px,1px 100%;background-position:right center,center}.mao-gomoku-board__cell.is-right::before{background-size:50% 1px,1px 100%;background-position:left center,center}
+.mao-gomoku-board__cell.is-top::before{background-size:100% 1px,1px 50%;background-position:center,center bottom}.mao-gomoku-board__cell.is-bottom::before{background-size:100% 1px,1px 50%;background-position:center,center top}
+.mao-gomoku-board__cell.is-left.is-top::before{background-size:50% 1px,1px 50%;background-position:right center,center bottom}.mao-gomoku-board__cell.is-right.is-top::before{background-size:50% 1px,1px 50%;background-position:left center,center bottom}.mao-gomoku-board__cell.is-left.is-bottom::before{background-size:50% 1px,1px 50%;background-position:right center,center top}.mao-gomoku-board__cell.is-right.is-bottom::before{background-size:50% 1px,1px 50%;background-position:left center,center top}
+.mao-gomoku-board__cell::after{content:"";position:absolute;inset:12%;border-radius:50%;pointer-events:none;box-sizing:border-box}
+.mao-gomoku-board__cell.is-star:not(.is-black):not(.is-white)::after{inset:43%;background:#888}
+.mao-gomoku-board__cell.is-black::after{background:#222;border:1px solid #222}
+.mao-gomoku-board__cell.is-white::after{background:#fff;border:1px solid #aaa}
+.mao-gomoku-board__cell.is-last::after{box-shadow:0 0 0 1px #888;outline:1px solid #fff;outline-offset:1px}
+.mao-gomoku-board__cell.is-win::after{outline:2px solid #777;outline-offset:1px}
+.mao-gomoku-board__cell[aria-disabled=true]{cursor:default}
+.mao-gomoku__footer{display:flex;align-items:flex-start;flex-wrap:wrap;gap:8px;margin-top:10px}.mao-gomoku__rules{flex:1;min-width:0}.mao-gomoku__rules p{font-size:11px;color:#555}
