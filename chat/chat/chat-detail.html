@@ -43,7 +43,9 @@
     <script src="../../shared/js/phone/world-events.js?v=20261123-eco2"></script>
     <script src="../../shared/js/phone/world-events-memory.js?v=20261123-eco6"></script>
     <script src="../../shared/js/phone/group-chat-policy.js?v=20261118groupvoice1"></script>
-    <script src="../../shared/js/group-governance.js?v=20261121group1"></script>
+    <script src="../../shared/js/phone/group-write-guard.js?v=20261125g10"></script>
+    <script src="../../shared/js/group-governance.js?v=20261125scope2"></script>
+    <script src="../../shared/js/phone/group-portraits.js?v=20261125scope1"></script>
     <script src="../../shared/js/phone/group-game-session.js?v=20261116game11"></script>
     <script src="../../shared/js/phone/group-turn-effects.js?v=20261115gte2"></script>
     <script src="../../shared/js/phone/group-private-receipt-recovery.js?v=20261115gpr1"></script>
@@ -2486,9 +2488,8 @@
             if (!isGroupChat || !currentGroup || !message) return null;
             var members = Array.isArray(currentGroup.members) ? currentGroup.members : [];
             if (message.memberId != null && String(message.memberId).trim()) {
-                return members.find(function (m) {
-                    return m && String(m.id) === String(message.memberId);
-                }) || null;
+                var exact=members.filter(function(m){return m&&String(m.id)===String(message.memberId)&&String(m.id)!=='__user';});
+                return exact.length===1?exact[0]:null;
             }
             var oldName = String(message.name || message.senderName || '').trim();
             if (!oldName) return null;
@@ -2506,6 +2507,20 @@
             var latestRole = getRoleById(speaker.id);
             return (latestRole && (latestRole.avatar || latestRole.avatarUrl)) ||
                 speaker.avatar || speaker.avatarUrl || '';
+        }
+        const groupPortraitPageAccount=isGroupChat&&window.MAOGroupWriteGuard?window.MAOGroupWriteGuard.account():null;
+        const groupPortraitPaintTokens=new WeakMap();
+        function fillGroupPortrait(el,fallback,memberId){
+            fillAvatar(el,fallback,USER_SVG);
+            if(!isGroupChat||!memberId||groupPortraitPageAccount===null||!window.MAOGroupPortraits||!window.MAOGroupWriteGuard)return;
+            const guard=window.MAOGroupWriteGuard;
+            if(guard.account()!==groupPortraitPageAccount)return;
+            const snapshot=guard.read(String(currentRoleId));
+            if(!snapshot||snapshot.account!==groupPortraitPageAccount||!window.GroupGovernance.userIsInGroup(snapshot.group))return;
+            const token={};groupPortraitPaintTokens.set(el,token);
+            window.MAOGroupPortraits.resolve(snapshot.group,String(memberId)).then(function(url){
+                if(url&&el.isConnected&&groupPortraitPaintTokens.get(el)===token&&guard.account()===groupPortraitPageAccount)fillAvatar(el,url,USER_SVG);
+            }).catch(function(){});
         }
         function getGroupSettings() {
             return (currentGroup && currentGroup.settings && typeof currentGroup.settings === 'object') ? currentGroup.settings : {};
@@ -4319,7 +4334,8 @@
                             }
                             var extraAv = document.createElement('div');
                             extraAv.className = 'msg-avatar';
-                            fillAvatar(extraAv, groupSpeakerAvatarForMessage(msg), USER_SVG);
+                            var extraSpeaker=groupSpeakerForMessage(msg);
+                            fillGroupPortrait(extraAv,groupSpeakerAvatarForMessage(msg,extraSpeaker),extraSpeaker&&String(extraSpeaker.id));
                             extraRow.appendChild(extraAv);
                             extraRow.appendChild(extraBubble);
                             _pendingExtras.push(extraRow);
@@ -4368,7 +4384,7 @@
             avatar.className = 'msg-avatar';
             let groupSender = null;
             if (isSent) {
-                fillAvatar(avatar, getMyAvatar(), USER_SVG);
+                fillGroupPortrait(avatar,getMyAvatar(),'__user');
             } else if (isError) {
                 avatar.textContent = '!';
                 avatar.style.backgroundColor = '#E5E5EA';
@@ -4376,7 +4392,7 @@
             } else {
                 // Group replies show the speaking member's own avatar, not the group cover.
                 groupSender = groupSpeakerForMessage(msg);
-                fillAvatar(avatar, groupSpeakerAvatarForMessage(msg, groupSender), USER_SVG);
+                fillGroupPortrait(avatar,groupSpeakerAvatarForMessage(msg,groupSender),groupSender&&String(groupSender.id));
             }
 
             // 群聊：AI 成员回复在气泡上方显示成员名（逐条落库的后续气泡不重复显示）
