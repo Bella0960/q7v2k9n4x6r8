@@ -3213,9 +3213,11 @@ body {
         }
 
         // 长期记忆（精简版：fixed + confirmed，按重要性取前 12 条）
-        var memLines = [];
+        var memLines = [], hasRevisionHistory = false;
         try {
-            var mems = _storage && typeof _storage.getActiveMemories === 'function' ? _storage.getActiveMemories(String(roleId)) : [];
+            var allMemories = _storage ? _storage.getMemories(roleId) : [];
+            hasRevisionHistory = Array.isArray(allMemories) && allMemories.some(function(m) { return m && ['superseded-fixed','superseded-confirmed','withdrawn'].includes(m.status); });
+            var mems = _storage && typeof _storage.selectActiveMemories === 'function' ? _storage.selectActiveMemories(allMemories, String(roleId)) : [];
             var usable = (Array.isArray(mems) ? mems : []).filter(function (m) {
                 return m && m.content && (m.status === 'fixed' || !m.status || m.status === 'confirmed');
             });
@@ -3223,7 +3225,7 @@ body {
             usable.slice(0, 12).forEach(function (m) { memLines.push('· ' + m.content); });
         } catch (e) {}
         var oldMem = (character.memory || '').trim();
-        if (oldMem && oldMem !== '暂无记忆') memLines.push('· ' + oldMem);
+        if (!hasRevisionHistory && oldMem && oldMem !== '暂无记忆') memLines.push('· ' + oldMem);
         parts.push('');
         parts.push('【你记得的事】');
         parts.push(memLines.length ? capText(memLines.join('\n'), 2000) : '暂无');
