@@ -2093,7 +2093,7 @@ button{font:inherit;color:inherit;cursor:pointer;border:0;background:transparent
     }
     if (route.indexOf('read-') === 0) {
       var book = findBook(route.slice(5));
-      if (book) { readerReturnRoute='';openReader(book); return; }
+      if (book) { lastMain='shelf';readerReturnRoute='shelf';openReader(book); return; }
       route = lastMain;
     }
     readerReturnRoute='';
