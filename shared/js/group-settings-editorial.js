@@ -364,12 +364,13 @@
   home.insertBefore(shortcuts,list);
   home.insertBefore(notice,list);
   stage.classList.add('gp-editorial');
+  if(stage.parentElement)stage.parentElement.classList.add('gp-editorial-shell');
   home.classList.add('gp-editorial-home');
   var title = stage.querySelector('.cs-title');
   title.textContent='群聊设置';
   title.prepend(english('GROUP SETTINGS'));
   var fakeStatus = stage.parentElement.querySelector('.status-bar');
-  if(fakeStatus) fakeStatus.hidden=true;
+  if(fakeStatus){fakeStatus.hidden=true;fakeStatus.style.setProperty('display','none','important');}
   if(!memberView&&!memoryView){
     byId('btnBack').addEventListener('click',function(event){
       event.preventDefault();event.stopImmediatePropagation();
