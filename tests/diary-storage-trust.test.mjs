@@ -24,7 +24,7 @@ const personaBlock = slice('  function diaryRoleContext(', '  function openAnnot
 const manualBlock = slice('  function generateCharComment(){', '  function renderReader(){');
 const persistBlock = slice('  function persist(){', '  function hydratePhotos(');
 const flagBlock = slice('  function toggleEntryFlag(', '  function renderPhotoPreview(');
-const autoWriteBlock = slice('  function maybeAutoWriteCharEntry(){', '  setTimeout(maybeAutoWriteCharEntry,3000);');
+const autoWriteBlock = slice('  function diaryRecentOwnWriting(', '  setTimeout(maybeAutoWriteCharEntry,3000);');
 const autoPeekBlock = slice('  function maybeAutoPeek(){', '  setTimeout(maybeAutoPeek,1800);');
 
 function makeStore(seed = {}) {
@@ -285,4 +285,58 @@ test('too-short model diary is not persisted and does not mark the cooldown',asy
  assert.equal(sb.entries.length,0);
  assert.equal(store.getItem('char_last_wrote_roleA'),null);
  assert.equal(sb.maybeAutoWriteCharEntry.inFlight,false);
+});
+
+test('personal remark is independent of diary body, role comments and memo records, with rollback on quota error',()=>{
+ const roleEntry={id:'d_char_1',author:'roleA',date:'2026-11-25',content:'ROLE_BODY',charComments:[{text:'old historical comment'}],noteType:'日记'};
+ const memo={id:'m1',author:'me',date:'2026-11-25',content:'MEMO_BODY',noteType:'备忘'};
+ const store=makeStore(),{sb}=makeSandbox({store,entries:[roleEntry,memo]});
+ const token=sb.diaryAccountToken();
+ assert.equal(sb.savePersonalRemark(roleEntry.id,token,'PRIVATE_REMARK'),true);
+ assert.equal(roleEntry.personalRemark.text,'PRIVATE_REMARK');
+ assert.equal(roleEntry.content,'ROLE_BODY');
+ assert.equal(roleEntry.charComments[0].text,'old historical comment');
+ assert.equal(sb.savePersonalRemark(memo.id,token,'no'),false);
+ assert.equal(memo.personalRemark,undefined);
+ assert.equal(sb.savePersonalRemark(roleEntry.id,'wrong-account','no'),false);
+ store.failWrites(true);
+ assert.equal(sb.savePersonalRemark(roleEntry.id,token,'failed edit'),false);
+ assert.equal(roleEntry.personalRemark.text,'PRIVATE_REMARK');
+ assert.equal(sb.savePersonalRemark(roleEntry.id,token,''),false);
+ assert.equal(roleEntry.personalRemark.text,'PRIVATE_REMARK');
+ store.failWrites(false);
+ assert.equal(sb.savePersonalRemark(roleEntry.id,token,''),true);
+ assert.equal(roleEntry.personalRemark,undefined);
+ assert.equal(JSON.parse(store.getItem('maomao_diary_entries_v1'))[0].personalRemark,undefined);
+});
+test('natural writing prompt includes only the selected role own prior diaries and not personal remarks, other roles, or memo bodies',()=>{
+ const entries=[
+ {id:'d_char_a',date:'2026-11-24',author:'roleA',content:'OWN_PRIOR_LIFE',personalRemark:{text:'PRIVATE_REMARK'},charComments:[{text:'OLD_COMMENT'}]},
+ {id:'d_char_b',date:'2026-11-24',author:'roleB',content:'OTHER_ROLE_LIFE'},
+ {id:'d_char_memo',date:'2026-11-24',author:'roleA',noteType:'备忘',content:'MEMO_PRIVATE'},
+ {id:'d_user',date:'2026-11-25',author:'me',content:'USER_PRIVATE',personalRemark:{text:'USER_REMARK'}}
+ ];
+ const {sb}=makeSandbox({store:makeStore(),entries});
+ const prompt=sb.diaryWritingPrompt(sb.peekCurrentRole());
+ assert.match(prompt,/OWN_PRIOR_LIFE/);
+ assert.match(prompt,/不要求起承转合/);
+ assert.match(prompt,/不默认上班、喝咖啡、加班、通勤/);
+ assert.doesNotMatch(prompt,/200-400字|PRIVATE_REMARK|OLD_COMMENT|OTHER_ROLE_LIFE|MEMO_PRIVATE|USER_PRIVATE|USER_REMARK/);
+});
+test('automatic and manual role comments never include private remark fields and label memo distinctly',async()=>{
+ for(const noteType of ['日记','备忘']){
+  const entry={id:'u',author:'me',date:'2026-11-25',content:'BODY_TEXT',noteType,personalRemark:{text:'REMARK_SECRET'}};
+  const {sb}=makeSandbox({store:makeStore(),entries:[entry]});
+  let calls=[];sb.PhoneAPI.complete=opts=>{calls.push(opts);return Promise.resolve('留言')};
+  sb.maybeAutoPeek();await new Promise(r=>setTimeout(r,10));
+  sb.readerId='u';sb.generateCharComment();await new Promise(r=>setTimeout(r,10));
+  assert.equal(calls.length,2);
+  for(const opts of calls){assert.ok(opts.user.includes('BODY_TEXT'));assert.ok(opts.user.includes(noteType==='备忘'?'备忘录':'日记'));assert.doesNotMatch(opts.user+opts.system,/REMARK_SECRET/);}
+ }
+});
+test('backup import and export preserve the dedicated private remark field',()=>{
+ const importer=slice('  function importBackup(file){','  function openMenu()');
+ assert.match(importer,/clean\.personalRemark=\{text:e\.personalRemark\.text/);
+ const exporter=slice('  function exportBackup(){','  function importBackup(file){');
+ assert.match(exporter,/Object\.assign\(\{\},entry/);
 });
