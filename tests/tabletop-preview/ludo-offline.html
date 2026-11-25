@@ -77,7 +77,8 @@ const players=room=>{
 function validate(state,room){
   const ids=players(room),positions=slots(ids.length);
   if(state?.schema!==1||!['roll','choose','finished'].includes(state.stage)||!Array.isArray(state.players)||state.players.length!==ids.length||!Array.from(state.players).every((p,i)=>p?.seatId===ids[i]&&p.slot===positions[i]&&Array.isArray(p.planes)&&p.planes.length===planesPerSeat&&Array.from(p.planes).every(v=>integer(v,-1,finish)))|| (state.stage==='choose'?!integer(state.die,1,6):state.die!==null)) fail('LUDO_INVALID_STATE');
-  const won=state.players.filter(p=>p.planes.every(v=>v===finish));
+  const goal=state.mode==='adventure'?2:4;
+  const won=state.players.filter(p=>p.planes.filter(v=>v===finish).length>=goal);
   if(state.stage==='finished'?won.length!==1:won.length!==0) fail('LUDO_INVALID_STATE');
   if(state.stage==='finished'?room.phase!=='finished':room.phase!=='playing'||!ids.includes(room.turnSeatId)) fail('LUDO_INVALID_PHASE');
   return ids;
@@ -98,35 +99,71 @@ function choices(player,die){return player.planes.flatMap((p,i)=>{const target=d
 function strictMove(move,kind,keys){return move&&typeof move==='object'&&!Array.isArray(move)&&move.kind===kind&&Object.keys(move).length===keys.length&&keys.every(k=>Object.hasOwn(move,k));}
 // Inject only a trusted dice source for reproducible tests. A move never carries
 // dice values, destinations, capture results, or a caller-selected next turn.
-function createLudoRules({rollDie=()=>1+Math.floor(Math.random()*6)}={}){
+const adventureSquares=Object.freeze({5:'supply',18:'supply',31:'supply',44:'supply',9:'wind',22:'wind',35:'wind',48:'wind'});
+function adventureDestination(player,plane,die,card){
+  const from=player.planes[plane],freeLaunch=from===-1&&!player.planes.some(p=>p>=0&&p<finish),base=destination(from,freeLaunch?6:die);if(!base)return null;
+  let {to}=base;const effects=[...base.effects];
+  if(card==='boost'){
+    if(!player.cards.boost||from<0||to+2>finish||to===finish)return null;
+    to+=2;effects.push('boost');if(to===finish)effects.push('finish');
+  }else if(card==='shield'){
+    if(!player.cards.shield||player.shields[plane]||to>=trackLength)return null;
+    effects.push('shield');
+  }else if(card!==undefined)return null;
+  const event=adventureSquares[square(player.slot,to)];
+  if(event==='wind'&&to+2<trackLength){to+=2;effects.push('wind');}
+  if(event==='supply')effects.push('supply');
+  return {kind:'choose',plane,from,to,effects,...(card?{card}:{})};
+}
+function adventureChoices(player,die){return player.planes.flatMap((p,i)=>[undefined,'boost','shield'].map(card=>adventureDestination(player,i,die,card)).filter(Boolean));}
+function createLudoRules({rollDie=()=>1+Math.floor(Math.random()*6),mode='classic'}={}){
+  if(!['classic','adventure'].includes(mode))fail('LUDO_INVALID_MODE');
+  const adventure=mode==='adventure';
+  const legalChoices=(p,die)=>adventure?adventureChoices(p,die):choices(p,die);
+  function verifyVariant(state){if(adventure?(state.mode!=='adventure'||!state.players.every(p=>integer(p.cruise,0,1)&&p.cards&&['boost','shield'].every(k=>integer(p.cards[k],0,2))&&Array.isArray(p.shields)&&p.shields.length===4&&Array.from(p.shields).every(x=>typeof x==='boolean'))):state.mode!==undefined)fail('LUDO_INVALID_ADVENTURE_STATE');}
+
   if(typeof rollDie!=='function') fail('LUDO_INVALID_DICE_SOURCE');
   return Object.freeze({gameId:'ludo',
-    init(room){const ids=players(room);return {schema:1,stage:'roll',die:null,players:ids.map((seatId,i)=>({seatId,slot:slots(ids.length)[i],planes:Array(planesPerSeat).fill(-1)})),last:null};},
+    init(room){const ids=players(room);return {schema:1,stage:'roll',die:null,players:ids.map((seatId,i)=>({seatId,slot:slots(ids.length)[i],planes:adventure?[0,4,-1,-1]:Array(planesPerSeat).fill(-1),...(adventure?{cards:{boost:1,shield:1},cruise:1,shields:[false,false,false,false]}:{})})),last:null,...(adventure?{mode:'adventure'}:{})};},
     step({state,room,actorSeatId,move}){
-      const ids=validate(state,room);
+      const ids=validate(state,room);verifyVariant(state);
       if(state.stage==='finished'||room.turnSeatId!==actorSeatId) fail('LUDO_NOT_YOUR_TURN');
       const next=clone(state),actor=next.players.find(p=>p.seatId===actorSeatId),following=ids[(ids.indexOf(actorSeatId)+1)%ids.length];
       if(state.stage==='roll'){
-        if(!strictMove(move,'roll',['kind'])) fail('LUDO_EXPECT_ROLL');
-        const die=rollDie();if(!integer(die,1,6)) fail('LUDO_INVALID_DIE');
-        const legal=choices(actor,die);next.last={kind:'roll',seatId:actorSeatId,die,skipped:legal.length===0};
+        const cruise=adventure&&strictMove(move,'cruise',['kind']);
+        if(!cruise&&!strictMove(move,'roll',['kind'])) fail('LUDO_EXPECT_ROLL');
+        if(cruise&&!actor.cruise)fail('LUDO_CRUISE_USED');
+        const die=cruise?3:rollDie();if(cruise)actor.cruise--;if(!integer(die,1,6)) fail('LUDO_INVALID_DIE');
+        const legal=legalChoices(actor,die);next.last={kind:'roll',seatId:actorSeatId,die,skipped:legal.length===0,...(cruise?{cruise:true}:{})};
         next.die=legal.length?die:null;next.stage=legal.length?'choose':'roll';
-        return {state:next,nextSeatId:legal.length||die===launchRoll?actorSeatId:following};
+        return {state:next,nextSeatId:legal.length||(!adventure&&die===launchRoll)?actorSeatId:following};
       }
-      if(!strictMove(move,'choose',['kind','plane'])||!integer(move.plane,0,planesPerSeat-1)) fail('LUDO_EXPECT_PLANE');
-      const selected=choices(actor,state.die).find(m=>m.plane===move.plane);if(!selected) fail('LUDO_ILLEGAL_PLANE');
+      if(!(strictMove(move,'choose',['kind','plane'])||(adventure&&strictMove(move,'choose',['kind','plane','card'])&&['boost','shield'].includes(move.card)))||!integer(move.plane,0,planesPerSeat-1)) fail('LUDO_EXPECT_PLANE');
+      const selected=legalChoices(actor,state.die).find(m=>m.plane===move.plane&&m.card===move.card);if(!selected) fail('LUDO_ILLEGAL_PLANE');
+      const effects=[...selected.effects],captures=[];let blocked=false;
+      if(adventure&&selected.card){actor.cards[selected.card]--;if(selected.card==='shield')actor.shields[move.plane]=true;}
       actor.planes[move.plane]=selected.to;
-      const landed=square(actor.slot,selected.to),captures=[];
-      if(landed!==null)for(const opponent of next.players){if(opponent===actor)continue;opponent.planes.forEach((p,i)=>{if(square(opponent.slot,p)===landed){opponent.planes[i]=-1;captures.push({seatId:opponent.seatId,plane:i});}});}
-      next.last={kind:'move',seatId:actorSeatId,plane:move.plane,die:state.die,from:selected.from,to:selected.to,effects:selected.effects,captures};
+      const landed=square(actor.slot,selected.to);
+      const targets=[];if(landed!==null)for(const opponent of next.players){if(opponent===actor)continue;opponent.planes.forEach((p,i)=>{if(square(opponent.slot,p)===landed)targets.push({opponent,i});});}
+      if(adventure&&targets.some(({opponent,i})=>opponent.shields[i])){
+        for(const {opponent,i} of targets)if(opponent.shields[i])opponent.shields[i]=false;
+        actor.planes[move.plane]=-1;actor.shields[move.plane]=false;blocked=true;
+        effects.splice(0,effects.length,...effects.filter(e=>!['supply','finish'].includes(e)),'blocked');
+      }else for(const {opponent,i} of targets){opponent.planes[i]=-1;if(adventure)opponent.shields[i]=false;captures.push({seatId:opponent.seatId,plane:i});}
+      let gained=null;
+      if(adventure&&!blocked){
+        if(selected.to>=trackLength)actor.shields[move.plane]=false;
+        if(effects.includes('supply')){const kind=state.die%2?'shield':'boost';if(actor.cards[kind]<2){actor.cards[kind]++;gained=kind;}}
+      }
+      next.last={kind:'move',seatId:actorSeatId,plane:move.plane,die:state.die,from:selected.from,to:actor.planes[move.plane],effects,captures,...(adventure?{card:selected.card??null,gained}: {})};
       next.die=null;
-      if(actor.planes.every(p=>p===finish)){next.stage='finished';return {state:next,result:{kind:'win',winnerSeatIds:[actorSeatId]}};}
-      next.stage='roll';return {state:next,nextSeatId:state.die===launchRoll?actorSeatId:following};
+      if(actor.planes.filter(p=>p===finish).length>=(adventure?2:4)){next.stage='finished';return {state:next,result:{kind:'win',winnerSeatIds:[actorSeatId]}};}
+      next.stage='roll';return {state:next,nextSeatId:!adventure&&state.die===launchRoll?actorSeatId:following};
     },
     project({state,room,actorSeatId}){
-      const ids=validate(state,room);if(!ids.includes(actorSeatId)) fail('LUDO_UNKNOWN_SEAT');
+      const ids=validate(state,room);verifyVariant(state);if(!ids.includes(actorSeatId)) fail('LUDO_UNKNOWN_SEAT');
       const active=room.turnSeatId===actorSeatId&&state.stage!=='finished';
-      return {schema:1,stage:state.stage,die:state.die,players:state.players.map(p=>({seatId:p.seatId,slot:p.slot,planes:p.planes.map((progress,i)=>({plane:i,progress,zone:progress===-1?'hangar':progress===finish?'finished':progress>=trackLength?'home':'track',square:square(p.slot,progress)}))})),last:clone(state.last),legalMoves:!active?[]:state.stage==='roll'?[{kind:'roll'}]:choices(state.players.find(p=>p.seatId===actorSeatId),state.die)};
+      return {schema:1,stage:state.stage,die:state.die,players:state.players.map(p=>({seatId:p.seatId,slot:p.slot,planes:p.planes.map((progress,i)=>({plane:i,progress,zone:progress===-1?'hangar':progress===finish?'finished':progress>=trackLength?'home':'track',square:square(p.slot,progress),...(adventure?{shield:p.shields[i]}:{})})),...(adventure?{cards:{...p.cards},cruise:p.cruise}:{})})),last:clone(state.last),legalMoves:!active?[]:state.stage==='roll'?[{kind:'roll'},...(adventure&&state.players.find(p=>p.seatId===actorSeatId).cruise?[{kind:'cruise'}]:[])]:legalChoices(state.players.find(p=>p.seatId===actorSeatId),state.die),...(adventure?{mode:'adventure',specialSquares:adventureSquares}:{})};
     }
   });
 }
@@ -139,7 +176,7 @@ const {LUDO_RULES_V1:rules}=modules["ludo-rules.js"];
 // Geometry for the provisional V1 cross board. Grid coordinates are 0-based.
 const rotate=(x,y,n)=>{for(let i=0;i<n;i++) [x,y]=[14-y,x];return {x,y};};
 const segment=[...Array.from({length:6},(_,x)=>[x,6]),...Array.from({length:6},(_,i)=>[6,5-i]),[7,0]];
-const hangar=[[2,2],[4,2],[2,4],[4,4]];
+const hangar=[[2,2],[3,2],[2,3],[3,3]];
 const pos=(x,y)=>`${x}:${y}`;
 const slots=Array.from({length:4},(_,i)=>i);
 const cells=Object.freeze([
@@ -167,17 +204,20 @@ function buildLudoBoard(view){
       const square=z==='track'?(p.slot*13+v.progress)%rules.trackLength:null;
       if(v.zone!==z||v.square!==square) fail();
       const cell=z==='track'?track[square]:cells.find(c=>c.slot===p.slot&&c.zone===z&&(z==='hangar'?c.plane===i:c.progress===v.progress));
-      if(!cell)fail();pieces.push({seatId:p.seatId,slot:p.slot,plane:i,progress:v.progress,zone:z,x:cell.x,y:cell.y,cellKey:pos(cell.x,cell.y)});
+      if(!cell)fail();pieces.push({seatId:p.seatId,slot:p.slot,plane:i,progress:v.progress,zone:z,x:cell.x,y:cell.y,cellKey:pos(cell.x,cell.y),shield:v.shield===true});
     }
   }
   if(!ids.has(view.selfSeatId)|| (view.phase==='playing'&&!ids.has(view.turnSeatId))) fail();
   const active=view.phase==='playing'&&view.selfSeatId===view.turnSeatId;
   const moves=active?g.legalMoves:[];
   const canRoll=moves.some(m=>m?.kind==='roll');
-  const choices=moves.filter(m=>m?.kind==='choose').map(m=>m.plane);
-  if(choices.some(i=>!range(i,0,3))||new Set(choices).size!==choices.length||moves.length!==choices.length+Number(canRoll)|| (canRoll&&choices.length)) fail();
+  const canCruise=moves.some(m=>m?.kind==='cruise');if(canCruise&&(!canRoll||g.mode!=='adventure'))fail();
+  const choices=moves.filter(m=>m?.kind==='choose'&&!m.card).map(m=>m.plane);
+  const cardMoves=moves.filter(m=>m?.kind==='choose'&&['boost','shield'].includes(m.card));
+  if(cardMoves.some(m=>!choices.includes(m.plane))||new Set(cardMoves.map(m=>m.card+':'+m.plane)).size!==cardMoves.length|| (g.mode!=='adventure'&&cardMoves.length))fail();
+  if(choices.some(i=>!range(i,0,3))||new Set(choices).size!==choices.length||moves.length!==choices.length+cardMoves.length+Number(canRoll)+Number(canCruise)|| (canRoll&&choices.length)) fail();
   const selectable=new Set(choices);
-  return {roomId:view.roomId,revision:view.revision,phase:view.phase,selfSeatId:view.selfSeatId,turnSeatId:view.turnSeatId,stage:g.stage,die:g.die??g.last?.die??null,last:g.last??null,winners:[...(view.result?.winnerSeatIds??[])],canRoll,choices,
+  return {roomId:view.roomId,revision:view.revision,phase:view.phase,selfSeatId:view.selfSeatId,turnSeatId:view.turnSeatId,stage:g.stage,die:g.die??g.last?.die??null,last:g.last??null,winners:[...(view.result?.winnerSeatIds??[])],canRoll,canCruise,choices,cardMoves,normalMoves:moves.filter(m=>m.kind==='choose'&&!m.card),mode:g.mode??'classic',specialSquares:g.specialSquares??{},cards:g.players.find(p=>p.seatId===view.selfSeatId)?.cards??null,
     cells,pieces:pieces.map(p=>({...p,selectable:p.seatId===view.selfSeatId&&selectable.has(p.plane)})),players:g.players.map(p=>({seatId:p.seatId,slot:p.slot,label:seatNames[p.slot],finished:p.planes.filter(v=>v.zone==='finished').length}))};
 }
 
@@ -186,17 +226,38 @@ function buildLudoBoard(view){
 function chooseLudoRoleMove(view,proposal){
   const b=buildLudoBoard(view);
   if(!b.selfSeatId.startsWith('role:')||b.selfSeatId!==b.turnSeatId||b.phase!=='playing')return null;
-  if(b.canRoll)return {kind:'roll'};
+  if(b.canRoll){
+    // Reserve the one deterministic action for a known useful landing.
+    const own=b.pieces.filter(p=>p.seatId===b.selfSeatId);
+    if(b.canCruise&&own.some(p=>p.progress===54|| (b.players.find(p=>p.seatId===b.selfSeatId).slot===2&&[9,13].includes(p.progress))))return {kind:'cruise'};
+    return {kind:'roll'};
+  }
   if(!b.choices.length)return null;
   if(proposal&&typeof proposal==='object'&&!Array.isArray(proposal)&&Object.keys(proposal).length===2&&Object.hasOwn(proposal,'kind')&&Object.hasOwn(proposal,'plane')&&proposal.kind==='choose'&&b.choices.includes(proposal.plane)) return {kind:'choose',plane:proposal.plane};
   const self=b.players.find(p=>p.seatId===b.selfSeatId);
   const score=m=>{
     const landing=m.to<rules.trackLength?(self.slot*13+m.to)%rules.trackLength:null;
     const captures=landing===null?0:b.pieces.filter(p=>p.seatId!==self.seatId&&p.zone==='track'&&(p.slot*13+p.progress)%rules.trackLength===landing).length;
-    return (m.to===rules.finish?1000:0)+captures*200+(m.from===-1?70:0)+(m.to-m.from);
+    if(b.mode==='classic')return (m.to===rules.finish?1000:0)+captures*200+(m.from===-1?70:0)+(m.to-m.from);
+    const shielded=landing!==null&&b.pieces.some(p=>p.seatId!==self.seatId&&p.zone==='track'&&p.shield&&(p.slot*13+p.progress)%rules.trackLength===landing);
+    const type=String(self.slot+1); // Local fallback strategy, independent of private role IDs.
+    // Estimate immediate exposure from nearby opponents; not a prediction of their dice.
+    const ownPlane=b.pieces.find(p=>p.seatId===self.seatId&&p.plane===m.plane);
+    const threat=landing===null?0:b.pieces.filter(p=>{
+      if(p.seatId===self.seatId||p.zone!=='track')return false;
+      const gap=(landing-(p.slot*13+p.progress)%rules.trackLength+rules.trackLength)%rules.trackLength;
+      return gap>=1&&gap<=6&&p.progress+gap<rules.trackLength;
+    }).length;
+    const protectedFlight=ownPlane?.shield||m.card==='shield';
+    const cardCost=m.card==='boost'?(type==='2'?6:19):m.card==='shield'?15:0;
+    const safety=(protectedFlight?0:threat)*(type==='1'?65:type==='3'?30:9);
+    const progress=(m.to-m.from)*(type==='2'?4:2);
+    const routeBonus=(m.effects.includes('flight')?18:0)+(m.effects.includes('supply')?(type==='3'?55:15):0)+(m.effects.includes('wind')?(type==='3'?20:6):0);
+    const homeBonus=m.to>=52?(type==='1'?45:15):0;
+    return (shielded?-10000:0)+(m.to===rules.finish?1000:0)+captures*(type==='2'?250:type==='3'?130:80)+(m.from===-1?35:0)+progress+routeBonus+homeBonus-cardCost-safety;
   };
   const ranked=view.game.legalMoves.filter(m=>m.kind==='choose'&&b.choices.includes(m.plane)).sort((a,c)=>score(c)-score(a)||a.plane-c.plane);
-  return {kind:'choose',plane:ranked[0].plane};
+  return {kind:'choose',plane:ranked[0].plane,...(ranked[0].card?{card:ranked[0].card}:{})};
 }
 
 return {LUDO_BOARD_CELLS,buildLudoBoard,chooseLudoRoleMove};
@@ -574,20 +635,20 @@ const {chooseLudoRoleMove}=modules["ludo-board.js"];
 
 // A local, bounded role-turn driver over the existing verified room adapter.
 // No network model, new account, storage, dice source or authority of its own.
-function createLudoTurnDriver({session,onView=()=>{},pace=()=>{},maxActions=32}={}){
+function createLudoTurnDriver({session,onView=()=>{},pace=()=>{},maxActions=32,decide=null,onDecision=()=>{}}={}){
   const fail=code=>{throw Error(code);};
-  if(!session||typeof session.viewUser!=='function'||typeof session.prepareRoleTurn!=='function'||typeof onView!=='function'||typeof pace!=='function'||!Number.isInteger(maxActions)||maxActions<1||maxActions>128)fail('LUDO_INVALID_DRIVER');
+  if(!session||typeof session.viewUser!=='function'||typeof session.prepareRoleTurn!=='function'||typeof onView!=='function'||typeof pace!=='function'||(decide!==null&&typeof decide!=='function')||typeof onDecision!=='function'||!Number.isInteger(maxActions)||maxActions<1||maxActions>128)fail('LUDO_INVALID_DRIVER');
   let running=false,disposed=false,epoch=0,cancelPace=null;
   const check=stamp=>{if(disposed||stamp!==epoch)fail('LUDO_DRIVER_STOPPED');};
   function stop(){epoch++;cancelPace?.();}
-  async function waitForPace(stamp){
+  async function waitForWork(stamp,work){
     check(stamp);
-    let cancel;
-    const stopped=new Promise((_,reject)=>{cancel=()=>reject(Error('LUDO_DRIVER_STOPPED'));});
+    let cancel;const ac=new AbortController();
+    const stopped=new Promise((_,reject)=>{cancel=()=>{reject(Error('LUDO_DRIVER_STOPPED'));ac.abort();};});
     cancelPace=cancel;
     try{
-      await Promise.race([stopped,Promise.resolve().then(()=>{check(stamp);return pace();})]);
-      check(stamp);
+      const result=await Promise.race([stopped,Promise.resolve().then(()=>{check(stamp);return work(ac.signal);})]);
+      check(stamp);return result;
     }finally{if(cancelPace===cancel)cancelPace=null;}
   }
   async function runUntilUser(){
@@ -604,11 +665,16 @@ function createLudoTurnDriver({session,onView=()=>{},pace=()=>{},maxActions=32}=
       while(view.phase==='playing'&&view.turnSeatId!=='user'&&actions<maxActions){
         const role=view.seats.find(s=>s.seatId===view.turnSeatId&&s.kind==='role'&&s.mode==='player');
         if(!role||role.seatId!=='role:'+role.roleId)fail('LUDO_INVALID_ROLE_TURN');
-        await waitForPace(stamp);check(stamp);
+        await waitForWork(stamp,()=>pace(view));check(stamp);
         const turn=await session.prepareRoleTurn(role.roleId);check(stamp);
         const own=turn?.view;
         if(own?.roomId!==roomId||own.gameId!=='ludo'||own.revision!==view.revision||own.selfSeatId!==role.seatId||own.turnSeatId!==role.seatId||typeof turn.commit!=='function')fail('LUDO_STALE_VIEW');
-        const move=chooseLudoRoleMove(own);
+        let choice=null;
+        if(decide&&own.game.legalMoves.length>1){try{choice=await waitForWork(stamp,signal=>decide(own,signal));}catch{check(stamp);}}
+        check(stamp);
+        // Match the model proposal against this exact seat/revision's projected legal actions.
+        const proposed=choice?.move,allowed=proposed&&own.game.legalMoves.find(m=>m.kind===proposed.kind&&m.plane===proposed.plane&&m.card===proposed.card&&Object.keys(proposed).every(k=>['kind','plane','card'].includes(k)));
+        const move=allowed?(allowed.kind==='choose'?{kind:'choose',plane:allowed.plane,...(allowed.card?{card:allowed.card}:{})}:{kind:allowed.kind}):chooseLudoRoleMove(own);
         if(!move)fail('LUDO_NO_ROLE_MOVE');
         check(stamp);
         // The session rechecks scope/roster and the turn token at commit.
@@ -617,6 +683,7 @@ function createLudoTurnDriver({session,onView=()=>{},pace=()=>{},maxActions=32}=
         const next=await session.viewUser();check(stamp);validate(next);
         if(next.revision!==view.revision+1)fail('LUDO_STALE_VIEW');
         view=next;await onView(view);check(stamp);
+        if(allowed&&typeof choice.say==='string'&&choice.say.trim()){try{Promise.resolve(onDecision(own.selfSeatId,choice.say.slice(0,150),view)).catch(()=>{});}catch{/* chat must not invalidate a committed move */}}
       }
       return {actions,status:view.phase!=='playing'?view.phase:view.turnSeatId==='user'?'user':'yield'};
     }finally{running=false;}
