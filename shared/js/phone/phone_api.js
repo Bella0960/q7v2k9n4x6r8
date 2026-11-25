@@ -41,6 +41,11 @@
     /* ========== 单次 completion ========== */
 
     NS.complete = function (opts) {
+        return completeRequest(opts, false);
+    };
+
+    // Log one terminal business outcome per request, including structured-output validation.
+    function completeRequest(opts, structured) {
         // opts: { system, user, messages, temperature, model, timeoutMs, signal? }
         var config = opts.apiConfig || (Storage ? Storage.getApiConfig() : {});
         var apiKey = (config.apiKey || '').trim();
@@ -105,7 +110,6 @@
                 return response.text().then(function (txt) {
                     var e = new Error('HTTP ' + response.status + (opts.onDiagnostic ? '' : ' ' + txt.slice(0, 200)));
                     e.status = response.status;
-                    log('error', model, start, e.message);
                     throw e;
                 });
             }
@@ -122,6 +126,12 @@
                 reasoningOnly: !text && Boolean(choice?.message?.reasoning_content || choice?.message?.reasoning)
             });
             observe?.(text, null, data?.usage);
+            if (structured) {
+                var parsed = cleanJSON(text);
+                reportDiagnostic(opts, { stage: 'parse', ok: parsed.ok });
+                log(parsed.ok ? 'success' : 'error', model, start, parsed.ok ? '' : '模型返回的 JSON 格式无效');
+                return parsed;
+            }
             log('success', model, start);
             return text;
         }).catch(function (err) {
@@ -134,7 +144,9 @@
                     (timedOut ? '请求超时（' + timeoutMs + 'ms）' : '请求已中断'));
                 if (cancelledByCaller) err.name = 'AbortError';
             }
-            log('error', model, start, err && err.message ? err.message : String(err));
+            // Keep provider details in the caller error, not in persistent logs.
+            log('error', model, start, httpStatus ? 'HTTP ' + httpStatus
+                : cancelledByCaller ? '请求已取消' : timedOut ? '请求超时（' + timeoutMs + 'ms）' : 'API 请求或响应解析失败');
             throw err;
         }).finally(function () {
             clearTimeout(timer);
@@ -142,7 +154,7 @@
                 externalSignal.removeEventListener('abort', onCallerAbort);
             }
         });
-    };
+    }
 
 
     /* ========== 图片生成（OpenAI-compatible Images API） ========== */
@@ -287,11 +299,7 @@
     }
 
     NS.completeJSON = function (opts) {
-        return NS.complete(opts).then(function (raw) {
-            var parsed = cleanJSON(raw);
-            if (opts.onDiagnostic) reportDiagnostic(opts, { stage: 'parse', ok: parsed.ok });
-            return parsed;
-        });
+        return completeRequest(opts, true);
     };
 
     /* ========== JSON 清洗 ========== */
@@ -348,7 +356,7 @@
                 time: Date.now(),
                 model: model || 'unknown',
                 status: status,
-                duration: Date.now() - startMs,
+                duration: startMs > 0 ? Math.max(0, Date.now() - startMs) : 0,
                 errorMsg: (status === 'error' && errorMsg) ? String(errorMsg).slice(0, 200) : ''
             });
         } catch (e) {}
