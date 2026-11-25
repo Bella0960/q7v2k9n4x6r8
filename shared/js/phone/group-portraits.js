@@ -56,8 +56,9 @@
     try{var current=readGroup(s.expected.id);return !!current&&current.account===s.account&&JSON.stringify(current.group)===s.expected.serialized;}
     catch(error){return false;}
   }
-  async function save(s,changes){
-    if(!s||!s.account||!stillCurrent(s))throw Error('群聊资料已变化，请重新打开');
+  async function save(s,changes,active){
+    function valid(){try{return stillCurrent(s)&&(active==null||typeof active==='function'&&active()===true);}catch(error){return false;}}
+    if(!s||!s.account||!valid())throw Error('群聊资料已变化，请重新打开');
     if(!(changes instanceof Map))throw Error('无效修改');
     var original=JSON.parse(s.expected.serialized),next=new Map(entries(original,s.account).map(function(x){return [x.memberId,x.assetId];}));
     if(changes.size===0)return true;
@@ -71,20 +72,20 @@
     for(var pair of changes){
       var id=pair[0],blob=pair[1];
       if(typeof id!=='string'||!mayEdit(original,id))throw Error('成员已不存在或没有编辑权限');
-      if(!stillCurrent(s))throw Error('群聊资料已变化，请重新打开');
+      if(!valid())throw Error('群聊资料已变化，请重新打开');
       if(blob===null){next.delete(id);continue;}
       if(!(blob instanceof Blob)||!/^image\/(?:jpeg|png|webp)$/.test(blob.type)||blob.size>1024*1024)throw Error('图片无效或过大');
       if(!repo)repo=media();
       var result=await repo.putBlob(blob,{type:'image',mimeType:blob.type,ownerType:'group-portrait',ownerId:JSON.stringify([s.account,String(s.group.id),id])});
       if(!result||!result.ok||!result.value||!ASSET.test(result.value.assetId))throw Error('头像存储失败');
-      if(!stillCurrent(s))throw Error('群聊资料已变化，请重新打开');
+      if(!valid())throw Error('群聊资料已变化，请重新打开');
       var verified=await repo.getBlob(result.value.assetId);
-      if(!stillCurrent(s)||!verified||!verified.ok||!verified.value||verified.value.size!==blob.size||verified.value.type!==blob.type)throw Error('头像读取验证失败');
+      if(!valid()||!verified||!verified.ok||!verified.value||verified.value.size!==blob.size||verified.value.type!==blob.type)throw Error('头像读取验证失败');
       var refs=await repo.listByOwner('group-portrait',JSON.stringify([s.account,String(original.id),id]));
-      if(!stillCurrent(s)||!refs||!refs.ok||!Array.isArray(refs.value)||!refs.value.some(function(ref){return ref&&ref.assetId===result.value.assetId;}))throw Error('头像引用验证失败');
+      if(!valid()||!refs||!refs.ok||!Array.isArray(refs.value)||!refs.value.some(function(ref){return ref&&ref.assetId===result.value.assetId;}))throw Error('头像引用验证失败');
       next.set(id,result.value.assetId);
     }
-    if(!stillCurrent(s))throw Error('群聊资料已变化，请重新打开');
+    if(!valid())throw Error('群聊资料已变化，请重新打开');
     var updated=original;
     updated[FIELD]={accountId:s.account,entries:Array.from(next,function(x){return {memberId:x[0],assetId:x[1]};})};
     var guard=global.MAOGroupWriteGuard;
