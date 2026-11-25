@@ -442,7 +442,7 @@ try{
         const ht=(type,x,y)=>hc.send('Input.dispatchTouchEvent',{type,touchPoints:type==='touchEnd'||type==='touchCancel'?[]:[{x,y,id:1}]});
         const inventory=l=>[...l.pages.flat(),...l.dock,...l.removed].sort();
         const measure=async(label,commit)=>{
-          diagnosticPhase=commit?395:393;
+          diagnosticPhase=commit?430:393;
           if(!commit)console.log('SEALED_BROWSER_CHECKPOINT:393');
           const point=await hp.evaluate(()=>{
             const bounds=document.getElementById('homeScreen').getBoundingClientRect();
@@ -455,6 +455,7 @@ try{
           assert.ok(point,'no visible drag source in heavy home grid');
           await ht('touchStart',point.x,point.y);
           await hp.waitForSelector('.drag-avatar',{timeout:3000});
+          diagnosticPhase=commit?431:393;
           const targets=await hp.evaluate(()=>{
             const bounds=document.getElementById('homeScreen').getBoundingClientRect();
             return Array.from(document.querySelectorAll('#gridPage0 .app-tile[data-drag]:not(.is-dragging-source)')).map(el=>{
@@ -502,7 +503,11 @@ try{
               }
             }
           }finally{result=await hp.evaluate(()=>window.__stopHeavyDragProbe());}
-          assert.ok(result.samples>=20&&result.changes>=1,'heavy probe did not exercise real reordering');
+          diagnosticPhase=commit?432:393;
+          assert.ok(result.samples>=20,'heavy probe did not collect enough frame samples');
+          diagnosticPhase=commit?433:393;
+          assert.ok(result.changes>=1,'heavy probe did not exercise real reordering');
+          diagnosticPhase=commit?434:393;
           // CDP touch dispatch can resolve before the final queued rAF runs.
           // Do not compare a stale placeholder with the subsequently committed slot.
           await hp.waitForFunction(({x,y})=>{
@@ -528,10 +533,13 @@ try{
           await ht(commit?'touchEnd':'touchCancel');
           await hp.waitForFunction(()=>!document.querySelector('.drag-avatar,.drag-placeholder,.is-dragging-source')&&!document.body.classList.contains('home-dragging'));
           const after=await readLayout(hp);
+          diagnosticPhase=commit?435:393;
           assert.deepEqual(inventory(after),inventory(heavyLayout),'heavy drag lost or duplicated layout item');
           if(!commit)assert.deepEqual(after,heavyLayout,'cancel persisted a partial layout');
           else {
+            diagnosticPhase=436;
             assert.deepEqual(after.pages,expected.pages,'saved grid order differs from the intended drop');
+            diagnosticPhase=437;
             assert.deepEqual(after.dock,expected.dock,'saved Dock order differs from the intended drop');
           }
           diagnosticPhase=commit?396:394;
@@ -571,7 +579,9 @@ try{
   const category=error.name==='TimeoutError'?'timeout':error.code==='ERR_ASSERTION'?'assertion':error.code==='ENOENT'?'browser-environment':'other';
   // Fixed numeric phases only, accepted by the existing public QA summary.
   // 391 fixture; 392 restored assets; 393 normal function; 394 normal budget;
-  // 395 CPU4x function; 396 CPU4x budget; 397 reload/persistence.
+  // 396 CPU4x budget; 397 reload/persistence.
+  // CPU4x fine-grained phases 430 source, 431 targets, 432 samples,
+  // 433 real reorders, 434 input/drop cleanup, 435 inventory, 436 pages, 437 Dock.
   console.log('SEALED_BROWSER_FAILURE:'+diagnosticPhase+':'+category);
   throw error;
 }finally{
