@@ -15,7 +15,7 @@
     <script src="../../shared/js/phone/storage/media-repository.js?v=20261107v2"></script>
     <script src="../../shared/js/phone/group-portraits.js?v=20261125g4"></script>
     <script src="../../shared/js/phone/group-admin-policy.js?v=20261125g2"></script>
-    <script src="../../shared/js/phone/group-write-guard.js?v=20261125g3"></script>
+    <script src="../../shared/js/phone/group-write-guard.js?v=20261125g5"></script>
     <script src="../../shared/js/phone/role-avatar-library.js?v=20261113v1"></script>
     <script src="../../shared/js/phone/role-sticker-library.js?v=20261107v2"></script>
     <script src="../../shared/js/phone/chat-image-vision.js?v=20261113v1"></script>
@@ -2441,6 +2441,15 @@
             try { groupWriteBase=window.MAOGroupWriteGuard.read(String(currentRoleId));currentGroup=groupWriteBase&&groupWriteBase.group; } catch(error) { currentGroup=null; }
         }
 
+        // The page owns its initial account scope; never adopt a different account in place.
+        const groupPageAccount=groupWriteBase?groupWriteBase.account:null;
+        function readPageGroup(){
+            try{
+                if(groupPageAccount===null||!window.MAOGroupWriteGuard)return null;
+                var fresh=window.MAOGroupWriteGuard.read(String(currentRoleId));
+                return fresh&&fresh.account===groupPageAccount?fresh:null;
+            }catch(error){return null;}
+        }
         function groupMemberDisplayName(member) {
             return String((member && (member.nickname || member.name)) || '成员').trim() || '成员';
         }
@@ -2818,6 +2827,7 @@
         var _chatHistoryUnreadable = false;
         const singleChatTurnSnapshots = new WeakMap();
         function loadMessages() {
+            if(isGroupChat&&!readPageGroup())return [];
             if (isGroupChat && _storage) {
                 try {
                     var arr = _storage.getChatHistory(currentCharacter.id);
@@ -2956,6 +2966,7 @@
         }
 
         function saveMessages(list) {
+            if(isGroupChat&&!readPageGroup())return false;
             const guardedTurn = singleChatTurnSnapshots.has(list);
             if (guardedTurn && !singleChatTurnIsCurrent(list)) return false;
             if (_chatHistoryUnreadable) {
@@ -5232,6 +5243,7 @@
         window.addEventListener('pagehide', function () {
             try {
                 if (!aiSending || !inflightSnapshot || singleChatPartialSaved) return;
+                if(isGroupChat&&(!window.MAOGroupWriteGuard.matches(inflightSnapshot.groupScope,inflightSnapshot.memberId)))return;
                 var raw = String(inflightSnapshot.text || '').trim();
                 if (!raw) return;
                 var cleaned = stripInternalReasoning(raw)
@@ -5250,7 +5262,7 @@
                     name: inflightSnapshot.groupName,
                     memberId: inflightSnapshot.memberId
                 });
-                if (saveMessages(list) && !isGroupChat) singleChatPartialSaved = true;
+                if (saveMessages(list)) {if(isGroupChat)inflightSnapshot=null;else singleChatPartialSaved=true;}
             } catch (e) {}
         });
 
@@ -5273,6 +5285,13 @@
         }
 
         async function sendMsgTurn(opts) {
+            let groupTurnScope=null;
+            if(isGroupChat){
+                if(aiSending){showToast('当前群成员正在回复，请稍后');return;}
+                groupTurnScope=readPageGroup();
+                if(!groupTurnScope){showToast('群聊或账号已变化，请重新进入');return;}
+                currentGroup=groupTurnScope.group;groupWriteBase=groupTurnScope;
+            }
             const input = document.getElementById('chat-input');
             const sendState = (window.ChatSendPolicy && typeof window.ChatSendPolicy.normalizeOptions === 'function')
                 ? window.ChatSendPolicy.normalizeOptions(opts, input.value)
@@ -5543,7 +5562,7 @@
                 }
             }
 
-            if (!isGroupChat) {
+            {
                 if (_chatHistoryUnreadable) return;
                 try { singleChatTurnSnapshots.set(historyList, localStorage.getItem(storageKey)); }
                 catch (err) {
@@ -6454,6 +6473,9 @@
                 }
             }
 
+            if(isGroupChat&&(!groupReplyPick||!window.MAOGroupWriteGuard.matches(groupTurnScope,String(groupReplyPick.id))||!singleChatTurnIsCurrent(historyList))){
+                showToast('群成员或记录已变化，本轮已取消');return;
+            }
             // 界面反馈：显示"对方正在输入..."状态（底部 loading + 顶部 header 切换）
             var chatTitleEl = document.getElementById('chat-title');
             var originalTitleText = chatTitleEl ? chatTitleEl.textContent : '';
@@ -6483,6 +6505,7 @@
             // R4 渲染回调：交给 PhoneStream 每帧节流调用（正则清洗 + DOM 写入 + 滚动）
             // 引擎已抽离至 shared/js/phone/phone_stream.js（三段式超时/SSE 解析/残留收尾）
             function paintStreamLive(text) {
+                if(isGroupChat&&window.MAOGroupWriteGuard.account()!==groupPageAccount)return;
                 // 保留原始累计文本：若流引擎意外抛错，收尾仍可走既有清洗与落库流程。
                 lastPaintedStreamText = typeof text === 'string' ? text : '';
                 // 同步快照，供 pagehide 时把半截消息落库
@@ -6498,6 +6521,7 @@
                         return snapshotText;
                     })(),
                     voiceMode: presenceMode || 'online',
+                    groupScope: groupTurnScope,
                     groupName: groupReplyPick ? groupReplyPick.name : undefined,
                     memberId: groupReplyPick && groupReplyPick.id != null ? String(groupReplyPick.id) : undefined
                 };
@@ -6522,7 +6546,7 @@
                 if (!streamBubble) {
                     const loadingEl = document.getElementById(statusId);
                     if (loadingEl) loadingEl.remove();
-                    var tmpStreamMsg = { role: 'assistant', text: tmpText, name: groupReplyPick ? groupReplyPick.name : undefined };
+                    var tmpStreamMsg = { role: 'assistant', text: tmpText, name: groupReplyPick ? groupReplyPick.name : undefined, memberId: groupReplyPick ? String(groupReplyPick.id) : undefined };
                     // 先用 DocumentFragment 组装，拿到本次临时消息的全部节点（主 row / 旁白 / 额外气泡）。
                     const sfrag = document.createDocumentFragment();
                     appendMessageToDOM(tmpStreamMsg, undefined, sfrag);
@@ -6585,6 +6609,14 @@
             const loadingEl2 = document.getElementById(statusId);
             if (loadingEl2) loadingEl2.remove();
 
+            if(isGroupChat&&(!groupReplyPick||!window.MAOGroupWriteGuard.matches(groupTurnScope,String(groupReplyPick.id))||!singleChatTurnIsCurrent(historyList))){
+                streamNodes.forEach(function(node){if(node&&node.parentNode)node.parentNode.removeChild(node);});
+                if(_vl)_vl.streaming=false;
+                inflightSnapshot=null;aiSending=false;groupAutoFollowupToken+=1;
+                if(chatTitleEl)chatTitleEl.textContent=originalTitleText;
+                showToast('群资料或聊天记录已变化，本轮回复未写入，请重新进入');
+                return;
+            }
             if (!isGroupChat && !singleChatTurnIsCurrent(historyList)) {
                 if (_vl) { _vl.streaming = false; vlRefresh(); }
                 else renderAllMessages();
@@ -7050,7 +7082,7 @@
                 var followupDelay = getGroupReplyDelayMs();
                 await new Promise(function (resolve) { setTimeout(resolve, followupDelay); });
                 // A new user message during the pause takes priority and cancels this queued turn.
-                if (followupToken !== groupAutoFollowupToken) return;
+                if (followupToken !== groupAutoFollowupToken || !readPageGroup() || !singleChatTurnIsCurrent(historyList)) return;
                 await sendMsg({
                     contextOnly: true,
                     silent: true,
@@ -8264,17 +8296,16 @@
                 }
                 return '';
             });
-            var settings = getGroupSettings();
+            var settings = getGroupSettings(), privateActionSeen=false;
             text = text.replace(/\[群私聊[:：]([^:：\]]+)[:：]([^\]]{1,300})\]/g, function (marker, targetKey, privateText) {
-                if (settings.allowPrivateMessages === false) return '';
-                var members = Array.isArray(currentGroup.members) ? currentGroup.members : [];
-                var target = members.find(function (member) {
-                    return member && (String(member.id) === String(targetKey).trim() ||
-                        String(member.name || '').trim() === String(targetKey).trim() ||
-                        groupMemberDisplayName(member) === String(targetKey).trim());
-                });
-                if (!target || !target.id || !String(privateText || '').trim()) return '';
-                if (!speaker || String(speaker.id) !== String(target.id)) return '';
+                if (privateActionSeen||isRegeneration||settings.allowPrivateMessages===false||!speaker||speaker.id==null||!readPageGroup())return '';
+                var exactId=String(targetKey).trim();
+                if(exactId!==String(speaker.id)||exactId==='__user'||exactId===String(currentRoleId))return '';
+                var members=Array.isArray(currentGroup.members)?currentGroup.members:[];
+                var matches=members.filter(function(member){return member&&String(member.id)===exactId;});
+                if(matches.length!==1||matches[0].muted||!getRoleById(exactId)||!String(privateText||'').trim())return '';
+                var target=matches[0];
+                privateActionSeen=true;
                 var targetId = String(target.id);
                 var displayName = groupMemberDisplayName(target);
                 var privateMessageText = String(privateText).trim().slice(0, 300);
