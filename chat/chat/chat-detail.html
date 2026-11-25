@@ -13,8 +13,9 @@
     <script src="../../shared/js/phone/phone_storage.js"></script>
     <script src="../../shared/js/phone/storage/repository.js"></script>
     <script src="../../shared/js/phone/storage/media-repository.js?v=20261107v2"></script>
-    <script src="../../shared/js/phone/group-portraits.js?v=20261125g1"></script>
+    <script src="../../shared/js/phone/group-portraits.js?v=20261125g2"></script>
     <script src="../../shared/js/phone/group-admin-policy.js?v=20261125g1"></script>
+    <script src="../../shared/js/phone/group-write-guard.js?v=20261125g1"></script>
     <script src="../../shared/js/phone/role-avatar-library.js?v=20261113v1"></script>
     <script src="../../shared/js/phone/role-sticker-library.js?v=20261107v2"></script>
     <script src="../../shared/js/phone/chat-image-vision.js?v=20261113v1"></script>
@@ -2435,9 +2436,9 @@
             return null;
         }
 
-        let currentGroup = null;
+        let currentGroup = null, groupWriteBase = null;
         if (isGroupChat) {
-            currentGroup = loadGroupById(currentRoleId);
+            try { groupWriteBase=window.MAOGroupWriteGuard.read(String(currentRoleId));currentGroup=groupWriteBase&&groupWriteBase.group; } catch(error) { currentGroup=null; }
         }
 
         function groupMemberDisplayName(member) {
@@ -2470,25 +2471,22 @@
                 return member && !member.muted && isGroupMemberInActiveHours(member);
             });
         }
-        function saveCurrentGroupObject() {
-            if (!currentGroup || !currentGroup.id) return false;
-            try {
-                var groups = JSON.parse(localStorage.getItem('phone_groups') || '[]');
-                if (!Array.isArray(groups)) groups = [];
-                var found = false;
-                for (var i = 0; i < groups.length; i++) {
-                    if (String(groups[i] && groups[i].id) === String(currentGroup.id)) {
-                        groups[i] = currentGroup;
-                        found = true;
-                        break;
-                    }
-                }
-                if (!found) return false;
-                localStorage.setItem('phone_groups', JSON.stringify(groups));
-                var status = document.getElementById('chat-status-sub');
-                if (status) status.textContent = (currentGroup.members || []).map(groupMemberDisplayName).join(' · ') || '群聊';
-                return true;
-            } catch (e) { return false; }
+        function saveCurrentGroupObject(expected) {
+            if (!currentGroup || !currentGroup.id || !window.MAOGroupWriteGuard) return false;
+            var result=window.MAOGroupWriteGuard.commit(expected||groupWriteBase,currentGroup);
+            if(!result.ok){
+                try{
+                    var fresh=window.MAOGroupWriteGuard.read(String(currentRoleId));
+                    if(fresh&&groupWriteBase&&fresh.account===groupWriteBase.account){currentGroup=fresh.group;groupWriteBase=fresh;}
+                    else {currentGroup=null;groupWriteBase=null;}
+                }catch(error){currentGroup=null;groupWriteBase=null;}
+                if(typeof showToast==='function')showToast('群资料已变化或保存失败，请重新进入群聊');
+                return false;
+            }
+            groupWriteBase=result.expected;
+            var status=document.getElementById('chat-status-sub');
+            if(status)status.textContent=(currentGroup.members||[]).map(groupMemberDisplayName).join(' · ')||'群聊';
+            return true;
         }
         function groupRelationshipKey(idA, idB) {
             return JSON.stringify([String(idA), String(idB)].sort());
@@ -3122,7 +3120,7 @@
             if(!isGroupChat||!currentGroup||!memberId||(!isSent&&!member)||!window.MAOGroupPortraits)return;
             var group=currentGroup, id=String(group.id);
             window.MAOGroupPortraits.resolve(group,memberId).then(function(url){
-                if(url&&currentGroup===group&&String(currentRoleId)===id&&node.isConnected)fillAvatar(node,url,USER_SVG);
+                if(url&&currentGroup===group&&String(currentRoleId)===id)fillAvatar(node,url,USER_SVG);
             });
         }
         function getMyAvatar() {
@@ -8338,7 +8336,10 @@
                 var policy=window.MAOGroupAdminPolicy;
                 if(!policy)return '';
                 var parts=payload.split(/[:：]/),action=parts.shift(),target=String(parts.shift()||'').trim(),value=parts.join(':');
-                var actor=String(speaker.id),gid=String(currentRoleId),fresh=loadGroupById(gid);
+                var actor=String(speaker.id),gid=String(currentRoleId),expected;
+                try{expected=window.MAOGroupWriteGuard.read(gid);}catch(error){return '';}
+                if(!expected||!groupWriteBase||expected.account!==groupWriteBase.account)return '';
+                var fresh=expected.group;
                 if(!fresh||String(fresh.id)!==gid||!policy.can(fresh,actor,action,target))return '';
                 var actionMessage='',existing=policy.member(fresh,target);
                 if(action==='头衔'){
@@ -8374,10 +8375,8 @@
                     actionMessage='已将「'+groupMemberDisplayName(existing)+'」移出群聊';
                 }
                 if(!actionMessage)return '';
-                var previous=currentGroup;
                 currentGroup=fresh;
-                if(!saveCurrentGroupObject()){
-                    currentGroup=previous;
+                if(!saveCurrentGroupObject(expected)){
                     if(typeof showToast==='function')showToast('群管理操作未保存成功');
                     return '';
                 }
