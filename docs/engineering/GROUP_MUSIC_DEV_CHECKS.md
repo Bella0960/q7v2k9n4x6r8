@@ -13,7 +13,7 @@
 
 - 播放器/仲裁：node --test tests/music-playback-source-ownership.test.mjs tests/music-data-integrity.test.mjs tests/music-duration-display.test.mjs
 - 曲库：npm run test:group:music-catalog
-- 群会话：现有 npm run test:group:governance；新会话测试随 M05 增加。
+- 群会话：现有 npm run test:group:governance；另运行 node --test tests/group-listening-session.test.mjs。
 - 音乐存储及备份（实际触碰时）：node --test tests/music-storage-trust.test.mjs tests/music-qa-storage-trust.test.mjs tests/media-backup.test.mjs
 - 真实浏览器：需要构建时 npm run build，然后 node tests/music-mobile-browser.mjs；账号隔离 npm run test:group:music-catalog:browser。只在被影响时重复执行，不跳过最后规定验收。
 - 集中阶段验收：唯一公共 reusable-qa-request.yml，operation=verify，精确候选 SHA。不得建立第二站点或绕过当前通道。
