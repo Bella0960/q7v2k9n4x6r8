@@ -236,7 +236,12 @@
     }
     var existing = readMemories(boundRoleId);
     var key = window.MemoryRecall.normalize(text.slice(0,600));
-    if (existing.length >= 300 && !existing.some(function(item) { return item && window.MemoryRecall.normalize(item.content || item.text || '') === key; })) {
+    if (existing.some(function(item) { return item && window.MemoryRecall.normalize(item.content || item.text || '') === key; })) {
+      button.textContent = '相同内容已在记忆库，请核对来源';
+      button.disabled = true;
+      return;
+    }
+    if (existing.length >= 300) {
       button.textContent = '记忆库已满，原文仍保留';
       return;
     }
