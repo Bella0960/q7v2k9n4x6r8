@@ -19,7 +19,7 @@ function slice(from, to) {
   return page.slice(start, end);
 }
 
-const identityBlock = slice('  function diaryAuthorKind(', '  function diaryCharacters(');
+const identityBlock = slice('  function diaryStableId(', '  function diaryCharacters(');
 const personaBlock = slice('  function diaryRoleContext(', '  function openAnnotation()');
 const manualBlock = slice('  function generateCharComment(){', '  function renderReader(){');
 const persistBlock = slice('  function diaryArchiveIsCurrent(){', '  function hydratePhotos(');
@@ -381,7 +381,7 @@ test('in-flight role diary is discarded after saved role context changes',async(
  assert.equal(sb.entries.length,0);
 });
 test('current-role selector refuses invalid contacts, ambiguous roles and duplicate IDs',()=>{
- const code=slice('  function diaryCharacters(){','  // A read-only, diary-specific adapter')+'\n'+slice('  function peekCurrentRole(){','  function maybeAutoPeek(){');
+ const code=slice('  function diaryStableId(', '  function diaryRecordById(')+'\n'+slice('  function diaryCharacters(){','  // A read-only, diary-specific adapter')+'\n'+slice('  function peekCurrentRole(){','  function maybeAutoPeek(){');
  let roles=[{id:'a',name:'A'},{id:'b',name:'B'}],contact='missing';
  const context=vm.createContext({PhoneStorage:{getCharacters:()=>roles,getCurrentContactId:()=>contact}});context.window=context;
  vm.runInContext(code,context);
@@ -521,4 +521,30 @@ test('owner remark reply is discarded when the note changes in flight',async()=>
  const p=sb.readSharedRemark(entry.id);assert.equal(typeof finish,'function');
  sb.savePersonalRemark(entry.id,token,'second');finish('收到');assert.equal(await p,false);
  assert.equal(entry.personalRemark.text,'second');assert.equal(entry.personalRemark.readReceipt,undefined);
+});
+
+test('ambiguous diary IDs and malformed role owner never share a remark or generate from duplicate history',async()=>{
+ const a={id:'roleA',name:'同名',persona:'植物研究员，观察自然。'},b={id:'roleB',name:'同名',persona:'音乐研究员，整理乐谱。'};
+ const entries=[
+ {id:'dup',author:a.id,date:'2026-11-25',diaryWritingVersion:2,content:'DUPLICATE_BODY',personalRemark:{text:'DUPLICATE_REMARK',sharedWithRoleId:a.id}},
+ {id:'dup',author:b.id,date:'2026-11-25',content:'OTHER_DUPLICATE'},
+ {id:'d_char_malformed',author:['roleA'],date:'2026-11-25',diaryWritingVersion:2,content:'MALFORMED_BODY',personalRemark:{text:'MALFORMED_REMARK',sharedWithRoleId:a.id}},
+ {id:'d_char_bad',author:a.id,authorUnverified:true,date:'2026-11-25',content:'UNVERIFIED_BODY',personalRemark:{text:'UNVERIFIED_REMARK',sharedWithRoleId:a.id}}
+ ];
+ const {sb}=makeSandbox({store:makeStore(),role:a,entries});sb.diaryCharacters=()=>[a,b];
+ assert.equal(sb.savePersonalRemark('dup',sb.diaryAccountToken(),'overwrite'),false);
+ assert.doesNotMatch(sb.diaryWritingPrompt(a,'日记'),/DUPLICATE_BODY|DUPLICATE_REMARK|MALFORMED_BODY|MALFORMED_REMARK|UNVERIFIED_BODY|UNVERIFIED_REMARK/);
+ let calls=0;sb.PhoneAPI.complete=()=>{calls++;return Promise.resolve('fixture')};
+ for(const id of ['dup','d_char_malformed','d_char_bad'])assert.equal(await sb.readSharedRemark(id),false);
+ assert.equal(calls,0);
+});
+test('invalid primary role memory refuses paid requests, valid legacy prompt survives blank persona',async()=>{
+ const role={id:'roleA',name:'角色A',persona:'   ',prompt:'研究植物，记录自然观察。',tone:' ',speechStyle:'简短'};
+ const store=makeStore({chat_memories_roleA:'broken'}),{sb}=makeSandbox({store,role});
+ let calls=0;sb.PhoneAPI.complete=()=>{calls++;return Promise.resolve('今天的植物观察记录已经整理完成，发现叶片变化。')};
+ assert.equal(await sb.generatePersonRecord(role.id,'日记',true),false);
+ assert.equal(calls,0);
+ store.setItem('chat_memories_roleA','[]');
+ assert.match(sb.diaryWritingPrompt(role,'日记'),/研究植物/);assert.match(sb.diaryWritingPrompt(role,'日记'),/简短/);
+ assert.equal(await sb.generatePersonRecord(role.id,'日记',true),true);assert.equal(calls,1);
 });
