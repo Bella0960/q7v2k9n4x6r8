@@ -232,10 +232,103 @@
     });
     return lines.length ? intro + '\n' + lines.join('\n') : '';
   }
+  /* Optional, session-local history index. The caller must supply the current
+   * account/conversation/revision from its authoritative lifecycle. No global
+   * cache, network, or storage writes. Only private role conversations here;
+   * group recall retains its existing separately scoped path.
+   */
+  function indexScope(value) {
+    if (!value || value.kind !== 'role') return '';
+    var keys = [value.accountId, value.conversationId, value.revision];
+    if (keys.some(function (v) { return typeof v !== 'string' || !v.trim(); })) return '';
+    return JSON.stringify(['role'].concat(keys));
+  }
+  async function createHistoryIndex(history, options) {
+    options = options || {};
+    var scope = indexScope(options.scope);
+    var current = options.getCurrentScope;
+    function active() {
+      try { return !!scope && typeof current === 'function' && indexScope(current()) === scope &&
+        !(options.signal && options.signal.aborted); }
+      catch (_) { return false; }
+    }
+    function fail(reason) { return { ok:false, reason:reason }; }
+    if (!active() || !Array.isArray(history)) return fail('invalid-scope');
+    // Hard resource limits. Never claim complete coverage if any is exceeded.
+    if (history.length > 100000) return fail('history-limit');
+    var docs = new Map(), postings = new Map(), chars = 0, postingCount = 0;
+    var count = history.length;
+    var yieldControl = typeof options.yieldControl === 'function' ? options.yieldControl :
+      function () { return new Promise(function (resolve) { global.setTimeout(resolve, 0); }); };
+    for (var i = 0; i < count; i++) {
+      if (i % 256 === 0) {
+        if (!active() || history.length !== count) return fail('stale-scope');
+        if (i) {
+          try { await yieldControl(); } catch (_) { return fail('interrupted'); }
+          if (!active() || history.length !== count) return fail('stale-scope');
+        }
+      }
+      var m = history[i];
+      if (!m || m.isError || m.sendFailed || m.silent ||
+          ['sent','user','received','assistant'].indexOf(m.role) < 0 ||
+          m.groupId != null || m.memberId != null ||
+          m.type === 'group_private' || m.type === 'group_game_private' || m.type === 'group_welcome' ||
+          m.visibility === 'private' || m.visibility === 'role_only') continue;
+      if (m.sourceRoleId != null && String(m.sourceRoleId) !== options.scope.conversationId) continue;
+      if (m.roleId != null && String(m.roleId) !== options.scope.conversationId) continue;
+      var text = cleanText(m.text || m.content || m.desc || '');
+      if (text.length < 8 || /^data:/i.test(text)) continue;
+      chars += text.length;
+      if (chars > 12000000) return fail('character-limit');
+      var tokens = tokensOf(text);
+      if (!tokens.length) continue;
+      postingCount += tokens.length;
+      if (postingCount > 4000000) return fail('posting-limit');
+      docs.set(i, { role:m.role, text:text, time:Number(m.time || m.timestamp) || 0 });
+      tokens.forEach(function (term) {
+        var ids = postings.get(term);
+        if (!ids) { ids = []; postings.set(term, ids); }
+        ids.push(i);
+      });
+    }
+    if (!active() || history.length !== count) return fail('stale-scope');
+    // Do not retain the source array in the returned closure.
+    history = null;
+    var disposed = false;
+    function dispose() { disposed = true; docs.clear(); postings.clear(); }
+    function search(query, searchOptions) {
+      searchOptions = searchOptions || {};
+      if (disposed) return fail('disposed');
+      if (!active() || indexScope(searchOptions.scope) !== scope) {
+        dispose(); return fail('stale-scope');
+      }
+      var terms = tokensOf(query).slice(0,24), candidates = new Set();
+      var recent = Math.max(0, Math.floor(Number(searchOptions.excludeRecent) || 0));
+      var cutoff = Math.max(0, count - recent);
+      for (var t = 0; t < terms.length; t++) {
+        var ids = postings.get(terms[t]) || [];
+        for (var j = 0; j < ids.length && ids[j] < cutoff; j++) {
+          candidates.add(ids[j]);
+          // A broad query must be refined rather than silently dropping old hits.
+          if (candidates.size > 2500) return fail('query-too-broad');
+        }
+      }
+      var indices = Array.from(candidates).sort(function (a,b) { return a-b; });
+      var messages = indices.map(function (id) { return docs.get(id); });
+      var matches = searchHistoryMessages(messages, query, {
+        maxScan: Math.max(100, messages.length), maxItems: searchOptions.maxItems
+      }).map(function (item) {
+        return Object.assign({}, item, { index:indices[item.index] });
+      });
+      if (!active()) { dispose(); return fail('stale-scope'); }
+      return { ok:true, matches:matches, indexedMessages:docs.size, candidateCount:indices.length };
+    }
+    return { ok:true, indexedMessages:docs.size, historyLength:count, search:search, dispose:dispose };
+  }
   global.MemoryRecall = {
     cleanText:cleanText, normalize:normalize, tokensOf:tokensOf,
     getMemories:getMemories, saveMemories:saveMemories, upsertMemory:upsertMemory,
     searchHistoryMessages:searchHistoryMessages, buildHistoricalRecallText:buildHistoricalRecallText,
-    memoryValue:memoryValue
+    memoryValue:memoryValue, createHistoryIndex:createHistoryIndex
   };
 })(window);
