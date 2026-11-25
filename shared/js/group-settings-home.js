@@ -286,6 +286,20 @@
       }
       show(label, [form]);
     }
+    function inviteCandidates(pool,group){
+      if(!Array.isArray(pool))return [];
+      var counts=new Map();
+      pool.forEach(function(r){if(r&&r.id!=null){var id=String(r.id);counts.set(id,(counts.get(id)||0)+1);}});
+      return pool.filter(function(r){
+        return r&&r.id!=null&&String(r.id).trim()===String(r.id)&&String(r.id)&&String(r.id)!=='__user'&&String(r.id)!==String(group.id)&&counts.get(String(r.id))===1&&!group.members.some(function(m){return String(m.id)===String(r.id);});
+      });
+    }
+    function currentInvitationRole(id,current,shown,pool){
+      if(!current||!Array.isArray(shown))return null;
+      var old=shown.filter(function(r){return r&&String(r.id)===id;});
+      var fresh=inviteCandidates(pool,current.group).filter(function(r){return String(r.id)===id;});
+      return old.length===1&&fresh.length===1&&JSON.stringify(old[0])===JSON.stringify(fresh[0])?fresh[0]:null;
+    }
     function selectMembers(mode, id) {
       var current = state();
       if (!current) return;
@@ -296,9 +310,7 @@
       if (mode === 'invite') {
         var pool;
         try { pool = JSON.parse(read('ai_custom_characters', '[]')); } catch (e) { pool = []; }
-        all = (Array.isArray(pool) ? pool : []).filter(function (r) {
-          return r && r.id != null && !group.members.some(function (m) { return String(m.id) === String(r.id); });
-        });
+        all = inviteCandidates(pool,group);
         selectedAction = all;
       }
       if (id) all = all.filter(function (member) { return String(member.id) === id; });
@@ -480,12 +492,18 @@
       manage: function () { selectMembers('manage'); },
       home: function () { activeView = 'home'; render(); },
       member: function (id) { selectMembers('member', id); },
-      'invite-confirm': function (id) { apply('invite', id, {roles: selectedAction}); },
+      'invite-confirm': function (id) {
+        var current=memberDialogState,pool;
+        if(!isCurrent(current))return report('群资料已变化，请重新打开。');
+        try{pool=JSON.parse(read('ai_custom_characters','null'));}catch(error){pool=null;}
+        if(!currentInvitationRole(String(id),current,selectedAction,pool))return report('角色资料已变化，请重新选择。');
+        apply('invite',String(id),{roles:pool},current);
+      },
       'remove-review': function (id) {
-        var current = state();
-        var member = current && governance.findMember(current.group, id);
-        if(current)memberDialogState=current;
-        if (member) show('移除 ' + displayName(member) + '？', [node('p', '聊天记录会保留。'), button('确认移除', 'remove-confirm', id)]);
+        var current=memberDialogState;
+        if(!isCurrent(current))return report('群资料已变化，请重新打开。');
+        var member=governance.findMember(current.group,id);
+        if(member&&String(member.id)===String(id))show('移除 '+displayName(member)+'？',[node('p','聊天记录会保留。'),button('确认移除','remove-confirm',id)]);
       },
       'remove-confirm': function (id) { apply('remove', id); },
       promote: function (id) { apply('promote', id); },
