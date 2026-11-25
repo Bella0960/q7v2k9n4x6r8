@@ -27,7 +27,7 @@
       new URLSearchParams(location.search).get('roleId');
     var governance = root.GroupGovernance, guard = root.MAOGroupWriteGuard;
     if (!gid || !governance || !guard) return;
-    var pageAccount=guard.account(), renderedState=null, memberDialogState=null;
+    var pageAccount=guard.account(), renderedState=null, memberDialogState=null, imageEdit=null;
     function pageCurrent(){return pageAccount!==null&&guard.account()===pageAccount;}
     var headerBack = document.getElementById('backBtn');
     var dialog = document.createElement('dialog');
@@ -168,10 +168,10 @@
       }
       usePhoto(group.avatar);
       cover.append(photo);
-      if (wallpaper && typeof wallpaper.getByKey === 'function') {
-        Promise.resolve(wallpaper.getByKey(bgKey)).then(function (url) {
-          if (pageCurrent() && typeof url === 'string' && /^data:image\//i.test(url)) usePhoto(url);
-        }).catch(function () {});
+      if (wallpaper && typeof wallpaper.readGroupBackground === 'function') {
+        wallpaper.readGroupBackground(bgKey,function(){return isCurrent(current);}).then(function(url){
+          if(renderedState===current&&isCurrent(current)&&typeof url==='string'&&/^data:image\//i.test(url))usePhoto(url);
+        }).catch(function(){});
       }
 
       var identity = button('', 'name');
@@ -252,6 +252,7 @@
       home.replaceChildren(cover, identity, expand, drawer, live);
     }
     function show(label, items) {
+      imageEdit=null;
       var heading = node('h2', label);
       var status = node('p', '', 'group-settings-status');
       status.setAttribute('role', 'status');
@@ -325,13 +326,20 @@
       var current = state();
       if (!current || kind === 'avatar' && governance.rank(current.group, '__user') < 2)
         return report('没有修改群头像的权限。');
+      var editState={current:current,kind:kind,busy:false,snapshot:null};
+      if(kind==='background'){
+        if(!wallpaper||typeof wallpaper.snapshotGroupBackground!=='function'||typeof wallpaper.saveGroupBackground!=='function'||typeof wallpaper.resetGroupBackground!=='function')return report('群背景存储暂不可用。');
+        editState.snapshot=wallpaper.snapshotGroupBackground(bgKey,function(){return isCurrent(current);}).catch(function(){return null;});
+      }
+      function validEdit(){return imageEdit===editState&&dialog.open&&isCurrent(current);}
       var file = node('input');
+      editState.file=file;
       file.type = 'file';
       file.accept = 'image/*';
       file.setAttribute('aria-label', '选择图片');
       file.addEventListener('change', async function () {
-        if (!file.files[0]) return;
-        file.disabled = true;
+        if (!file.files[0]||editState.busy||!validEdit()) return;
+        editState.busy=true;file.disabled = true;
         var imageUrl;
         try {
           imageUrl = URL.createObjectURL(file.files[0]);
@@ -345,24 +353,27 @@
           canvas.getContext('2d').drawImage(image, 0, 0, canvas.width, canvas.height);
           var data = canvas.toDataURL('image/jpeg', .72);
           var latest = current;
-          if (!isCurrent(latest)) return report('群资料已变化，请重新选择图片。');
+          if (!validEdit()) return report('群资料或图片编辑已变化，请重新选择图片。');
           if (kind === 'avatar') {
             if (governance.rank(latest.group, '__user') < 2) return report('没有修改群头像的权限。');
             latest.group.avatar = data;
             if (!latest.save()) return report('群头像保存失败。');
-          } else if (!wallpaper || !await wallpaper.saveByKey(bgKey, data)) {
-            return report('群背景保存失败。');
+          } else {
+            var snapshot=await editState.snapshot;
+            if(!snapshot||!validEdit()||!await wallpaper.saveGroupBackground(snapshot,data,validEdit))return report('群背景保存失败，请重新打开。');
           }
-          dialog.close();
+          if(imageEdit!==editState||!dialog.open||!pageCurrent())return;
+          imageEdit=null;dialog.close();
           render();
           report('图片已更新。');
         } catch (error) { report('图片处理失败，请换一张图片。'); }
-        finally { if (imageUrl) URL.revokeObjectURL(imageUrl); file.disabled = false; }
+        finally { if (imageUrl) URL.revokeObjectURL(imageUrl); editState.busy=false;file.disabled = false; }
       });
       show(kind === 'avatar' ? '群头像' : '群背景', [file].concat(kind === 'background' && wallpaper ? [button('恢复默认背景', 'reset-background')] : []));
+      imageEdit=editState;
     }
     var handlers = {
-      close: function () { memberDialogState=null;dialog.close(); },
+      close: function () { memberDialogState=null;imageEdit=null;dialog.close(); },
       cover: function () {
         var current = state();
         if (!current) return;
@@ -432,10 +443,16 @@
       avatar: function () { chooseImage('avatar'); },
       background: function () { chooseImage('background'); },
       'reset-background': async function () {
-        try {
-          if (!state() || !await wallpaper.removeByKey(bgKey)) return report('背景恢复失败。');
-          dialog.close(); render(); report('已恢复默认背景。');
-        } catch (error) { report('背景恢复失败。'); }
+        var editState=imageEdit;
+        function valid(){return !!editState&&imageEdit===editState&&dialog.open&&isCurrent(editState.current);}
+        if(!valid()||editState.kind!=='background'||editState.busy)return;
+        editState.busy=true;editState.file.disabled=true;
+        try{
+          var snapshot=await editState.snapshot;
+          if(!snapshot||!valid()||!await wallpaper.resetGroupBackground(snapshot,valid))return report('背景恢复失败，请重新打开。');
+          if(valid()){imageEdit=null;dialog.close();render();report('已恢复默认背景。');}
+        }catch(error){report('背景恢复失败，请重新打开。');}
+        finally{editState.busy=false;editState.file.disabled=false;}
       },
       search: function () { location.href = 'chat-search.html?roleId=' + encodeURIComponent(gid); },
       legacy: function () { location.href = 'chat-settings.html?roleId=' + encodeURIComponent(gid) + '&groupOptions=1'; },
