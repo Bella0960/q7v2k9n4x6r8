@@ -6,6 +6,17 @@ const read = (path) => readFileSync(new URL('../' + path, import.meta.url), 'utf
 const js = read('shared/js/group-settings-editorial.js');
 const css = read('shared/css/group-settings-editorial.css');
 const html = read('chat/chat/chat-settings.html');
+// Legacy synthetic storage fixtures model an already-installed account scope.
+// This does not simulate the Worker authentication or the physical namespaces.
+function loadScopedGuard(ctx) {
+  const original=ctx.document.querySelector.bind(ctx.document);
+  const metaId=()=>{const m=original('meta[name="mao-account-id"]');return m&&String(m.content||'').trim();};
+  ctx.document.querySelector=selector=>selector==='meta[name="mao-account-role"]'
+    ?(metaId()?{content:'member'}:null):original(selector);
+  if(!ctx.location)ctx.location={hostname:'preview.mao520.com'};
+  Object.defineProperty(ctx,'__MAO_ACCOUNT_SCOPE__',{configurable:true,get(){const id=metaId();return id?{accountId:id,role:'member',ready:true}:undefined;}});
+  vm.runInNewContext(read('shared/js/phone/group-write-guard.js'),ctx);
+}
 test('group-only adapter parses and exits without touching DOM in single-chat mode', () => {
   new vm.Script(js);
   vm.runInNewContext(js, {isGroupSetting:false, document:{getElementById(){throw Error('unexpected DOM access')}}});
@@ -124,17 +135,17 @@ test('group title permissions are based on member IDs and current role, not titl
 });
 
 test('write guard rejects stale and cross-account updates and verifies readback',()=>{
-  let data=JSON.stringify([{id:'g1',members:[]},{id:'g2',name:'other'}]),account='001',fail=false;
+  let data=JSON.stringify([{id:'g1',members:[]},{id:'g2',name:'other'}]),account='MAO-AAAAAAAAAAAA',fail=false;
   const context={document:{querySelector:()=>({content:account})},localStorage:{getItem:()=>data,setItem:(_key,value)=>{if(fail)throw Error('quota');data=value;}}};
   context.window=context;
-  vm.runInNewContext(read('shared/js/phone/group-write-guard.js'),context);
+  loadScopedGuard(context);
   const api=context.MAOGroupWriteGuard,old=api.read('g1'),fresh=api.read('g1');
   assert.equal(api.commit(fresh,{...fresh.group,selfTitle:'新头衔'}).ok,true);
   assert.equal(api.commit(old,{...old.group,name:'旧页面'}).reason,'stale');
   assert.equal(JSON.parse(data)[0].selfTitle,'新头衔');
-  const snap=api.read('g1');account='002';
+  const snap=api.read('g1');account='MAO-BBBBBBBBBBBB';
   assert.equal(api.commit(snap,snap.group).reason,'scope');
-  account='001';fail=true;
+  account='MAO-AAAAAAAAAAAA';fail=true;
   assert.equal(api.commit(snap,snap.group).reason,'storage');
   fail=false;data=JSON.stringify([{id:'g2'}]);
   assert.equal(api.commit(snap,snap.group).reason,'stale');
@@ -143,7 +154,7 @@ test('write guard rejects stale and cross-account updates and verifies readback'
 test('portrait media ownership, isolated group, failed batch and stale selection',async()=>{
   const context={Map,Blob,document:{querySelector:()=>({content:account})}};
   const A='as_'+'A'.repeat(32),B='as_'+'B'.repeat(32), image='data:image/png;base64,AAAA';
-  let account='001',data=JSON.stringify([{id:'g1',members:[{id:'r',avatar:'old'}]},{id:'g2',members:[{id:'r',avatar:'other'}]}]), count=0, failAt=0;
+  let account='MAO-AAAAAAAAAAAA',data=JSON.stringify([{id:'g1',members:[{id:'r',avatar:'old'}]},{id:'g2',members:[{id:'r',avatar:'other'}]}]), count=0, failAt=0;
   const refs=new Map();
   context.localStorage={getItem:()=>data,setItem:(_key,v)=>{data=v;}};
   context.PhoneStorage={MediaRepository:class{
@@ -152,7 +163,7 @@ test('portrait media ownership, isolated group, failed batch and stale selection
     async listByOwner(_type,id){return {ok:true,value:refs.get(id)||[]};}
     async toDataUrl(){return {ok:true,value:image};}
   }};
-  context.window=context;vm.runInNewContext(read('shared/js/phone/group-write-guard.js'),context);vm.runInNewContext(read('shared/js/phone/group-portraits.js'),context);
+  context.window=context;loadScopedGuard(context);vm.runInNewContext(read('shared/js/phone/group-portraits.js'),context);
   const api=context.MAOGroupPortraits, blob=new Blob(['image'],{type:'image/png'});
   const original=data;
   failAt=2;
@@ -164,9 +175,9 @@ test('portrait media ownership, isolated group, failed batch and stale selection
   assert.equal(await api.resolve(group,'r'),image);
   assert.equal(await api.resolve(list[1],'r'),'');
   assert.equal(group.members[0].avatar,'old');
-  account='002';assert.equal(await api.resolve(group,'r'),'');
+  account='MAO-BBBBBBBBBBBB';assert.equal(await api.resolve(group,'r'),'');
   assert.throws(()=>api.snapshot('g1'));
-  account='001';
+  account='MAO-AAAAAAAAAAAA';
   const stale=api.snapshot('g1');
   list[0].name='new';data=JSON.stringify(list);
   await assert.rejects(api.save(stale,new Map([['r',null]])));
@@ -191,7 +202,7 @@ test('group nickname is editable without global profile writes and back routes t
 });
 
 test('portrait saves preserve other group writes during upload and retry safely after failure',async()=>{
-  let account='001',data=JSON.stringify([{id:'g1',members:[{id:'r'}]},{id:'g2',name:'original'}]),failWrite=false,changeDuringUpload=true;
+  let account='MAO-AAAAAAAAAAAA',data=JSON.stringify([{id:'g1',members:[{id:'r'}]},{id:'g2',name:'original'}]),failWrite=false,changeDuringUpload=true;
   const asset='as_'+'A'.repeat(32),context={Map,Blob,document:{querySelector:()=>({content:account})}};
   context.localStorage={getItem:()=>data,setItem:(_key,v)=>{if(failWrite)throw Error('quota');data=v;}};
   context.PhoneStorage={MediaRepository:class{
@@ -199,7 +210,7 @@ test('portrait saves preserve other group writes during upload and retry safely 
     async getBlob(){return {ok:true};}
   }};
   context.window=context;
-  vm.runInNewContext(read('shared/js/phone/group-write-guard.js'),context);
+  loadScopedGuard(context);
   vm.runInNewContext(read('shared/js/phone/group-portraits.js'),context);
   const api=context.MAOGroupPortraits,blob=new Blob(['image'],{type:'image/png'});
   const snap=api.snapshot('g1');
@@ -217,18 +228,18 @@ test('portrait saves preserve other group writes during upload and retry safely 
 });
 
 test('group deletion refuses stale or failed writes, preserves other groups',()=>{
-  let data=JSON.stringify([{id:'g1',name:'old'},{id:'g2',name:'other'}]),account='001',fail=false;
+  let data=JSON.stringify([{id:'g1',name:'old'},{id:'g2',name:'other'}]),account='MAO-AAAAAAAAAAAA',fail=false;
   const ctx={document:{querySelector:()=>({content:account})},localStorage:{getItem:()=>data,setItem:(_key,v)=>{if(fail)throw Error('quota');data=v;}}};ctx.window=ctx;
-  vm.runInNewContext(read('shared/js/phone/group-write-guard.js'),ctx);
+  loadScopedGuard(ctx);
   const api=ctx.MAOGroupWriteGuard,stale=api.read('g1');
   assert.equal(api.commit(stale,{...stale.group,name:'new'}).ok,true);
   assert.equal(api.remove(stale).reason,'stale');
   const now=api.read('g1'),before=data;fail=true;
   assert.equal(api.remove(now).reason,'storage');
   assert.equal(data,before);
-  fail=false;account='002';
+  fail=false;account='MAO-BBBBBBBBBBBB';
   assert.equal(api.remove(now).reason,'scope');
-  account='001';
+  account='MAO-AAAAAAAAAAAA';
   assert.equal(api.remove(now).ok,true);
   assert.equal(JSON.parse(data).length,1);
   assert.equal(JSON.parse(data)[0].id,'g2');
@@ -261,18 +272,18 @@ test('AI invitation uses exact identity and complete existing member defaults',(
 
 test('missing account identity fails closed remotely, only explicit loopback remains compatible',()=>{
   let account='',host='preview.mao520.com',data=JSON.stringify([{id:'g1',name:'original'},{id:'g2'}]),writes=0,changeOnRead=false;
-  const ctx={document:{querySelector:()=>account?{content:account}:null},location:{get hostname(){return host}},localStorage:{getItem(){if(changeOnRead)account='002';return data},setItem(k,v){writes++;data=v}}};ctx.window=ctx;
-  vm.runInNewContext(read('shared/js/phone/group-write-guard.js'),ctx);
+  const ctx={document:{querySelector:()=>account?{content:account}:null},location:{get hostname(){return host}},localStorage:{getItem(){if(changeOnRead)account='MAO-BBBBBBBBBBBB';return data},setItem(k,v){writes++;data=v}}};ctx.window=ctx;
+  loadScopedGuard(ctx);
   const api=ctx.MAOGroupWriteGuard, fake={id:'g1',account:'',serialized:JSON.stringify(JSON.parse(data)[0])};
   assert.equal(api.read('g1'),null);
   assert.equal(api.commit(fake,{id:'g1',name:'wrong'}).reason,'scope');
   assert.equal(api.remove(fake).reason,'scope');
   assert.equal(writes,0);
-  account='001';const snapshot=api.read('g1');account='';
+  account='MAO-AAAAAAAAAAAA';const snapshot=api.read('g1');account='';
   assert.equal(api.commit(snapshot,snapshot.group).reason,'scope');
   assert.equal(api.remove(snapshot).reason,'scope');
   assert.equal(writes,0);
-  account='001';changeOnRead=true;assert.equal(api.read('g1'),null);changeOnRead=false;account='';
+  account='MAO-AAAAAAAAAAAA';changeOnRead=true;assert.equal(api.read('g1'),null);changeOnRead=false;account='';
   host='localhost.example.org';assert.equal(api.read('g1'),null);
   for(const h of ['localhost','127.0.0.1','[::1]']){
     host=h;const local=api.read('g1');assert.ok(local);
@@ -284,26 +295,26 @@ test('missing account identity fails closed remotely, only explicit loopback rem
 
 test('group creation never overwrites damaged, duplicate, stale or foreign-account data',()=>{
   function setup(raw='[{"id":"g1","name":"old","extra":{"keep":true}}]'){
-    const state={raw,owner:'A',writes:0,reads:0,host:'preview.mao520.com'};
+    const state={raw,owner:'MAO-AAAAAAAAAAAA',writes:0,reads:0,host:'preview.mao520.com'};
     const ctx={location:{get hostname(){return state.host}},document:{querySelector:()=>({content:state.owner})},localStorage:{getItem(){state.reads++;if(state.onRead)state.onRead();return state.raw},setItem(k,v){state.writes++;if(state.fail)throw Error('quota');if(!state.ignore)state.raw=v}}};ctx.window=ctx;
-    vm.runInNewContext(read('shared/js/phone/group-write-guard.js'),ctx);
+    loadScopedGuard(ctx);
     return [ctx.MAOGroupWriteGuard,state];
   }
   const next={id:'g2',name:'new',members:[]};
-  {const [g,s]=setup();const old=JSON.parse(s.raw)[0];assert.equal(g.create('A',next).ok,true);assert.deepEqual(JSON.parse(s.raw),[old,next]);}
-  {const [g,s]=setup(null);assert.equal(g.create('A',next).ok,true);assert.deepEqual(JSON.parse(s.raw),[next]);}
-  for(const raw of ['', '{oops','null','{}']){const [g,s]=setup(raw);assert.equal(g.create('A',next).ok,false);assert.equal(s.raw,raw);assert.equal(s.writes,0);}
-  {const [g,s]=setup();assert.equal(g.create('A',{id:'g1'}).reason,'duplicate');assert.equal(s.writes,0);}
-  {const [g,s]=setup();s.owner='B';assert.equal(g.create('A',next).reason,'scope');s.owner='';assert.equal(g.create('',next).reason,'scope');assert.equal(s.writes,0);}
-  {const [g,s]=setup();s.onRead=()=>{s.owner='B'};assert.equal(g.create('A',next).ok,false);assert.equal(s.writes,0);}
-  {const [g,s]=setup();s.onRead=()=>{if(s.reads===2)s.raw='[{"id":"g3"}]'};assert.equal(g.create('A',next).reason,'stale');assert.equal(s.raw,'[{"id":"g3"}]');assert.equal(s.writes,0);}
-  {const [g,s]=setup();const old=s.raw;s.fail=true;assert.equal(g.create('A',next).reason,'storage');assert.equal(s.raw,old);}
-  {const [g,s]=setup();s.ignore=true;assert.equal(g.create('A',next).reason,'unconfirmed');}
+  {const [g,s]=setup();const old=JSON.parse(s.raw)[0];assert.equal(g.create('MAO-AAAAAAAAAAAA',next).ok,true);assert.deepEqual(JSON.parse(s.raw),[old,next]);}
+  {const [g,s]=setup(null);assert.equal(g.create('MAO-AAAAAAAAAAAA',next).ok,true);assert.deepEqual(JSON.parse(s.raw),[next]);}
+  for(const raw of ['', '{oops','null','{}']){const [g,s]=setup(raw);assert.equal(g.create('MAO-AAAAAAAAAAAA',next).ok,false);assert.equal(s.raw,raw);assert.equal(s.writes,0);}
+  {const [g,s]=setup();assert.equal(g.create('MAO-AAAAAAAAAAAA',{id:'g1'}).reason,'duplicate');assert.equal(s.writes,0);}
+  {const [g,s]=setup();s.owner='MAO-BBBBBBBBBBBB';assert.equal(g.create('MAO-AAAAAAAAAAAA',next).reason,'scope');s.owner='';assert.equal(g.create('',next).reason,'scope');assert.equal(s.writes,0);}
+  {const [g,s]=setup();s.onRead=()=>{s.owner='MAO-BBBBBBBBBBBB'};assert.equal(g.create('MAO-AAAAAAAAAAAA',next).ok,false);assert.equal(s.writes,0);}
+  {const [g,s]=setup();s.onRead=()=>{if(s.reads===2)s.raw='[{"id":"g3"}]'};assert.equal(g.create('MAO-AAAAAAAAAAAA',next).reason,'stale');assert.equal(s.raw,'[{"id":"g3"}]');assert.equal(s.writes,0);}
+  {const [g,s]=setup();const old=s.raw;s.fail=true;assert.equal(g.create('MAO-AAAAAAAAAAAA',next).reason,'storage');assert.equal(s.raw,old);}
+  {const [g,s]=setup();s.ignore=true;assert.equal(g.create('MAO-AAAAAAAAAAAA',next).reason,'unconfirmed');}
   {const [g,s]=setup();const snap=g.read('g1');s.raw='[{"id":"g1","name":"newer"}]';assert.equal(g.commit(snap,{id:'g1',name:'wrong'}).reason,'stale');assert.equal(s.writes,0);}
 });
 test('chat list create menu reaches original modal and waits for verified save',()=>{
   const list=read('chat/chat/chat.html');
-  assert.ok(list.includes('group-write-guard.js?v=20261125g9'));
+  assert.ok(list.includes('group-write-guard.js?v=20261125g10'));
   assert.ok(list.includes("document.getElementById('menuGroup').addEventListener('click',function(){"));
   assert.ok(list.includes("document.getElementById('wechatMenu').style.display='none';\n        openModal();"));
   assert.ok(list.includes('guard.create(modalAccount,'));
@@ -314,13 +325,13 @@ test('chat list create menu reaches original modal and waits for verified save',
 
 
 test('group reply snapshot rejects removed, muted, duplicate and cross-account speakers',()=>{
-  const state={account:'001',groups:[{id:'g1',members:[{id:'r1',name:'同名'},{id:'r2',name:'同名'}]},{id:'g2',members:[{id:'r1'}]}]};
+  const state={account:'MAO-AAAAAAAAAAAA',groups:[{id:'g1',members:[{id:'r1',name:'同名'},{id:'r2',name:'同名'}]},{id:'g2',members:[{id:'r1'}]}]};
   const ctx={document:{querySelector:()=>({content:state.account})},location:{hostname:'preview.mao520.com'},localStorage:{getItem:()=>state.raw??JSON.stringify(state.groups)}};ctx.window=ctx;
-  vm.runInNewContext(read('shared/js/phone/group-write-guard.js'),ctx);
+  loadScopedGuard(ctx);
   const api=ctx.MAOGroupWriteGuard,snap=api.read('g1'),original=JSON.stringify(state.groups);
   assert.equal(api.matches(snap,'r1'),true);
   state.groups[1].name='other changed';assert.equal(api.matches(snap,'r1'),true);
-  for(const owner of ['002','']){state.account=owner;assert.equal(api.matches(snap,'r1'),false);}state.account='001';
+  for(const owner of ['MAO-BBBBBBBBBBBB','']){state.account=owner;assert.equal(api.matches(snap,'r1'),false);}state.account='MAO-AAAAAAAAAAAA';
   state.groups.shift();assert.equal(api.matches(snap,'r1'),false);state.groups=JSON.parse(original);
   state.groups[0].members.shift();assert.equal(api.matches(snap,'r1'),false);state.groups=JSON.parse(original);
   state.groups[0].members[0].muted=true;assert.equal(api.matches(snap,'r1'),false);assert.equal(api.matches(api.read('g1'),'r1'),false);state.groups=JSON.parse(original);
@@ -348,15 +359,15 @@ test('group reply is guarded before request, after stream, on pagehide and befor
 
 test('group preferences preserve newer writes and reject scope changes',()=>{
   function setup(){
-    const state={account:'001',writes:0,data:new Map([['phone_groups',JSON.stringify([{id:'g1',name:'one'},{id:'g2',name:'two'}])],['chat_group_alias_g1','old'],['chat_group_notice_g2','other']])};
+    const state={account:'MAO-AAAAAAAAAAAA',writes:0,data:new Map([['phone_groups',JSON.stringify([{id:'g1',name:'one'},{id:'g2',name:'two'}])],['chat_group_alias_g1','old'],['chat_group_notice_g2','other']])};
     const ctx={document:{querySelector:()=>({content:state.account})},location:{hostname:'preview.mao520.com'},localStorage:{getItem:k=>state.data.get(k)??null,setItem(k,v){state.writes++;if(state.fail)throw Error('quota');if(!state.ignore)state.data.set(k,v)}}};ctx.window=ctx;
-    vm.runInNewContext(read('shared/js/phone/group-write-guard.js'),ctx);
+    loadScopedGuard(ctx);
     const api=ctx.MAOGroupWriteGuard;return {api,state,group:api.read('g1')};
   }
   {const {api,state,group}=setup();assert.equal(api.writePreference(api.readPreference(group,'alias'),'new').ok,true);assert.equal(state.data.get('chat_group_alias_g1'),'new');assert.equal(state.data.get('chat_group_notice_g2'),'other');}
   {const {api,state,group}=setup();assert.equal(api.writePreference(api.readPreference(group,'notice'),'').ok,true);assert.equal(state.data.get('chat_group_notice_g1'),'');}
   {const {api,state,group}=setup();const snap=api.readPreference(group,'alias');state.data.set('chat_group_alias_g1','newer');assert.equal(api.writePreference(snap,'old editor').reason,'stale');assert.equal(state.writes,0);}
-  for(const account of ['002','']){const {api,state,group}=setup();const snap=api.readPreference(group,'alias');state.account=account;assert.equal(api.writePreference(snap,'wrong').ok,false);assert.equal(state.writes,0);}
+  for(const account of ['MAO-BBBBBBBBBBBB','']){const {api,state,group}=setup();const snap=api.readPreference(group,'alias');state.account=account;assert.equal(api.writePreference(snap,'wrong').ok,false);assert.equal(state.writes,0);}
   {const {api,state,group}=setup();const snap=api.readPreference(group,'notice');state.data.set('phone_groups','[{"id":"g2"}]');assert.equal(api.writePreference(snap,'wrong').ok,false);assert.equal(state.writes,0);}
   {const {api,state,group}=setup();assert.equal(api.readPreference(group,'history'),null);assert.equal(api.writePreference({group,kind:'history',raw:null},'wrong').ok,false);assert.equal(state.writes,0);}
   {const {api,state,group}=setup();const snap=api.readPreference(group,'alias');state.fail=true;assert.equal(api.writePreference(snap,'new').reason,'storage');assert.equal(state.data.get('chat_group_alias_g1'),'old');}
@@ -411,9 +422,9 @@ test('group wallpaper page preserves existing key and uses selection-time snapsh
 
 test('shared group settings validate values and preserve neighboring group and private keys',()=>{
   function setup(){
-    const state={account:'001',writes:0,data:new Map([['phone_groups',JSON.stringify([{id:'g1'},{id:'g2'}])]])};
+    const state={account:'MAO-AAAAAAAAAAAA',writes:0,data:new Map([['phone_groups',JSON.stringify([{id:'g1'},{id:'g2'}])]])};
     const ctx={document:{querySelector:()=>({content:state.account})},location:{hostname:'preview.mao520.com'},localStorage:{getItem:k=>state.data.get(k)??null,setItem(k,v){state.writes++;if(state.fail)throw Error('quota');if(!state.ignore)state.data.set(k,v)}}};ctx.window=ctx;
-    vm.runInNewContext(read('shared/js/phone/group-write-guard.js'),ctx);
+    loadScopedGuard(ctx);
     return {api:ctx.MAOGroupWriteGuard,state,group:ctx.MAOGroupWriteGuard.read('g1')};
   }
   const cases=[['pin','chat_pin_','true','false','1'],['memory','chat_memory_limit_','50','20','100'],['time','chat_time_config_',JSON.stringify({mode:'virtual',virtualTimeStr:'2026-12-01'}),JSON.stringify({mode:'real',virtualTimeStr:''}),JSON.stringify({mode:'virtual',virtualTimeStr:' '})],['sound','sound_char_','default','bell','']];
@@ -421,7 +432,7 @@ test('shared group settings validate values and preserve neighboring group and p
     {const {api,state,group}=setup();state.data.set(prefix+'g2',newer);state.data.set(prefix+'r1',newer);assert.equal(api.writePreference(api.readPreference(group,kind),value).ok,true);assert.equal(state.data.get(prefix+'g1'),value);assert.equal(state.data.get(prefix+'g2'),newer);assert.equal(state.data.get(prefix+'r1'),newer);}
     {const {api,state,group}=setup();const snap=api.readPreference(group,kind);state.data.set(prefix+'g1',newer);assert.equal(api.writePreference(snap,value).reason,'stale');assert.equal(state.data.get(prefix+'g1'),newer);assert.equal(state.writes,0);}
     {const {api,state,group}=setup();assert.equal(api.writePreference(api.readPreference(group,kind),bad).reason,'invalid');assert.equal(state.writes,0);}
-    {const {api,state,group}=setup();const snap=api.readPreference(group,kind);state.account='002';assert.equal(api.writePreference(snap,value).ok,false);assert.equal(state.writes,0);}
+    {const {api,state,group}=setup();const snap=api.readPreference(group,kind);state.account='MAO-BBBBBBBBBBBB';assert.equal(api.writePreference(snap,value).ok,false);assert.equal(state.writes,0);}
     {const {api,state,group}=setup();const snap=api.readPreference(group,kind);state.fail=true;assert.equal(api.writePreference(snap,value).reason,'storage');state.fail=false;state.ignore=true;assert.equal(api.writePreference(snap,value).reason,'unconfirmed');assert.equal(state.data.has(prefix+'g1'),false);}
   }
 });
@@ -433,26 +444,26 @@ test('group shared settings route to scoped saves, keeping original private keys
 
 test('account switch during final storage reread blocks creation and modification before any write',()=>{
   function setup(){
-    const state={account:'001',reads:0,writes:0,raw:JSON.stringify([{id:'g1',members:[]},{id:'g2'}])};
-    const ctx={document:{querySelector:()=>({content:state.account})},location:{hostname:'preview.mao520.com'},localStorage:{getItem(){state.reads++;if(state.reads===state.switchAt)state.account='002';return state.raw},setItem(k,v){state.writes++;state.raw=v}}};ctx.window=ctx;
-    vm.runInNewContext(read('shared/js/phone/group-write-guard.js'),ctx);return {state,api:ctx.MAOGroupWriteGuard};
+    const state={account:'MAO-AAAAAAAAAAAA',reads:0,writes:0,raw:JSON.stringify([{id:'g1',members:[]},{id:'g2'}])};
+    const ctx={document:{querySelector:()=>({content:state.account})},location:{hostname:'preview.mao520.com'},localStorage:{getItem(){state.reads++;if(state.reads===state.switchAt)state.account='MAO-BBBBBBBBBBBB';return state.raw},setItem(k,v){state.writes++;state.raw=v}}};ctx.window=ctx;
+    loadScopedGuard(ctx);return {state,api:ctx.MAOGroupWriteGuard};
   }
-  {const {state,api}=setup();const old=state.raw;state.switchAt=2;assert.equal(api.create('001',{id:'g3'}).ok,false);assert.equal(state.writes,0);assert.equal(state.raw,old);}
+  {const {state,api}=setup();const old=state.raw;state.switchAt=2;assert.equal(api.create('MAO-AAAAAAAAAAAA',{id:'g3'}).ok,false);assert.equal(state.writes,0);assert.equal(state.raw,old);}
   {const {state,api}=setup();const snap=api.read('g1'),old=state.raw;state.switchAt=3;assert.equal(api.commit(snap,{...snap.group,name:'new'}).ok,false);assert.equal(state.writes,0);assert.equal(state.raw,old);}
   {const {state,api}=setup();const snap=api.read('g1'),old=state.raw;state.switchAt=3;assert.equal(api.remove(snap).ok,false);assert.equal(state.writes,0);assert.equal(state.raw,old);}
 });
 test('all four group pages load the same current write guard',()=>{
-  for(const path of ['chat/chat/chat.html','chat/chat/chat-detail.html','chat/chat/chat-settings.html','chat/chat/group-play.html'])assert.ok(read(path).includes('group-write-guard.js?v=20261125g9'),path);
+  for(const path of ['chat/chat/chat.html','chat/chat/chat-detail.html','chat/chat/chat-settings.html','chat/chat/group-play.html'])assert.ok(read(path).includes('group-write-guard.js?v=20261125g10'),path);
 });
 
 
 test('all six preferences refuse late competing writes and late account changes',()=>{
   const cases=[['pin','chat_pin_','true','false'],['memory','chat_memory_limit_','50','20'],['time','chat_time_config_',JSON.stringify({mode:'virtual',virtualTimeStr:'明天'}),JSON.stringify({mode:'real',virtualTimeStr:''})],['sound','sound_char_','default','bell'],['alias','chat_group_alias_','甲','乙'],['notice','chat_group_notice_','公告甲','公告乙']];
-  function setup(){const state={owner:'A',data:new Map([['phone_groups',JSON.stringify([{id:'g1',members:[{id:'r1'}]},{id:'g2'}])]]),writes:0};
-    const ctx={location:{hostname:'preview.mao520.com'},document:{querySelector:()=>({content:state.owner})},localStorage:{getItem(k){state.hook?.(k,state);return state.data.get(k)??null},setItem(k,v){state.writes++;state.data.set(k,v)}}};ctx.window=ctx;vm.runInNewContext(read('shared/js/phone/group-write-guard.js'),ctx);return {s:state,g:ctx.MAOGroupWriteGuard};}
+  function setup(){const state={owner:'MAO-AAAAAAAAAAAA',data:new Map([['phone_groups',JSON.stringify([{id:'g1',members:[{id:'r1'}]},{id:'g2'}])]]),writes:0};
+    const ctx={location:{hostname:'preview.mao520.com'},document:{querySelector:()=>({content:state.owner})},localStorage:{getItem(k){state.hook?.(k,state);return state.data.get(k)??null},setItem(k,v){state.writes++;state.data.set(k,v)}}};ctx.window=ctx;loadScopedGuard(ctx);return {s:state,g:ctx.MAOGroupWriteGuard};}
   for(const [kind,prefix,val,newer] of cases){
     {const {s,g}=setup();const snap=g.readPreference(g.read('g1'),kind);let sawKey=false;s.hook=(key)=>{if(key===prefix+'g1')sawKey=true;else if(key==='phone_groups'&&sawKey)s.data.set(prefix+'g1',newer)};assert.equal(g.writePreference(snap,val).ok,false);assert.equal(s.writes,0);assert.equal(s.data.get(prefix+'g1'),newer);}
-    {const {s,g}=setup();const snap=g.readPreference(g.read('g1'),kind);let n=0;s.hook=(key)=>{if(key===prefix+'g1'&&++n===2)s.owner='B'};assert.equal(g.writePreference(snap,val).ok,false);assert.equal(s.writes,0);}
+    {const {s,g}=setup();const snap=g.readPreference(g.read('g1'),kind);let n=0;s.hook=(key)=>{if(key===prefix+'g1'&&++n===2)s.owner='MAO-BBBBBBBBBBBB'};assert.equal(g.writePreference(snap,val).ok,false);assert.equal(s.writes,0);}
   }
 });
 
@@ -478,4 +489,26 @@ test('role-owned and departed groups cannot be taken over from old settings',()=
   assert.ok(settings.includes("userCanManage(g,'invite')"));
   assert.ok(play.includes("canManage('transfer',String(nextOwnerId))"));
   assert.ok(play.includes("member.memberRole=input.checked?'admin':'member'"));
+});
+
+test('account-ready contract gates both group data and portrait reads before touching storage',async()=>{
+  const A='MAO-AAAAAAAAAAAA',B='MAO-BBBBBBBBBBBB',asset='as_'+'A'.repeat(32);
+  function setup(extra={}){
+    const state={id:A,role:'member',marker:{accountId:A,role:'member',ready:true},host:'preview.mao520.com',reads:0,writes:0,mediaReads:0,groups:[{id:'g1',name:'old',members:[{id:'r1'}],portraitOverridesV1:{accountId:A,entries:[{memberId:'r1',assetId:asset}]}},{id:'g2',name:'other'}],...extra};
+    const ctx={document:{querySelector(q){return q==='meta[name="mao-account-id"]'?(state.id===null?null:{content:state.id}):q==='meta[name="mao-account-role"]'?(state.role===null?null:{content:state.role}):null;}},location:{get hostname(){return state.host;}},get __MAO_ACCOUNT_SCOPE__(){return state.marker;},localStorage:{getItem(k){state.reads++;state.onRead?.(k);if(state.throwRead)throw Error('read');return k==='phone_groups'?(state.raw??JSON.stringify(state.groups)):null;},setItem(k,v){state.writes++;if(k==='phone_groups')state.groups=JSON.parse(v);}},PhoneStorage:{MediaRepository:class{async listByOwner(){state.mediaReads++;state.onMedia?.();return {ok:true,value:[{assetId:asset}]};}async toDataUrl(){state.mediaReads++;return {ok:true,value:'data:image/png;base64,AAAA'};}}}};
+    ctx.window=ctx;vm.runInNewContext(read('shared/js/phone/group-write-guard.js'),ctx);vm.runInNewContext(read('shared/js/phone/group-portraits.js'),ctx);
+    return {state,g:ctx.MAOGroupWriteGuard,p:ctx.MAOGroupPortraits};
+  }
+  for(const extra of [{marker:undefined},{marker:{accountId:A,role:'member',ready:false}},{marker:{accountId:B,role:'member',ready:true}},{role:'super_admin'},{id:'001',marker:{accountId:'001',role:'member',ready:true}},{id:null,role:null,marker:null},{role:null},{host:'localhost',id:'001',marker:null},{host:'localhost.example.org',id:null,role:null,marker:null}]){
+    const {state,g,p}=setup(extra);assert.equal(g.read('g1'),null);assert.equal(g.create(A,{id:'g3'}).ok,false);assert.equal(g.remove({id:'g1',account:A}).ok,false);assert.throws(()=>p.snapshot('g1'));assert.equal(await p.resolve(state.groups[0],'r1'),'');assert.equal(state.reads,0);assert.equal(state.writes,0);assert.equal(state.mediaReads,0);
+  }
+  {const {state,g}=setup();const snap=g.read('g1');assert.equal(g.commit(snap,{...snap.group,name:'new'}).ok,true);assert.equal(state.groups[1].name,'other');}
+  {const {g}=setup({role:'super_admin',marker:{accountId:A,role:'super_admin',ready:true}});assert.equal(g.read('g1').account,A);}
+  for(const host of ['localhost','127.0.0.1','[::1]']){const {g}=setup({host,id:null,role:null,marker:null});assert.equal(g.read('g1').account,'');assert.equal(g.create('',{id:'g3'}).ok,true);}
+  {const {state,g}=setup();const snap=g.read('g1');let n=0;state.onRead=()=>{if(++n===2)state.marker=null;};assert.equal(g.commit(snap,snap.group).ok,false);assert.equal(state.writes,0);}
+  {const {state,g}=setup();const snap=g.readPreference(g.read('g1'),'pin');state.marker=null;assert.equal(g.writePreference(snap,'true').ok,false);assert.equal(state.writes,0);}
+  for(const extra of [{throwRead:true},{raw:'{broken'}]){const {g}=setup(extra);assert.equal(g.read('g1'),null);}
+  {const {state,p}=setup();assert.equal(await p.resolve(state.groups[0],'r1'),'data:image/png;base64,AAAA');}
+  {const {state,p}=setup();const task=p.resolve(state.groups[0],'r1');state.marker=null;assert.equal(await task,'');assert.equal(state.mediaReads,0);}
+  {const {state,p}=setup();state.onMedia=()=>{state.marker=null;};assert.equal(await p.resolve(state.groups[0],'r1'),'');assert.equal(state.mediaReads,1);}
 });
