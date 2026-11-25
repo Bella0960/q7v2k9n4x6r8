@@ -7,7 +7,7 @@ import vm from 'node:vm';
 // accessing live credentials, or performing Cloudflare writes.
 const source = readFileSync(new URL('../scripts/qa-direct-release.mjs', import.meta.url), 'utf8');
 const start = source.indexOf('async function liveWorkerVersion(name) {');
-const end = source.indexOf('\n\nasync function cloudflarePreflight()', start);
+const end = source.indexOf('\n\nasync function cloudflarePreflight(', start);
 assert.ok(start >= 0 && end > start, 'live Worker version gate must exist');
 const helper = source.slice(start, end);
 
@@ -454,7 +454,7 @@ test('Wrangler configs preserve original QA route and hide isolated core routes'
   assert.equal(core.name, 'maomao-identity-core');
   assert.equal(core.workers_dev, false);
   assert.equal(core.preview_urls, false);
-  assert.equal((source.match(/await verifyWorkerPublicRoutes\(\);/g) || []).length, 3,
+  assert.equal((source.match(/await verifyWorkerPublicRoutes\(\);/g) || []).length, 4,
     'public route gate must run before release and after each Worker upload');
 });
 
