@@ -1060,24 +1060,24 @@
         return result;
     }
 
-    // 旧版备份缺失的新增可选偏好：本机已有值时回填保留，不被旧备份清空。
-    function carryOverPreserved(incoming, beforeSnap) {
-        var result = { shouldKeep: 0, written: 0, failed: 0, failedKeys: [] };
-        PRESERVE_ON_MISSING_KEYS.forEach(function (k) {
-            if (Object.prototype.hasOwnProperty.call(incoming, k)) return;
-            if (!beforeSnap || !Object.prototype.hasOwnProperty.call(beforeSnap, k)) return;
-            var cur = beforeSnap[k];
-            if (cur == null) return;
-            result.shouldKeep++;
-            try {
-                localStorage.setItem(k, String(cur));
-                result.written++;
-            } catch (e) {
-                result.failed++;
-                result.failedKeys.push(k);
-            }
-        });
-        return result;
+    // 将旧版备份缺失的可选偏好并入同一次受恢复点保护的写入。
+    // 不修改传入备份或恢复点；显式备份值优先，缺键才保留本机值。
+    function restoreIncoming(incoming, scope, beforeSnap) {
+        try {
+            if (scope) return restoreScoped(incoming, scope);
+            var target = Object.assign(Object.create(null), incoming);
+            PRESERVE_ON_MISSING_KEYS.forEach(function(k) {
+                if (!Object.prototype.hasOwnProperty.call(target,k) &&
+                    beforeSnap && Object.prototype.hasOwnProperty.call(beforeSnap,k) &&
+                    beforeSnap[k] != null) target[k] = beforeSnap[k];
+            });
+            if (!restore(target)) return false;
+            // 兼容静默写入失败；让调用方走现有恢复点回滚，不能报告成功。
+            return PRESERVE_ON_MISSING_KEYS.every(function(k) {
+                return !Object.prototype.hasOwnProperty.call(target,k) ||
+                    localStorage.getItem(k) === String(target[k]);
+            });
+        } catch(e) { return false; }
     }
 
     // 检查 localStorage 里的 active_font_preset_id 是否指向本机仍存在的预设。
@@ -1245,7 +1245,7 @@
             }
 
             // 2. localStorage 覆盖写入；失败则从恢复点回滚后结束（IndexedDB 还没动）
-            var ok = scope ? restoreScoped(incoming, scope) : restore(incoming);
+            var ok = restoreIncoming(incoming, scope, rpSnap);
             if (!ok) {
                 // 回滚：直接用恢复点里读回来的快照，而不是内存里的 current
                 var rpRollback = rpSnap;
@@ -1291,8 +1291,6 @@
                     secretRes.failedKeys.push('本机登录状态');
                 }
             });
-            // 旧版备份未携带的新增可选偏好：本机已有值时保留，不被旧备份清空。
-            if (!scope) carryOverPreserved(incoming, current);
 
             // 4. IndexedDB 恢复：schema < 2 的旧备份跳过并提示
             var dbRestored = 0;
