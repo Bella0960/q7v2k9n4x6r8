@@ -711,3 +711,5 @@ On the next turn/session, read this file and the current `AGENTS.md` first. Cont
 
 ### 2026-11-25 | SOCIAL-IDENTITY-001 | QA branch first patch
 Owner requests strict user/AI/NPC identity isolation. Based on QA v168 source c95ddd91ef1deb526027bd2655abbef4b66f1029. First patch: strict Moments actor IDs, comment identity and reply bindings, forum ownership and reply target bindings, identity-labelled snapshots. No auth changes or destructive migration. Existing ambiguous records stay UNKNOWN. Node tests added; actual Node/Chromium/full security checks NOT VERIFIED. Main diverges from QA; reconcile with #510 and other active work before merge. Remaining: full cross-app audit, privacy and in-flight account isolation, actual behavior tests, additional reply paths, deployment. Do not declare complete.
+
+- Follow-up patch: my-moments no name inference; unified mention and auto-comment request path; visibility checked before/after AI call; forum malformed resident ID rejection and reply target metadata for user replies. Added specific regression assertions. Full test execution still pending; no production or account-auth changes.

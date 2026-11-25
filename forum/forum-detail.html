@@ -557,7 +557,7 @@ function mergeForumPosts(stored,seedPosts,previousSeedSets){
   }
   function makeDetailAIComment(item,index){
     const r=detailResident(item&&item.residentId,index),text=String(item&&item.text||'').trim().slice(0,260);
-    if(!text)return null;
+    if(!text||!r||String(r.id)!==String(item&&item.residentId||''))return null;
     const now=Date.now();
     // AI output may contain null/scalar nested entries. Skip malformed rows
     // before the two-reply limit so a bad row does not hide a valid response.
@@ -565,7 +565,7 @@ function mergeForumPosts(stored,seedPosts,previousSeedSets){
       ?item.replies.filter(x=>x&&typeof x==='object'&&!Array.isArray(x)).slice(0,2):[];
     const replies=nested.map((x,j)=>{
       const rr=detailResident(x.residentId,index+j+3),replyText=String(x.text||'').trim().slice(0,220);
-      return replyText?{name:rr.name,avatar:'#'+['333333','555555','777777','444444'][j%4],residentId:rr.id,owner:'community',source:'forum-ai',text:replyText,time:now-(j+1)*70000,replyTo:r.name,replyToType:'NPC',replyToActorId:r.id,likes:0}:null;
+      return replyText&&rr&&String(rr.id)===String(x.residentId||'')&&String(rr.id)!==String(r.id)?{name:rr.name,avatar:'#'+['333333','555555','777777','444444'][j%4],residentId:rr.id,owner:'community',source:'forum-ai',text:replyText,time:now-(j+1)*70000,replyTo:r.name,replyToType:'NPC',replyToActorId:r.id,likes:0}:null;
     }).filter(Boolean);
     return {name:r.name,avatar:'#'+['333333','555555','777777','444444'][index%4],residentId:r.id,owner:'community',source:'forum-ai',text:text,time:now-index*50000,likes:0,replies:replies};
   }
@@ -1255,7 +1255,7 @@ function mergeForumPosts(stored,seedPosts,previousSeedSets){
     try{
       const residents=DETAIL_RESIDENTS.map((r,i)=>detailResident(r.id,i)).map(r=>({id:r.id,name:r.name,style:r.style}));
       const threadContext={anchor:forumUtterance(target),hasAttachedImages:!!((target.mediaAssetIds||[]).length||(submittedImageIds||[]).length),replies:(target.replies||[]).slice(-5).map(forumUtterance),replyTarget:forumUtterance(submittedComment)};
-      const prompt='论坛里刚出现一条新留言，请让 1-2 位不同的路人自然回应它。只返回 JSON。\n路人资料：'+JSON.stringify(residents)+'\n帖子：'+JSON.stringify({title:postTitle(),body:postBody(),topic:post.topic||''})+'\n当前讨论串：'+JSON.stringify(threadContext)+'\n用户刚刚说：'+JSON.stringify(text)+'\n要求：回复要直接回应这句话和上下文，不要泛泛夸赞或重复已有内容；可以追问、分享相似经历或有礼貌地提出不同看法。最多两条，两条均回复明确标记的 USER_SELF 目标，不得把其他发言者视作用户本人。每条 10-55 字，保持口语和各自性格。格式：{"replies":[{"residentId":"路人id","text":"回复","replyTo":"我"}]}';
+      const prompt='论坛里刚出现一条新留言，请让 1-2 位不同的路人自然回应它。只返回 JSON。\n路人资料：'+JSON.stringify(residents)+'\n帖子：'+JSON.stringify({title:postTitle(),body:postBody(),topic:post.topic||''})+'\n当前讨论串：'+JSON.stringify(threadContext)+'\n用户刚刚说：'+JSON.stringify(text)+'\n要求：回复要直接回应这句话和上下文，不要泛泛夸赞或重复已有内容；可以追问、分享相似经历或有礼貌地提出不同看法。最多两条，两条均回复明确标记的 USER_SELF 目标，不得把其他发言者视作用户本人。每条 10-55 字，保持口语和各自性格。格式：{"replies":[{"residentId":"路人id","text":"回复","replyTo":"仅回复上方已明确绑定的目标"}]}';
       const imageIds=Array.from(new Set([].concat(post.mediaAssetIds||[],target.mediaAssetIds||[],submittedImageIds||[]))).slice(0,2);
       const result=await forumAIJSON(prompt,0.94,imageIds);
       // Never persist generated replies to a deleted target or an old post.
@@ -1336,7 +1336,8 @@ function mergeForumPosts(stored,seedPosts,previousSeedSets){
         }
         const target=replyTarget;
         if(!target.replies)target.replies=[];
-        savedItem={id:commentId,name:'我',avatar:'#222',owner:'me',text:text,time:Date.now(),replyTo:target.name,mediaAssetIds:assetIds};
+        const targetActor=forumActor(target);
+        savedItem={id:commentId,name:'我',avatar:'#222',owner:'me',text:text,time:Date.now(),replyTo:target.name,replyToType:targetActor.type,replyToActorId:targetActor.id,replyToCommentId:target.id||'',mediaAssetIds:assetIds};
         target.replies.push(savedItem);
         replyContainer=target;
       }else{

@@ -737,6 +737,13 @@ a:active, button:active, [role="button"]:active { transform: scale(0.97); }</sty
             }
             return { type: 'UNKNOWN', id: '', name: item.name || item.author || '' };
         }
+        function momentVisibleToRole(post, roleId) {
+            var author = momentActor(post, false);
+            if (author.type === 'AI_ROLE' && author.id === String(roleId)) return true;
+            var visibility = String(post.visibility || 'public');
+            return visibility === 'public' || visibility === 'friends' ||
+                (visibility === 'custom' && Array.isArray(post.visibleTo) && post.visibleTo.map(String).includes(String(roleId)));
+        }
         function sameMomentActor(a, b) {
             return a.type !== 'UNKNOWN' && a.type === b.type && a.id === b.id;
         }
@@ -782,14 +789,14 @@ a:active, button:active, [role="button"]:active { transform: scale(0.97); }</sty
             // 按可见权限过滤：自己的动态始终可见
             var list = allList.filter(function (m) {
                 var isMine = momentActor(m, false).type === 'USER_SELF';
-                if (isMine) return true; // 自己发的 / AI 角色发的（已在朋友圈里）都显示
+                if (isMine) return true; // 仅真实用户本人发出的动态
                 var v = m.visibility || 'public';
                 if (v === 'public') return true;
                 if (v === 'friends') return true; // 简化：目前所有 AI 角色都是朋友
                 if (v === 'private') return false; // 别人的仅自己动态不显示
                 if (v === 'custom') {
                     var visibleTo = m.visibleTo || [];
-                    return visibleTo.indexOf(me.id) !== -1 || visibleTo.indexOf('me') !== -1;
+                    return Array.isArray(visibleTo) && (visibleTo.map(String).includes(String(me.id)) || visibleTo.map(String).includes('me'));
                 }
                 return true;
             });
@@ -1074,8 +1081,7 @@ a:active, button:active, [role="button"]:active { transform: scale(0.97); }</sty
             if (postActor.type === 'UNKNOWN' || replyActor.type === 'UNKNOWN') return;
             if (!userComment && postActor.type !== 'USER_SELF') return;
             if (userComment && (postActor.type !== 'AI_ROLE' || postActor.id !== String(role.id))) return;
-            var visibility = String(post.visibility || 'public');
-            if (postActor.type === 'USER_SELF' && (visibility === 'private' || (visibility === 'custom' && !(post.visibleTo || []).map(String).includes(String(role.id))) || !['public','friends','custom'].includes(visibility))) return;
+            if (!momentVisibleToRole(post, role.id)) return;
             var config = getApiConfig();
             var apiKey = String(config.apiKey || '').trim();
             if (!apiKey) return;
@@ -1141,7 +1147,7 @@ a:active, button:active, [role="button"]:active { transform: scale(0.97); }</sty
 
                 var saved = loadMoments();
                 var target = findPost(saved, post.id);
-                if (!target || !sameMomentActor(momentActor(target, false), postActor) || !getCharacterList().some(function (r) { return String(r.id) === String(role.id); })) return;
+                if (!target || !sameMomentActor(momentActor(target, false), postActor) || !momentVisibleToRole(target, role.id) || !getCharacterList().some(function (r) { return String(r.id) === String(role.id); })) return;
                 if (userComment && !(target.commentList || []).some(function (entry) { return entry.id === userComment.id && sameMomentActor(momentActor(entry, true), replyActor); })) return;
                 if (!Array.isArray(target.commentList)) target.commentList = [];
                 if (!Array.isArray(target.comments)) target.comments = [];
@@ -1295,115 +1301,16 @@ a:active, button:active, [role="button"]:active { transform: scale(0.97); }</sty
         /* ================= @好友触发 AI 回复 ================= */
         function triggerMentionsReply(post) {
             if (momentActor(post, false).type !== 'USER_SELF') return;
+            var ids = Array.isArray(post.mentions) ? post.mentions.map(String) : [];
+            if (!ids.length) return;
+            if (!String(getApiConfig().apiKey || '').trim()) { showToast('未配置 API Key，@好友无法自动回复'); return; }
             var characters = getCharacterList();
-            if (!characters.length) return;
-            var config = getApiConfig();
-            var apiKey = (config.apiKey || '').trim();
-            if (!apiKey) { showToast('未配置 API Key，@好友无法自动回复'); return; }
-
-            var baseUrl = (config.baseUrl || 'https://api.openai.com/v1').trim().replace(/\/+$/, '');
-            var model = (config.model || 'gpt-3.5-turbo').trim();
-            var content = post.content || '[图片动态]';
-            var mentionIds = post.mentions || [];
-
-            // 对每个被 @ 的角色分别发起 AI 回复
-            mentionIds.forEach(function (cid) {
-                var role = null;
-                for (var i = 0; i < characters.length; i++) {
-                    if (String(characters[i].id) === String(cid)) { role = characters[i]; break; }
-                }
-                if (!role) return;
-
-                var persona = (role.persona || role.prompt || '一个善解人意的AI角色').trim();
-                var tone = (role.tone || '').trim();
-                var systemPrompt = '你是' + (role.name || '一个角色') + '。角色设定：' + persona +
-                    (tone ? '。说话语气：' + tone : '') +
-                    '。现在有人在社交空间动态里 @ 了你，你需要以第一人称在那条动态下面评论回复。';
-                var userPrompt = '动态作者身份：USER_SELF，真实用户本人。动态内容：' + content +
-                    '\n请写一条你对这条动态的评论回复，口语化、自然真实，20~50 字。' +
-                    '只输出评论正文本身，不要加引号或解释。';
-
-                var start = Date.now();
-                var controller = new AbortController();
-                var timeoutId = setTimeout(function () { controller.abort(); }, 15000);
-
-                fetch(baseUrl + '/chat/completions', {
-                    method: 'POST',
-                    headers: {
-                        'Content-Type': 'application/json',
-                        'Authorization': 'Bearer ' + apiKey
-                    },
-                    signal: controller.signal,
-                    body: JSON.stringify({
-                        model: model,
-                        messages: [
-                            { role: 'system', content: systemPrompt },
-                            { role: 'user', content: userPrompt }
-                        ],
-                        temperature: config.temperature != null ? config.temperature : 0.8,
-                        stream: false
-                    })
-                }).then(function (response) {
-                    if (!response.ok) throw new Error('HTTP ' + response.status);
-                    return response.json();
-                }).then(function (data) {
-                    var text = (((data || {}).choices || [])[0] || {}).message
-                        ? data.choices[0].message.content : '';
-                    text = String(text || '').replace(/^["""]+|["""]+$/g, '').replace(/^评论[:：]\s*/, '').trim();
-                    if (!text) throw new Error('返回为空');
-                    if (text.length > 120) text = text.slice(0, 120);
-
-                    // 把 AI 角色评论加到这条动态下
-                    var list = loadMoments();
-                    var target = null;
-                    for (var j = 0; j < list.length; j++) {
-                        if (String(list[j].id) === String(post.id)) { target = list[j]; break; }
-                    }
-                    if (!target) return;
-                    if (!Array.isArray(target.commentList)) target.commentList = [];
-                    if (!Array.isArray(target.comments)) target.comments = [];
-                    var commentEntry = {
-                        name: role.name || '匿名',
-                        author: role.name || '匿名',
-                        avatar: role.avatar || '',
-                        text: text,
-                        replyToName: getMyInfo().name || '我',
-                        replyToType: 'USER_SELF',
-                        replyToActorId: 'me',
-                        roleId: String(role.id || ''),
-                        time: Date.now(),
-                        timestamp: Date.now(),
-                        byAI: true
-                    };
-                    target.commentList.push(commentEntry);
-                    target.comments.push(commentEntry);
-                    target.commentsCount = (target.commentList || []).length;
-                    try { saveMoments(list); } catch (e) {}
-
-                    // 通知：TA 回复了你的动态
-                    pushNotification({
-                        type: 'mention_reply',
-                        actorId: String(role.id || ''),
-                        actorName: role.name || 'AI角色',
-                        actorAvatar: role.avatar || '',
-                        postId: post.id,
-                        postContent: content,
-                        text: '回复了你的动态：' + text.slice(0, 40),
-                        time: Date.now()
-                    });
-
-                    renderMoments();
-                    if (commentPostId && String(commentPostId) === String(post.id)) renderCommentDrawer();
-                    logApiCall(model, 'success', start);
-                }).catch(function (err) {
-                    logApiCall(model, 'error', start, (err && err.message) ? err.message : '');
-                }).finally(function () {
-                    clearTimeout(timeoutId);
-                });
+            Array.from(new Set(ids)).forEach(function (id) {
+                var role = characters.find(function (r) { return String(r.id) === id; });
+                if (role && momentVisibleToRole(post, id)) requestMomentRoleComment(post, role, null);
             });
         }
 
-        /* ================= 点赞 / 评论 事件委托（扩展通知） ================= */
         if (listEl) listEl.addEventListener('click', function (e) {
             var likeBtn = e.target.closest('.like-btn');
             var commentBtn = e.target.closest('.comment-btn');
