@@ -216,6 +216,61 @@
     }
     return {ok:true,added:added,duplicates:duplicates};
   }
+  // Generated manual summaries and merge proposals are append-only, reviewed
+  // separately by the user. The source list is never replaced by AI output.
+  function appendReviewCandidates(roleId, items, options) {
+    function fail(reason) { return {ok:false,reason:reason}; }
+    options = options || {};
+    if (!validRoleId(roleId) || roleId.charAt(0) === 'g' ||
+        ['manual-summary','merge-candidate'].indexOf(options.source) < 0 ||
+        !Array.isArray(items) || typeof options.isCurrent !== 'function') return fail('invalid-batch');
+    function current() { try { return options.isCurrent() === true; } catch (_) { return false; } }
+    if (!current()) return fail('stale-source');
+    var before = readMutationSnapshot(roleId);
+    if (!before.ok) return fail('read-failed');
+    var next = before.list.slice(), added = 0, duplicates = 0, now = Date.now();
+    var ids = new Set(next.map(function(m) { return String(m && m.id || ''); }));
+    var sources = options.sourceMemoryIds;
+    if (options.source === 'merge-candidate') {
+      if (!Array.isArray(sources) || sources.length < 3 || new Set(sources).size !== sources.length ||
+          sources.some(function(id) {
+            var matches = before.list.filter(function(m) { return m && m.id === id; });
+            return typeof id !== 'string' || matches.length !== 1 || !ownedBy(matches[0],roleId) ||
+                matches[0].sourceRoleId !== roleId || matches[0].status !== 'confirmed';
+          })) return fail('invalid-source');
+    } else if (!Number.isInteger(options.sourceMessageCount) || options.sourceMessageCount < 1) return fail('invalid-source');
+    for (var i=0;i<items.length;i++) {
+      var item=items[i];
+      if (!item || typeof item.content !== 'string' || !item.content.trim() || item.content.length > 600) return fail('invalid-item');
+      var content=cleanText(item.content);
+      if (!content) return fail('invalid-item');
+      var category=['key','plot','detail','anniversary','preference'].includes(item.category) ? item.category : 'detail';
+      var same=next.some(function(m) {
+        return m && m.sourceRoleId===roleId && m.source===options.source && m.status==='pending' &&
+          m.content===content && m.category===category &&
+          (options.source==='merge-candidate' ? JSON.stringify(m.sourceMemoryIds)===JSON.stringify(sources) :
+            m.sourceMessageCount===options.sourceMessageCount);
+      });
+      if (same) { duplicates++; continue; }
+      if (next.length>=300) return fail('capacity');
+      var n=next.length,id;
+      do { id='mem_'+now.toString(36)+'_'+(n++).toString(36); } while(ids.has(id));
+      ids.add(id);
+      var record={id:id,content:content,category:category,importance:Math.max(1,Math.min(5,Number(item.importance)||3)),
+        status:'pending',source:options.source,sourceRoleId:roleId,createdAt:now,lastReinforcedAt:now,reinforcementCount:1};
+      if (options.source==='merge-candidate') record.sourceMemoryIds=sources.slice();
+      else record.sourceMessageCount=options.sourceMessageCount;
+      next.push(record); added++;
+    }
+    if (!current() || !sameMutationSnapshot(before,readMutationSnapshot(roleId))) return fail('stale-source');
+    if (added && !saveMemories(roleId,next)) return fail('save-failed');
+    if (added) {
+      var after=readMutationSnapshot(roleId);
+      if (!after.ok || JSON.stringify(after.list)!==JSON.stringify(next)) return fail('readback-failed');
+    }
+    return {ok:true,added:added,duplicates:duplicates};
+  }
+
   function searchHistoryMessages(history, query, options) {
     options = options || {}; history = Array.isArray(history) ? history : [];
     var recent = Math.max(0, Number(options.excludeRecent) || 0);
@@ -500,7 +555,7 @@
     cleanText:cleanText, normalize:normalize, tokensOf:tokensOf,
     getMemories:getMemories, saveMemories:saveMemories, upsertMemory:upsertMemory,
     searchHistoryMessages:searchHistoryMessages, buildHistoricalRecallText:buildHistoricalRecallText,
-    memoryValue:memoryValue, appendPendingSummary:appendPendingSummary,
+    memoryValue:memoryValue, appendPendingSummary:appendPendingSummary, appendReviewCandidates:appendReviewCandidates,
     createHistoryIndex:createHistoryIndex, recallForModelHistory:recallForModelHistory,
     confirmMemoryCorrection:confirmMemoryCorrection, undoMemoryCorrection:undoMemoryCorrection
   };
