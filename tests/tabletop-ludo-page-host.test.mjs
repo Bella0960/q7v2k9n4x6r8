@@ -104,3 +104,31 @@ test('restore refuses a removed role or foreign account without displaying the b
   const g=fixture();g.roles(['r2']);await assert.rejects(g.host.restore(save),/INVALID_CHECKPOINT_SEAT/);assert.equal(g.root.children.length,0);g.host.destroy();
   const other=fixture();await assert.rejects(other.host.restore({...save,accountId:'MAO-BBBBBBBBBBBB'}),/INVALID_CHECKPOINT/);assert.equal(other.root.children.length,0);other.host.destroy();
 });
+
+test('combined checkpoint restores exact board and public chat without reroll or generation',async()=>{
+  const f=fixture({discussion:{generateRole:()=> '棋友回复',allowOutput:()=>true}});
+  await f.host.start({roomId:'room',roleIds:['r1']});
+  all(f.root,'mao-ludo__action')[0].click();await settle(f.host);
+  await f.host.sendChat({messageId:'a',text:'开始'});const before=await f.host.readChat(),save=await f.host.saveMatch();f.host.destroy();
+  let generations=0;const g=fixture({rollDie:()=>{throw Error('reroll');},discussion:{generateRole:()=>{generations++;return '新回复';},allowOutput:()=>true}});g.session('s2');
+  const restored=await g.host.restoreMatch(save);
+  assert.equal(restored.game.die,6);assert.deepEqual(await g.host.readChat(),before);assert.equal(generations,0);
+  assert.equal((await g.host.sendChat({messageId:'a',text:'开始'})).duplicate,true);
+  await g.host.sendChat({messageId:'b',text:'继续'});assert.equal(generations,1);
+  assert.equal((await g.host.readChat()).length,4);g.host.destroy();
+});
+test('combined checkpoint rejects mismatched board revision and invalid sender before mounting',async()=>{
+  const f=fixture();await f.host.start({roomId:'room',roleIds:['r1']});await f.host.sendChat({messageId:'a',text:'开始'});
+  const save=await f.host.saveMatch();f.host.destroy();
+  const g=fixture();await assert.rejects(g.host.restoreMatch({...save,chat:{...save.chat,revision:99}}),/LUDO_INVALID_MATCH_CHECKPOINT/);
+  const bad=JSON.parse(JSON.stringify(save));bad.chat.messages[0].senderSeatId='role:r1';
+  await assert.rejects(g.host.restoreMatch(bad),/LUDO_INVALID_CHAT_CHECKPOINT/);assert.equal(g.root.children.length,0);g.host.destroy();
+});
+test('combined checkpoint does not report pending generation as saved',async()=>{
+  let started,release;const waiting=new Promise(r=>{started=r;});
+  const f=fixture({discussion:{generateRole:()=>{started();return new Promise(r=>{release=r;});},allowOutput:()=>true}});
+  await f.host.start({roomId:'room',roleIds:['r1']});const pending=f.host.sendChat({messageId:'a',text:'开始'}),rejected=assert.rejects(pending,/SPEECH_CANCELLED|LUDO_DISCUSSION_STOPPED/);
+  await waiting;await assert.rejects(f.host.saveMatch(),/LUDO_CHAT_CHECKPOINT_BUSY/);
+  f.host.stopChat();release('迟到');await rejected;
+  const save=await f.host.saveMatch();assert.equal(save.chat.messages.length,1);assert.equal(save.chat.jobIds.length,1);f.host.destroy();
+});

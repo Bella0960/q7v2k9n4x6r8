@@ -94,10 +94,11 @@ export function createLudoPageHost(root,{win=root?.ownerDocument?.defaultView,on
     finally{busy=false;}
   }
   // Internal restore hook for the future verified repository, not a file-import
-  // or user-editable state entry. Chat persistence remains a separate contract.
-  async function restore(checkpoint,{expectedIdentity=null}={}){
+  // or user-editable state entry. Optional chat is bound to the same board revision.
+  async function restore(checkpoint,{expectedIdentity=null,chatCheckpoint=null}={}){
     if(destroyed||busy||entry)fail('LUDO_PAGE_BUSY');
     if(!checkpoint||checkpoint.gameId!=='ludo'||typeof checkpoint.roomId!=='string'||!['classic','adventure'].includes(checkpoint.mode))fail('LUDO_PAGE_INVALID_CHECKPOINT');
+    const savedChat=chatCheckpoint===null?null:JSON.parse(JSON.stringify(chatCheckpoint));
     const stamp=++epoch;busy=true;let e;
     try{
       const session=createBrowserRoomSession({win,spec:{roomId:checkpoint.roomId,gameId:'ludo'},rules:createLudoRules({rollDie,mode:checkpoint.mode}),expectedIdentity,checkpoint});
@@ -105,7 +106,7 @@ export function createLudoPageHost(root,{win=root?.ownerDocument?.defaultView,on
       e.driver=createLudoTurnDriver({session,pace,decide:decideRole,onView:view=>publish(e,view,e.runStamp)});
       entry=e;report('opening');
       const view=await session.viewUser();check(e,stamp);
-      if(view.phase==='playing')e.discussion=createLudoDiscussion({...discussion,session,view,onChange:messages=>{
+      e.discussion=createLudoDiscussion({...discussion,session,view,checkpoint:savedChat,onChange:messages=>{
         if(entry===e&&e.board&&!destroyed)discussion.onChange?.(messages);
       }});
       publish(e,view,stamp);report(view.phase==='finished'?'finished':view.turnSeatId==='user'?'ready':'yield');
@@ -117,6 +118,23 @@ export function createLudoPageHost(root,{win=root?.ownerDocument?.defaultView,on
     const e=entry,stamp=epoch;
     if(destroyed||!e?.board)fail('LUDO_PAGE_BUSY');
     const saved=await e.session.checkpoint();check(e,stamp);return saved;
+  }
+  async function saveMatch(){
+    const e=entry,stamp=epoch;
+    if(destroyed||busy||!e?.board||!e.discussion)fail('LUDO_PAGE_BUSY');
+    busy=true;
+    try{
+      const board=await e.session.checkpoint();check(e,stamp);
+      const revision=board.startRevision+board.moves.length;
+      const chat=await e.discussion.save(revision);check(e,stamp);
+      return {schema:1,board,chat};
+    }finally{busy=false;}
+  }
+  async function restoreMatch(saved,{expectedIdentity=null}={}){
+    if(!saved||Object.keys(saved).length!==3||saved.schema!==1||!saved.board||!saved.chat||
+      saved.board.roomId!==saved.chat.roomId||!Array.isArray(saved.board.moves)||
+      saved.board.startRevision+saved.board.moves.length!==saved.chat.revision)fail('LUDO_INVALID_MATCH_CHECKPOINT');
+    return restore(saved.board,{expectedIdentity,chatCheckpoint:saved.chat});
   }
   async function resume(){
     const e=entry;if(destroyed||!e||busy)fail('LUDO_PAGE_BUSY');
@@ -130,5 +148,5 @@ export function createLudoPageHost(root,{win=root?.ownerDocument?.defaultView,on
   }
   root.replaceChildren();
   function chat(){if(destroyed||!entry?.board||!entry.discussion)fail('LUDO_DISCUSSION_NOT_ACTIVE');return entry.discussion;}
-  return Object.freeze({start,restore,checkpoint,resume,end,destroy,sendChat:message=>chat().send(message),readChat:()=>chat().read(),stopChat:()=>entry?.discussion?.stop(),status:()=>destroyed?'disposed':busy?'busy':entry?entry.board?'open':'paused':'idle'});
+  return Object.freeze({start,restore,checkpoint,saveMatch,restoreMatch,resume,end,destroy,sendChat:message=>chat().send(message),readChat:()=>chat().read(),stopChat:()=>entry?.discussion?.stop(),status:()=>destroyed?'disposed':busy?'busy':entry?entry.board?'open':'paused':'idle'});
 }
