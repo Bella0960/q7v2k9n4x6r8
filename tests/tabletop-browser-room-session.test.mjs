@@ -106,3 +106,36 @@ test('page exit cancels stalled request immediately without waiting for deadline
   f.win.fetch=original;stall.resolve();await pending.catch(()=>{});
   assert.match(outcome.error?.message??'',/CONTEXT_CANCELLED|ROOM_DISPOSED/);assert.equal(signal?.aborted,true);assert.equal(f.session.status(),'disposed');
 });
+
+// Discussion needs a read-only per-seat view, even when the speaker cannot move.
+test('out-of-turn and observer speech views are read-only and seat-projected',async()=>{
+  const f=fixture({project:({state,actorSeatId})=>({n:state.n,visibleTo:actorSeatId})});
+  await f.action('invite',{roleId:'r1'});await f.action('invite',{roleId:'r2',mode:'observer'});await f.action('start');
+  const before=await f.session.viewUser();
+  for(const roleId of ['r1','r2']){
+    const v=await f.session.viewRole(roleId);assert.equal(v.selfSeatId,'role:'+roleId);
+    assert.deepEqual(v.game,{n:0,visibleTo:'role:'+roleId});assert.equal(v.turnSeatId,'user');
+    assert.equal(v.revision,before.revision);assert.equal('commit' in v,false);assert.equal('accountId' in v,false);
+    v.game.n=999;assert.equal((await f.session.viewRole(roleId)).game.n,0);
+  }
+  await assert.rejects(f.session.prepareRoleTurn('r1'),/NOT_YOUR_TURN/);
+  await assert.rejects(f.session.prepareRoleTurn('r2'),/ROLE_CANNOT_MOVE/);
+  assert.deepEqual(f.calls,[]);assert.equal((await f.session.viewUser()).revision,before.revision);
+});
+test('speech view rejects lobby, uninvited, unknown and removed role',async()=>{
+  const f=fixture({project:projectTurn});await f.action('invite',{roleId:'r1'});
+  await assert.rejects(f.session.viewRole('r1'),/ROLE_CANNOT_VIEW/);
+  await f.action('start');await assert.rejects(f.session.viewRole('r2'),/UNKNOWN_SEAT/);
+  await assert.rejects(f.session.viewRole('foreign'),/ROLE_UNAVAILABLE/);
+  await assert.rejects(f.session.viewRole(''),/INVALID_ROLE_ID/);
+  f.setRoles(['r2']);await assert.rejects(f.session.viewRole('r1'),/ROLE_UNAVAILABLE|ROSTER_CHANGED/);
+});
+test('speech view never reads old room after login replacement or page exit',async()=>{
+  const f=fixture({project:projectTurn});await f.start();f.sessionId('new');await assert.rejects(f.session.viewRole('r1'),/SCOPE_CHANGED/);assert.equal(f.session.status(),'disposed');
+  const g=fixture({project:projectTurn});await g.start();g.win.fire('pagehide');await assert.rejects(g.session.viewRole('r1'),/ROOM_DISPOSED/);
+});
+test('speech view rejects hidden or offline page and re-verifies roster after recovery',async()=>{
+  const f=fixture({project:projectTurn});await f.start();f.win.document.hidden=true;f.win.document.fire('visibilitychange');await assert.rejects(f.session.viewRole('r1'),/PAGE_INACTIVE/);
+  f.win.document.hidden=false;f.win.document.fire('visibilitychange');f.win.navigator.onLine=false;f.win.fire('offline');await assert.rejects(f.session.viewRole('r1'),/PAGE_INACTIVE/);
+  f.win.navigator.onLine=true;f.win.fire('online');f.setRoles(['r2']);await assert.rejects(f.session.viewRole('r1'),/ROLE_UNAVAILABLE|ROSTER_CHANGED/);
+});

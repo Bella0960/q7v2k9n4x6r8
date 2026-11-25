@@ -37,6 +37,15 @@ export function createRoomLifetime({getContext,createDispatcher,spec,rules}) {
       return active.dispatch(actor,token,roleId === null ? payload : {type:'move',move:payload});
     };
   }
+  // Trusted discussion scheduler: read a seat projection without a move token.
+  function viewRole(roleId) {
+    if (!validId(roleId)) fail('INVALID_ROLE_ID');
+    const c = scopedContext();
+    if (!c.roleIds.includes(roleId)) fail('ROLE_UNAVAILABLE');
+    const v = current().view('role:'+roleId);
+    if (!['playing','finished'].includes(v.phase)) fail('ROLE_CANNOT_VIEW');
+    return v;
+  }
   // Trusted scheduler only: pair a seat-specific view with the capability
   // for that exact turn, before any asynchronous role generation starts.
   function prepareRoleTurn(roleId) {
@@ -52,6 +61,7 @@ export function createRoomLifetime({getContext,createDispatcher,spec,rules}) {
   }
   return Object.freeze({
     viewUser: () => current().view('user'),
+    viewRole,
     prepareUserAction: () => prepare('user',null),
     prepareRoleTurn,
     prepareRoleMove: roleId => prepareRoleTurn(roleId).commit,

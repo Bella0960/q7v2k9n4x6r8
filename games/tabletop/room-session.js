@@ -64,6 +64,7 @@ export function createRoomSession({verifyContext,createLifetime,spec,rules}={}) 
   return Object.freeze({
     refresh,dispose,status:()=>status,
     viewUser:()=>active().viewUser(),
+    viewRole:roleId=>active().viewRole(roleId),
     prepareUserAction:()=>bind(active().prepareUserAction()),
     prepareRoleMove:roleId=>bind(active().prepareRoleMove(roleId),roleId),
     prepareRoleTurn(roleId) {

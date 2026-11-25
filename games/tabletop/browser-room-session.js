@@ -108,6 +108,12 @@ export function createBrowserRoomSession({win=globalThis.window,spec,rules}={}) 
     refresh,dispose,status:()=>disposed?'disposed':session.status(),
     lastError:()=>lastError?.message??null,
     async viewUser(){await refresh();guard();return session.viewUser();},
+    async viewRole(roleId){
+      await refresh();guard();
+      const stamp=epoch,view=session.viewRole(roleId);
+      guard();if(stamp!==epoch) fail('STALE_BROWSER_CONTEXT');
+      return view;
+    },
     prepareUserAction:()=>prepare(()=>session.prepareUserAction()),
     prepareRoleMove:roleId=>prepare(()=>session.prepareRoleMove(roleId)),
     prepareRoleTurn
