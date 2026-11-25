@@ -5,10 +5,40 @@
 (function (global) {
   'use strict';
 
+  // Model-only public group view. Storage and visible history remain untouched.
+  function groupPublicHistory(history,groupId){
+    if(!Array.isArray(history))return [];
+    var gid=String(groupId||'');
+    function visible(m){
+      if(!m||typeof m!=='object'||m.isError||m.sendFailed||m.role==='system_error')return false;
+      if(m.type==='group_private'||m.type==='group_game_private'||m.type==='group_welcome'||m.privateFromGroup||m.privateGroupReceiptV1||m.privateMessageId||m.privateRoleId)return false;
+      if(m.visibility!=null&&m.visibility!==''&&m.visibility!=='public')return false;
+      if(gid&&m.fromGroupId!=null&&String(m.fromGroupId)!==gid)return false;
+      if((m.role==='assistant'||m.role==='received')&&String(m.memberId||'')==='__user')return false;
+      return true;
+    }
+    var counts=new Map(),sources=new Map();
+    history.forEach(function(m){
+      if(m&&m.mid!=null&&String(m.mid)){var mid=String(m.mid);counts.set(mid,(counts.get(mid)||0)+1);if(visible(m))sources.set(mid,m);}
+    });
+    return history.filter(visible).map(function(m){
+      if(!m.quote)return m;
+      // Quote previews are stored copies. Trust only an exact public source in this group.
+      var q=m.quote,mid=q&&q.mid!=null?String(q.mid):'',source=counts.get(mid)===1?sources.get(mid):null;
+      var copy=Object.assign({},m);delete copy.quote;
+      if(source&&source!==m){
+        var text=String(source.text||source.content||'').trim();
+        if(text)copy.quote={mid:mid,text:text.slice(0,500),fromRole:source.role,authorName:String(source.name||'')};
+      }
+      return copy;
+    });
+  }
+
   function mapHistoryToApiMessages(history, stripInternalReasoning, options) {
     var apiMessages = [];
     options = options && typeof options === 'object' ? options : {};
     var isGroupChat = options.isGroupChat === true;
+    if(isGroupChat&&!options.publicHistoryPrepared)history=groupPublicHistory(history,options.groupId);
     var groupMode = options.groupMode === 'offline' ? 'offline' : 'online';
     var groupMembers = Array.isArray(options.groupMembers) ? options.groupMembers : [];
     // The model represents ONE selected speaker. Other characters' past lines
@@ -435,6 +465,7 @@
   }
 
   global.ChatContextPolicy = {
+    groupPublicHistory: groupPublicHistory,
     mapHistoryToApiMessages: mapHistoryToApiMessages,
     resolveMemoryLimit: resolveMemoryLimit,
     selectRecentHistory: selectRecentHistory,
