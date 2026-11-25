@@ -19,12 +19,12 @@ function slice(from, to) {
   return page.slice(start, end);
 }
 
-const identityBlock = slice('  function diaryAuthorKind(', '  function diaryCharacters(');
+const identityBlock = slice('  function diaryStableId(', '  function diaryCharacters(');
 const personaBlock = slice('  function diaryRoleContext(', '  function openAnnotation()');
 const manualBlock = slice('  function generateCharComment(){', '  function renderReader(){');
-const persistBlock = slice('  function persist(){', '  function hydratePhotos(');
+const persistBlock = slice('  function diaryArchiveIsCurrent(){', '  function hydratePhotos(');
 const flagBlock = slice('  function toggleEntryFlag(', '  function renderPhotoPreview(');
-const autoWriteBlock = slice('  function maybeAutoWriteCharEntry(){', '  setTimeout(maybeAutoWriteCharEntry,3000);');
+const autoWriteBlock = slice('  function diaryRecentOwnWriting(', '  setTimeout(maybeAutoWriteCharEntry,3000);');
 const autoPeekBlock = slice('  function maybeAutoPeek(){', '  setTimeout(maybeAutoPeek,1800);');
 
 function makeStore(seed = {}) {
@@ -42,11 +42,17 @@ function makeStore(seed = {}) {
   };
 }
 
-function makeSandbox({ store, entries = [], role = { id: 'roleA', name: '阿岚', persona:'从事植物研究，记录自然观察。', tone:'简练、克制' }, aiText = '今天风很大，窗台上的绿植被吹得一直点头。我把咖啡放在窗边，看它慢慢凉掉，忽然很想跟你说一句没什么用的废话。' }) {
+function makeLocks(){
+ const held=new Set();return {request(name,options,fn){if(held.has(name)){try{return Promise.resolve(fn(null));}catch(e){return Promise.reject(e);}}held.add(name);try{return Promise.resolve(fn({name})).finally(()=>held.delete(name));}catch(e){held.delete(name);return Promise.reject(e);}}};
+}
+function makeSandbox({ store, locks=makeLocks(), entries = [], role = { id: 'roleA', name: '阿岚', persona:'从事植物研究，记录自然观察。', tone:'简练、克制' }, aiText = '今天风很大，窗台上的绿植被吹得一直点头。我把咖啡放在窗边，看它慢慢凉掉，忽然很想跟你说一句没什么用的废话。' }) {
   const toasts = [];
   const sandbox = {
     localStorage: store,
     STORAGE_KEY: 'maomao_diary_entries_v1',
+    diaryArchiveSnapshot:store.getItem('maomao_diary_entries_v1'),
+    diaryPageAccount:JSON.stringify(['fixture-account',null]),
+    navigator:{locks},
     entries,
     peekBusy: false,
     showToast: (m) => toasts.push(m),
@@ -215,13 +221,13 @@ test('manual comment rejects role-authored entries before any paid call',()=>{
  sb.generateCharComment();assert.equal(calls,0);
 });
 test('manual/automatic delayed replies are discarded if author, role, or account changes',async()=>{
- for(const manual of [false,true])for(const change of ['author','role','account']){
+ for(const manual of [false,true])for(const change of ['author','role','account','record-kind']){
   const entry={id:'d_user',author:'me',date:'2026-11-25',content:'user'};
   const {sb}=makeSandbox({store:makeStore(),entries:[entry]});
   sb.readerId=entry.id;let resolve;sb.PhoneAPI.complete=()=>new Promise(r=>resolve=r);
   if(manual)sb.generateCharComment();else sb.maybeAutoPeek();
   assert.equal(typeof resolve,'function');
-  if(change==='author')entry.author='roleB';else if(change==='role')sb.diaryCharacters=()=>[];else sb.account='other';
+  if(change==='author')entry.author='roleB';else if(change==='role')sb.diaryCharacters=()=>[];else if(change==='record-kind')entry.noteType='备忘';else sb.account='other';
   resolve('reply');await new Promise(r=>setTimeout(r,10));
   assert.equal(entry.charComments?.length||0,0);
  }
@@ -285,4 +291,260 @@ test('too-short model diary is not persisted and does not mark the cooldown',asy
  assert.equal(sb.entries.length,0);
  assert.equal(store.getItem('char_last_wrote_roleA'),null);
  assert.equal(sb.maybeAutoWriteCharEntry.inFlight,false);
+});
+
+test('personal remark is independent of diary body, role comments and memo records, with rollback on quota error',()=>{
+ const roleEntry={id:'d_char_1',author:'roleA',date:'2026-11-25',content:'ROLE_BODY',charComments:[{text:'old historical comment'}],noteType:'日记'};
+ const memo={id:'m1',author:'me',date:'2026-11-25',content:'MEMO_BODY',noteType:'备忘'};
+ const store=makeStore(),{sb}=makeSandbox({store,entries:[roleEntry,memo]});
+ const token=sb.diaryAccountToken();
+ assert.equal(sb.savePersonalRemark(roleEntry.id,token,'PRIVATE_REMARK'),true);
+ assert.equal(roleEntry.personalRemark.text,'PRIVATE_REMARK');
+ assert.equal(roleEntry.content,'ROLE_BODY');
+ assert.equal(roleEntry.charComments[0].text,'old historical comment');
+ assert.equal(sb.savePersonalRemark(memo.id,token,'no'),false);
+ assert.equal(memo.personalRemark,undefined);
+ assert.equal(sb.savePersonalRemark(roleEntry.id,'wrong-account','no'),false);
+ store.failWrites(true);
+ assert.equal(sb.savePersonalRemark(roleEntry.id,token,'failed edit'),false);
+ assert.equal(roleEntry.personalRemark.text,'PRIVATE_REMARK');
+ assert.equal(sb.savePersonalRemark(roleEntry.id,token,''),false);
+ assert.equal(roleEntry.personalRemark.text,'PRIVATE_REMARK');
+ store.failWrites(false);
+ assert.equal(sb.savePersonalRemark(roleEntry.id,token,''),true);
+ assert.equal(roleEntry.personalRemark,undefined);
+ assert.equal(JSON.parse(store.getItem('maomao_diary_entries_v1'))[0].personalRemark,undefined);
+});
+test('natural writing prompt includes only the selected role own prior diaries and not personal remarks, other roles, or memo bodies',()=>{
+ const entries=[
+ {id:'d_char_a',date:'2026-11-24',author:'roleA',diaryWritingVersion:2,content:'OWN_PRIOR_LIFE',personalRemark:{text:'PRIVATE_REMARK'},charComments:[{text:'OLD_COMMENT'}]},
+ {id:'d_char_b',date:'2026-11-24',author:'roleB',diaryWritingVersion:2,content:'OTHER_ROLE_LIFE'},
+ {id:'d_char_old',date:'2026-11-24',author:'roleA',content:'OLD_GENERIC_TEMPLATE'},
+ {id:'d_char_memo',date:'2026-11-24',author:'roleA',noteType:'备忘',content:'MEMO_PRIVATE'},
+ {id:'d_user',date:'2026-11-25',author:'me',content:'USER_PRIVATE',personalRemark:{text:'USER_REMARK'}}
+ ];
+ const {sb}=makeSandbox({store:makeStore(),entries});
+ const prompt=sb.diaryWritingPrompt(sb.peekCurrentRole());
+ assert.match(prompt,/OWN_PRIOR_LIFE/);
+ assert.match(prompt,/不要求起承转合/);
+ assert.match(prompt,/不默认上班、喝咖啡、加班、通勤/);
+ assert.doesNotMatch(prompt,/200-400字|PRIVATE_REMARK|OLD_COMMENT|OTHER_ROLE_LIFE|MEMO_PRIVATE|USER_PRIVATE|USER_REMARK|OLD_GENERIC_TEMPLATE/);
+});
+test('automatic and manual role comments never include private remark fields and label memo distinctly',async()=>{
+ for(const noteType of ['日记','备忘']){
+  const entry={id:'u',author:'me',date:'2026-11-25',content:'BODY_TEXT',noteType,personalRemark:{text:'REMARK_SECRET'}};
+  const {sb}=makeSandbox({store:makeStore(),entries:[entry]});
+  let calls=[];sb.PhoneAPI.complete=opts=>{calls.push(opts);return Promise.resolve('留言')};
+  sb.maybeAutoPeek();await new Promise(r=>setTimeout(r,10));
+  sb.readerId='u';sb.generateCharComment();await new Promise(r=>setTimeout(r,10));
+  assert.equal(calls.length,2);
+  for(const opts of calls){assert.ok(opts.user.includes('BODY_TEXT'));assert.ok(opts.user.includes(noteType==='备忘'?'备忘录':'日记'));assert.doesNotMatch(opts.user+opts.system,/REMARK_SECRET/);}
+ }
+});
+test('backup import and export preserve the dedicated private remark field',()=>{
+ const importer=slice('  function importBackup(file){','  function openMenu()');
+ assert.match(importer,/clean\.personalRemark=\{text:e\.personalRemark\.text/);
+ const exporter=slice('  function exportBackup(){','  function importBackup(file){');
+ assert.match(exporter,/Object\.assign\(\{\},entry/);
+});
+
+test('stale page cannot overwrite another tab archive or a newly switched account',()=>{
+ const entry={id:'u',author:'me',date:'2026-11-25',content:'old'};
+ const store=makeStore({maomao_diary_entries_v1:JSON.stringify([entry])});
+ const {sb}=makeSandbox({store,entries:[{...entry}]});
+ const newest=JSON.stringify([{...entry,content:'newest'}]);store.setItem('maomao_diary_entries_v1',newest);
+ assert.equal(sb.savePersonalRemark('u',sb.diaryAccountToken(),'stale'),false);
+ assert.equal(store.getItem('maomao_diary_entries_v1'),newest);
+ sb.diaryArchiveSnapshot=newest;sb.account='other';
+ assert.equal(sb.persist(),false);assert.equal(store.getItem('maomao_diary_entries_v1'),newest);
+});
+test('in-flight comments are not stored after content or persona changes',async()=>{
+ for(const manual of [false,true])for(const change of ['content','persona']){
+  const role={id:'roleA',name:'A',persona:'研究植物，喜欢自然观察。',tone:'简练'};
+  const entry={id:'u',author:'me',date:'2026-11-25',content:'original'};
+  const {sb}=makeSandbox({store:makeStore(),entries:[entry],role});
+  let finish;sb.PhoneAPI.complete=()=>new Promise(r=>finish=r);sb.readerId='u';
+  if(manual)sb.generateCharComment();else sb.maybeAutoPeek();
+  assert.equal(typeof finish,'function');
+  if(change==='content')entry.content='changed';else role.persona='研究音乐，喜欢作曲。';
+  finish('测试留言');await new Promise(r=>setTimeout(r,10));
+  assert.equal(entry.charComments?.length||0,0);
+ }
+});
+test('in-flight role diary is discarded after saved role context changes',async()=>{
+ const role={id:'roleA',name:'A',persona:'从事植物研究，记录自然观察。',tone:'简练'};
+ const {sb}=makeSandbox({store:makeStore(),role});let finish;
+ sb.PhoneAPI.complete=()=>new Promise(r=>finish=r);
+ const pending=sb.maybeAutoWriteCharEntry();await Promise.resolve();
+ assert.equal(typeof finish,'function');role.persona='从事音乐研究，记录作曲过程。';
+ finish('今天记录了植物叶片的变化，正在整理观察记录。');await pending;
+ assert.equal(sb.entries.length,0);
+});
+test('current-role selector refuses invalid contacts, ambiguous roles and duplicate IDs',()=>{
+ const code=slice('  function diaryStableId(', '  function diaryRecordById(')+'\n'+slice('  function diaryCharacters(){','  // A read-only, diary-specific adapter')+'\n'+slice('  function peekCurrentRole(){','  function maybeAutoPeek(){');
+ let roles=[{id:'a',name:'A'},{id:'b',name:'B'}],contact='missing';
+ const context=vm.createContext({PhoneStorage:{getCharacters:()=>roles,getCurrentContactId:()=>contact}});context.window=context;
+ vm.runInContext(code,context);
+ assert.equal(context.peekCurrentRole(),null);
+ contact=null;assert.equal(context.peekCurrentRole(),null);
+ contact='b';assert.equal(context.peekCurrentRole().id,'b');
+ roles.push({id:'b',name:'Duplicate'});assert.equal(context.peekCurrentRole(),null);
+ contact=null;assert.equal(context.peekCurrentRole().id,'a');
+});
+
+test('shared browser lock prevents duplicate paid writes from two tabs',async()=>{
+ const store=makeStore(),locks=makeLocks();
+ const a=makeSandbox({store,locks}).sb,b=makeSandbox({store,locks}).sb;
+ let calls=0,finish;
+ a.PhoneAPI.complete=b.PhoneAPI.complete=()=>{calls++;return new Promise(r=>finish=r)};
+ const p=a.maybeAutoWriteCharEntry(),q=b.maybeAutoWriteCharEntry();
+ await Promise.resolve();assert.equal(calls,1);
+ finish('植物叶片出现了新的变化，今天把观察记录整理了一遍。');
+ await Promise.all([p,q]);
+ assert.equal(JSON.parse(store.getItem('maomao_diary_entries_v1')).length,1);
+ b.maybeAutoWriteCharEntry();await Promise.resolve();assert.equal(calls,1);
+});
+test('missing browser request lock fails closed without paid request',async()=>{
+ const {sb}=makeSandbox({store:makeStore()});
+ sb.navigator={};let calls=0;sb.PhoneAPI.complete=()=>{calls++;return Promise.resolve('fixture')};
+ await sb.maybeAutoWriteCharEntry();assert.equal(calls,0);
+});
+test('failed backup import never leaves staged entries in memory',()=>{
+ const original={id:'u',date:'2026-11-25',content:'original'};
+ const store=makeStore({maomao_diary_entries_v1:JSON.stringify([original])});
+ const {sb}=makeSandbox({store,entries:[original]});
+ sb.confirm=()=>true;sb.FileReader=class {readAsText(file){this.result=file;this.onload();}};
+ vm.runInContext(slice('  function importBackup(file){','  function openMenu()'),sb);
+ store.failWrites(true);
+ sb.importBackup(JSON.stringify({entries:[{id:'new',date:'2026-11-25',content:'incoming'}]}));
+ assert.equal(sb.entries.length,1);assert.equal(sb.entries[0].id,'u');
+ assert.equal(JSON.parse(store.getItem('maomao_diary_entries_v1')).length,1);
+});
+
+test('explicit generation uses the selected role ID and selected kind without changing active chat contact or requiring auto-write enabled',async()=>{
+ const roleA={id:'roleA',name:'同名',persona:'植物研究员，平时观察植物。',tone:'简练'};
+ const roleB={id:'roleB',name:'同名',persona:'音乐研究员，平时整理乐谱。',tone:'直接'};
+ const entries=[{id:'old',date:'2026-11-24',author:'roleB',diaryWritingVersion:2,content:'DIARY_ONLY'},{id:'memo',date:'2026-11-24',author:'roleB',noteType:'备忘',diaryWritingVersion:2,content:'MEMO_ONLY',personalRemark:{text:'PRIVATE_REMARK'}},{id:'other',date:'2026-11-24',author:'roleA',noteType:'备忘',diaryWritingVersion:2,content:'OTHER_ROLE_ONLY'}];
+ const {sb}=makeSandbox({store:makeStore(),role:roleA,entries});
+ sb.diaryCharacters=()=>[roleA,roleB];sb.peekEnabled=()=>false;
+ const calls=[];sb.PhoneAPI.complete=opts=>{calls.push(opts);return Promise.resolve('整理乐谱')};
+ assert.equal(await sb.generatePersonRecord('roleB','备忘',true),true);
+ assert.equal(calls.length,1);
+ assert.match(calls[0].system,/音乐研究员/);
+ assert.match(calls[0].system,/MEMO_ONLY/);
+ assert.doesNotMatch(calls[0].system,/植物研究员|DIARY_ONLY|OTHER_ROLE_ONLY|PRIVATE_REMARK/);
+ const saved=sb.entries.at(-1);
+ assert.equal(saved.author,'roleB');assert.equal(saved.noteType,'备忘');assert.equal(saved.charWritten,true);assert.equal(saved.personalRemark,undefined);
+ assert.equal(sb.peekCurrentRole().id,'roleA');
+ assert.equal(sb.localStorage.getItem('char_last_wrote_roleB'),null);
+ assert.equal(await sb.generatePersonRecord('missing','日记',true),false);
+ assert.equal(await sb.generatePersonRecord('roleB','invalid',true),false);
+ assert.equal(calls.length,1);
+ sb.PhoneAPI.complete=opts=>{calls.push(opts);return Promise.resolve('整理新收集的乐谱时发现了一些有趣的节奏变化。')};
+ assert.equal(await sb.generatePersonRecord('roleB','日记',true),true);
+ assert.equal(sb.entries.at(-1).noteType,'日记');
+ assert.match(calls[1].system,/DIARY_ONLY/);assert.doesNotMatch(calls[1].system,/MEMO_ONLY|PRIVATE_REMARK|OTHER_ROLE_ONLY/);
+});
+test('manual person generation and automatic generation share a write lock',async()=>{
+ const {sb}=makeSandbox({store:makeStore()});let calls=0,finish;
+ sb.PhoneAPI.complete=()=>{calls++;return new Promise(r=>finish=r)};
+ const p=sb.generatePersonRecord('roleA','备忘',true),q=sb.maybeAutoWriteCharEntry();
+ await Promise.resolve();assert.equal(calls,1);
+ finish('整理今天的植物观察记录，记录叶片变化。');await Promise.all([p,q]);
+ assert.equal(sb.entries.length,1);assert.equal(sb.entries[0].noteType,'备忘');
+});
+
+test('reverse audit: ambiguous imported author never becomes user-owned',()=>{
+ const {sb}=makeSandbox({store:makeStore()});
+ assert.equal(sb.diaryAuthorKind({id:'damaged',author:{id:'roleB'}}),'unknown');
+ assert.equal(sb.diaryAuthorKind({id:'damaged',authorUnverified:true}),'unknown');
+ assert.equal(sb.diaryAuthorKind({id:'damaged',author:'  '}),'unknown');
+ const code=slice('  function importBackup(file){','  function openMenu()');
+ assert.match(code,/else if\(e.author!==undefined&&e.author!==null\)clean.authorUnverified=true/);
+});
+test('reverse audit: reader navigation uses the current filtered list',()=>{
+ const code=slice('  function readerEntries(){','  function openReader(');
+ const rows=[{id:'memo',noteType:'备忘'},{id:'diary',noteType:'日记'}];
+ const ctx=vm.createContext({currentView:'home',entries:rows,filteredEntries:()=>[rows[0]]});
+ vm.runInContext(code,ctx);assert.equal(ctx.readerEntries().length,1);
+ assert.equal(ctx.readerEntries()[0].id,'memo');
+});
+test('reverse audit: persisted diary blocks automatic paid requests even if cooldown key was not saved',async()=>{
+ const role={id:'roleA',name:'A',persona:'植物研究员，记录自然观察。'};
+ const store=makeStore(),entry={id:'d_char_a',date:'2026-11-25',createdAt:new Date().toISOString(),author:'roleA',noteType:'日记',content:'saved'};
+ const {sb}=makeSandbox({store,role,entries:[entry]});
+ let calls=0;sb.PhoneAPI.complete=()=>{calls++;return Promise.resolve('fixture')};
+ assert.equal(await sb.generatePersonRecord('roleA','日记',false),false);assert.equal(calls,0);
+});
+test('reverse audit: post-save render failure is not reported as a failed paid generation',async()=>{
+ const {sb}=makeSandbox({store:makeStore()});
+ sb.render=()=>{throw Error('UI fixture')};
+ assert.equal(await sb.generatePersonRecord('roleA','日记',true),true);
+ assert.equal(sb.entries.length,1);
+ assert.equal(JSON.parse(sb.localStorage.getItem('maomao_diary_entries_v1')).length,1);
+});
+
+test('new remarks are readable by the exact diary owner, not the same-name role or another record kind',async()=>{
+ const a={id:'roleA',name:'同名',persona:'研究植物，记录观察。'},b={id:'roleB',name:'同名',persona:'研究音乐，整理乐谱。'};
+ const own={id:'d_char_a',author:a.id,date:'2026-11-25',content:'OWN_BODY'},other={id:'d_char_b',author:b.id,date:'2026-11-25',content:'OTHER_BODY'},legacy={id:'d_char_old',author:a.id,date:'2026-11-24',content:'old',personalRemark:{text:'LEGACY_PRIVATE'}};
+ const {sb}=makeSandbox({store:makeStore(),role:a,entries:[own,other,legacy]});sb.diaryCharacters=()=>[a,b];
+ const token=sb.diaryAccountToken();
+ assert.equal(sb.savePersonalRemark(own.id,token,'OWNER_REMARK'),true);
+ assert.equal(sb.savePersonalRemark(other.id,token,'OTHER_REMARK'),true);
+ assert.equal(own.personalRemark.sharedWithRoleId,a.id);
+ assert.match(sb.diaryWritingPrompt(a,'日记'),/OWNER_REMARK/);
+ assert.doesNotMatch(sb.diaryWritingPrompt(a,'日记'),/OTHER_REMARK|OTHER_BODY|LEGACY_PRIVATE/);
+ assert.doesNotMatch(sb.diaryWritingPrompt(b,'日记'),/OWNER_REMARK/);
+ assert.doesNotMatch(sb.diaryWritingPrompt(a,'备忘'),/OWNER_REMARK/);
+ let calls=[];sb.PhoneAPI.complete=opts=>{calls.push(opts);return Promise.resolve('收到这条备注。')};
+ assert.equal(await sb.readSharedRemark(own.id),true);
+ assert.equal(calls.length,1);assert.match(calls[0].user,/OWNER_REMARK|OWN_BODY/);assert.doesNotMatch(calls[0].user+calls[0].system,/OTHER_REMARK|OTHER_BODY|研究音乐/);
+ assert.equal(own.personalRemark.readReceipt.roleId,a.id);assert.equal(own.charComments,undefined);
+ assert.equal(await sb.readSharedRemark(own.id),false);assert.equal(calls.length,1);
+ assert.equal(await sb.readSharedRemark(legacy.id),false);
+ assert.equal(sb.savePersonalRemark(own.id,token,'edited'),true);assert.equal(own.personalRemark.readReceipt,undefined);
+});
+test('a user diary remark is shared only on an explicitly invited comment, not auto peek',async()=>{
+ const entry={id:'u',author:'me',date:'2026-11-25',content:'BODY'};
+ const {sb}=makeSandbox({store:makeStore(),entries:[entry]});
+ assert.equal(sb.savePersonalRemark('u',sb.diaryAccountToken(),'SHARED_USER_REMARK'),true);
+ let calls=[];sb.PhoneAPI.complete=opts=>{calls.push(opts);return Promise.resolve('留言')};
+ sb.maybeAutoPeek();await new Promise(r=>setTimeout(r,10));
+ sb.readerId='u';sb.generateCharComment();await new Promise(r=>setTimeout(r,10));
+ assert.equal(calls.length,2);assert.doesNotMatch(calls[0].user+calls[0].system,/SHARED_USER_REMARK/);assert.match(calls[1].user,/SHARED_USER_REMARK/);
+});
+test('owner remark reply is discarded when the note changes in flight',async()=>{
+ const entry={id:'d_char_a',author:'roleA',date:'2026-11-25',content:'BODY'};
+ const {sb}=makeSandbox({store:makeStore(),entries:[entry]});
+ const token=sb.diaryAccountToken();sb.savePersonalRemark(entry.id,token,'first');
+ let finish;sb.PhoneAPI.complete=()=>new Promise(r=>finish=r);
+ const p=sb.readSharedRemark(entry.id);assert.equal(typeof finish,'function');
+ sb.savePersonalRemark(entry.id,token,'second');finish('收到');assert.equal(await p,false);
+ assert.equal(entry.personalRemark.text,'second');assert.equal(entry.personalRemark.readReceipt,undefined);
+});
+
+test('ambiguous diary IDs and malformed role owner never share a remark or generate from duplicate history',async()=>{
+ const a={id:'roleA',name:'同名',persona:'植物研究员，观察自然。'},b={id:'roleB',name:'同名',persona:'音乐研究员，整理乐谱。'};
+ const entries=[
+ {id:'dup',author:a.id,date:'2026-11-25',diaryWritingVersion:2,content:'DUPLICATE_BODY',personalRemark:{text:'DUPLICATE_REMARK',sharedWithRoleId:a.id}},
+ {id:'dup',author:b.id,date:'2026-11-25',content:'OTHER_DUPLICATE'},
+ {id:'d_char_malformed',author:['roleA'],date:'2026-11-25',diaryWritingVersion:2,content:'MALFORMED_BODY',personalRemark:{text:'MALFORMED_REMARK',sharedWithRoleId:a.id}},
+ {id:'d_char_bad',author:a.id,authorUnverified:true,date:'2026-11-25',content:'UNVERIFIED_BODY',personalRemark:{text:'UNVERIFIED_REMARK',sharedWithRoleId:a.id}}
+ ];
+ const {sb}=makeSandbox({store:makeStore(),role:a,entries});sb.diaryCharacters=()=>[a,b];
+ assert.equal(sb.savePersonalRemark('dup',sb.diaryAccountToken(),'overwrite'),false);
+ assert.doesNotMatch(sb.diaryWritingPrompt(a,'日记'),/DUPLICATE_BODY|DUPLICATE_REMARK|MALFORMED_BODY|MALFORMED_REMARK|UNVERIFIED_BODY|UNVERIFIED_REMARK/);
+ let calls=0;sb.PhoneAPI.complete=()=>{calls++;return Promise.resolve('fixture')};
+ for(const id of ['dup','d_char_malformed','d_char_bad'])assert.equal(await sb.readSharedRemark(id),false);
+ assert.equal(calls,0);
+});
+test('invalid primary role memory refuses paid requests, valid legacy prompt survives blank persona',async()=>{
+ const role={id:'roleA',name:'角色A',persona:'   ',prompt:'研究植物，记录自然观察。',tone:' ',speechStyle:'简短'};
+ const store=makeStore({chat_memories_roleA:'broken'}),{sb}=makeSandbox({store,role});
+ let calls=0;sb.PhoneAPI.complete=()=>{calls++;return Promise.resolve('今天的植物观察记录已经整理完成，发现叶片变化。')};
+ assert.equal(await sb.generatePersonRecord(role.id,'日记',true),false);
+ assert.equal(calls,0);
+ store.setItem('chat_memories_roleA','[]');
+ assert.match(sb.diaryWritingPrompt(role,'日记'),/研究植物/);assert.match(sb.diaryWritingPrompt(role,'日记'),/简短/);
+ assert.equal(await sb.generatePersonRecord(role.id,'日记',true),true);assert.equal(calls,1);
 });
