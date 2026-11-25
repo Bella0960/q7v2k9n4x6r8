@@ -54,7 +54,29 @@
       return found.length===1&&!found[0].muted;
     }catch(error){return false;}
   }
+  function preferenceKey(expected,kind){
+    if(!expected||typeof expected.id!=='string'||expected.id.charAt(0)!=='g')return '';
+    return kind==='alias'||kind==='notice'?'chat_group_'+kind+'_'+expected.id:'';
+  }
+  function readPreference(expected,kind){
+    try{
+      var key=preferenceKey(expected,kind);
+      if(!key||!matches(expected))return null;
+      var raw=global.localStorage.getItem(key);
+      return matches(expected)?{group:expected,kind:kind,raw:raw}:null;
+    }catch(error){return null;}
+  }
+  function writePreference(snapshot,value){
+    try{
+      if(!snapshot||typeof value!=='string')return {ok:false,reason:'invalid'};
+      var key=preferenceKey(snapshot.group,snapshot.kind);
+      if(!key||!matches(snapshot.group))return {ok:false,reason:'scope'};
+      if(global.localStorage.getItem(key)!==snapshot.raw||!matches(snapshot.group))return {ok:false,reason:'stale'};
+      global.localStorage.setItem(key,value);
+      return matches(snapshot.group)&&global.localStorage.getItem(key)===value?{ok:true}:{ok:false,reason:'unconfirmed'};
+    }catch(error){return {ok:false,reason:'storage'};}
+  }
   function commit(expected,next){return change(expected,next,false);}
   function remove(expected){return change(expected,null,true);}
-  global.MAOGroupWriteGuard={read:read,matches:matches,create:create,commit:commit,remove:remove,account:account};
+  global.MAOGroupWriteGuard={read:read,matches:matches,readPreference:readPreference,writePreference:writePreference,create:create,commit:commit,remove:remove,account:account};
 })(window);
