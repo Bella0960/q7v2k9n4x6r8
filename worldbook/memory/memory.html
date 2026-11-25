@@ -1108,7 +1108,7 @@ button:focus-visible,input:focus-visible,select:focus-visible{outline:1px solid 
     let currentMemId = null;
 
     const CAT_LABEL = { key: '关键事件', plot: '剧情', detail: '生活细节', anniversary: '纪念日', preference: '互动偏好' };
-    const STATUS_LABEL = { pending: '待确认', confirmed: '已确认', fixed: '已固定' };
+    const STATUS_LABEL = { pending: '待确认', confirmed: '已确认', fixed: '已固定', 'superseded-fixed': '旧版本', 'superseded-confirmed': '旧版本', withdrawn: '已撤销' };
 
     var _storage = window.PhoneStorage;
 
@@ -1223,6 +1223,22 @@ button:focus-visible,input:focus-visible,select:focus-visible{outline:1px solid 
     }
     let renderedLibraryRole = null;
     let renderedLibraryRows = [];
+    function revisionProtected(records, memory) {
+        if (!memory) return false;
+        return memory.source === 'user-correction' ||
+            ['superseded-fixed','superseded-confirmed','withdrawn'].includes(memory.status) ||
+            (memory.id != null && records.some(m => m && m.source === 'user-correction' &&
+                Array.isArray(m.sourceMemoryIds) && m.sourceMemoryIds.includes(String(memory.id))));
+    }
+    function canReviewMemory(memory) {
+        const api = typeof window !== 'undefined' && window.MemoryRecall;
+        const account = typeof window !== 'undefined' && window.__MAO_ACCOUNT_SCOPE__;
+        return !!(api && typeof api.confirmMemoryCorrection === 'function' &&
+            typeof api.undoMemoryCorrection === 'function' && account && account.ready === true &&
+            memory && typeof memory.id === 'string' && String(memory.sourceRoleId || '') === String(currentMemId) &&
+            String(currentMemId).charAt(0) !== 'g' &&
+            ['confirmed','fixed'].includes(memory.status));
+    }
     function renderLib() {
         const list = document.getElementById('libList');
         const arr = loadMemories(currentMemId);
@@ -1240,7 +1256,10 @@ button:focus-visible,input:focus-visible,select:focus-visible{outline:1px solid 
             const st = m.status || 'confirmed';
             const tagCls = st === 'pending' ? 'pending' : (st === 'fixed' ? 'fixed' : '');
             let btns = '';
-            if (st === 'pending') {
+            const revision = revisionProtected(arr, m);
+            if (['superseded-fixed','superseded-confirmed','withdrawn'].includes(st)) {
+                btns = '';
+            } else if (st === 'pending') {
                 btns = '<button type="button" class="lib-btn dark" data-act="confirm" data-i="' + i + '">确认记忆</button>' +
                        '<button type="button" class="lib-btn" data-act="fix" data-i="' + i + '">钉住</button>' +
                        '<button type="button" class="lib-btn ghost" data-act="del" data-i="' + i + '">删除</button>';
@@ -1251,10 +1270,18 @@ button:focus-visible,input:focus-visible,select:focus-visible{outline:1px solid 
                 btns = '<button type="button" class="lib-btn" data-act="unfix" data-i="' + i + '">取消钉住</button>' +
                        '<button type="button" class="lib-btn ghost" data-act="del" data-i="' + i + '">删除</button>';
             }
+            if (revision && ['fixed','confirmed','pending'].includes(st)) {
+                // Linked records cannot be independently deleted or repinned.
+                btns = '';
+            }
+            if (canReviewMemory(m)) {
+                btns += '<button type="button" class="lib-btn" data-act="revise" data-i="' + i + '">修订</button>';
+                if (m.source === 'user-correction') btns += '<button type="button" class="lib-btn ghost" data-act="undo-revision" data-i="' + i + '">撤销修订</button>';
+            }
             return '<div class="lib-item">' +
                 '<div class="lib-text">' + escapeHtml(m.content) + '</div>' +
                 '<div class="lib-meta">' +
-                    '<span class="lib-tag ' + tagCls + '">' + (STATUS_LABEL[st] || '已确认') + '</span>' +
+                    '<span class="lib-tag ' + tagCls + '">' + (STATUS_LABEL[st] || (['superseded-fixed','superseded-confirmed'].includes(st) ? '旧版本' : st === 'withdrawn' ? '已撤销' : '状态待核对')) + '</span>' +
                     '<span class="lib-tag">' + (CAT_LABEL[m.category] || '生活细节') + '</span>' +
                     '<span class="lib-tag">重要性 ' + Math.max(1,Math.min(5,Number(m.importance)||3)) + '/5</span>' +
                 '</div>' +
@@ -1428,7 +1455,8 @@ button:focus-visible,input:focus-visible,select:focus-visible{outline:1px solid 
             if (!m || typeof m !== 'object' || !m.id || m.status !== 'confirmed' ||
                 m.category === 'key' || m.category === 'anniversary' ||
                 String(m.sourceRoleId || '') !== String(currentMemId) ||
-                !m.source || typeof m.content !== 'string' || !m.content.trim()) return;
+                !m.source || typeof m.content !== 'string' || !m.content.trim() ||
+                (typeof revisionProtected === 'function' && revisionProtected(arr, m))) return;
             const hasMessage = m.sourceMessageIndex != null && m.sourceMessageTime != null;
             const hasRange = m.sourceStartIndex != null && m.sourceEndIndex != null;
             const hasMemoryIds = Array.isArray(m.sourceMemoryIds) && m.sourceMemoryIds.length > 0;
@@ -1501,7 +1529,7 @@ button:focus-visible,input:focus-visible,select:focus-visible{outline:1px solid 
         const pools = { plot: [], detail: [], preference: [] };
         arr.forEach(m => {
             if (!m || m.status !== 'confirmed' || !m.id || String(m.sourceRoleId || '') !== String(currentMemId)) return;
-            if (m.category === 'key' || m.category === 'anniversary') return;
+            if (m.category === 'key' || m.category === 'anniversary' || revisionProtected(arr, m)) return;
             if (pools[m.category]) pools[m.category].push(m);
         });
         const est = [];
@@ -1711,10 +1739,39 @@ button:focus-visible,input:focus-visible,select:focus-visible{outline:1px solid 
             alert('记忆已更新，请重新选择要操作的记录。');
             return;
         }
+        if (act === 'revise' || act === 'undo-revision') {
+            const memory = arr[idx];
+            if (!canReviewMemory(memory)) return;
+            const role = String(currentMemId);
+            const accountId = window.__MAO_ACCOUNT_SCOPE__.accountId;
+            const expected = JSON.parse(JSON.stringify(memory));
+            const api = window.MemoryRecall;
+            let result;
+            if (act === 'revise') {
+                const replacement = window.prompt('修订记忆（原版本将保留）', memory.content || memory.text || '');
+                if (replacement === null || !replacement.trim()) return;
+                if (!confirm('确认使用修订后的内容？原版本仍保留在记忆库。')) return;
+                result = api.confirmMemoryCorrection(role, expected, replacement, {
+                    confirmed: true, accountId, getCurrentRoleId: () => currentMemId
+                });
+            } else {
+                if (!confirm('撤销本次修订并恢复上一版本？所有版本仍会保留。')) return;
+                result = api.undoMemoryCorrection(role, expected, {
+                    confirmed: true, accountId, getCurrentRoleId: () => currentMemId
+                });
+            }
+            if (!result || !result.ok) {
+                alert(result && result.reason === 'capacity' ? '记忆库已满，原版本仍保留。' : '修订未能确认，请刷新记忆库后重试。');
+            }
+            renderLib();
+            return;
+        }
+        if (revisionProtected(arr, arr[idx])) { alert('这是修订链中的记录，请通过修订或撤销操作。'); return; }
         if (act === 'confirm') arr[idx].status = 'confirmed';
         else if (act === 'fix') arr[idx].status = 'fixed';
         else if (act === 'unfix') arr[idx].status = 'confirmed';
         else if (act === 'del') { if (!confirm('删除这条记忆？')) return; arr.splice(idx, 1); }
+        else return;
         if (!saveMemories(currentMemId, arr)) return;
         renderLib();
     });
