@@ -594,7 +594,19 @@ try {
       {name:'QA 桌面第一首.wav',mimeType:'audio/wav',buffer:makeWav(220)},
       {name:'QA 桌面第二首.wav',mimeType:'audio/wav',buffer:makeWav(330)}
     ]);
-    await library.waitForFunction(()=>JSON.parse(localStorage.getItem('music_local_tracks')||'[]').length===2);
+    // Import automatically starts playback and the music app advances on ended.
+    // Wait for its asynchronous duration writes, then explicitly release the
+    // library's origin-wide playback lock before starting the group session.
+    await library.waitForFunction(()=>{
+      const rows=JSON.parse(localStorage.getItem('music_local_tracks')||'[]');
+      return rows.length===2&&rows.every(t=>Number(t.durSec)>0)&&musicDurationPending.size===0;
+    },null,{timeout:15000});
+    await library.evaluate(()=>{musicPauseNative();musicDiscardAudioSource();});
+    await library.waitForFunction(async()=>{
+      const state=musicController.getState();
+      return !state.pending&&!state.playing&&state.trackId===null&&window.audio.paused&&
+        !(await navigator.locks.query()).held.some(l=>l.name==='maomao-native-music-playback-v1');
+    },null,{timeout:10000});
     const tracks=await library.evaluate(()=>{
       localStorage.setItem('phone_groups',JSON.stringify([{id:'g-listen-desktop',name:'桌面一起听歌测试群',ownerId:'__user',members:[{id:'desktop-role',name:'测试成员'}]}]));
       localStorage.setItem('ai_custom_characters',JSON.stringify([{id:'desktop-role',name:'测试成员',persona:'测试角色，喜欢音乐。',tone:'简短自然'}]));
