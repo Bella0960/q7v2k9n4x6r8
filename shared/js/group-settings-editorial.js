@@ -126,11 +126,37 @@
   toggle.setAttribute('aria-expanded', 'false');
   toggle.append(preview, summary);
 
-  var own = el('div', 'gp-own-name');
+  var own = btn('gp-own-name', '', openOwnName);
   var ownValue = el('span', 'gp-own-value');
   var ownLabel = el('span', 'gp-setting-label', '我的显示名称');
   bilingual(ownLabel,'MY NAME');
   own.append(ownLabel, ownValue);
+  function openOwnName(){
+    var group=loadCurrentGroup();
+    if(!group)return;
+    var dialog=el('dialog','gp-portrait-dialog gp-name-dialog');
+    dialog.setAttribute('aria-label','我的显示名称');
+    var heading=el('h2','gp-portrait-heading','我的显示名称');heading.prepend(english('MY NAME'));
+    var desc=el('p','gp-portrait-desc','只在当前群聊中使用，留空则恢复个人昵称。');
+    var field=el('input','gp-name-input');field.type='text';field.maxLength=40;field.setAttribute('aria-label','群内昵称');
+    field.value=String((group.preferences||{}).myNickname||'');
+    field.placeholder=String(profile().nickname||profile().name||'我');
+    var status=el('p','gp-portrait-status','');status.setAttribute('role','status');
+    var cancel=btn('gp-portrait-cancel','取消',function(){dialog.close();});
+    var save=btn('gp-portrait-save','保存',function(){
+      var name=field.value.trim();
+      if(Array.from(name).length>20||/[\u0000-\u001f\u007f\u202a-\u202e\u2066-\u2069]/.test(name)){status.textContent='请输入20个字符以内的昵称';return;}
+      group.preferences=group.preferences&&typeof group.preferences==='object'&&!Array.isArray(group.preferences)?group.preferences:{};
+      group.preferences.myNickname=name;
+      if(!saveCurrentGroup(group)){status.textContent='群资料已变化或保存失败，请关闭后重新打开';save.disabled=true;return;}
+      renderMembers();dialog.close();showToast('群内昵称已保存');
+    });
+    field.addEventListener('keydown',function(event){if(event.key==='Enter'){event.preventDefault();save.click();}});
+    var footer=el('div','gp-portrait-footer');footer.append(cancel,save);
+    dialog.append(heading,desc,field,status,footer);
+    dialog.addEventListener('close',function(){dialog.remove();own.focus();},{once:true});
+    stage.append(dialog);dialog.showModal();
+  }
   function profile() {
     try {
       var value = JSON.parse(localStorage.getItem('myProfile') || '{}');
@@ -147,7 +173,7 @@
   function openManagement(invite) {
     if (!memberView) {
       var group=loadCurrentGroup();
-      if (group) location.href='chat-settings.html?roleId='+encodeURIComponent(String(group.id))+'&view=members'+(invite?'&intent=invite':'');
+      if (group) location.href='chat-settings.html?roleId='+encodeURIComponent(String(group.id))+'&view=members&from=overview'+(invite?'&intent=invite':'');
       return;
     }
     var action = byId('actionGroupManage');
@@ -344,6 +370,12 @@
   title.prepend(english('GROUP SETTINGS'));
   var fakeStatus = stage.parentElement.querySelector('.status-bar');
   if(fakeStatus) fakeStatus.hidden=true;
+  if(!memberView&&!memoryView){
+    byId('btnBack').addEventListener('click',function(event){
+      event.preventDefault();event.stopImmediatePropagation();
+      location.href='chat-detail.html?id='+encodeURIComponent(String(roleId));
+    },true);
+  }
   if(memberView || memoryView){
     stage.classList.add('gp-subpage');
     var subpage=el('section','gp-subpage-content');
@@ -361,7 +393,7 @@
     byId('btnBack').addEventListener('click',function(event){
       event.preventDefault();event.stopImmediatePropagation();
       var url=managementUrl(memoryView?'memory':'');
-      if(memberView&&viewParams.get('intent')==='invite')url='chat-settings.html?roleId='+encodeURIComponent(String(roleId));
+      if(memberView&&(viewParams.get('from')==='overview'||viewParams.get('intent')==='invite'))url='chat-settings.html?roleId='+encodeURIComponent(String(roleId));
       if(url)location.href=url;
     },true);
   }
