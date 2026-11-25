@@ -246,10 +246,12 @@
   async function createHistoryIndex(history, options) {
     options = options || {};
     var scope = indexScope(options.scope);
+    var conversationId = scope ? options.scope.conversationId : '';
+    var signal = options.signal;
     var current = options.getCurrentScope;
     function active() {
       try { return !!scope && typeof current === 'function' && indexScope(current()) === scope &&
-        !(options.signal && options.signal.aborted); }
+        !(signal && signal.aborted); }
       catch (_) { return false; }
     }
     function fail(reason) { return { ok:false, reason:reason }; }
@@ -274,8 +276,8 @@
           m.groupId != null || m.memberId != null ||
           m.type === 'group_private' || m.type === 'group_game_private' || m.type === 'group_welcome' ||
           m.visibility === 'private' || m.visibility === 'role_only') continue;
-      if (m.sourceRoleId != null && String(m.sourceRoleId) !== options.scope.conversationId) continue;
-      if (m.roleId != null && String(m.roleId) !== options.scope.conversationId) continue;
+      if (m.sourceRoleId != null && String(m.sourceRoleId) !== conversationId) continue;
+      if (m.roleId != null && String(m.roleId) !== conversationId) continue;
       var text = cleanText(m.text || m.content || m.desc || '');
       if (text.length < 8 || /^data:/i.test(text)) continue;
       chars += text.length;
