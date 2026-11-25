@@ -110,3 +110,13 @@ test('full page remount restores board and chat without repeating moves or messa
  assert.equal(v.game.count,2);assert.equal(all(g.root,'mao-gomoku__message').length,1);
  g.one('mao-gomoku__input').value='第二条';g.one('mao-gomoku__send').click();await wait();assert.equal(all(g.root,'mao-gomoku__message').length,2);g.page.destroy();
 });
+
+test('ordinary opponent without selected role plays as black, chats through separate provider and restores',async()=>{
+ const calls=[],f=fixture({discussion:{generateBot:v=>{calls.push(v);return '轮到你了。';},allowOutput:()=>true}});
+ await wait();assert.equal(f.one('mao-gomoku__start').disabled,false);f.choose('mao-gomoku__color','white');f.one('mao-gomoku__start').click();await wait();
+ assert.equal(all(f.root,'mao-gomoku-board__cell').filter(c=>c.className.includes('is-black')).length,1);
+ f.one('mao-gomoku__target').value='bot:1';f.one('mao-gomoku__input').value='开始吧';f.one('mao-gomoku__send').click();await wait();
+ assert.equal(calls.length,1);assert.equal(calls[0].selfSeatId,'bot:1');assert.ok(calls[0].seats.every(s=>!Object.hasOwn(s,'roleId')));
+ const saved=await f.page.saveMatch();assert.equal(saved.board.seats[0].seatId,'bot:1');assert.equal(saved.chat.messages.length,2);f.page.destroy();
+ const g=fixture();await wait();const v=await g.page.restoreMatch(saved);assert.equal(v.game.count,1);assert.equal(all(g.root,'mao-gomoku__message').length,2);g.page.destroy();
+});
