@@ -48,3 +48,12 @@ test('mixed anonymous seats restore and cannot receive persistent role memory',a
  assert.throws(()=>life.viewRole('bot:1'),/ROLE_UNAVAILABLE/);
  driver.dispose();
 });
+
+test('history review excludes hidden actions and inspection details',()=>{
+ const d=fixture({maxRounds:1});
+ move(d,'user',{kind:'choose',targetSeatId:'role:r4'});move(d,'role:r1',{kind:'pass'});move(d,'role:r3',{kind:'protect',targetSeatId:'role:r4'});move(d,'role:r2',{kind:'inspect',targetSeatId:'role:r1'});
+ for(const id of ['user','role:r1','role:r2','role:r3','role:r4','role:r5'])move(d,id,id==='role:r2'?{kind:'speak',text:'先听意见。'}:{kind:'pass'});
+ for(const id of ['user','role:r1','role:r2','role:r3','role:r4','role:r5'])move(d,id,{kind:'pass'});
+ const j=createGameJournal({getContext:()=>ctx});j.recordSavedMatch({schema:1,board:d.checkpoint()});
+ const v=j.review({gameId:'werewolf',roomId:'w'});assert.ok(v.items.some(x=>x.text==='先听意见。'));assert.ok(v.items.every(x=>['dawn','speech','pass','vote-result'].includes(x.kind)));assert.ok(!Object.hasOwn(v,'board'));assert.ok(!JSON.stringify(v).includes('inspections'));assert.ok(!JSON.stringify(v).includes('privateInit'));
+});

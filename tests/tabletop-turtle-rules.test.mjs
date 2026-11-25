@@ -96,3 +96,10 @@ test('private journal checkpoint restores authoritative records and permission s
  const forged=JSON.parse(JSON.stringify(snapshot));forged.grants.push(JSON.stringify([m[1].id,'outside','daily']));assert.throws(()=>open(forged),/JOURNAL_INVALID_CHECKPOINT/);
  const reduced=open(snapshot,{...ctx,roleIds:['r1','r2']});assert.equal(reduced.manage({roleId:'r1'}).items.every(x=>x.grants.length===0),true);
 });
+
+test('history review exposes public questions and verdicts without answer or raw checkpoint',()=>{
+ const f=fixture({humanHost:true,count:3});f.role('r1',{kind:'ask',factId:'weather'});f.move({kind:'answer',verdict:'no'});f.role('r2',{kind:'guess',text:'可能是清洁工作'});f.move({kind:'judge',correct:true});
+ const ctx={accountId:'a',sessionId:'s',roleIds:['r1','r2']},j=createGameJournal({getContext:()=>ctx});
+ j.recordSavedMatch({schema:1,board:f.lifetime.checkpoint()});
+ const review=j.review({gameId:'turtle',roomId:'t'});assert.equal(review.items.length,4);assert.equal(review.items[1].verdict,'no');assert.equal(review.items[3].correct,true);assert.ok(!JSON.stringify(review).includes('solution'));assert.ok(!Object.hasOwn(review,'board'));
+});

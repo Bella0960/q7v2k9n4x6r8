@@ -65,3 +65,17 @@ test('terminal board save drains cancelled speech and archives only committed pu
  assert.equal(saved.chat.messages.length,1);assert.equal(saved.chat.jobIds.length,1);const j=createGameJournal({getContext:()=>ctx});assert.equal(j.recordSavedMatch(saved).duplicate,false);
  release('过期发言');await rejected;assert.equal((await chat.read()).length,1);chat.close();
 });
+
+test('archived public chat includes user, rejects a divergent duplicate and remains unchanged',async()=>{
+ const f=fixture(),chat=createGomokuDiscussion({session:f.session,view:f.d.view('user'),generateRole:()=> '好棋。',allowOutput:()=>true});
+ await chat.send({messageId:'x',text:'开始对弈',replyToSeatId:'role:r2'});
+ for(let i=0;i<5;i++){f.move(i,3);if(i<4)f.move(i*2,10);}
+ const v=f.d.view('user'),saved={schema:1,board:f.d.checkpoint(),chat:await chat.save(v.revision),difficulty:'normal'};
+ let c=ctx;const j=createGameJournal({getContext:()=>c});j.recordSavedMatch(saved);
+ const query={gameId:'gomoku',roomId:'room'},review=j.review({...query,limit:1});
+ assert.equal(review.total,2);assert.deepEqual(review.items,[{kind:'speech',seatId:'user',text:'开始对弈'}]);assert.equal(j.review({...query,offset:1}).items[0].text,'好棋。');
+ const bad=JSON.parse(JSON.stringify(saved));bad.chat.messages[0].text='不同的用户发言';
+ assert.throws(()=>j.recordSavedMatch(bad),/JOURNAL_MATCH_CONFLICT/);
+ assert.deepEqual(j.review({...query,limit:1}),review);
+ c={...ctx,roleIds:['r1']};assert.throws(()=>j.review(query),/JOURNAL_REVIEW_DENIED/);chat.close();
+});
