@@ -1133,6 +1133,7 @@
             result.shouldKeep++;
             try {
                 localStorage.setItem(k, cur);
+                if (localStorage.getItem(k) !== cur) throw new Error('readback failed');
                 result.written++;
             } catch (e) {
                 result.failed++;
@@ -1215,14 +1216,114 @@
             return track && track.id && track.source === 'local' && !validIds.has(String(track.id));
         });
     }
+    // BACKUP-SAFE-001: read-only structural checks against current registry.
+    // No independent restore engine or schema change.
+    function validateRestorePayload(obj, scope) {
+        function record(v) { return !!v && typeof v === 'object' && !Array.isArray(v); }
+        function own(v,k) { return Object.prototype.hasOwnProperty.call(v,k); }
+        function validKey(v) { return (typeof v === 'string' && v.length > 0) ||
+            (typeof v === 'number' && Number.isFinite(v)); }
+        function validBase64(v) {
+            if (typeof v !== 'string' || !v.length || v.length % 4 === 1) return false;
+            var pad = v.endsWith('==') ? 2 : v.endsWith('=') ? 1 : 0;
+            return (!pad || v.length % 4 === 0) && /^[A-Za-z0-9+/]+={0,2}$/.test(v);
+        }
+        if (!Number.isInteger(obj.__backup.schema)) return '备份版本号无效';
+        for (var k of Object.keys(obj.data)) {
+            if (['__proto__','constructor','prototype'].includes(k) ||
+                /^__mao_account_v1__/.test(k)) return '备份含内部存储键，已阻止恢复';
+            if (typeof obj.data[k] !== 'string') return '备份本机数据格式异常';
+            if (/^chat_history_/.test(k)) {
+                try { if (!Array.isArray(JSON.parse(obj.data[k]))) return '聊天存档格式损坏'; }
+                catch (_) { return '聊天存档无法读取'; }
+            }
+        }
+        var manifest = obj.__backup.indexedDB;
+        if (manifest != null && !record(manifest)) return '媒体备份清单格式异常';
+        if (obj.indexedDB == null) {
+            if (manifest && Object.values(manifest).some(function(n) { return n !== 0; }))
+                return '备份声明了媒体数据但实际缺失';
+            return '';
+        }
+        if (obj.__backup.schema < 2 || !record(obj.indexedDB)) return '媒体备份格式异常';
+        var targets = new Map(backupTargets(scope).map(function(t) { return [t.db,t]; }));
+        var totals = new Map();
+        for (var dbName of Object.keys(obj.indexedDB)) {
+            var target = targets.get(dbName), stores = obj.indexedDB[dbName];
+            if (!target || !record(stores)) return '备份含未登记或无效媒体库，请更新应用';
+            var defs = new Map(target.stores.map(function(d) { return [d.store,d]; }));
+            var total = 0;
+            for (var sn of Object.keys(stores)) {
+                var def = defs.get(sn), rows = stores[sn];
+                if (!def || !Array.isArray(rows)) return '媒体记录格式异常';
+                var keys = new Set();
+                for (var row of rows) {
+                    if (!record(row)) return '媒体记录损坏';
+                    var wrapped = own(row,'__key') || own(row,'__value');
+                    if (wrapped && (!own(row,'__key') || !own(row,'__value') || def.keyPath)) return '媒体记录键格式异常';
+                    var value = wrapped ? row.__value : row;
+                    var key = wrapped ? row.__key : def.keyPath && value[def.keyPath];
+                    if (!validKey(key) || keys.has(key)) return '媒体记录键缺失或重复';
+                    keys.add(key);
+                    for (var field of def.blobFields || []) {
+                        if (!record(value) || !validBase64(value[field])) return '媒体原始内容缺失或编码损坏';
+                    }
+                }
+                total += rows.length;
+            }
+            if (dbName === 'maomao-assets') {
+                if (!['assets','blobs','refs'].every(function(sn) { return Array.isArray(stores[sn]); }))
+                    return '图片资源备份缺少必要关联记录';
+                var blobs = new Set(stores.blobs.map(function(row) { return row.assetId; }));
+                if (stores.assets.some(function(row) { return !blobs.has(row.assetId); }) ||
+                    stores.refs.some(function(row) { return !blobs.has(row.assetId); }))
+                    return '图片资源引用缺少原始内容';
+            }
+            totals.set(dbName,total);
+        }
+        if (manifest) {
+            for (var name of Object.keys(manifest)) {
+                var count = manifest[name];
+                if (!Number.isInteger(count) || count < 0 || !targets.has(name) ||
+                    (totals.get(name) || 0) !== count) return '媒体清单与实际记录数不一致';
+            }
+        }
+        return '';
+    }
+
+    function restoreOutcomeComplete(incoming, current, scope, expectedCounts, outcomes, secretRes, dbFailed, dbSkippedBlob) {
+        if (secretRes.failed || dbFailed.length || dbSkippedBlob) return false;
+        try {
+            for (var k of Object.keys(incoming)) {
+                if (localStorage.getItem(k) !== incoming[k]) return false;
+            }
+            if (!scope) {
+                for (var k of Object.keys(current)) {
+                    if ((neverBackupKey(k) || SECRET_KEYS.indexOf(k) >= 0) &&
+                        !Object.prototype.hasOwnProperty.call(incoming,k) &&
+                        localStorage.getItem(k) !== current[k]) return false;
+                }
+            }
+            for (var name of Object.keys(expectedCounts)) {
+                var result = outcomes[name];
+                if (!result || result.written !== expectedCounts[name] || result.skipped !== 0) return false;
+            }
+        } catch (_) { return false; }
+        return true;
+    }
+
     function handleImportFile(file) {
         var requestedScope = arguments[1];
         if (!file) return;
         var reader = new FileReader();
         reader.onload = async function (ev) {
-            var obj;
-            try { obj = JSON.parse(String(ev.target.result)); }
-            catch (e) { toast('导入失败：文件不是合法 JSON'); return; }
+            var obj, rawText = String(ev.target.result);
+            try { obj = JSON.parse(rawText); }
+            catch (e) {
+                var trimmed = rawText.trim();
+                toast('导入失败：' + (!trimmed ? '备份文件为空' : /^</.test(trimmed) ? '文件是网页而非备份' : '文件不是完整合法的 JSON'));
+                return;
+            }
             var err = validateBackup(obj);
             if (err) { toast('导入失败：' + err); return; }
             if (obj.__backup.complete === false) {
@@ -1242,8 +1343,10 @@
                 toast('分类备份请使用「恢复所选模块」，避免误覆盖全量数据'); return;
             }
 
+            var payloadError = validateRestorePayload(obj, scope);
+            if (payloadError) { toast('导入失败：' + payloadError + '，本机数据未改动'); return; }
             // Never import auth/session secrets from an old or externally supplied archive.
-            var incoming = {};
+            var incoming = Object.create(null);
             Object.keys(obj.data).forEach(function(k) {
                 if (!neverBackupKey(k)) incoming[k] = obj.data[k];
             });
@@ -1263,7 +1366,28 @@
                 : '将用备份覆盖当前全部数据（localStorage ' + count + ' 项'
                   + (idbTotal ? '，IndexedDB ' + idbTotal + ' 项' : '') + '）' + label
                   + '。\\n\\n当前数据会先自动导出一份安全备份，localStorage 导入失败会自动回滚。确定继续？';
+            var account = window.__MAO_ACCOUNT_SCOPE__;
+            var preview = snapshot(false,false,true);
+            var registry = backupRegistry();
+            var deleted = Object.keys(preview).filter(function(k) {
+                return !neverBackupKey(k) && SECRET_KEYS.indexOf(k) < 0 &&
+                    (!scope || registry && registry.belongsTo(scope,k)) &&
+                    !Object.prototype.hasOwnProperty.call(incoming,k);
+            }).length;
+            var overwritten = Object.keys(incoming).filter(function(k) {
+                return Object.prototype.hasOwnProperty.call(preview,k) && preview[k] !== incoming[k];
+            }).length;
+            if (deleted || overwritten) promptText += '\n\n校验提示：预计删除本机 ' + deleted + ' 项，覆盖 ' + overwritten + ' 项。';
             if (!confirm(promptText)) return;
+            function stillCurrent() {
+                try {
+                    if (window.__MAO_ACCOUNT_SCOPE__ !== account) return false;
+                    var now = snapshot(false,false,true);
+                    return Object.keys(now).length === Object.keys(preview).length &&
+                        Object.keys(preview).every(function(k) { return now[k] === preview[k]; });
+                } catch (_) { return false; }
+            }
+            if (!stillCurrent()) { toast('本机数据已变化，请重新选择备份'); return; }
 
             // 1. 建立本机恢复点：把当前 localStorage 快照写入独立 IndexedDB，
             //    写完立即读回并用 verifyRestore 对 localStorage 实际内容做校验。
@@ -1306,6 +1430,7 @@
                 backupFileWarn = '（未能提供额外的安全备份文件，但已建立可回滚的恢复点）';
             }
 
+            if (!stillCurrent()) { toast('本机数据已变化，本次恢复已停止，恢复点保留'); return; }
             // 2. localStorage 覆盖写入；失败则从恢复点回滚后结束（IndexedDB 还没动）
             var ok = scope ? restoreScoped(incoming, scope) : restore(incoming);
             if (!ok) {
@@ -1358,6 +1483,7 @@
             var dbRestored = 0;
             var dbSkippedBlob = 0;  // blob 解码失败被跳过的记录数
             var dbFailed = [];
+            var expectedCounts = Object.create(null), dbOutcomes = Object.create(null);
             var dbSkippedOld = false;
             if (obj.__backup.schema >= 2 && obj.indexedDB && typeof obj.indexedDB === 'object') {
                 var selectedTargets = backupTargets(scope);
@@ -1365,8 +1491,11 @@
                     var tgt = selectedTargets[i];
                     var incomingDb = obj.indexedDB[tgt.db];
                     if (!incomingDb || typeof incomingDb !== 'object') continue;
+                    expectedCounts[tgt.db] = Object.values(incomingDb).reduce(function(n,rows) { return n + rows.length; },0);
+                    if (window.__MAO_ACCOUNT_SCOPE__ !== account) { dbFailed.push('账号已变化'); break; }
                     try {
                         var res = await restoreDatabase(tgt.db, tgt.version, tgt.stores, incomingDb, !!scope);
+                        dbOutcomes[tgt.db] = {written:res.written,skipped:res.skipped};
                         dbRestored += res.written;
                         dbSkippedBlob += res.skipped;
                     } catch (e) {
@@ -1377,11 +1506,10 @@
                 dbSkippedOld = true;
             }
 
-            // A scoped import must not report success after a partial IDB
-            // failure, nor discard its pre-import localStorage recovery point.
-            if (scope && (dbFailed.length || dbSkippedBlob)) {
-                toast('分类恢复尚未完成：共享媒体有 ' + (dbFailed.length + dbSkippedBlob)
-                    + ' 处失败；已保留导入前的本机恢复点');
+            // Full and scoped imports both retain recovery points on partial failure.
+            if (window.__MAO_ACCOUNT_SCOPE__ !== account ||
+                !restoreOutcomeComplete(incoming,current,scope,expectedCounts,dbOutcomes,secretRes,dbFailed,dbSkippedBlob)) {
+                alert('导入未完整完成：部分数据或媒体未通过恢复核查。本机导入前的文字数据恢复点已保留；媒体可能已部分更新。');
                 return;
             }
 
