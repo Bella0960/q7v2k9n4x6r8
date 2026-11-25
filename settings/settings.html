@@ -179,6 +179,16 @@
                 </div>
             </section>
             <input type="file" id="importFileInput" accept=".json,application/json" style="display:none;">
+            <section class="card" aria-label="本机恢复点" style="margin-top:12px;padding:14px 16px;">
+                <div style="font-size:13px;font-weight:600;color:var(--ink,#111);">本机恢复点</div>
+                <p id="recoveryPointStatus" aria-live="polite" style="font-size:11px;line-height:1.7;color:var(--aux,#888);margin:8px 0 12px;overflow-wrap:anywhere;">恢复失败时保留原始记录。可查看、导出；释放不会自动恢复数据。</p>
+                <div style="display:flex;flex-wrap:wrap;gap:8px;">
+                    <button type="button" id="rowViewRecoveryPoint" style="flex:1;min-width:76px;font:inherit;font-size:12px;padding:8px 10px;color:var(--ink,#111);background:var(--card-2,#f7f7f9);border:1px solid #dedee2;border-radius:10px;">查看</button>
+                    <button type="button" id="rowExportRecoveryPoint" style="flex:1;min-width:76px;font:inherit;font-size:12px;padding:8px 10px;color:var(--ink,#111);background:var(--card-2,#f7f7f9);border:1px solid #dedee2;border-radius:10px;">导出档案</button>
+                    <button type="button" id="rowReleaseRecoveryPoint" style="flex:1;min-width:76px;font:inherit;font-size:12px;padding:8px 10px;color:var(--ink,#111);background:var(--card-2,#f7f7f9);border:1px solid #dedee2;border-radius:10px;">释放恢复点</button>
+                </div>
+                <p style="font-size:11px;line-height:1.7;color:var(--aux,#888);margin:10px 0 0;">恢复档案含私人资料，不是完整备份，暂不能直接导入。请勿分享。</p>
+            </section>
 
             <!-- 单功能备份：在备份注册表中登记后自动出现在列表里 -->
             <div class="group-title">MODULE BACKUP</div>
@@ -369,7 +379,7 @@
     </div>
     <script src="js/settings.js"></script>
     <script src="js/backup-modules.js"></script>
-    <script src="js/backup.js?v=20261126backupsafe4"></script>
+    <script src="js/backup.js?v=20261126backupsafe5"></script>
     <script>
     // 设置页用户卡片 + 深色模式开关
     (function () {
