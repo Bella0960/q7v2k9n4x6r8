@@ -85,15 +85,37 @@ export function createBrowserRoomVerifier(win=globalThis.window) {
   }
   return async ({signal}={})=>{
     const initial=scopeSnapshot(readScope);
-    const context=await verifyRoomContext({request:(path,options)=>win.fetch(path,options),readScope,readScopedRoster,signal});
-    // Same-document storage changes do not emit storage events. Re-read the
-    // synchronous scoped roster after the final network response, not before it.
     if(signal?.aborted) fail('CONTEXT_CANCELLED');
-    const current=scopeSnapshot(readScope);
-    if(current.accountId!==initial.accountId || current.role!==initial.role) fail('ACCOUNT_SCOPE_CHANGED');
-    const latest=new Set(readScopedRoster(context).roleIds);
-    if(latest.size!==context.roleIds.length || context.roleIds.some(id=>!latest.has(id))) fail('ROSTER_CHANGED');
-    if(signal?.aborted) fail('CONTEXT_CANCELLED');
-    return context;
+    // Bound the entire browser preflight (including response-body reads).
+    // Race cancellation as well as aborting fetch, so an adapter ignoring
+    // AbortSignal cannot keep the room locked or publish a late context.
+    const controller=new AbortController();
+    let timer,cancel;
+    const deadline=new Promise((_,reject)=>{
+      const stop=error=>{reject(error);controller.abort();};
+      cancel=()=>stop(new Error('CONTEXT_CANCELLED'));
+      signal?.addEventListener('abort',cancel,{once:true});
+      timer=setTimeout(()=>{
+        try {
+          const current=scopeSnapshot(readScope);
+          if(current.accountId!==initial.accountId || current.role!==initial.role) fail('ACCOUNT_SCOPE_CHANGED');
+          stop(new RoomVerificationUnavailable());
+        } catch(error) {stop(error);}
+      },15000);
+    });
+    async function verify() {
+      const context=await verifyRoomContext({request:(path,options)=>win.fetch(path,options),readScope,readScopedRoster,signal:controller.signal});
+      // Same-document storage changes do not emit storage events. Re-read the
+      // synchronous scoped roster after the final network response, not before it.
+      if(controller.signal.aborted) fail('CONTEXT_CANCELLED');
+      const current=scopeSnapshot(readScope);
+      if(current.accountId!==initial.accountId || current.role!==initial.role) fail('ACCOUNT_SCOPE_CHANGED');
+      const latest=new Set(readScopedRoster(context).roleIds);
+      if(latest.size!==context.roleIds.length || context.roleIds.some(id=>!latest.has(id))) fail('ROSTER_CHANGED');
+      if(controller.signal.aborted) fail('CONTEXT_CANCELLED');
+      return context;
+    }
+    try {return await Promise.race([verify(),deadline]);}
+    finally {clearTimeout(timer);signal?.removeEventListener('abort',cancel);}
   };
 }

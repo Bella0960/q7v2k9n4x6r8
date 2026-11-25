@@ -69,3 +69,40 @@ test('role turn capability is revoked on role removal or login replacement',asyn
     await assert.rejects(request.commit('ok'),/STALE_BROWSER_CONTEXT|ROLE_UNAVAILABLE|SCOPE_CHANGED/);assert.deepEqual(f.calls,['user']);
   }
 });
+
+// A stalled network request or response body must not permanently lock the room.
+async function observe(p) {
+  return Promise.race([p.then(value=>({value}),error=>({error})),new Promise(resolve=>setImmediate(()=>resolve({pending:true})))]);
+}
+test('stalled identity request times out, suspends and permits a fresh verified turn',async t=>{
+  t.mock.timers.enable({apis:['setTimeout']});
+  const f=fixture();await f.start();const turn=await f.session.prepareRoleTurn('r1'), original=f.win.fetch;
+  const stall=deferred();let signal;
+  f.win.fetch=async(path,options)=>{signal=options.signal;await stall.promise;return original(path,options);};
+  const pending=turn.commit('ok');await observe(pending);
+  t.mock.timers.tick(15000);
+  const outcome=await observe(pending);
+  // Release the fixture even when running against the unpatched baseline.
+  f.win.fetch=original;stall.resolve();await pending.catch(()=>{});
+  assert.equal(outcome.error?.message,'ACCOUNT_TEMPORARILY_UNAVAILABLE');assert.equal(signal?.aborted,true);
+  assert.equal(f.session.status(),'suspended');assert.deepEqual(f.calls,['user']);
+  await f.session.refresh();await assert.rejects(turn.commit('ok'),/STALE_ROSTER|STALE_BROWSER_CONTEXT/);
+  await (await f.session.prepareRoleTurn('r1')).commit('ok');assert.deepEqual(f.calls,['user','role:r1']);
+});
+test('stalled response body obeys the same verification deadline',async t=>{
+  t.mock.timers.enable({apis:['setTimeout']});
+  const f=fixture(),original=f.win.fetch,stall=deferred();let signal;
+  f.win.fetch=async(path,options)=>{signal=options.signal;const response=await original(path,options),json=response.json;return {...response,json:async()=>{await stall.promise;return json();}};};
+  const pending=f.session.refresh();await observe(pending);t.mock.timers.tick(15000);const outcome=await observe(pending);
+  f.win.fetch=original;stall.resolve();await pending.catch(()=>{});
+  assert.equal(outcome.error?.message,'ACCOUNT_TEMPORARILY_UNAVAILABLE');assert.equal(signal?.aborted,true);assert.equal(f.session.status(),'suspended');
+  await f.session.refresh();assert.equal(f.session.status(),'ready');
+});
+test('page exit cancels stalled request immediately without waiting for deadline',async t=>{
+  t.mock.timers.enable({apis:['setTimeout']});
+  const f=fixture(),original=f.win.fetch,stall=deferred();let signal;
+  f.win.fetch=async(path,options)=>{signal=options.signal;await stall.promise;return original(path,options);};
+  const pending=f.session.refresh();await observe(pending);f.win.fire('pagehide');const outcome=await observe(pending);
+  f.win.fetch=original;stall.resolve();await pending.catch(()=>{});
+  assert.match(outcome.error?.message??'',/CONTEXT_CANCELLED|ROOM_DISPOSED/);assert.equal(signal?.aborted,true);assert.equal(f.session.status(),'disposed');
+});
