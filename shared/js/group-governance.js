@@ -248,49 +248,98 @@
         inviterId: x.inviterId, inviterName: inviter.nickname || inviter.name || '群成员' };
     });
   }
+  // Legacy two-key invitation transaction: checked snapshots, no blind rollback.
+  function invitationScope() {
+    if (root.MAOGroupWriteGuard) return root.MAOGroupWriteGuard.account();
+    return root.document ? null : ''; // isolated non-browser test harness
+  }
+  function invitationSnapshot(storage, key) {
+    try {
+      var raw = storage.getItem(key), list = JSON.parse(raw === null ? '[]' : raw);
+      return Array.isArray(list) ? { raw: raw, list: list } : null;
+    } catch (e) { return null; }
+  }
+  function invitationMatches(storage, key, raw, scope) {
+    try { return scope !== null && invitationScope() === scope &&
+      storage.getItem(key) === raw && invitationScope() === scope; }
+    catch (e) { return false; }
+  }
+  function invitationWrite(storage, key, raw, next, scope, guard) {
+    try {
+      if (!invitationMatches(storage, key, raw, scope) ||
+          (guard && !guard()) || !invitationMatches(storage, key, raw, scope)) return false;
+      if (next === null) storage.removeItem(key); else storage.setItem(key, next);
+      return invitationMatches(storage, key, next, scope);
+    } catch (e) { return false; }
+  }
   function resolveInvitation(req) {
     req = req || {};
-    var storage = req.storage || root.localStorage, all = read(storage, 'phone_groups'), inbox = read(storage, INVITATIONS);
-    // Declining uses only the invitation inbox. A damaged group index must
-    // not prevent safely dismissing an invitation or overwrite group data.
-    if (!inbox) return fail('INVALID_STORAGE', '群邀请存储不可用');
-    var inv = inbox.find(function (x) { return x && x.status === 'pending' && id(x.id) === id(req.id); });
+    var scope = invitationScope();
+    if (scope === null || (Object.prototype.hasOwnProperty.call(req, 'expectedAccount') && req.expectedAccount !== scope))
+      return fail('SCOPE_CHANGED', '账号已变化，请重新打开聊天列表');
+    var storage = req.storage || root.localStorage, box = invitationSnapshot(storage, INVITATIONS);
+    if (!box) return fail('INVALID_STORAGE', '群邀请存储不可用');
+    var matches = box.list.filter(function (x) { return x && id(x.id) === id(req.id); });
+    var inv = matches.length === 1 && matches[0].status === 'pending' ? matches[0] : null;
     if (!inv) return fail('NOT_FOUND', '邀请已处理或不存在');
-    var accepted = req.accept === true;
-    // Refusing an invitation must never depend on stale/deleted role profiles
-    // or group eligibility. It only closes this pending record and must not
-    // create or modify any group or role.
+    var accepted = req.accept === true, groupId = id(inv.groupId), inviterId = id(inv.inviterId);
     if (!accepted) {
       inv.status = 'declined'; inv.resolvedAt = Date.now();
-      if (!write(storage, INVITATIONS, inbox))
+      if (!invitationWrite(storage, INVITATIONS, box.raw, JSON.stringify(box.list), scope))
         return fail('SAVE_FAILED', '拒绝邀请的状态未保存');
-      emit('invitation:resolved', { groupId:id(inv.groupId), accepted:false,
-        inviterId:id(inv.inviterId) });
-      return { ok:true, accepted:false, groupId:id(inv.groupId) };
+      emit('invitation:resolved', { groupId:groupId, accepted:false, inviterId:inviterId });
+      return { ok:true, accepted:false, groupId:groupId };
     }
-    if (!all) return fail('INVALID_STORAGE', '群资料存储不可用，不能接受邀请');
-    var g = inv.draftGroup || all.find(function (x) { return x && id(x.id) === id(inv.groupId); });
+    var groups = invitationSnapshot(storage, 'phone_groups');
+    if (!groups) return fail('INVALID_STORAGE', '群资料存储不可用，不能接受邀请');
+    var existing = groups.list.filter(function (x) { return x && id(x.id) === groupId; });
+    var g = inv.draftGroup ? JSON.parse(JSON.stringify(inv.draftGroup)) : existing.length === 1 ? existing[0] : null;
+    if (!g || !/^g.+/.test(groupId) || id(g.id) !== groupId ||
+        !inviterId || inviterId === '__user' || inviterId === groupId ||
+        !Array.isArray(g.members) || g.members.some(function(m) {
+          return !m || !id(m.id) || id(m.id) === '__user' || id(m.id) === groupId;
+        }) || new Set(g.members.map(function(m){return id(m.id);})).size !== g.members.length ||
+        !eligible(g, inviterId)) return fail('INELIGIBLE', '邀请已失效');
+    var roles = invitationSnapshot(storage, 'ai_custom_characters');
+    if (!roles || roles.list.some(function(r){return r && id(r.id) === groupId;}) ||
+        roles.list.filter(function(r){return r && id(r.id) === inviterId;}).length !== 1)
+      return fail('MISSING_ROLE', '群成员已变化，无法加入');
     if (inv.draftGroup) {
-      if (!g || id(g.ownerId) !== id(inv.inviterId) || !find(g, inv.inviterId) ||
-          all.some(function (existing) { return existing && id(existing.id) === id(g.id); }))
+      if (id(g.ownerId) !== inviterId || existing.length || g.members.length < 2)
         return fail('INELIGIBLE', '新群邀请已经失效');
-      var roles = read(storage, 'ai_custom_characters');
-      if (!roles || g.members.some(function (m) { return !roles.some(function (r) { return r && id(r.id) === id(m.id); }); }))
+      if (g.members.some(function(m) { return roles.list.filter(function(r){return r && id(r.id) === id(m.id);}).length !== 1; }))
         return fail('MISSING_ROLE', '群成员已变化，无法创建');
-    } else if (!eligible(g, inv.inviterId)) return fail('INELIGIBLE', '邀请已失效');
-    var original = JSON.stringify(all);
-    if (accepted) {
-      g.userMembership = 'joined'; g.lastUserJoinedAt = Date.now();
-      if (inv.draftGroup) all.push(g);
-      if (!write(storage, 'phone_groups', all)) return fail('SAVE_FAILED', '入群保存失败');
     }
-    inv.status = accepted ? 'accepted' : 'declined'; inv.resolvedAt = Date.now();
-    if (!write(storage, INVITATIONS, inbox)) {
-      if (accepted) try { storage.setItem('phone_groups', original); } catch (e) {}
-      return fail('SAVE_FAILED', '邀请状态保存失败');
+    var groupsKey = 'phone_groups', roleKey = 'ai_custom_characters';
+    var historyKey = 'chat_history_' + groupId, historyRaw;
+    try { historyRaw = storage.getItem(historyKey); } catch (e) { return fail('INVALID_STORAGE','群历史无法读取'); }
+    if (inv.draftGroup && historyRaw !== null) return fail('INELIGIBLE','群编号与既有历史冲突');
+    g.userMembership = 'joined'; g.lastUserJoinedAt = Date.now();
+    if (inv.draftGroup) groups.list.push(g);
+    var groupNext = JSON.stringify(groups.list);
+    var canJoin = function(){ return invitationMatches(storage, INVITATIONS, box.raw, scope) &&
+      invitationMatches(storage, roleKey, roles.raw, scope) &&
+      invitationMatches(storage, historyKey, historyRaw, scope); };
+    if (!invitationWrite(storage, groupsKey, groups.raw, groupNext, scope, canJoin))
+      return fail('SAVE_FAILED', '入群保存未确认，请刷新核对');
+    inv.status = 'accepted'; inv.resolvedAt = Date.now();
+    var boxNext = JSON.stringify(box.list);
+    if (!invitationWrite(storage, INVITATIONS, box.raw, boxNext, scope, function(){
+      return invitationMatches(storage, groupsKey, groupNext, scope);
+    })) {
+      // Only compensate while the observed group, inbox and history are unchanged.
+      var restored = invitationWrite(storage, groupsKey, groupNext, groups.raw, scope, function(){
+        return invitationMatches(storage, INVITATIONS, box.raw, scope) &&
+          invitationMatches(storage, historyKey, historyRaw, scope);
+      });
+      return restored ? fail('SAVE_FAILED', '邀请状态保存失败，入群已回退') :
+        fail('SAVE_FAILED', '邀请状态未确认，群资料可能已保存，请刷新核对');
     }
-    emit('invitation:resolved', { groupId: id(g.id), accepted: accepted, inviterId: id(inv.inviterId) });
-    return { ok: true, accepted: accepted, groupId: id(g.id) };
+    if (!invitationMatches(storage, groupsKey, groupNext, scope) ||
+        !invitationMatches(storage, INVITATIONS, boxNext, scope))
+      return fail('SAVE_FAILED', '入群状态已变化，请刷新核对');
+    emit('invitation:resolved', { groupId:groupId, accepted:true, inviterId:inviterId });
+    return { ok:true, accepted:true, groupId:groupId };
   }
   function leave(req) {
     req = req || {};

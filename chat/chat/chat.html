@@ -9,7 +9,7 @@
 <script src="../../shared/js/chat-beauty.js?v=20261102v3"></script>
 <script src="../../shared/js/phone/phone_storage.js"></script>
 <script src="../../shared/js/phone/storage/media-repository.js?v=20261121theme2"></script>
-<script src="../../shared/js/group-governance.js?v=20261125scope2"></script>
+<script src="../../shared/js/group-governance.js?v=20261125scope3"></script>
 <script src="../../shared/js/phone/group-write-guard.js?v=20261125g10"></script>
 <style>
   * {
@@ -1401,6 +1401,7 @@
         return pinned(b) - pinned(a) || cachedMeta(b.id,b.name||'群聊').time - cachedMeta(a.id,a.name||'群聊').time;
       });
 
+      var inviteAccount = window.MAOGroupWriteGuard ? window.MAOGroupWriteGuard.account() : null;
       var groupInvites = window.GroupGovernance ? window.GroupGovernance.pendingInvitations() : [];
       if (roles.length === 0 && groups.length === 0 && groupInvites.length === 0) {
         container.innerHTML = '<div class="empty-tip">暂无聊天消息</div>';
@@ -1485,7 +1486,7 @@
           var decline = event.target.closest('.group-invite-decline');
           if (!accept && !decline) return;
           var result = window.GroupGovernance.resolveInvitation({
-            id: card.getAttribute('data-invitation-id'), accept: !!accept
+            id: card.getAttribute('data-invitation-id'), accept: !!accept, expectedAccount: inviteAccount
           });
           if (!result.ok) { showToast(result.message || '邀请处理失败'); return; }
           if (result.accepted) location.href = 'chat-detail.html?id=' + encodeURIComponent(result.groupId);

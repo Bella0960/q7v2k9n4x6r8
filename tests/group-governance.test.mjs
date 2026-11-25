@@ -146,7 +146,7 @@ test('new role-owned group stays a draft until accepted and keeps existing roles
 test('all touched pages compile and refer to the shared bridge; backup and PWA include it', () => {
   for (const filename of ['chat/chat/chat.html', 'chat/chat/chat-detail.html', 'chat/chat/group-play.html', 'chat/chat/chat-settings.html']) {
     const html = load(filename);
-    assert.match(html, /group-governance\.js\?v=20261125scope2/, filename);
+    assert.match(html, /group-governance\.js\?v=20261125scope3/, filename);
     const inline = [...html.matchAll(/<script(?:\s+[^>]*)?>([\s\S]*?)<\/script>/gi)];
     for (const [index, match] of inline.entries()) {
       assert.doesNotThrow(() => new vm.Script(match[1], { filename: filename + ':inline' + index }));
@@ -159,7 +159,7 @@ test('all touched pages compile and refer to the shared bridge; backup and PWA i
   assert.match(detail, /群动作:禁言:/);
   assert.match(load('chat/chat/chat.html'), /pendingInvitations/);
   assert.match(load('chat/chat/group-play.html'), /GroupGovernance\.leave/);
-  assert.match(load('sw.js'), /group-governance\.js\?v=20261125scope2/);
+  assert.match(load('sw.js'), /group-governance\.js\?v=20261125scope3/);
   assert.match(load('settings/js/backup-modules.js'), /phone_group_invitations/);
 });
 
@@ -587,7 +587,7 @@ test('group turns fence requests, writes, followups and deferred actions against
 test('group integration pages and precache use one canonical script revision',()=>{
   const sw=load('sw.js');
   const pages=['chat/chat/chat.html','chat/chat/chat-detail.html','chat/chat/chat-settings.html','chat/chat/group-play.html'];
-  const expected={"group-governance.js":"20261125scope2","group-memory-events.js":"20261125public1","chat-context-policy.js":"20261125public1","chat-history-atomic.js":"20261125scope1","wallpaper-store.js":"20261125group2","group-turn-effects.js":"20261125scope1","group-private-receipt-recovery.js":"20261125scope1","group-settings-home.js":"20261125scope4","group-write-guard.js":"20261125g10","group-portraits.js":"20261125scope1"};
+  const expected={"group-governance.js":"20261125scope3","group-memory-events.js":"20261125public1","chat-context-policy.js":"20261125public1","chat-history-atomic.js":"20261125scope1","wallpaper-store.js":"20261125group2","group-turn-effects.js":"20261125scope1","group-private-receipt-recovery.js":"20261125scope1","group-settings-home.js":"20261125scope4","group-write-guard.js":"20261125g10","group-portraits.js":"20261125scope1"};
   for(const [name,rev] of Object.entries(expected)){
     assert.ok(sw.includes(name+'?v='+rev),name+' precache');
     for(const page of pages){const html=load(page);for(const match of html.matchAll(/<script[^>]+src="([^"]+)"/g)){if(match[1].includes('/'+name+'?v='))assert.ok(match[1].endsWith(name+'?v='+rev),page+' '+name);}}
@@ -620,4 +620,32 @@ test('group creation and member invitation recheck exact selected role identity'
   {const h=setup(),g={id:'g1',members:[{id:'r1'}]};assert.deepEqual(h.invites.inviteCandidates([...h.roles,{id:'r2'},{id:'__user'},{id:'g1'},{id:'r3'}],g).map(x=>x.id),['r3']);const current={group:g};assert.equal(h.invites.currentInvitationRole('r2',current,h.roles,[]),null);assert.equal(h.invites.currentInvitationRole('r2',current,h.roles,[{id:'r2',name:'edited'}]),null);assert.equal(h.invites.currentInvitationRole('r2',current,h.roles,h.roles).id,'r2');}
   assert.ok(chat.includes('group-write-guard.js?v=20261125g10'));
   assert.ok(home.includes('currentInvitationRole(String(id),current,selectedAction,pool)'));
+});
+
+test('invitation compensation preserves concurrent group edit',()=>{
+  const g=group(); g.userMembership='left'; const h=harness([g,{id:'g2',name:'old'}]);
+  const o=h.api.offerInvitation({groupId:'g1',inviterId:'c1'});
+  const set=h.storage.setItem.bind(h.storage);let emitted=0;h.api.on('invitation:resolved',()=>emitted++);
+  h.storage.setItem=(key,value)=>{if(key==='phone_group_invitations'){const a=JSON.parse(h.storage.getItem('phone_groups'));a[1].name='new';set('phone_groups',JSON.stringify(a));throw Error('quota');}set(key,value);};
+  assert.equal(h.api.resolveInvitation({id:o.invitation.id,accept:true}).ok,false);
+  assert.equal(JSON.parse(h.storage.getItem('phone_groups'))[1].name,'new');assert.equal(emitted,0);
+});
+test('invitation resolution refuses duplicate ids and stale account UI',()=>{
+  const g=group();g.userMembership='left';const h=harness([g]);const o=h.api.offerInvitation({groupId:'g1',inviterId:'c1'});
+  const before=h.storage.getItem('phone_groups');
+  assert.equal(h.api.resolveInvitation({id:o.invitation.id,accept:true,expectedAccount:'other'}).code,'SCOPE_CHANGED');
+  const a=JSON.parse(h.storage.getItem('phone_group_invitations'));a.push({...a[0]});h.storage.setItem('phone_group_invitations',JSON.stringify(a));
+  assert.equal(h.api.resolveInvitation({id:o.invitation.id,accept:true}).ok,false);assert.equal(h.storage.getItem('phone_groups'),before);
+});
+test('invitation compensation restores unchanged group after dropped receipt',()=>{
+  const g=group();g.userMembership='left';const h=harness([g]);const o=h.api.offerInvitation({groupId:'g1',inviterId:'c1'});
+  const before=h.storage.getItem('phone_groups'),set=h.storage.setItem.bind(h.storage);
+  h.storage.setItem=(key,value)=>{if(key!=='phone_group_invitations')set(key,value);};
+  assert.equal(h.api.resolveInvitation({id:o.invitation.id,accept:true}).ok,false);assert.equal(h.storage.getItem('phone_groups'),before);
+});
+test('invitation acceptance refuses duplicate role ids and orphan history',()=>{
+  const h=harness();const o=h.api.offerNewGroupInvitation({inviterId:'c1',groupName:'测试群',memberIds:['c2']});
+  const before=h.storage.getItem('phone_groups');h.storage.setItem('ai_custom_characters',JSON.stringify([...roles,roles[0]]));
+  assert.equal(h.api.resolveInvitation({id:o.invitation.id,accept:true}).ok,false);h.storage.setItem('ai_custom_characters',JSON.stringify(roles));
+  h.storage.setItem('chat_history_'+o.invitation.groupId,'[]');assert.equal(h.api.resolveInvitation({id:o.invitation.id,accept:true}).ok,false);assert.equal(h.storage.getItem('phone_groups'),before);
 });
