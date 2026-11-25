@@ -83,8 +83,9 @@ function startServer() {
         return;
       }
       res.writeHead(200, { 'Content-Type': MIME[path.extname(file).toLowerCase()] || 'application/octet-stream', 'Cache-Control':'no-store' });
-      // Synthetic test account metadata only; this does NOT simulate server authentication.
-      res.end(path.extname(file)==='.html'?data.toString('utf8').replace(/<head\b[^>]*>/i,m=>m+'<meta name="mao-account-id" content="test-account-001">'):data);
+      // Synthetic ready marker only; this does NOT simulate server authentication or physical account namespaces.
+      const mockScope='<meta name="mao-account-id" content="MAO-AAAAAAAAAAAA"><meta name="mao-account-role" content="member"><script>window.__MAO_ACCOUNT_SCOPE__=Object.freeze({accountId:"MAO-AAAAAAAAAAAA",role:"member",ready:true});</script>';
+      res.end(path.extname(file)==='.html'?data.toString('utf8').replace(/<head\b[^>]*>/i,m=>m+mockScope):data);
     });
   });
   return new Promise((resolve) => server.listen(0, '127.0.0.1', resolve));
