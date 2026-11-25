@@ -26,8 +26,9 @@ function fixture(opts={}){
   validateBackup:()=>'',backupMissingMusicBytes:()=>false,backupMissingMusicImages:()=>false,
   toast:x=>toasts.push(x),alert:x=>alerts.push(x),confirm:x=>{confirmed++;prompt=x;return !opts.cancel;},
   snapshot,RP_ROLE_PRE:'pre-import',
-  rpWriteSnapshot:async snap=>{created++;rp=Object.assign({},snap);if(opts.stale)data.chat_history_A='[]';},
-  rpReadSnapshot:async()=>({snap:rp}),verifyRestore:()=>({ok:true}),
+  captureMediaRestorePoint:async()=>{if(opts.captureFail)throw Error('fixture');return '{"media":{"existed":true,"stores":{}}}';},
+  rpWriteSnapshot:async(snap,role,media)=>{created++;rp={snap:Object.assign({},snap),media:opts.corruptMedia?'{}':media};if(opts.stale)data.chat_history_A='[]';},
+  rpReadSnapshot:async()=>opts.existing?{snap:{},media:'{}'}:rp||null,verifyRestore:()=>({ok:true}),
   downloadSnapshot:()=>{},restore:snap=>{writes++;Object.keys(data).forEach(k=>delete data[k]);Object.assign(data,snap);return true;},
   restoreScoped:()=>true,carryOverSecrets:(incoming,old)=>{if(!Object.hasOwn(incoming,'api_settings'))data.api_settings=old.api_settings;return {written:1,failed:0,failedKeys:[]};},
   restoreDatabase:async(name)=>{attempted.push(name);if(opts.dbFail)throw Error('fixture');return {written:opts.countMismatch?0:1,skipped:opts.skip?1:0};},
@@ -65,3 +66,7 @@ test('actual import stops subsequent database restores after first failure',asyn
  const obj=media();obj.indexedDB['maomao-assets']={assets:[],blobs:[],refs:[]};obj.__backup.indexedDB['maomao-assets']=0;
  await f.run(obj);assert.equal(f.attempted().length,1);assert.equal(f.attempted()[0],'media');assert.equal(f.deleted(),0);
 });
+
+test('existing unresolved recovery point blocks new import',async()=>{const f=fixture({existing:true});await f.run(media());assert.equal(f.created(),0);assert.equal(f.writes(),0);assert.equal(f.deleted(),0);});
+test('media snapshot failure blocks local and media writes',async()=>{const f=fixture({captureFail:true});await f.run(media());assert.equal(f.created(),0);assert.equal(f.writes(),0);assert.equal(f.attempted().length,0);});
+test('media recovery point readback mismatch blocks restore',async()=>{const f=fixture({corruptMedia:true});await f.run(media());assert.equal(f.created(),1);assert.equal(f.writes(),0);assert.equal(f.deleted(),0);});
