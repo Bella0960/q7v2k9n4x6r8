@@ -26,6 +26,15 @@
     n.addEventListener('click', handler);
     return n;
   }
+  function english(label) {
+    var n = el('span', 'gp-english', label);
+    n.lang = 'en';
+    n.setAttribute('aria-hidden','true');
+    return n;
+  }
+  function bilingual(node, label) {
+    if (node) node.append(english(label));
+  }
   function safePhoto(value) {
     return typeof value === 'string' &&
       /^(?:data:image\/(?:png|jpeg|jpg|webp|gif);|https?:\/\/|blob:|\.{1,2}\/)/i.test(value);
@@ -111,7 +120,9 @@
 
   var own = el('div', 'gp-own-name');
   var ownValue = el('span', 'gp-own-value');
-  own.append(el('span', '', '我的显示名称'), ownValue);
+  var ownLabel = el('span', 'gp-setting-label', '我的显示名称');
+  bilingual(ownLabel,'MY NAME');
+  own.append(ownLabel, ownValue);
   function profile() {
     try {
       var value = JSON.parse(localStorage.getItem('myProfile') || '{}');
@@ -124,9 +135,12 @@
     var inviteBlock = byId('gpInviteBlock');
     var inviteToggle = byId('gpInviteToggle');
     if (inviteBlock && inviteToggle) {
+      if (invite && typeof renderInviteCandidates === 'function') renderInviteCandidates();
       if (inviteBlock.classList.contains('is-open') !== invite) inviteToggle.click();
     }
-    if (!invite) action.scrollIntoView({block:'nearest',behavior:'auto'});
+    requestAnimationFrame(function(){
+      (invite && inviteToggle ? inviteToggle : action).scrollIntoView({block:'nearest',behavior:'auto'});
+    });
   }
   function memberTile(member) {
     var tile = el('div', 'gp-member-tile');
@@ -136,7 +150,9 @@
   function actionTile(symbol, label, handler) {
     var tile = btn('gp-member-tile', '', handler);
     tile.setAttribute('aria-label', label + '群成员');
-    tile.append(el('span','gp-action-square',symbol),el('span','',label));
+    var caption = el('span','gp-action-caption',label);
+    bilingual(caption, label === '邀请' ? 'INVITE' : 'REMOVE');
+    tile.append(el('span','gp-action-square',symbol),caption);
     return tile;
   }
   function renderMembers() {
@@ -173,6 +189,10 @@
   var bgCard = background.closest('.settings-card');
   search.querySelector('.action-title').textContent = '查找';
   background.querySelector('.action-title').textContent = '背景';
+  bilingual(noticeButton,'NOTICE');
+  bilingual(avatarButton,'AVATAR');
+  bilingual(search.querySelector('.action-title'),'SEARCH');
+  bilingual(background.querySelector('.action-title'),'BACKGROUND');
   shortcuts.append(noticeButton,avatarButton,searchCard,bgCard);
   notice.classList.add('gp-notice-slot');
   var basicList = pin.closest('.settings-list');
@@ -195,6 +215,13 @@
   byId('actionGroupInfo').prepend(el('span','gp-setting-label','群聊名称'));
   byId('actionGroupAlias').prepend(el('span','gp-setting-label','备注'));
   byId('actionGroupManage').querySelector('.action-title').textContent='群组管理';
+  bilingual(byId('actionGroupManage').querySelector('.action-title'),'MANAGE');
+  bilingual(byId('actionGroupInfo').querySelector('.gp-setting-label'),'NAME');
+  bilingual(byId('actionGroupAlias').querySelector('.gp-setting-label'),'NOTE');
+  bilingual(pin.querySelector('.action-title'),'PIN');
+  bilingual(advanced.querySelector('.action-title'),'PLAY');
+  bilingual(time.querySelector('.action-title'),'TIME');
+  bilingual(sound.querySelector('.action-title'),'SOUND');
   list.classList.add('gp-settings-list');
   list.replaceChildren(manage,info,alias,own,pinCard,advanced);
   home.insertBefore(cover,list);
@@ -204,7 +231,9 @@
   home.insertBefore(notice,list);
   stage.classList.add('gp-editorial');
   home.classList.add('gp-editorial-home');
-  stage.querySelector('.cs-title').textContent='群聊设置';
+  var title = stage.querySelector('.cs-title');
+  title.textContent='群聊设置';
+  title.prepend(english('GROUP SETTINGS'));
   renderMembers();
   refreshCover();
   new MutationObserver(renderMembers).observe(byId('gpMembersList'),{childList:true});
