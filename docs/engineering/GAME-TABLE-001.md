@@ -37,3 +37,13 @@ Hall: game covers, names, continue game. Preparation: seats, start; detailed rul
 
 ## Next action
 Finish current main callers, account storage boundaries, backup and QA baseline inspection. Then implement isolated pure room engine and targeted tests before any UI wiring. No code or release claimed by this document.
+
+## 2026-11-25 · Stage 01 follow-up (source audit)
+- Current main observed at 7f666f1d53c593d341b390442e0e4ff1d0a8f39d; #445 HEAD 245878eb03cdeb75b3286465fecec8bce371f834 remains open. Do not edit games/games.html or its shared log while ownership overlaps.
+- Legacy loadRoles reads PhoneStorage.getCharacters(), then raw ai_custom_characters and finally defaultRole; selectRole holds one global activeRole. New multiplayer rooms must use explicit verified account scope, a separate user seat and a vetted role list; no fallback to a default/other account role. The old behavior is preserved; this is a design risk, not a verified account-leak incident.
+- Legacy stats use maomao_game_stats_v1 keyed by activeRoleKey; legacy game-to-chat button writes maomao_game_pending_<roleId> then navigates to chat-detail. The exact consumer of that pending key was not located on current main by exact search or chat-detail inspection. Do not reuse it as the new long-term memory export contract.
+- PhoneStorage.getData/setData uses phone_data_v2/contactId/appId and special legacy chat/memory keys. Its generic interface alone does not prove account isolation. New adapters must obtain scope from verified session and fail closed if unavailable.
+- Backup uses an explicit IDB_TARGETS list and MAOMAOBackupRegistry for module scopes. New save/resume storage must pass backup and restore tests before activation; no new database is created yet.
+- Vite recursively discovers HTML pages and copies static .js assets; isolated games/tabletop/ MPA integration is compatible by design, build not yet run.
+- QA public site fetch unavailable in current tool; QA repo main qa-release-request.json returned 404. Actual online QA version, source receipt and full account adapter contract NOT VERIFIED. Stage 01 remains in progress; no release or shared changes. Next: confirm QA receipt and account boundary, then room engine. Independent pure reducer may be developed only without runtime wiring or storage; not a passed stage.
+- Owner reporting rule: report each completed milestone in everyday Chinese (what can actually be done, what cannot, test evidence, next milestone). One game at a time in order 飞行棋 → 五子棋 → 海龟汤 → 狼人杀. Keep main screens uncluttered and secondary functions discoverable. Stop at meaningful user review points; do not treat a progress report as a completed game.
