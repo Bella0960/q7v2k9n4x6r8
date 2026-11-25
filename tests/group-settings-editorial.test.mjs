@@ -53,3 +53,13 @@ test('white editorial page, localized English details, real invitation handler',
   assert.match(html,/if \(!saveCurrentGroup\(g\)\)/);
   assert.doesNotMatch(js,/https?:\/\/[^|]/);
 });
+
+test('group management exposes existing administrator and title controls',()=>{
+  const play=read('chat/chat/group-play.html');
+  assert.match(js,/group-play\.html\?id=.*#memberManagement/);
+  assert.match(js,/byId\('gpManagePanel'\)\.prepend\(permissionEntry\)/);
+  assert.ok(play.indexOf('id="memberManagement"')<play.indexOf('id="settingsList"'));
+  assert.equal((play.match(/data-member-field="isAdmin"/g)||[]).length,1);
+  assert.equal((play.match(/data-member-field="title"/g)||[]).length,1);
+  assert.match(play,/if\(field==='isAdmin'&&String\(group\.ownerId/);
+});
