@@ -16,10 +16,11 @@ const server=createServer(async(req,res)=>{
 });
 await new Promise(r=>server.listen(0,'127.0.0.1',r));
 const base='http://127.0.0.1:'+server.address().port;
-let browser;
+let browser,phase=0;
 try{
  browser=await chromium.launch({headless:true,args:['--no-sandbox']});
  for(const width of [375,390,430]){
+  phase=width;
   const context=await browser.newContext({viewport:{width,height:844},isMobile:true,hasTouch:true});
   const page=await context.newPage();
   const errors=[];
@@ -49,6 +50,7 @@ try{
   await page.locator('#confirmBookImport').click();
   const book=page.locator('#shelfGrid .book-card').filter({hasText:'QA fixture'});
   await book.waitFor();
+  phase=width+1;
   await page.locator('.tab-item[data-route="home"]').click();
   await page.locator('#homeGrid .book-card').filter({hasText:'QA fixture'}).click();
   await page.locator('#bookDetailView[aria-hidden=false]').waitFor();
@@ -69,7 +71,7 @@ try{
   assert.equal(await page.locator('.import-help').count(),0);
   const fileChooser=page.waitForEvent('filechooser');
   await page.locator('#importRow').click();
-  assert.ok(await fileChooser);
+  await (await fileChooser).setFiles([]);
   await page.locator('.tab-item[data-route="shelf"]').click();
   await book.click();
   await page.locator('#readerView[aria-hidden=false]').waitFor();
@@ -92,6 +94,8 @@ try{
    assert.match(h.text,/QA fixture/);
    return h.top;
   };
+  phase=width+2;
+  await page.waitForFunction(()=>{const e=document.getElementById('readerView');return getComputedStyle(e).visibility==='visible'&&Number(getComputedStyle(e).opacity)===1;});
   const top=await assertHeader();
   await page.locator('#readerBody').evaluate(e=>{e.scrollTop=e.scrollHeight;});
   await page.waitForTimeout(450);
@@ -110,6 +114,7 @@ try{
   await page.locator('#sheetBackdrop').click({position:{x:10,y:10}});
   await page.locator('#readerBody').evaluate(e=>{e.scrollTop=0;});
   await openPrefs();
+  phase=width+3;
   const rolePrefs=page.locator('#readerRolePreferences');
   assert.equal(await rolePrefs.evaluate(e=>e.open),false);
   await rolePrefs.locator('summary').click();
@@ -136,6 +141,7 @@ try{
   await page.locator('#sheetBackdrop').click({position:{x:10,y:10}});
   assert.equal(await page.evaluate(()=>window.mockRequests.length),0);
 
+  phase=width+4;
   const first=page.locator('.chapter-page[data-ch="0"] [data-paragraph-comment="0"]');
   const second=page.locator('.chapter-page[data-ch="0"] [data-paragraph-comment="1"]');
   const paragraph=i=>page.locator('.chapter-page[data-ch="0"] [data-reader-paragraph="'+i+'"] .reader-paragraph');
@@ -164,6 +170,7 @@ try{
   await page.waitForFunction(()=>!document.getElementById('generateParagraphComment').disabled);
   assert.ok(!(await page.locator('#paragraphCommentThread').innerText()).includes('讨论回复'));
   assert.equal(await second.count(),0);
+  phase=width+5;
   await page.locator('#closeParagraphSheet').click();await page.waitForTimeout(750);await first.click();
   await page.locator('#paragraphCommentThread').getByText('讨论回复',{exact:false}).waitFor();
   assert.equal(await first.innerText(),'2');
@@ -180,6 +187,7 @@ try{
   assert.deepEqual(authors,['我','Test role','Second reader']);
   await page.reload();
   await first.click();
+  phase=width+6;
   await page.locator('#paragraphCommentThread').getByText('我的讨论',{exact:false}).waitFor();
   await page.locator('#paragraphCommentThread').getByText('讨论回复',{exact:false}).waitFor();
   await page.locator('#paragraphCommentThread').getByText('第二位读者的评论',{exact:false}).waitFor();
@@ -193,7 +201,9 @@ try{
   assert.equal(await page.evaluate(()=>window.mockRequests.length),0);
   await page.locator('#closeParagraphSheet').click();
   await page.locator('#readerBack').click();
+  await page.locator('#shelfView[aria-hidden=false]').waitFor();
   await book.waitFor();
+  phase=width+7;
   const holdBook=async()=>{
    await book.scrollIntoViewIfNeeded();
    const box=await book.boundingBox();await page.mouse.move(box.x+box.width/2,box.y+box.height/2);
@@ -220,4 +230,8 @@ try{
   await context.close();
   console.log('READING_BROWSER_PASS:'+width);
  }
+}catch(error){
+ const code=error?.name==='TimeoutError'?'timeout':error?.code==='ERR_ASSERTION'?'assertion':!browser?'browser-environment':'other';
+ console.error('SEALED_BROWSER_FAILURE:'+phase+':'+code);
+ throw error;
 }finally{await browser?.close();await new Promise(r=>server.close(r));}
