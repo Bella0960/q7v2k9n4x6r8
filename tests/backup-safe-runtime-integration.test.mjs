@@ -32,7 +32,7 @@ function fixture(opts={}){
   downloadSnapshot:()=>{},restore:snap=>{writes++;Object.keys(data).forEach(k=>delete data[k]);Object.assign(data,snap);return true;},
   restoreScoped:()=>true,carryOverSecrets:(incoming,old)=>{if(!Object.hasOwn(incoming,'api_settings'))data.api_settings=old.api_settings;return {written:1,failed:0,failedKeys:[]};},
   restoreDatabase:async(name)=>{attempted.push(name);if(opts.dbFail)throw Error('fixture');return {written:opts.countMismatch?0:1,skipped:opts.skip?1:0};},
-  checkFontPresetOrphan:async()=>false,rpDeleteRole:()=>{deleted++;},setTimeout:()=>{},location:{reload(){}}
+  checkFontPresetOrphan:async()=>false,rpDeleteRole:()=>{deleted++;return !opts.cleanupFail;},setTimeout:()=>{},location:{reload(){}}
  };
  const api=new Function(...Object.keys(params),source.slice(start,end)+'\nreturn {validateRestorePayload,restoreOutcomeComplete,handleImportFile};')(...Object.values(params));
  return {api,data,alerts,toasts,writes:()=>writes,confirmed:()=>confirmed,created:()=>created,deleted:()=>deleted,prompt:()=>prompt,attempted:()=>attempted,async run(obj){api.handleImportFile(JSON.stringify(obj));await task;},async runRaw(raw){api.handleImportFile(raw);await task;}};
@@ -70,3 +70,5 @@ test('actual import stops subsequent database restores after first failure',asyn
 test('existing unresolved recovery point blocks new import',async()=>{const f=fixture({existing:true});await f.run(media());assert.equal(f.created(),0);assert.equal(f.writes(),0);assert.equal(f.deleted(),0);});
 test('media snapshot failure blocks local and media writes',async()=>{const f=fixture({captureFail:true});await f.run(media());assert.equal(f.created(),0);assert.equal(f.writes(),0);assert.equal(f.attempted().length,0);});
 test('media recovery point readback mismatch blocks restore',async()=>{const f=fixture({corruptMedia:true});await f.run(media());assert.equal(f.created(),1);assert.equal(f.writes(),0);assert.equal(f.deleted(),0);});
+
+test('cleanup failure does not report unqualified import success',async()=>{const f=fixture({cleanupFail:true});await f.run(media());assert.equal(f.deleted(),1);assert.ok(f.alerts.some(x=>x.includes('恢复点未能清理')));assert.ok(!f.toasts.some(x=>x.includes('导入成功')));});
