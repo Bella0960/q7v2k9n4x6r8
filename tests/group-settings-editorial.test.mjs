@@ -302,7 +302,7 @@ test('group creation never overwrites damaged, duplicate, stale or foreign-accou
 });
 test('chat list create menu reaches original modal and waits for verified save',()=>{
   const list=read('chat/chat/chat.html');
-  assert.ok(list.includes('group-write-guard.js?v=20261125g8'));
+  assert.ok(list.includes('group-write-guard.js?v=20261125g9'));
   assert.ok(list.includes("document.getElementById('menuGroup').addEventListener('click',function(){"));
   assert.ok(list.includes("document.getElementById('wechatMenu').style.display='none';\n        openModal();"));
   assert.ok(list.includes('guard.create(modalAccount,'));
@@ -441,7 +441,7 @@ test('account switch during final storage reread blocks creation and modificatio
   {const {state,api}=setup();const snap=api.read('g1'),old=state.raw;state.switchAt=3;assert.equal(api.remove(snap).ok,false);assert.equal(state.writes,0);assert.equal(state.raw,old);}
 });
 test('all four group pages load the same current write guard',()=>{
-  for(const path of ['chat/chat/chat.html','chat/chat/chat-detail.html','chat/chat/chat-settings.html','chat/chat/group-play.html'])assert.ok(read(path).includes('group-write-guard.js?v=20261125g8'),path);
+  for(const path of ['chat/chat/chat.html','chat/chat/chat-detail.html','chat/chat/chat-settings.html','chat/chat/group-play.html'])assert.ok(read(path).includes('group-write-guard.js?v=20261125g9'),path);
 });
 
 
