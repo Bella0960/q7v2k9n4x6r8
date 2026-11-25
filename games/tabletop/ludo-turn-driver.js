@@ -5,8 +5,19 @@ import {chooseLudoRoleMove} from './ludo-board.js';
 export function createLudoTurnDriver({session,onView=()=>{},pace=()=>{},maxActions=32}={}){
   const fail=code=>{throw Error(code);};
   if(!session||typeof session.viewUser!=='function'||typeof session.prepareRoleTurn!=='function'||typeof onView!=='function'||typeof pace!=='function'||!Number.isInteger(maxActions)||maxActions<1||maxActions>128)fail('LUDO_INVALID_DRIVER');
-  let running=false,disposed=false,epoch=0;
+  let running=false,disposed=false,epoch=0,cancelPace=null;
   const check=stamp=>{if(disposed||stamp!==epoch)fail('LUDO_DRIVER_STOPPED');};
+  function stop(){epoch++;cancelPace?.();}
+  async function waitForPace(stamp){
+    check(stamp);
+    let cancel;
+    const stopped=new Promise((_,reject)=>{cancel=()=>reject(Error('LUDO_DRIVER_STOPPED'));});
+    cancelPace=cancel;
+    try{
+      await Promise.race([stopped,Promise.resolve().then(()=>{check(stamp);return pace();})]);
+      check(stamp);
+    }finally{if(cancelPace===cancel)cancelPace=null;}
+  }
   async function runUntilUser(){
     if(disposed)fail('LUDO_DRIVER_DISPOSED');
     if(running)fail('LUDO_DRIVER_BUSY');
@@ -21,7 +32,7 @@ export function createLudoTurnDriver({session,onView=()=>{},pace=()=>{},maxActio
       while(view.phase==='playing'&&view.turnSeatId!=='user'&&actions<maxActions){
         const role=view.seats.find(s=>s.seatId===view.turnSeatId&&s.kind==='role'&&s.mode==='player');
         if(!role||role.seatId!=='role:'+role.roleId)fail('LUDO_INVALID_ROLE_TURN');
-        await pace();check(stamp);
+        await waitForPace(stamp);check(stamp);
         const turn=await session.prepareRoleTurn(role.roleId);check(stamp);
         const own=turn?.view;
         if(own?.roomId!==roomId||own.gameId!=='ludo'||own.revision!==view.revision||own.selfSeatId!==role.seatId||own.turnSeatId!==role.seatId||typeof turn.commit!=='function')fail('LUDO_STALE_VIEW');
@@ -38,5 +49,5 @@ export function createLudoTurnDriver({session,onView=()=>{},pace=()=>{},maxActio
       return {actions,status:view.phase!=='playing'?view.phase:view.turnSeatId==='user'?'user':'yield'};
     }finally{running=false;}
   }
-  return Object.freeze({runUntilUser,stop(){epoch++;},dispose(){disposed=true;epoch++;},status:()=>disposed?'disposed':running?'running':'idle'});
+  return Object.freeze({runUntilUser,stop,dispose(){disposed=true;stop();},status:()=>disposed?'disposed':running?'running':'idle'});
 }

@@ -51,3 +51,22 @@ test('dispose is terminal and rejects pending work before any move',async()=>{
   let f;f=setup({pace:()=>f.driver.dispose()});f.room.prepareUserAction()({type:'move',move:{kind:'roll'}});
   await assert.rejects(f.driver.runUntilUser(),/LUDO_DRIVER_STOPPED/);await assert.rejects(f.driver.runUntilUser(),/LUDO_DRIVER_DISPOSED/);assert.equal(f.rolls(),1);
 });
+test('stop releases a stalled animation pace without waiting for its completion',async()=>{
+  let release;const f=setup({pace:()=>new Promise(r=>{release=r;})});
+  f.room.prepareUserAction()({type:'move',move:{kind:'roll'}});
+  const p=f.driver.runUntilUser();while(!release)await Promise.resolve();
+  const rejected=assert.rejects(p,/LUDO_DRIVER_STOPPED/);f.driver.stop();
+  let timer;try{await Promise.race([rejected,new Promise((_,reject)=>{timer=setTimeout(()=>reject(Error('STOP_DID_NOT_RELEASE')),100);})]);
+    assert.equal(f.driver.status(),'idle');assert.equal(f.rolls(),1);
+  }finally{clearTimeout(timer);release();await rejected;}
+});
+test('a cancelled pace can settle late without interfering with a fresh role run',async()=>{
+  let rejectOld,first=true;
+  const f=setup({dice:[3],pace:()=>{if(first){first=false;return new Promise((_,reject)=>{rejectOld=reject;});}}});
+  f.room.prepareUserAction()({type:'move',move:{kind:'roll'}});
+  const p=f.driver.runUntilUser();while(!rejectOld)await Promise.resolve();
+  f.driver.stop();await assert.rejects(p,/LUDO_DRIVER_STOPPED/);
+  assert.deepEqual(await f.driver.runUntilUser(),{actions:1,status:'user'});
+  rejectOld(Error('late pace rejection'));await new Promise(resolve=>setImmediate(resolve));
+  assert.equal(f.rolls(),2);assert.equal(f.driver.status(),'idle');
+});
