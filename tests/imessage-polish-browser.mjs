@@ -88,6 +88,18 @@ const runOnes = Array.from({ length: 4 }, (_, i) => ({
 }));
 const history = alternating.concat(runOnes);
 
+// Synthetic special-message history for the non-iMessage isolation check:
+// a gift card with an inline background image and a system-error bubble with an
+// inline light-gray fill. These inline values are written by their own renderer
+// and must survive a new-message pass, theme switch and reload — they must not be
+// scanned off by any theme bridge.
+const PNG_DATA_URI = 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAAC0lEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==';
+const specialMessages = [
+  { role: 'received', type: 'gift', gift: { img: PNG_DATA_URI, message: '生日快乐', tag: '祝福' }, time: Date.now() - 9000 },
+  { role: 'system_error', isError: true, text: '系统提示：这是一条错误/系统消息', time: Date.now() - 8000 }
+];
+const specialHistory = history.concat(specialMessages);
+
 let count = 0;
 let browser = null;
 
@@ -206,7 +218,7 @@ try {
     });
     await defCtx.route('**/*', r =>
       r.request().url().startsWith(origin + '/') ? r.continue() : r.abort());
-    await defCtx.addInitScript(seed, { preset: 'default', history });
+    await defCtx.addInitScript(seed, { preset: 'default', history: specialHistory });
     const defPage = await defCtx.newPage();
     const defErrors = [];
     defPage.on('pageerror', e => defErrors.push(e.message));
@@ -219,6 +231,37 @@ try {
       width + 'px default list no overflow');
     assert.ok(await defPage.evaluate(() => !document.querySelector('#maomao-imessage-theme-css')),
       width + 'px default has no injected iMessage stylesheet');
+
+    // Special-message inline fills belong to their own renderer; in a non-iMessage
+    // preset they must survive a new-message pass and a reload (not be scanned off).
+    await defPage.goto(origin + '/chat/chat/chat-detail.html?id=role-a', { waitUntil: 'domcontentloaded' });
+    await defPage.waitForFunction(() => document.querySelectorAll('#chat-messages .msg-row').length >= 10,
+      null, { timeout: 6000 });
+    await delay(200);
+    const readSpecial = () => defPage.evaluate(() => {
+      const gift = document.querySelector('.bubble-gift .gift-card');
+      let errorBg = null;
+      document.querySelectorAll('.msg-bubble').forEach(b => {
+        if (b.style.backgroundColor) errorBg = b.style.backgroundColor;
+      });
+      return { giftBg: gift ? gift.style.backgroundImage : null, errorBg };
+    });
+    const specialBefore = await readSpecial();
+    assert.ok(specialBefore.giftBg && /url\(/.test(specialBefore.giftBg),
+      width + 'px default gift card keeps its inline background-image -> ' + specialBefore.giftBg);
+    assert.equal(specialBefore.errorBg, 'rgb(242, 242, 247)',
+      width + 'px default error bubble keeps its inline light-gray fill -> ' + specialBefore.errorBg);
+
+    await defPage.reload({ waitUntil: 'domcontentloaded' });
+    await defPage.waitForFunction(() => document.querySelectorAll('#chat-messages .msg-row').length >= 10,
+      null, { timeout: 6000 });
+    await delay(200);
+    const specialAfter = await readSpecial();
+    assert.ok(specialAfter.giftBg && /url\(/.test(specialAfter.giftBg),
+      width + 'px default gift card keeps background-image after reload -> ' + specialAfter.giftBg);
+    assert.equal(specialAfter.errorBg, 'rgb(242, 242, 247)',
+      width + 'px default error bubble keeps light-gray fill after reload -> ' + specialAfter.errorBg);
+
     assert.deepEqual(defErrors, [], width + 'px default no runtime errors');
     await defCtx.close();
 
