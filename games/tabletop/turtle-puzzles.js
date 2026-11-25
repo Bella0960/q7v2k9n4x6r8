@@ -2,7 +2,7 @@
 // Bundled content is not cryptographically secret from someone inspecting JS.
 // Guessing-role prompts must receive only the rule engine's public projection.
 const puzzles=[
- {id:'rain-window',title:'雨中的窗',difficulty:'easy',prompt:'下雨时，小店的窗户外面全是水珠，店主却说今天没有下雨。他没有说谎。为什么？',
+ {id:'rain-window',title:'雨中的窗',difficulty:'easy',prompt:'某天，小店的窗户外面全是水珠，店主却说今天没有下雨。他没有说谎。为什么？',
  answer:'窗外的水珠来自清洁工洗窗户。店主说的下雨是自然降雨，并没有发生。',
  hints:['水珠不一定来自天空。','有人正在做一项日常清洁工作。'],
  facts:[['weather','水珠是自然降雨造成的吗？','no'],['clean','有人正在清洁窗户吗？','yes'],['inside','店主在店里吗？','irrelevant'],['water','水珠来自人为喷水吗？','yes']]},
