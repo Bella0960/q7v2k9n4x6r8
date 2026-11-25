@@ -9,7 +9,8 @@
 <script src="../../shared/js/wallpaper-store.js?v=20261026v2"></script>
 <script src="../../shared/js/phone/phone_storage.js"></script>
 <script src="../../shared/js/phone/storage/media-repository.js?v=20261107v2"></script>
-<script src="../../shared/js/phone/group-portraits.js?v=20261125g1"></script>
+<script src="../../shared/js/phone/group-portraits.js?v=20261125g2"></script>
+<script src="../../shared/js/phone/group-write-guard.js?v=20261125g1"></script>
 <style>
   * { box-sizing: border-box; margin: 0; padding: 0; -webkit-tap-highlight-color: transparent; }
   body {
@@ -1139,7 +1140,7 @@
   }
 </style>
 <link rel="stylesheet" href="../../shared/css/mobile-fit.css">
-<link rel="stylesheet" href="../../shared/css/group-settings-editorial.css?v=20261125g6">
+<link rel="stylesheet" href="../../shared/css/group-settings-editorial.css?v=20261125g7">
 </head>
 <body>
 
@@ -2030,33 +2031,20 @@
     var GP_ALIAS_KEY = 'chat_group_alias_' + roleId;
     var GP_NOTICE_KEY = 'chat_group_notice_' + roleId;
 
+    var groupReadSnapshots=new WeakMap();
     function loadCurrentGroup() {
-      try {
-        var raw = localStorage.getItem('phone_groups');
-        if (raw) {
-          var arr = JSON.parse(raw);
-          if (Array.isArray(arr)) {
-            for (var i = 0; i < arr.length; i++) {
-              if (String(arr[i].id) === String(roleId)) return arr[i];
-            }
-          }
-        }
-      } catch (e) {}
-      return null;
+      try{
+        var snapshot=window.MAOGroupWriteGuard.read(String(roleId));
+        if(!snapshot)return null;
+        groupReadSnapshots.set(snapshot.group,snapshot);
+        return snapshot.group;
+      }catch(error){return null;}
     }
     function saveCurrentGroup(group) {
-      try {
-        var raw = localStorage.getItem('phone_groups');
-        var arr = raw ? JSON.parse(raw) : [];
-        if (!Array.isArray(arr)) arr = [];
-        var hit = false;
-        for (var i = 0; i < arr.length; i++) {
-          if (String(arr[i].id) === String(group.id)) { arr[i] = group; hit = true; break; }
-        }
-        if (!hit) arr.push(group);
-        localStorage.setItem('phone_groups', JSON.stringify(arr));
-        return true;
-      } catch (e) { return false; }
+      if(!group||!window.MAOGroupWriteGuard)return false;
+      var result=window.MAOGroupWriteGuard.commit(groupReadSnapshots.get(group),group);
+      if(result.ok)groupReadSnapshots.set(group,result.expected);
+      return result.ok;
     }
 
     // ===== 邀请角色（群管理面板内，默认收起） =====
@@ -2252,6 +2240,8 @@
     gpAvatarInput.addEventListener('change', function () {
       var file = gpAvatarInput.files[0];
       if (!file) return;
+      var avatarAccount=window.MAOGroupWriteGuard.account();
+      var avatarGroup=String(roleId);
       var reader = new FileReader();
       reader.onload = function (ev) {
         var img = new Image();
@@ -2263,6 +2253,7 @@
             canvas.height = 200;
             canvas.getContext('2d').drawImage(img, (img.width - side) / 2, (img.height - side) / 2, side, side, 0, 0, 200, 200);
             var dataUrl = canvas.toDataURL('image/jpeg', 0.72);
+            if(window.MAOGroupWriteGuard.account()!==avatarAccount||String(roleId)!==avatarGroup)return;
             var g = loadCurrentGroup();
             if (!g) return;
             g.avatar = dataUrl;
@@ -3708,7 +3699,7 @@
 
   refreshMeta();
 </script>
-<script src="../../shared/js/group-settings-editorial.js?v=20261125g6"></script>
+<script src="../../shared/js/group-settings-editorial.js?v=20261125g7"></script>
 <script src="../../shared/js/statusbar-control.js"></script>
 </body>
 </html>
