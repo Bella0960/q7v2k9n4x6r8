@@ -284,19 +284,51 @@
     };
 
     // 记忆（按角色）
+    function inspectMemoryList(contactId) {
+        if (typeof contactId !== 'string' || !contactId.trim() ||
+            ['__proto__','prototype','constructor'].indexOf(contactId) >= 0) return null;
+        try {
+            var raw = localStorage.getItem('chat_memories_' + contactId);
+            if (raw !== null) {
+                var list = JSON.parse(raw);
+                return Array.isArray(list) ? {list:list} : null;
+            }
+            var rootRaw = localStorage.getItem(PHONE_DATA_KEY);
+            var root = rootRaw === null ? {} : JSON.parse(rootRaw);
+            if (!root || typeof root !== 'object' || Array.isArray(root)) return null;
+            var bucket = Object.prototype.hasOwnProperty.call(root,contactId) ? root[contactId] : null;
+            var legacy = bucket && bucket.memories;
+            if (legacy != null && (!legacy || !Array.isArray(legacy.items))) return null;
+            return {list:legacy ? legacy.items : []};
+        } catch (_) { return null; }
+    }
     NS.getMemories = function (contactId) {
-        var v = NS.rawGet('chat_memories_' + contactId, null);
-        if (Array.isArray(v)) return v;
-        var root = NS._getRoot();
-        var bucket = root[contactId];
-        if (bucket && bucket.memories && Array.isArray(bucket.memories.items)) return bucket.memories.items;
-        return [];
+        var read = inspectMemoryList(contactId);
+        return read ? read.list : [];
     };
-
+    // Read-side projection; memory management and backup still use the full list.
+    NS.selectActiveMemories = function (list, contactId) {
+        if (typeof contactId !== 'string' || !contactId.trim()) return [];
+        return (Array.isArray(list) ? list : []).filter(function (m) {
+            if (typeof m === 'string') return !!m.trim();
+            return !!(m && typeof m === 'object' && !Array.isArray(m) &&
+                (m.sourceRoleId == null || String(m.sourceRoleId) === contactId) &&
+                (m.roleId == null || String(m.roleId) === contactId) &&
+                (m.status == null || m.status === 'confirmed' || m.status === 'fixed') &&
+                typeof (m.content || m.text) === 'string' && (m.content || m.text).trim());
+        });
+    };
+    NS.getActiveMemories = function (contactId) {
+        return NS.selectActiveMemories(NS.getMemories(contactId), contactId);
+    };
     NS.saveMemories = function (contactId, list) {
-        // 与聊天记录一样，先确认主 key 写入成功，再清除重复副本。
-        var saved = NS.rawSet('chat_memories_' + contactId, Array.isArray(list) ? list : []);
-        if (!saved) return false;
+        if (!Array.isArray(list) || !inspectMemoryList(contactId)) return false;
+        var key = 'chat_memories_' + contactId, serialized;
+        try {
+            serialized = JSON.stringify(list);
+            if (!NS.rawSet(key, serialized) || localStorage.getItem(key) !== serialized) return false;
+        } catch (_) { return false; }
+        // Only remove the old duplicate after verifying the new primary.
         var root = NS._getRoot();
         var bucket = root[contactId];
         if (bucket && bucket.memories != null) {
