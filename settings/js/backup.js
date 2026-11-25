@@ -1288,9 +1288,13 @@
                 if (!['assets','blobs','refs'].every(function(sn) { return Array.isArray(stores[sn]); }))
                     return '图片资源备份缺少必要关联记录';
                 var blobs = new Set(stores.blobs.map(function(row) { return row.assetId; }));
+                var assetIds = new Set(stores.assets.map(function(row) { return row.assetId; }));
                 if (stores.assets.some(function(row) { return !blobs.has(row.assetId); }) ||
-                    stores.refs.some(function(row) { return !blobs.has(row.assetId); }))
-                    return '图片资源引用缺少原始内容';
+                    stores.refs.some(function(row) { return !blobs.has(row.assetId) || !assetIds.has(row.assetId); }) ||
+                    (Array.isArray(stores.image_records) && stores.image_records.some(function(row) {
+                        return !row.characterId || !blobs.has(row.assetId) || !assetIds.has(row.assetId);
+                    })))
+                    return '图片资源引用缺少原始内容或元数据';
             }
             totals.set(dbName,total);
         }
