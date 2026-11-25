@@ -46,3 +46,12 @@ test('unready scope and changed login cannot open or restore a private moderator
  g.win.fire('storage',{key:null});g.session('s2');g.one('mao-turtle__resume').click();await wait();
  assert.equal(g.one('mao-turtle__solution').textContent,'');assert.equal(g.one('mao-turtle__game').hidden,true);g.page.destroy();
 });
+
+test('mount restore preserves pending judgement without regeneration or player answer exposure',async()=>{
+ const f=fixture();await wait();f.select(0);f.one('mao-turtle__host').value='role:r1';f.one('mao-turtle__start').click();await wait();
+ f.one('mao-turtle__input').value='这与清洁工作有关吗？';f.one('mao-turtle__ask').click();await wait();
+ const saved=await f.page.saveMatch();assert.equal(saved.board.moves.length,1);assert.ok(!JSON.stringify(saved).includes('solution'));f.page.destroy();
+ let calls=0;const g=fixture({judgeRole:()=>{calls++;return {kind:'answer',verdict:'yes'};}});await wait();g.session('s2');await g.page.reload();
+ const v=await g.page.restoreMatch(saved);assert.equal(v.game.stage,'judging');assert.equal(calls,0);assert.equal(g.one('mao-turtle__solution').textContent,'');
+ g.one('mao-turtle__resume').click();await wait();assert.equal(calls,1);assert.equal(all(g.root,'mao-turtle__entry').length,2);g.page.destroy();
+});
