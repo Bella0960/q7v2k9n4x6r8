@@ -1156,7 +1156,7 @@ button:focus-visible,input:focus-visible,select:focus-visible{outline:1px solid 
     }
     function readProcessed(id) {
         const n = parseInt(localStorage.getItem('chat_summary_processed_' + id), 10);
-        return isNaN(n) ? 0 : n;
+        return Number.isSafeInteger(n) && n >= 0 ? n : 0;
     }
     function readAutoOn(id) { return localStorage.getItem('chat_summary_auto_' + id) !== '0'; }
     function readInterval(id) {
@@ -1165,16 +1165,17 @@ button:focus-visible,input:focus-visible,select:focus-visible{outline:1px solid 
         if (n > 200) n = 200;
         return n;
     }
-    function escapeHtml(s) { return String(s || '').replace(/</g, '&lt;').replace(/>/g, '&gt;'); }
+    function escapeHtml(s) { return String(s == null ? '' : s).replace(/[&<>"']/g, ch => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[ch])); }
 
     // ---- 角色选择器 ----
     function renderCharPicker() {
         const picker = document.getElementById('charPicker');
-        const chars = loadCharacters();
-        const groups = loadGroups();
+        const chars = loadCharacters().filter(c => c && c.id != null);
+        const groups = loadGroups().filter(g => g && g.id != null);
         const items = chars.map(c => ({ id: c.id, name: c.name, avatar: c.avatar }))
             .concat(groups.map(g => ({ id: g.id, name: g.name, avatar: g.avatar })));
         if (!items.length) {
+            currentMemId = null;
             picker.innerHTML = '<div style="font-size:0.75rem;color:#999;padding:8px 0;">还没有角色，去联系人页添加吧</div>';
             return;
         }
@@ -1182,8 +1183,8 @@ button:focus-visible,input:focus-visible,select:focus-visible{outline:1px solid 
             currentMemId = items[0].id;
         }
         picker.innerHTML = items.map(it => {
-            const av = it.avatar ? '<img src="' + it.avatar + '" alt="">' : PERSON_SVG;
-            return '<div class="char-item' + (String(it.id) === String(currentMemId) ? ' active' : '') + '" data-id="' + it.id + '">' +
+            const av = it.avatar ? '<img src="' + escapeHtml(it.avatar) + '" alt="">' : PERSON_SVG;
+            return '<div class="char-item' + (String(it.id) === String(currentMemId) ? ' active' : '') + '" data-id="' + escapeHtml(it.id) + '">' +
                 '<div class="char-avatar">' + av + '</div>' +
                 '<div class="char-name">' + escapeHtml(it.name) + '</div>' +
             '</div>';
@@ -1193,6 +1194,7 @@ button:focus-visible,input:focus-visible,select:focus-visible{outline:1px solid 
                 currentMemId = this.getAttribute('data-id');
                 picker.querySelectorAll('.char-item').forEach(x => x.classList.remove('active'));
                 this.classList.add('active');
+                document.getElementById('toolResult').textContent = '';
                 refreshAll();
             });
         });
@@ -1210,8 +1212,8 @@ button:focus-visible,input:focus-visible,select:focus-visible{outline:1px solid 
     // ---- 记忆库 ----
     function refreshLibSub() {
         const arr = loadMemories(currentMemId);
-        const pending = arr.filter(m => m.status === 'pending').length;
-        const fixed = arr.filter(m => m.status === 'fixed').length;
+        const pending = arr.filter(m => m && m.status === 'pending').length;
+        const fixed = arr.filter(m => m && m.status === 'fixed').length;
         const el = document.getElementById('libSub');
         if (!arr.length) { el.textContent = '暂无记忆'; return; }
         let parts = [arr.length + '条记忆'];
@@ -1232,7 +1234,7 @@ button:focus-visible,input:focus-visible,select:focus-visible{outline:1px solid 
             return;
         }
         const order = { fixed: 0, pending: 1, confirmed: 2 };
-        const rows = arr.map((memory, index) => ({memory, index}));
+        const rows = arr.map((memory, index) => ({memory, index})).filter(row => row.memory && typeof row.memory === 'object' && !Array.isArray(row.memory) && (row.memory.sourceRoleId == null || String(row.memory.sourceRoleId) === String(currentMemId)));
         rows.sort((a, b) => (order[a.memory.status] ?? 3) - (order[b.memory.status] ?? 3));
         list.innerHTML = rows.map(({memory: m, index: i}) => {
             const st = m.status || 'confirmed';
@@ -1254,7 +1256,7 @@ button:focus-visible,input:focus-visible,select:focus-visible{outline:1px solid 
                 '<div class="lib-meta">' +
                     '<span class="lib-tag ' + tagCls + '">' + (STATUS_LABEL[st] || '已确认') + '</span>' +
                     '<span class="lib-tag">' + (CAT_LABEL[m.category] || '生活细节') + '</span>' +
-                    '<span class="lib-tag">重要性 ' + (m.importance || 3) + '/5</span>' +
+                    '<span class="lib-tag">重要性 ' + Math.max(1,Math.min(5,Number(m.importance)||3)) + '/5</span>' +
                 '</div>' +
                 '<div class="lib-actions">' + btns + '</div>' +
             '</div>';
@@ -1411,25 +1413,24 @@ button:focus-visible,input:focus-visible,select:focus-visible{outline:1px solid 
         const jaccard = union ? inter / union : 0;
         return Math.max(jaccard, cover);
     }
-    // 快速去重：候选 = 非 fixed、非 key/anniversary；找出高度相似（≥0.8）的重复条目
+    // Exact, source-bound duplicate proposals only. Similar wording is not evidence.
     function findDupes() {
         const arr = loadMemories(currentMemId);
-        const cands = arr.map((m, i) => ({ m, i }))
-            .filter(x => x.m.status !== 'fixed' && x.m.category !== 'key' && x.m.category !== 'anniversary');
-        const dupePairs = [];
-        for (let a = 0; a < cands.length; a++) {
-            for (let b = a + 1; b < cands.length; b++) {
-                const score = simScore(cands[a].m.content, cands[b].m.content);
-                if (score >= 0.8) dupePairs.push({ keep: cands[a], dupe: cands[b], score });
-            }
-        }
-        // 一条重复只保留首次出现的 pairing，避免重复展示
-        const seen = new Set();
-        const pairs = [];
-        dupePairs.forEach(p => {
-            if (seen.has(p.dupe.i)) return;
-            seen.add(p.dupe.i);
-            pairs.push(p);
+        const seen = new Map(), pairs = [];
+        arr.forEach((m,i) => {
+            if (!m || typeof m !== 'object' || !m.id || m.status !== 'confirmed' ||
+                m.category === 'key' || m.category === 'anniversary' ||
+                String(m.sourceRoleId || '') !== String(currentMemId) ||
+                !m.source || typeof m.content !== 'string' || !m.content.trim()) return;
+            const hasMessage = m.sourceMessageIndex != null && m.sourceMessageTime != null;
+            const hasRange = m.sourceStartIndex != null && m.sourceEndIndex != null;
+            const hasMemoryIds = Array.isArray(m.sourceMemoryIds) && m.sourceMemoryIds.length > 0;
+            if (!hasMessage && !hasRange && !hasMemoryIds) return;
+            const key = JSON.stringify([m.content,m.category,m.source,m.sourceRoleId,m.sourceMessageIndex,m.sourceMessageTime,m.sourceStartIndex,m.sourceEndIndex,m.sourceMemoryIds,m.importance]);
+            const prior = seen.get(key);
+            if (prior) {
+                if (String(prior.m.id) !== String(m.id)) pairs.push({keep:prior,dupe:{m,i},score:1});
+            } else seen.set(key,{m,i});
         });
         return pairs;
     }
@@ -1440,13 +1441,13 @@ button:focus-visible,input:focus-visible,select:focus-visible{outline:1px solid 
         const dedupSnapshot = JSON.stringify(loadMemories(dedupRoleId));
         const pairs = findDupes();
         if (!pairs.length) {
-            box.innerHTML = '<div class="merge-est">未发现高度相似的重复记忆。</div>';
+            box.innerHTML = '<div class="merge-est">未发现内容和来源均一致的重复记忆。</div>';
             return;
         }
-        box.innerHTML = '<div class="field-label" style="margin-top:14px;">发现 ' + pairs.length + ' 组相似记忆，勾选后删除：</div>' +
+        box.innerHTML = '<div class="field-label" style="margin-top:14px;">发现 ' + pairs.length + ' 组来源一致的重复记忆，请核对后手动勾选：</div>' +
             pairs.map((p, idx) =>
                 '<div class="dedup-item" data-idx="' + idx + '">' +
-                    '<div class="dedup-check on" data-idx="' + idx + '"></div>' +
+                    '<div class="dedup-check" data-idx="' + idx + '"></div>' +
                     '<div class="dedup-text">' +
                         '<b>' + escapeHtml(p.dupe.m.content) + '</b><br>' +
                         '与「' + escapeHtml(p.keep.m.content) + '」相似度 ' + Math.round(p.score * 100) + '%' +
@@ -1633,11 +1634,13 @@ button:focus-visible,input:focus-visible,select:focus-visible{outline:1px solid 
 
     // 自动总结交互
     document.getElementById('autoToggle').addEventListener('click', () => {
+        if (!currentMemId) return;
         const next = !readAutoOn(currentMemId);
         localStorage.setItem('chat_summary_auto_' + currentMemId, next ? '1' : '0');
         refreshAutoUI();
     });
     document.getElementById('autoInterval').addEventListener('change', function () {
+        if (!currentMemId) return;
         let n = parseInt(this.value, 10);
         if (isNaN(n)) n = 20;
         if (n < 1) n = 1;
@@ -1656,11 +1659,13 @@ button:focus-visible,input:focus-visible,select:focus-visible{outline:1px solid 
 
     // 手动总结按钮
     document.getElementById('btnManualRecent').addEventListener('click', () => {
+        if (!currentMemId) return;
         const n = parseInt(document.getElementById('manualRange').value, 10);
         const slice = readHistory(currentMemId).slice(-Math.min(30, isNaN(n) || n < 1 ? 30 : n));
         runSummary(slice, false);
     });
     document.getElementById('btnManualAll').addEventListener('click', () => {
+        if (!currentMemId) return;
         const history = readHistory(currentMemId);
         const total = history.length;
         let start = readProcessed(currentMemId);
