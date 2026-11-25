@@ -175,13 +175,15 @@
   background.querySelector('.action-title').textContent = '背景';
   shortcuts.append(noticeButton,avatarButton,searchCard,bgCard);
   notice.classList.add('gp-notice-slot');
-  var quick = el('div','gp-quick');
   var basicList = pin.closest('.settings-list');
   var basicLabel = basicList && basicList.previousElementSibling;
   pin.querySelector('.action-title').textContent = '置顶聊天';
   var pinToggle = byId('pinToggle');
   if (pinToggle) pinToggle.tabIndex = -1;
-  quick.append(pin.closest('.settings-card'),time.closest('.settings-card'),sound.closest('.settings-card'));
+  var pinCard = pin.closest('.settings-card');
+  pinCard.classList.add('gp-pin-card');
+  pinCard.remove();
+  // Move only the real pin row; keep time awareness and sound in their original sections.
   if (basicList && basicLabel && basicLabel.classList.contains('section-label') &&
       Array.from(basicList.children).every(function(n){return n.style.display === 'none';})) {
     basicLabel.style.display = 'none';
@@ -192,19 +194,14 @@
   manage.classList.add('gp-manage-card');
   byId('actionGroupInfo').prepend(el('span','gp-setting-label','群聊名称'));
   byId('actionGroupAlias').prepend(el('span','gp-setting-label','备注'));
-  byId('actionGroupManage').querySelector('.action-title').textContent='群聊管理';
+  byId('actionGroupManage').querySelector('.action-title').textContent='群组管理';
   list.classList.add('gp-settings-list');
-  list.replaceChildren(manage,info,alias,own,advanced);
-  var quickTitle = el('h2','gp-section-title','Quick');
-  var settingsTitle = el('h2','gp-section-title','Settings');
+  list.replaceChildren(manage,info,alias,own,pinCard,advanced);
   home.insertBefore(cover,list);
   home.insertBefore(toggle,list);
   home.insertBefore(drawer,list);
   home.insertBefore(shortcuts,list);
   home.insertBefore(notice,list);
-  home.insertBefore(quickTitle,list);
-  home.insertBefore(quick,list);
-  home.insertBefore(settingsTitle,list);
   stage.classList.add('gp-editorial');
   home.classList.add('gp-editorial-home');
   stage.querySelector('.cs-title').textContent='群聊设置';
