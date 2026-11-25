@@ -17,3 +17,31 @@ test('invalid top-level record rejected',()=>{for(const value of [null,[],1,'tex
 test('single record size guard is explicit',()=>rejects(()=>api.prepareBatch([{id:'x',payload:{text:'a'.repeat(4*1024*1024)}}]),'PAYLOAD_TOO_LARGE'));
 test('aggregate batch size guard does not truncate',()=>rejects(()=>api.prepareBatch([{id:'x',payload:{text:'a'.repeat(2200000)}},{id:'y',payload:{text:'b'.repeat(2200000)}}]),'BATCH_TOO_LARGE'));
 test('loading script is inert: no IndexedDB opened, registry frozen',()=>{assert.deepEqual(api.stores,['records','partitions']);assert.equal(api.version,1);assert.ok(Object.isFrozen(api));assert.ok(Object.isFrozen(api.stores))});
+
+test('hidden fields, accessors, sparse arrays, extra array fields, negative zero and deep nesting cannot be lost',()=>{
+ const hidden={x:1};Object.defineProperty(hidden,'secret',{value:2});
+ let calls=0;const getter={};Object.defineProperty(getter,'x',{enumerable:true,get(){calls++;return 2}});
+ const arr=[1];arr.extra=2;const deep={};let tail=deep;for(let i=0;i<130;i++){tail.x={};tail=tail.x}
+ for(const payload of [hidden,getter,{arr},{arr:Array(2)},{n:-0},deep])rejects(()=>api.prepareBatch([{id:'x',payload}]),'INVALID_PAYLOAD');
+ assert.equal(calls,0);rejects(()=>api.prepareBatch(Array(2)),'INVALID_PAYLOAD');
+ const shared={i:1};assert.deepEqual(JSON.parse(api.prepareBatch([{id:'x',payload:{a:shared,b:shared}}])[0].encoded),{a:{i:1},b:{i:1}});
+});
+const inspection={};
+new Function('window',source.replace('open,normalizeScope,prepareBatch,version:VERSION','open,normalizeScope,prepareBatch,validatePartition,decodeRow,version:VERSION'))(inspection);
+const {validatePartition,decodeRow}=inspection.MaoArchiveLab;
+test('corrupt active partition metadata rejected',()=>{
+ const p='scope',good={partition:p,count:10,revision:2};
+ assert.equal(validatePartition(good,p,'active-lab'),good);
+ for(const count of [-1,1.1,NaN,Infinity,Number.MAX_SAFE_INTEGER,'3'])rejects(()=>validatePartition({...good,count},p,'active-lab'),'CORRUPT_PARTITION');
+ for(const patch of [{partition:'foreign'},{revision:11}])rejects(()=>validatePartition({...good,...patch},p,'active-lab'),'CORRUPT_PARTITION');
+});
+test('invalid shadow counts, verification markers and source hashes rejected',()=>{
+ const p='scope',good={partition:p,count:10,total:10,verifiedCount:10,status:'verified-shadow',sourceHash:'a'.repeat(64)};
+ assert.equal(validatePartition(good,p,'shadow'),good);
+ for(const patch of [{total:9},{verifiedCount:9},{status:'unknown'},{sourceHash:'bad'},{count:11}])rejects(()=>validatePartition({...good,...patch},p,'shadow'),'CORRUPT_PARTITION');
+});
+test('corrupt rows and foreign partition data cannot be decoded',()=>{
+ const p='scope',row={partition:p,sequence:1,id:'m1',encoded:'{"role":"sent","text":"test"}'};
+ assert.equal(decodeRow(row,p,10).payload.text,'test');
+ for(const patch of [{partition:'wrong'},{sequence:11},{id:''},{encoded:'null'},{encoded:'{"x":1e400}'},{encoded:'{'}])rejects(()=>decodeRow({...row,...patch},p,10),'CORRUPT_RECORD');
+});
