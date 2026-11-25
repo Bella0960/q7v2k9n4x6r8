@@ -90,3 +90,30 @@ test('group portrait modal, media reference and chat member-ID routing',()=>{
   assert.match(detail,/if\(isGroupChat\)fillGroupPortrait\(avatar,msg,true\)/);
   assert.match(detail,/msg\.memberId!=null\?String\(msg\.memberId\)/);
 });
+
+test('group title permissions are based on member IDs and current role, not title',()=>{
+ const policy=read('shared/js/phone/group-admin-policy.js'), context={}; context.window=context;
+ vm.runInNewContext(policy,context);
+ const api=context.MAOGroupAdminPolicy;
+ const group={ownerId:'owner',settings:{allowRoleActions:true},members:[{id:'owner'},{id:'admin',isAdmin:true},{id:'peer',isAdmin:true},{id:'ordinary',title:'群主'},{id:'other'}]};
+ assert.equal(api.can(group,'admin','头衔','ordinary'),true);
+ assert.equal(api.can(group,'ordinary','头衔','ordinary'),true);
+ assert.equal(api.can(group,'ordinary','头衔','other'),false);
+ assert.equal(api.can(group,'admin','头衔','peer'),false);
+ assert.equal(api.can(group,'admin','移除','owner'),false);
+ assert.equal(api.can(group,'admin','禁言','__user'),false);
+ assert.equal(api.can(group,'owner','头衔','admin'),true);
+ assert.equal(api.can(group,'admin','头衔','__user'),false);
+ group.members[1].isAdmin=false;
+ assert.equal(api.can(group,'admin','头衔','ordinary'),false);
+ group.settings.allowRoleActions=false;
+ assert.equal(api.can(group,'ordinary','头衔','ordinary'),false);
+ assert.equal(api.title('  气氛组  '),'气氛组');
+ assert.equal(api.title('a\nb'),null);
+ assert.equal(api.title('x'.repeat(21)),null);
+ const detail=read('chat/chat/chat-detail.html'),play=read('chat/chat/group-play.html');
+ assert.match(detail,/fresh=loadGroupById\(gid\)/);
+ assert.match(detail,/policy\.can\(fresh,actor,action,target\)/);
+ assert.match(detail,/if\(!saveCurrentGroupObject\(\)\)/);
+ assert.match(play,/group\.selfTitle=value/);
+});
