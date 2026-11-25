@@ -8,7 +8,9 @@ import {
   parseModelResult,
   validateMessages
 } from '../worker/lib/model-executor.js';
-import { runCloudModelTick } from '../worker/lib/cloud-model-scheduler.js';
+import { runCloudModelTick, readCloudModelBudget } from '../worker/lib/cloud-model-scheduler.js';
+import { createStore } from '../worker/lib/store.js';
+import { DatabaseSync } from 'node:sqlite';
 
 const MODEL_ENV = Object.freeze({
   AUTONOMY_MODEL_API_KEY: 'server-only-test-key-1234567890',
@@ -174,9 +176,13 @@ test('云端模型首次开场只读取空历史并明确禁止虚构过往互�
   assert.equal(invalidCalls, 0);
 });
 
-test('云端模型响应超过执行租约后，提交必须使用新的真实时间并被拒绝', async () => {
+for (const scenario of ['late-provider-response','budget-denied','budget-write-failure','budget-readback-uncertain','budget-not-configured']) {
+test('cloud model scheduler: '+scenario, async () => {
   const env = {
     ...MODEL_ENV,
+    AUTONOMY_MODEL_DAILY_GLOBAL_LIMIT: '10',
+    AUTONOMY_MODEL_DAILY_ACCOUNT_LIMIT: '5',
+    AUTONOMY_MODEL_DAILY_ROLE_LIMIT: '2',
     AUTONOMY_LEASE_MS: '60000',
     AUTONOMY_TICK_LIMIT: '10',
     AUTONOMY_RETRY_BACKOFF_MS: '60000,300000',
@@ -184,8 +190,12 @@ test('云端模型响应超过执行租约后，提交必须使用新的真实�
     AUTONOMY_DEVICE_LEASE_MS: '60000',
     AUTONOMY_DEVICE_GRACE_MS: '0'
   };
+  if (scenario === 'budget-not-configured') delete env.AUTONOMY_MODEL_DAILY_ROLE_LIMIT;
   const base = 1_800_000_000_000;
   let clockNow = base;
+  let providerCalls = 0;
+  let reservationCalls = 0;
+  let failureCalls = 0;
   let claimedLeaseUntil = 0;
   let commitNow = 0;
   const logs = [];
@@ -269,6 +279,20 @@ test('云端模型响应超过执行租约后，提交必须使用新的真实�
     getUserContextSharing() {
       return { enabled: 1 };
     },
+    reserveCloudModelAttempt(args) {
+      assert.equal(args.accountId,'owner');
+      assert.equal(args.characterId,'char-1');
+      assert.equal(args.attemptCount,1);
+      reservationCalls++;
+      if (scenario === 'budget-write-failure') throw new Error('synthetic storage fault');
+      if (scenario === 'budget-readback-uncertain') return {written:true};
+      return scenario !== 'budget-denied';
+    },
+    failActivity(args) {
+      failureCalls++;
+      assert.equal(args.nextAttemptAt,null,'budget denial must not schedule an automatic provider retry');
+      return true;
+    },
     completeCloudActivityWithOutboundGroup(args) {
       commitNow = args.now;
       return args.now < claimedLeaseUntil ? { completed: true } : null;
@@ -281,6 +305,7 @@ test('云端模型响应超过执行租约后，提交必须使用新的真实�
     }
   };
   const fetchImpl = async () => {
+    providerCalls++;
     // Simulate a provider response arriving after the 60-second executor lease.
     clockNow = base + 60_001;
     return new Response(JSON.stringify({
@@ -305,6 +330,17 @@ test('云端模型响应超过执行租约后，提交必须使用新的真实�
     fetchImpl
   });
 
+  if (scenario !== 'late-provider-response') {
+    assert.equal(providerCalls,0);
+    assert.equal(commitNow,0);
+    assert.equal(summary.generatedGroups,0);
+    assert.equal(summary.ok,false);
+    assert.equal(reservationCalls,scenario==='budget-not-configured'?0:1);
+    assert.equal(failureCalls,scenario==='budget-not-configured'?0:1);
+    assert.ok(logs.some(entry=>entry.reasonCode===(scenario==='budget-not-configured'?'cloud_model_budget_unavailable':'cloud_model_budget_denied')));
+    return;
+  }
+  assert.equal(providerCalls,1);
   assert.equal(claimedLeaseUntil, base + 60_000);
   assert.ok(commitNow > claimedLeaseUntil);
   assert.equal(summary.generatedGroups, 0);
@@ -312,6 +348,7 @@ test('云端模型响应超过执行租约后，提交必须使用新的真实�
   assert.ok(logs.some(entry => entry.reasonCode === 'outbound_group_commit_fenced'));
   assert.ok(logs.some(entry => entry.kind === 'autonomy_cloud_tick' && entry.status === 'success'));
 });
+}
 
 
 test('Workers AI is dormant unless explicitly selected and bound', () => {
@@ -427,4 +464,35 @@ test('Wrangler must retain assets, database and AI bindings together', () => {
     'optional keyless model backend requires the AI binding');
   assert.ok(parsed.triggers?.crons?.length > 0,
     'cloud tasks require a configured scheduled handler');
+});
+
+test('cloud model budget is explicitly enabled and hierarchical',()=>{
+  assert.equal(readCloudModelBudget({}),null);
+  assert.equal(readCloudModelBudget({AUTONOMY_MODEL_DAILY_GLOBAL_LIMIT:'1',AUTONOMY_MODEL_DAILY_ACCOUNT_LIMIT:'2',AUTONOMY_MODEL_DAILY_ROLE_LIMIT:'1'}),null);
+  assert.deepEqual(readCloudModelBudget({AUTONOMY_MODEL_DAILY_GLOBAL_LIMIT:'10',AUTONOMY_MODEL_DAILY_ACCOUNT_LIMIT:'5',AUTONOMY_MODEL_DAILY_ROLE_LIMIT:'2'}),{global:10,account:5,role:2});
+});
+
+test('SQLite budget reservation is durable, scoped, lease fenced and one-use',()=>{
+  const db = new DatabaseSync(':memory:');
+  try {
+    db.exec(`CREATE TABLE execution_log(id TEXT PRIMARY KEY,device_id TEXT,kind TEXT,status TEXT,reason_code TEXT,detail_json TEXT,duration_ms INTEGER,created_at INTEGER);
+      CREATE TABLE devices(id TEXT PRIMARY KEY,user_id TEXT,revoked_at INTEGER);
+      CREATE TABLE activity_queue(id TEXT PRIMARY KEY,device_id TEXT,character_id TEXT,status TEXT,locked_by TEXT,attempt_count INTEGER,locked_until INTEGER);
+      INSERT INTO devices VALUES ('d1','a',NULL),('d2','b',NULL);
+      INSERT INTO activity_queue VALUES ('t1','d1','r','running','cloud_model_executor',1,1800000060000),
+      ('t2','d1','r','running','cloud_model_executor',1,1800000060000),
+      ('t3','d1','other','running','cloud_model_executor',1,1800000060000),
+      ('t4','d2','r','running','cloud_model_executor',1,1800000060000);`);
+    const exec=(sql,...args)=>db.prepare(sql).all(...args);
+    const store=createStore(exec);
+    const base={activityId:'t1',attemptCount:1,accountId:'a',characterId:'r',deviceId:'d1',now:1800000000000,limits:{global:2,account:1,role:1},timeoutMs:5000};
+    assert.equal(store.reserveCloudModelAttempt(base),true);
+    assert.equal(store.reserveCloudModelAttempt(base),false);
+    assert.equal(store.reserveCloudModelAttempt({...base,activityId:'t2'}),false);
+    assert.equal(store.reserveCloudModelAttempt({...base,activityId:'t3',characterId:'other'}),false);
+    assert.equal(store.reserveCloudModelAttempt({...base,activityId:'t4',deviceId:'d2',accountId:'a'}),false);
+    assert.equal(store.reserveCloudModelAttempt({...base,activityId:'t4',deviceId:'d2',accountId:'b'}),true);
+    assert.equal(store.reserveCloudModelAttempt({...base,activityId:'t4',deviceId:'d2',accountId:'b',now:1800000059000}),false);
+    assert.equal(exec("SELECT COUNT(*) AS n FROM execution_log")[0].n,2);
+  } finally { db.close(); }
 });
