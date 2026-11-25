@@ -1,5 +1,6 @@
 import {createRoomDispatcher} from './room-dispatcher.js';
 import {createLudoRules} from './ludo-rules.js';
+import {validateLudoChatCheckpoint} from './ludo-discussion.js';
 
 // Internal, account-scoped in-memory journal. The caller must supply an
 // authenticated context and validated repository records, never model output.
@@ -23,6 +24,8 @@ export function createLudoJournal({getContext,maxMatches=512}={}){
     if(closed)fail('JOURNAL_CLOSED');
     const c=scope(getContext);
     if(c.accountId!==initial.accountId||c.sessionId!==initial.sessionId){closed=true;fail('JOURNAL_SCOPE_CHANGED');}
+    // An observed role removal revokes every grant involving that role.
+    for(const key of grants){const [fid,target]=JSON.parse(key),f=fragments.get(fid);if(!f||!c.roleIds.includes(f.roleId)||!c.roleIds.includes(target))grants.delete(key);}
     return c;
   }
   function same(c){
@@ -35,7 +38,7 @@ export function createLudoJournal({getContext,maxMatches=512}={}){
     if(!f||!c.roleIds.includes(f.roleId))fail('JOURNAL_FRAGMENT_UNAVAILABLE');
     return f;
   }
-  function recordMatch(board){
+  function recordMatch(board,chat=null){
     const c=current();
     if(!board||board.accountId!==c.accountId||board.gameId!=='ludo'||!id(board.roomId)||!['classic','adventure'].includes(board.mode))fail('JOURNAL_INVALID_MATCH');
     // The authoritative engine derives the terminal result and all positions.
@@ -46,10 +49,13 @@ export function createLudoJournal({getContext,maxMatches=512}={}){
     const winner=v.result.winnerSeatIds[0];
     const entry={schema:1,accountId:c.accountId,roomId:v.roomId,gameId:'ludo',mode:board.mode,revision:v.revision,
       winnerSeatId:winner,players:v.seats.map(s=>({seatId:s.seatId,kind:s.kind,...(s.kind==='role'?{roleId:s.roleId}:{}),finished:v.game.players.find(p=>p.seatId===s.seatId).planes.filter(p=>p.zone==='finished').length}))};
+    const publicMessages=chat===null?[]:validateLudoChatCheckpoint(v,chat).log.read('user').filter(m=>m.sender.kind==='role');
+    const messageFragments=publicMessages.map(m=>({schema:1,id:fragmentId(v.roomId,m.sender.roleId,m.id),roomId:v.roomId,roleId:m.sender.roleId,kind:'public-message',gameId:'ludo',text:m.text,time:m.time,sourceMessageId:m.id}));
     same(c);
     const prior=records.get(v.roomId);
     if(prior){
       if(JSON.stringify(prior)!==JSON.stringify(entry))fail('JOURNAL_MATCH_CONFLICT');
+      if(messageFragments.some(f=>JSON.stringify(fragments.get(f.id))!==JSON.stringify(f)))fail('JOURNAL_MATCH_CONFLICT');
       return {duplicate:true,record:clone(prior)};
     }
     if(records.size>=maxMatches)fail('JOURNAL_CAPACITY');
@@ -59,24 +65,12 @@ export function createLudoJournal({getContext,maxMatches=512}={}){
       schema:1,id:fragmentId(v.roomId,p.roleId,'result'),roomId:v.roomId,roleId:p.roleId,kind:'result',
       gameId:'ludo',mode:entry.mode,outcome:p.seatId===winner?'win':'loss',finished:p.finished
     }));
-    records.set(v.roomId,entry);for(const f of next)fragments.set(f.id,f);
+    records.set(v.roomId,entry);for(const f of [...next,...messageFragments])fragments.set(f.id,f);
     return {duplicate:false,record:clone(entry)};
   }
-  // The actual chat log is the authority for text and sender. This API accepts
-  // only an already verified room's user-visible messages from the host.
-  // Do not pass model-proposed text, arbitrary import data or private logs.
-  function rememberPublicMessage({roomId,message}={}){
-    const c=current(),entry=records.get(roomId);
-    if(!entry||message?.schema!==1||message.roomId!==roomId||!id(message.id)||typeof message.text!=='string'||!message.text.trim()||message.text.length>2000||
-      !Number.isSafeInteger(message.time)||message.time<0||message.sender?.kind!=='role')fail('JOURNAL_INVALID_MESSAGE');
-    const roleId=message.sender.roleId;
-    if(!c.roleIds.includes(roleId)||message.sender.seatId!=='role:'+roleId||!entry.players.some(p=>p.kind==='role'&&p.roleId===roleId)||
-      !/^(reply|event):[1-9][0-9]*:/.test(message.id)||!message.id.endsWith(':'+message.sender.seatId))fail('JOURNAL_INVALID_MESSAGE');
-    const f={schema:1,id:fragmentId(roomId,roleId,message.id),roomId,roleId,kind:'public-message',gameId:'ludo',text:message.text,time:message.time,sourceMessageId:message.id};
-    const prior=fragments.get(f.id);
-    if(prior){if(JSON.stringify(prior)!==JSON.stringify(f))fail('JOURNAL_FRAGMENT_CONFLICT');return {duplicate:true,fragment:clone(prior)};}
-    if([...fragments.values()].filter(x=>x.roomId===roomId&&x.kind==='public-message').length>=128)fail('JOURNAL_FRAGMENT_CAPACITY');
-    same(c);fragments.set(f.id,f);return {duplicate:false,fragment:clone(f)};
+  function recordSavedMatch(saved){
+    if(!exact(saved,['schema','board','chat'])||saved.schema!==1||!saved.board||!saved.chat)fail('JOURNAL_INVALID_MATCH');
+    return recordMatch(saved.board,saved.chat);
   }
   function permit({fragmentId:fid,targetRoleId,channel,allowed}={}){
     const c=current(),f=getFragment(fid,c);
@@ -95,5 +89,5 @@ export function createLudoJournal({getContext,maxMatches=512}={}){
     same(c);return clone(items.slice(-limit));
   }
   function list(){const c=current();const out=[...records.values()].filter(e=>e.players.every(p=>p.kind!=='role'||c.roleIds.includes(p.roleId)));same(c);return clone(out);}
-  return Object.freeze({recordMatch,rememberPublicMessage,permit,read,list,close(){closed=true;}});
+  return Object.freeze({recordMatch:board=>recordMatch(board),recordSavedMatch,permit,read,list,close(){closed=true;}});
 }

@@ -17,18 +17,12 @@ export function ludoEventPriority(view){
   }
   return last.kind==='roll'&&last.cruise===true?1:0;
 }
-export function createLudoDiscussion({session,view,generateRole=null,generateBot=null,allowOutput=null,onChange=()=>{},timeoutMs=30000,now=Date.now,checkpoint=null}={}){
-  if(!session||!['viewUser','viewRole','viewBot','discussionSignal','discussionCurrent'].every(k=>typeof session[k]==='function')||
-    view?.gameId!=='ludo'||!['playing','finished'].includes(view.phase)||view.selfSeatId!=='user'||
-    !Array.isArray(view.seats)||view.seats.length<2||view.seats.length>4||
-    ![generateRole,generateBot,allowOutput].every(f=>f===null||typeof f==='function')||
-    ((generateRole||generateBot)&&!allowOutput)||typeof onChange!=='function'||typeof now!=='function') fail('LUDO_DISCUSSION_INVALID');
-  const roomId=view.roomId,seats=view.seats.map(s=>Object.freeze({...s})),audience=seats.map(s=>s.seatId);
+// Pure replay validation used by both discussion restore and journal admission.
+export function validateLudoChatCheckpoint(view,checkpoint){
+  if(view?.gameId!=='ludo'||!['playing','finished'].includes(view.phase)||view.selfSeatId!=='user'||!Array.isArray(view.seats)||view.seats.length<2||view.seats.length>4)fail('LUDO_INVALID_CHAT_CHECKPOINT');
+  const roomId=view.roomId,seats=view.seats,audience=seats.map(s=>s.seatId),eligible=seats.filter(s=>s.kind!=='user');
   const log=createRoomChatLog({roomId,seats,maxTextLength:2000});
-  const eligible=seats.filter(s=>s.kind!=='user');
-  const generator=s=>s.kind==='bot'?generateBot:generateRole;
-  let closed=false,epoch=0,tail=Promise.resolve(),pending=0,roundSignal=null,sequence=0;
-  let roundEvent=null,automatic=null,lastObserved=view.revision,lastAutomatic=-Infinity,automaticCount=0;
+  let sequence=0,automaticCount=0,lastAutomatic=-Infinity;
   let restoredJobIds=[];
   const exact=(o,keys)=>o&&typeof o==='object'&&!Array.isArray(o)&&Object.keys(o).length===keys.length&&keys.every(k=>Object.hasOwn(o,k));
   if(checkpoint!==null){
@@ -60,6 +54,21 @@ export function createLudoDiscussion({session,view,generateRole=null,generateBot
       seen.add(m.id);
     }
   }
+  return {log,sequence,automaticCount,lastAutomatic,restoredJobIds};
+}
+export function createLudoDiscussion({session,view,generateRole=null,generateBot=null,allowOutput=null,onChange=()=>{},timeoutMs=30000,now=Date.now,checkpoint=null}={}){
+  if(!session||!['viewUser','viewRole','viewBot','discussionSignal','discussionCurrent'].every(k=>typeof session[k]==='function')||
+    view?.gameId!=='ludo'||!['playing','finished'].includes(view.phase)||view.selfSeatId!=='user'||
+    !Array.isArray(view.seats)||view.seats.length<2||view.seats.length>4||
+    ![generateRole,generateBot,allowOutput].every(f=>f===null||typeof f==='function')||
+    ((generateRole||generateBot)&&!allowOutput)||typeof onChange!=='function'||typeof now!=='function') fail('LUDO_DISCUSSION_INVALID');
+  const roomId=view.roomId,seats=view.seats.map(s=>Object.freeze({...s})),audience=seats.map(s=>s.seatId);
+  const restored=validateLudoChatCheckpoint(view,checkpoint),log=restored.log;
+  const eligible=seats.filter(s=>s.kind!=='user');
+  const generator=s=>s.kind==='bot'?generateBot:generateRole;
+  let closed=false,epoch=0,tail=Promise.resolve(),pending=0,roundSignal=null,sequence=restored.sequence;
+  let roundEvent=null,automatic=null,lastObserved=view.revision,lastAutomatic=restored.lastAutomatic,automaticCount=restored.automaticCount;
+  const restoredJobIds=restored.restoredJobIds;
   function check(stamp){if(closed||stamp!==epoch)fail('LUDO_DISCUSSION_STOPPED');}
   function verify(v,allowFinished=false){
     if(v?.roomId!==roomId||v.gameId!=='ludo'||!(v.phase==='playing'||allowFinished&&v.phase==='finished')||

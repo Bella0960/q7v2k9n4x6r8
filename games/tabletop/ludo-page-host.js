@@ -130,6 +130,12 @@ export function createLudoPageHost(root,{win=root?.ownerDocument?.defaultView,on
       return {schema:1,board,chat};
     }finally{busy=false;}
   }
+  async function archiveMatch(journal){
+    const e=entry,stamp=epoch;
+    if(typeof journal?.recordSavedMatch!=='function')fail('LUDO_INVALID_JOURNAL');
+    const saved=await saveMatch();check(e,stamp);
+    return journal.recordSavedMatch(saved);
+  }
   async function restoreMatch(saved,{expectedIdentity=null}={}){
     if(!saved||Object.keys(saved).length!==3||saved.schema!==1||!saved.board||!saved.chat||
       saved.board.roomId!==saved.chat.roomId||!Array.isArray(saved.board.moves)||
@@ -148,5 +154,5 @@ export function createLudoPageHost(root,{win=root?.ownerDocument?.defaultView,on
   }
   root.replaceChildren();
   function chat(){if(destroyed||!entry?.board||!entry.discussion)fail('LUDO_DISCUSSION_NOT_ACTIVE');return entry.discussion;}
-  return Object.freeze({start,restore,checkpoint,saveMatch,restoreMatch,resume,end,destroy,sendChat:message=>chat().send(message),readChat:()=>chat().read(),stopChat:()=>entry?.discussion?.stop(),status:()=>destroyed?'disposed':busy?'busy':entry?entry.board?'open':'paused':'idle'});
+  return Object.freeze({start,restore,checkpoint,saveMatch,restoreMatch,archiveMatch,resume,end,destroy,sendChat:message=>chat().send(message),readChat:()=>chat().read(),stopChat:()=>entry?.discussion?.stop(),status:()=>destroyed?'disposed':busy?'busy':entry?entry.board?'open':'paused':'idle'});
 }

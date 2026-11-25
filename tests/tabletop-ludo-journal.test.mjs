@@ -15,7 +15,8 @@ function board(roomId='room',done=true){
   }
   return d.checkpoint();
 }
-const msg={schema:1,roomId:'room',id:'reply:1:role:r1',sender:{seatId:'role:r1',kind:'role',roleId:'r1'},text:'下一局再试试。',time:1};
+const msg={id:'reply:1:role:r1',senderSeatId:'role:r1',text:'下一局再试试。',time:1};
+function saved(b=board(),message=msg){return {schema:1,board:b,chat:{schema:1,roomId:b.roomId,revision:b.startRevision+b.moves.length,sequence:1,automaticCount:0,lastAutomatic:null,jobIds:['reply:1:role:r1'],messages:[message]}};}
 test('terminal journal derives result once and creates saved-role facts only',()=>{
   const j=createLudoJournal({getContext:()=>ctx}),b=board();
   const first=j.recordMatch(b);assert.equal(first.duplicate,false);assert.equal(j.recordMatch(b).duplicate,true);assert.equal(j.list().length,1);
@@ -24,8 +25,8 @@ test('terminal journal derives result once and creates saved-role facts only',()
   assert.throws(()=>j.recordMatch(board('unfinished',false)),/JOURNAL_MATCH_UNFINISHED/);
 });
 test('own public game memory only; daily and cross-role permissions are per fragment and revocable',()=>{
-  const j=createLudoJournal({getContext:()=>ctx});j.recordMatch(board());const f=j.rememberPublicMessage({roomId:'room',message:msg}).fragment;
-  assert.equal(j.rememberPublicMessage({roomId:'room',message:msg}).duplicate,true);
+  const j=createLudoJournal({getContext:()=>ctx});const match=saved();j.recordSavedMatch(match);const f=j.read({roleId:'r1'}).find(x=>x.kind==='public-message');
+  assert.equal(j.recordSavedMatch(match).duplicate,true);
   assert.equal(j.read({roleId:'r1'}).length,2);assert.equal(j.read({roleId:'r2'}).length,1);assert.deepEqual(j.read({roleId:'r1',channel:'daily'}),[]);
   j.permit({fragmentId:f.id,targetRoleId:'r2',channel:'daily',allowed:true});
   assert.deepEqual(j.read({roleId:'r2',channel:'daily'}),[f]);assert.equal(j.read({roleId:'r2'}).length,1);
@@ -33,15 +34,17 @@ test('own public game memory only; daily and cross-role permissions are per frag
   j.permit({fragmentId:f.id,targetRoleId:'r2',channel:'game',allowed:true});assert.equal(j.read({roleId:'r2'}).length,2);
 });
 test('forged bot/other-role message and cross-account match refused',()=>{
-  const j=createLudoJournal({getContext:()=>ctx});j.recordMatch(board());
-  for(const m of [{...msg,sender:{seatId:'bot:1',kind:'bot'}},{...msg,sender:{seatId:'role:r2',kind:'role',roleId:'r2'}},{...msg,roomId:'other'}])assert.throws(()=>j.rememberPublicMessage({roomId:'room',message:m}),/JOURNAL_INVALID_MESSAGE/);
+  const j=createLudoJournal({getContext:()=>ctx}),b=board();
+  for(const m of [{...msg,senderSeatId:'bot:1'},{...msg,senderSeatId:'role:r2'},{...msg,roomId:'other'}])assert.throws(()=>j.recordSavedMatch(saved(b,m)),/LUDO_INVALID_CHAT_CHECKPOINT/);
+  assert.equal(j.list().length,0);
   assert.throws(()=>j.recordMatch({...board(),accountId:'foreign'}),/JOURNAL_INVALID_MATCH/);
 });
 test('scope change and removed role deny reads and grants, no silent eviction',()=>{
-  let c=ctx;const j=createLudoJournal({getContext:()=>c,maxMatches:1});j.recordMatch(board());
-  const f=j.rememberPublicMessage({roomId:'room',message:msg}).fragment;
+  let c=ctx;const j=createLudoJournal({getContext:()=>c,maxMatches:1});j.recordSavedMatch(saved());
+  const f=j.read({roleId:'r1'}).find(x=>x.kind==='public-message');
   j.permit({fragmentId:f.id,targetRoleId:'r2',channel:'daily',allowed:true});
   assert.throws(()=>j.recordMatch(board('another')),/JOURNAL_CAPACITY/);assert.equal(j.list().length,1);
   c={...ctx,roleIds:['r2','outside']};assert.deepEqual(j.read({roleId:'r2',channel:'daily'}),[]);assert.throws(()=>j.permit({fragmentId:f.id,targetRoleId:'r2',channel:'daily',allowed:true}),/JOURNAL_FRAGMENT_UNAVAILABLE/);
+  c=ctx;assert.deepEqual(j.read({roleId:'r2',channel:'daily'}),[]);
   c={...ctx,sessionId:'new'};assert.throws(()=>j.list(),/JOURNAL_SCOPE_CHANGED/);c=ctx;assert.throws(()=>j.list(),/JOURNAL_CLOSED/);
 });
