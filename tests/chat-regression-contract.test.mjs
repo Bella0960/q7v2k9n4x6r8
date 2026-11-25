@@ -2164,7 +2164,8 @@ test('the shared default portrait is displayed across music, chat calls, setting
   assert.equal(music.includes('editAvatar'), false, 'music must not keep a separate letter-avatar editor');
   assert.equal(music.includes("setItem('music_profile_avatar'"), false);
 
-  assert.ok(detail.includes('fillAvatar(avatar, getMyAvatar(), USER_SVG)'), 'outgoing chat messages use the shared user portrait');
+  assert.match(detail, /fillGroupPortrait\(avatar,\s*getMyAvatar\(\),\s*'__user'\)/, 'outgoing chat messages use the shared user portrait');
+  assert.match(detail, /function fillGroupPortrait\(el,fallback,memberId\)\{\s*fillAvatar\(el,fallback,USER_SVG\)/, 'shared portrait is painted before an optional group override');
   assert.ok(callUi.includes('phone_storage.js'));
   assert.ok(callUi.includes('PhoneStorage.getMyProfile()'), 'outgoing call UI initializes and reads the shared profile');
 
@@ -2368,7 +2369,7 @@ test('chat detail: generated cards and manual stickers render only after history
   assert.match(detail, /function insertIncomingCallCard\(historyList\)[\s\S]*?if \(!saveMessages\(historyList\)\)[\s\S]*?return false[\s\S]*?return true/);
   assert.match(detail, /if \(insertIncomingCallCard\(historyList\)\) maybeAutoIncomingCall\(\)/);
   assert.match(detail, /function insertVImageCards\(historyList, descs\)[\s\S]*?if \(!saveMessages\(historyList\)\)[\s\S]*?historyList\.length = previousLength[\s\S]*?return false/);
-  assert.match(detail, /function insertPayCards\(historyList, items\)[\s\S]*?if \(!saveMessages\(historyList\)\)[\s\S]*?previousTransferStates\.forEach/);
+  assert.match(detail, /function insertPayCards\(historyList, items, speaker\)[\s\S]*?if \(!saveMessages\(historyList\)\)[\s\S]*?previousTransferStates\.forEach/);
   assert.match(detail, /if \(!saveMessages\(list\)\)[\s\S]*?表情没有保存到聊天记录[\s\S]*?return false[\s\S]*?sendMsg\(/);
 });
 
@@ -2424,7 +2425,7 @@ test('chat detail: multi-bubble history readback verifies behavior-bearing state
   assert.match(detail, /historyList = window\.ChatMessagePolicy\.removeTurnFromHistory\(historyList, regenTargetId\)/);
   assert.match(detail, /if \(isRegen && \(!streamResult\.ok \|\| !String\(fullText \|\| ''\)\.trim\(\)\)\)/);
   assert.match(detail, /重新生成未成功，原回复已保留/);
-  assert.match(detail, /if \(!isRegen\) \{\s*try \{ saveMessages\(historyList\); \} catch \(rollbackError\) \{\}/);
+  assert.match(detail, /if \(!isRegen && !isGroupChat\) \{\s*try \{ saveMessages\(historyList\); \} catch \(rollbackError\) \{\}/);
 });
 
 
@@ -2481,7 +2482,7 @@ test('chat detail: group interaction state and private-message entry require ver
   // Failure rolls staged vote/chain changes back through registered undo.
   assert.match(detail, /turnEffects\.registerUndo\(function \(\) \{/);
   assert.match(detail, /groupHistoryRollback\.length-1/);
-  assert.match(detail, /var replySaved = saveMessages\(historyList\)/);
+  assert.match(detail, /var replySaved = isGroupChat \? await saveGroupReplyLocked\(historyList,groupTurnCurrent\) : saveMessages\(historyList\)/);
   assert.match(detail, /groupTurnEffects\.finalize\(replySaved && streamResult\.ok\)/);
   assert.match(detail, /var privateSaved = saveGroupPrivateRoleMessageSafely\(targetId, privateMsg\)/);
   assert.match(detail, /if \(!privateSaved\)[\s\S]*?未显示已发送状态/);
@@ -2628,6 +2629,21 @@ test('chat extras: image batches retain the versioned history, roll back errors 
   assert.equal(cleanup.filter(item => item.op === 'ref').length, 3);
 });
 
+// Execute the actual production scope and destination checks in extracted-handler tests.
+function installChatTargetScope(context) {
+  context.window.localStorage = context.localStorage;
+  context.window.location = { hostname: 'localhost' };
+  context.window.document = context.document || { querySelector: () => null };
+  if (typeof context.window.document.querySelector !== 'function') {
+    context.window.document.querySelector = () => null;
+  }
+  runInNewContext(read('shared/js/phone/group-write-guard.js'), context);
+  runInNewContext(read('shared/js/group-governance.js'), context);
+  const start = detail.indexOf('        function captureForwardTarget(');
+  const end = detail.indexOf('        function getForwardTargets(', start);
+  assert.ok(start >= 0 && end > start);
+  runInNewContext(detail.slice(start,end), context);
+}
 test('chat plus-menu forward reuses the canonical target resolver and atomic append', async () => {
   const plusStart = extras.indexOf('  function coreForward() {');
   const plusEnd = extras.indexOf('\n  // 给现有加号面板补充入口', plusStart);
@@ -2647,7 +2663,7 @@ test('chat plus-menu forward reuses the canonical target resolver and atomic app
       { id: 'target', name: '目标角色' }
     ]),
     hidden_chat_dialog_ids: JSON.stringify(['hidden']),
-    phone_groups: JSON.stringify([{ id: 'group', name: '目标群聊' }])
+    phone_groups: JSON.stringify([{ id: 'g-test', name: '目标群聊', ownerId: '__user', userMembership: 'joined', members: [] }])
   };
   const append = [];
   const toast = [];
@@ -2691,6 +2707,7 @@ test('chat plus-menu forward reuses the canonical target resolver and atomic app
     window: { prompt: () => {} },
     Date, String, Array
   };
+  installChatTargetScope(context);
   runInNewContext(
     detail.slice(targetStart, targetEnd) + '\n' +
     detail.slice(forwardStart, forwardEnd) + '\n' +
@@ -2757,7 +2774,7 @@ test('chat extras: every extension card send gates AI dispatch on successful per
 });
 
 
-test('chat extras: outgoing payment ledger reconciles chat write failure and page reload', () => {
+test('chat extras: outgoing payment ledger reconciles chat write failure and page reload', async () => {
   const start = extras.indexOf('  // A wallet debit and a chat card');
   const end = extras.indexOf("  if (payConfirmBtn) payConfirmBtn.addEventListener('click', submitPayMessage)", start);
   assert.ok(start >= 0 && end > start, 'outgoing payment code must remain independently testable');
@@ -2768,6 +2785,7 @@ test('chat extras: outgoing payment ledger reconciles chat write failure and pag
     let history = [{ role: 'user', mid: 'older', text: '旧消息' }];
     const stored = new Map([
       ['workData', JSON.stringify({ balance: 1000, history: options.initialEntries || [] })],
+      ['ai_custom_characters', JSON.stringify([{ id: options.roleId || 'role-1' }])],
       ['chat_history_' + (options.roleId || 'role-1'), JSON.stringify(history)]
     ]);
     const effects = { walletWrites: [], chatWrites: [], toasts: [], ai: [], renders: 0, closes: 0 };
@@ -2806,12 +2824,14 @@ test('chat extras: outgoing payment ledger reconciles chat write failure and pag
       } },
       chatMessages: { scrollTop: 0, scrollHeight: 20 }
     };
+    installChatTargetScope(context);
     runInNewContext(paymentCode +
       '\nglobalThis.outgoingTest = { submitPayMessage, recoverOutgoingPayments, settleOutgoingPayment };', context);
     return {
       context, effects, actions: context.outgoingTest,
       wallet: () => JSON.parse(stored.get('workData')),
       history: () => history,
+      persistedHistory: () => JSON.parse(stored.get('chat_history_' + (options.roleId || 'role-1'))),
       advance: (ms) => { now += ms; },
       allowRefund: () => { failRefund = false; },
       storeWallet: (wallet) => { stored.set('workData', JSON.stringify(wallet)); },
@@ -2821,7 +2841,7 @@ test('chat extras: outgoing payment ledger reconciles chat write failure and pag
   }
 
   const success = fixture();
-  success.actions.submitPayMessage();
+  await success.actions.submitPayMessage();
   const successfulWallet = success.wallet();
   const successfulCard = success.history()[1];
   assert.equal(successfulWallet.balance, 954.5);
@@ -2835,7 +2855,7 @@ test('chat extras: outgoing payment ledger reconciles chat write failure and pag
   assert.equal(success.effects.closes, 1);
 
   const failedChat = fixture({ chatSave: 'fail' });
-  failedChat.actions.submitPayMessage();
+  await failedChat.actions.submitPayMessage();
   assert.equal(failedChat.wallet().balance, 1000, 'refund balances the failed debit');
   assert.equal(failedChat.wallet().history[0].status, 'reversed');
   assert.equal(failedChat.history().length, 1);
@@ -2847,26 +2867,26 @@ test('chat extras: outgoing payment ledger reconciles chat write failure and pag
   assert.equal(failedChat.wallet().balance, 1000, 'a repeated compensation must not refund twice');
 
   const noDebit = fixture({ failDebit: true });
-  noDebit.actions.submitPayMessage();
+  await noDebit.actions.submitPayMessage();
   assert.equal(noDebit.wallet().balance, 1000);
   assert.equal(noDebit.wallet().history.length, 0);
   assert.equal(noDebit.effects.chatWrites.length, 0, 'no card before a verified debit');
   assert.equal(noDebit.effects.ai.length, 0);
 
   const uncertain = fixture({ chatSave: 'written-but-unverified' });
-  uncertain.actions.submitPayMessage();
+  await uncertain.actions.submitPayMessage();
   assert.equal(uncertain.wallet().balance, 954.5);
   assert.equal(uncertain.wallet().history[0].status, 'sent');
-  assert.equal(uncertain.history().length, 2);
+  assert.equal(uncertain.persistedHistory().length, 2, 'uncertain readback may have committed the card');
   assert.equal(uncertain.effects.ai.length, 0, 'uncertain card must not launch AI');
   assert.equal(uncertain.effects.closes, 0, 'do not claim successful delivery');
 
   const recover = fixture({ chatSave: 'fail', failRefund: true });
-  recover.actions.submitPayMessage();
+  await recover.actions.submitPayMessage();
   assert.equal(recover.wallet().balance, 954.5);
   assert.equal(recover.wallet().history[0].status, 'pending-chat');
   assert.equal(recover.effects.ai.length, 0);
-  recover.actions.submitPayMessage();
+  await recover.actions.submitPayMessage();
   assert.equal(recover.wallet().history.length, 1, 'no second debit while payment is pending');
 
   const otherEntry = {
@@ -2879,39 +2899,39 @@ test('chat extras: outgoing payment ledger reconciles chat write failure and pag
   recover.storeWallet(beforeRecovery);
   recover.allowRefund();
   recover.advance(121000);
-  recover.actions.recoverOutgoingPayments();
+  await recover.actions.recoverOutgoingPayments();
   assert.equal(recover.wallet().balance, 995, 'only current role payment is refunded');
   assert.equal(recover.wallet().history[0].status, 'reversed');
   assert.equal(recover.wallet().history[1].status, 'pending-chat', 'other role remains untouched');
-  recover.actions.recoverOutgoingPayments();
+  await recover.actions.recoverOutgoingPayments();
   assert.equal(recover.wallet().balance, 995, 'reopening cannot refund the same payment again');
 
   const corruptedChat = fixture({ chatSave: 'fail' });
   corruptedChat.storeChatRaw('{invalid-json');
-  corruptedChat.actions.submitPayMessage();
+  await corruptedChat.actions.submitPayMessage();
   assert.equal(corruptedChat.wallet().balance, 954.5);
   assert.equal(corruptedChat.wallet().history[0].status, 'pending-chat',
     'unreadable history cannot prove the card is absent, so no automatic refund');
   assert.equal(corruptedChat.effects.ai.length, 0);
   corruptedChat.advance(121000);
-  corruptedChat.actions.recoverOutgoingPayments();
+  await corruptedChat.actions.recoverOutgoingPayments();
   assert.equal(corruptedChat.wallet().balance, 954.5, 'reload must not refund unreadable history');
   assert.equal(corruptedChat.wallet().history[0].status, 'pending-chat');
   assert.match(corruptedChat.effects.toasts.at(-1), /聊天记录无法核实/);
 
   const brokenWallet = fixture();
   brokenWallet.storeWalletRaw('{invalid-wallet');
-  brokenWallet.actions.submitPayMessage();
+  await brokenWallet.actions.submitPayMessage();
   assert.equal(brokenWallet.effects.chatWrites.length, 0, 'never send a card against corrupt wallet data');
   assert.equal(brokenWallet.effects.walletWrites.length, 0, 'never overwrite damaged wallet data with a default');
   assert.equal(brokenWallet.effects.ai.length, 0);
   assert.match(brokenWallet.effects.toasts.at(-1), /钱包数据损坏/);
-  brokenWallet.actions.recoverOutgoingPayments();
+  await brokenWallet.actions.recoverOutgoingPayments();
   assert.match(brokenWallet.effects.toasts.at(-1), /自动恢复已暂停/);
 
   const invalidBalance = fixture();
   invalidBalance.storeWalletRaw(JSON.stringify({ balance: '1000', history: [] }));
-  invalidBalance.actions.submitPayMessage();
+  await invalidBalance.actions.submitPayMessage();
   assert.equal(invalidBalance.effects.walletWrites.length, 0, 'string-valued balance must not authorize debit');
   assert.equal(invalidBalance.effects.chatWrites.length, 0);
 });
@@ -2933,7 +2953,7 @@ test('chat extras: two tabs cannot debit the same shared wallet concurrently', a
       return Promise.resolve().then(() => callback({ name })).finally(() => { taken = false; });
     }
   };
-  const stored = new Map([['workData', JSON.stringify({ balance: 100, history: [] })]]);
+  const stored = new Map([['workData', JSON.stringify({ balance: 100, history: [] })], ['ai_custom_characters', JSON.stringify([{id:'role-1'}])]]);
   let history = [{ role: 'user', mid: 'existing', text: 'previous' }];
   const rendered = [];
   const responses = [];
@@ -2957,6 +2977,7 @@ test('chat extras: two tabs cannot debit the same shared wallet concurrently', a
       showToast: () => {},
       window: { navigator: { locks }, addEventListener: () => {} }
     };
+    installChatTargetScope(context);
     runInNewContext(code +
       '\nglobalThis.tabPayment = { submitPayMessage, recoverOutgoingPayments };', context);
     return context.tabPayment;
@@ -2983,12 +3004,15 @@ test('chat extras: unsupported lock mechanism fails closed before wallet writes'
   let ai = 0;
   const messages = [];
   const sandbox = {
+    currentCharacter: {id:'role-1'},
+    localStorage: {getItem: key => key === 'ai_custom_characters' ? '[{"id":"role-1"}]' : null},
     window: { addEventListener: () => {} },
     showToast: (message) => messages.push(message),
     getWorkData: () => { writes++; throw new Error('should not read without lock'); },
     saveWorkData: () => { writes++; return true; },
     sendSilentInstruction: () => { ai++; }
   };
+  installChatTargetScope(sandbox);
   runInNewContext(extras.slice(start, end) +
     '\nglobalThis.walletTest = { submitPayMessage, recoverOutgoingPayments };', sandbox);
   assert.equal(await sandbox.walletTest.submitPayMessage(), false);
