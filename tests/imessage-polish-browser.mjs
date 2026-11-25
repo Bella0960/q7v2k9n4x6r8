@@ -57,23 +57,36 @@ async function computed(page, sel, prop) {
   }, [sel, prop]);
 }
 
+// Idempotent seed: values are written only when absent, so reloads / in-page
+// navigation do not rewrite the preset or history and hide a persistence bug.
 function seed(arg) {
-  localStorage.setItem('maomao_chat_theme_preset', arg.preset);
-  localStorage.setItem('ai_custom_characters', JSON.stringify([
-    { id: 'role-a', name: '测试角色甲' },
-    { id: 'role-b', name: '测试角色乙' }
-  ]));
+  if (!localStorage.getItem('maomao_chat_theme_preset')) {
+    localStorage.setItem('maomao_chat_theme_preset', arg.preset);
+  }
+  if (!localStorage.getItem('ai_custom_characters')) {
+    localStorage.setItem('ai_custom_characters', JSON.stringify([
+      { id: 'role-a', name: '测试角色甲' },
+      { id: 'role-b', name: '很长很长的角色昵称用来检查长昵称换行与不溢出的边界情况' }
+    ]));
+  }
   for (const roleId of ['role-a', 'role-b']) {
-    localStorage.setItem('chat_history_' + roleId, JSON.stringify(arg.history));
+    if (!localStorage.getItem('chat_history_' + roleId)) {
+      localStorage.setItem('chat_history_' + roleId, JSON.stringify(arg.history));
+    }
   }
 }
 
 const LONG_TEXT = '长消息用于检查换行排版与溢出。'.repeat(12);
-const history = Array.from({ length: 12 }, (_, i) => ({
+const alternating = Array.from({ length: 8 }, (_, i) => ({
   role: i % 2 ? 'user' : 'received',
-  text: i === 10 ? LONG_TEXT : '测试消息 ' + i,
+  text: i === 6 ? LONG_TEXT : '测试消息 ' + i,
   time: Date.now() - 60000 + i * 1000
 }));
+// A run of consecutive same-role messages to check grouping spacing / corners.
+const runOnes = Array.from({ length: 4 }, (_, i) => ({
+  role: 'received', text: '连续分组消息 ' + i, time: Date.now() - 20000 + i * 1000
+}));
+const history = alternating.concat(runOnes);
 
 let count = 0;
 let browser = null;
@@ -161,6 +174,15 @@ try {
       null, { timeout: 6000 });
     assert.ok(await page.locator('.msg-row.sent .msg-bubble').count() >= 2, width + 'px role B sent bubbles render');
     assert.ok(await page.locator('.msg-row.received .msg-bubble').count() >= 2, width + 'px role B received bubbles render');
+    // Long nickname renders in the header; the page itself must not overflow
+    // (single-line header title may ellipsis-truncate by design).
+    const longName = await page.evaluate(() => {
+      const el = document.querySelector('.chat-user-name');
+      return el ? el.textContent.trim() : '';
+    });
+    assert.ok(longName.length > 0, width + 'px role B header name renders');
+    assert.ok(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth + 1),
+      width + 'px role B detail no horizontal overflow');
 
     // Reload keeps the preset and quiet timestamp.
     await page.reload({ waitUntil: 'domcontentloaded' });
@@ -195,6 +217,8 @@ try {
     assert.notEqual(defNameSize, '16px', width + 'px default list name not forced to iMessage 16px');
     assert.ok(await defPage.evaluate(() => document.documentElement.scrollWidth <= innerWidth + 1),
       width + 'px default list no overflow');
+    assert.ok(await defPage.evaluate(() => !document.querySelector('#maomao-imessage-theme-css')),
+      width + 'px default has no injected iMessage stylesheet');
     assert.deepEqual(defErrors, [], width + 'px default no runtime errors');
     await defCtx.close();
 
@@ -214,6 +238,8 @@ try {
     await delay(200);
     assert.ok(await wxPage.evaluate(() => document.documentElement.scrollWidth <= innerWidth + 1),
       width + 'px wechat detail no overflow');
+    assert.ok(await wxPage.evaluate(() => !document.querySelector('#maomao-imessage-theme-css')),
+      width + 'px wechat has no injected iMessage stylesheet');
     assert.deepEqual(wxErrors, [], width + 'px wechat no runtime errors');
     await wxCtx.close();
 
