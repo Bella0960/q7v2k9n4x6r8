@@ -83,15 +83,23 @@ export function applyMigrations(exec, now = Date.now(), transaction = null, migr
         }
       };
 
-  for (const migration of migrations) {
-    if (applied.has(migration.version)) continue;
-    // Use Durable Object transactionSync in production; the local SQLite test
-    // adapter uses explicit BEGIN/COMMIT. The DDL and version marker commit as one.
+  const pending = migrations.filter(migration => !applied.has(migration.version));
+  const isSocial = migration => /^001[789]_mao_social(?:_|$)/.test(migration.version);
+  for (let index = 0; index < pending.length;) {
+    const group = [pending[index++]];
+    // These three additive social migrations form one release unit. Do not
+    // leave a partially enabled schema if a later DDL or version write fails.
+    // Already applied versions remain untouched, including on old installations.
+    if (isSocial(group[0])) {
+      while (index < pending.length && isSocial(pending[index])) group.push(pending[index++]);
+    }
     runTransaction(() => {
-      for (const statement of splitSql(migration.sql)) exec(statement);
-      exec('INSERT INTO schema_migrations (version, applied_at) VALUES (?, ?)', migration.version, now);
+      for (const migration of group) {
+        for (const statement of splitSql(migration.sql)) exec(statement);
+        exec('INSERT INTO schema_migrations (version, applied_at) VALUES (?, ?)', migration.version, now);
+      }
     });
-    results.push(migration.version);
+    results.push(...group.map(migration => migration.version));
   }
   return results;
 }

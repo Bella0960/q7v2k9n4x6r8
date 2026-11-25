@@ -59,3 +59,42 @@ test('isolated core upgrade preserves preexisting accounts, sessions, invites an
   assert.equal(exec("SELECT COUNT(*) AS n FROM mao_accounts WHERE role='super_admin'")[0].n,1);
  }finally{db.close()}
 });
+
+
+test('all pending social migrations roll back together on late failure and retry cleanly',()=>{
+ for(const nativeTransaction of [false,true]){
+  const db=new DatabaseSync(':memory:');
+  try{
+   db.exec('PRAGMA foreign_keys=ON');
+   const exec=(sql,...args)=>{const st=db.prepare(sql);if(/^\s*(SELECT|PRAGMA)\b/i.test(sql))return st.all(...args);st.run(...args);return [];};
+   let txCount=0;
+   const tx=nativeTransaction?fn=>{txCount++;db.exec('BEGIN IMMEDIATE');try{const result=fn();db.exec('COMMIT');return result;}catch(e){db.exec('ROLLBACK');throw e;}}:null;
+   const old=MIGRATIONS.filter(m=>!/^001[789]_mao_social/.test(m.version));
+   applyMigrations(exec,1,tx,old);
+   exec("INSERT INTO mao_accounts (id,username,username_key,password_salt,password_hash,role,status,created_at,updated_at,authorized_at) VALUES (?,?,?,?,?,'super_admin','active',?,?,?)",
+     'MAO-FFFFFFFFFFFF','synthetic-founder','synthetic-founder','synthetic-salt','synthetic-hash',1,1,1);
+   const snap=()=>({schema:exec("SELECT type,name,sql FROM sqlite_master ORDER BY type,name"),accounts:exec("SELECT * FROM mao_accounts"),versions:exec("SELECT * FROM schema_migrations ORDER BY version")});
+   const before=snap();
+   for(const failureVersion of ['0017_mao_social','0018_mao_social_e2ee','0019_mao_social_e2ee_media']){
+    let injected=0;
+    const failing=(sql,...args)=>{
+     if(sql.startsWith('INSERT INTO schema_migrations')&&args[0]===failureVersion){injected++;throw Error('synthetic migration interruption');}
+     return exec(sql,...args);
+    };
+    const txBefore=txCount;
+    assert.throws(()=>applyMigrations(failing,2,tx),/synthetic migration interruption/);
+    assert.equal(injected,1);
+    if(nativeTransaction)assert.equal(txCount-txBefore,1);
+    assert.deepEqual(snap(),before);
+    assert.equal(exec("SELECT COUNT(*) AS n FROM sqlite_master WHERE name LIKE 'mao_social_%'")[0].n,0);
+    assert.equal(exec("PRAGMA integrity_check")[0].integrity_check,'ok');
+   }
+   assert.deepEqual(applyMigrations(exec,3,tx),['0017_mao_social','0018_mao_social_e2ee','0019_mao_social_e2ee_media']);
+   assert.deepEqual(exec("SELECT * FROM mao_accounts"),before.accounts);
+   assert.deepEqual(exec("PRAGMA foreign_key_check"),[]);
+   assert.deepEqual(applyMigrations(exec,4,tx),[]);
+   assert.deepEqual(applyMigrations(exec,5,tx,old),[]);
+   assert.deepEqual(exec("SELECT * FROM mao_accounts"),before.accounts);
+  }finally{db.close()}
+ }
+});
