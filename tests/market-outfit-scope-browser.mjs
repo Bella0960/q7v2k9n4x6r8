@@ -8,7 +8,7 @@ const pw=await import(process.env.PLAYWRIGHT_MODULE||'playwright');
 const server=createServer((req,res)=>{try{const p=resolve(root,'.'+decodeURIComponent(req.url.split('?')[0]));if(!p.toLowerCase().startsWith(root.toLowerCase()))throw Error();res.setHeader('Content-Type',({'.html':'text/html','.js':'text/javascript','.css':'text/css'})[extname(p)]||'application/octet-stream');res.end(readFileSync(p));}catch{res.statusCode=404;res.end();}});
 await new Promise(r=>server.listen(0,'127.0.0.1',r));
 const base='http://127.0.0.1:'+server.address().port;
-const browser=await pw.chromium.launch({headless:true,args:['--no-sandbox','--disable-dev-shm-usage']});
+const browser=await pw.chromium.launch({headless:true,...(process.env.CHROMIUM_PATH?{executablePath:process.env.CHROMIUM_PATH}:{}),args:['--no-sandbox','--disable-dev-shm-usage']});
 let count=0;
 const ITEM={id:'outfit_scope_test',name:'甲的气泡搭配',createdAt:Date.now(),scopes:['bubbles'],data:{bubbles:{scope:'role_a',vars:{myBubbleBg:'#444444'}}}};
 try{

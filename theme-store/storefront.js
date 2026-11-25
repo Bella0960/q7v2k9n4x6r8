@@ -2,7 +2,7 @@
 (function (global) {
 'use strict';
 const model=global.MAOMAOMarketCollection;
-let api,section='discover',mineTab='favorites',overlay,focusBefore,previewTone='light',previewPage='detail';
+let api,section='discover',mineTab='favorites',overlay,focusBefore,openerEl,previewTone='light',previewPage='detail';
 // Reuse one parsed collection snapshot for the whole render pass; invalidated on every fresh render.
 let favCache=null;
 function readCache(){if(!favCache)favCache=model.read();return favCache;}
@@ -98,7 +98,7 @@ function close(){
  focusBefore=null;
  pendingOutfit=null;
 }
-function modal(title,body){if(overlay){overlay.remove();overlay=null;}else focusBefore=document.activeElement;overlay=document.createElement('div');overlay.className='sf-overlay';overlay.innerHTML='<section role="dialog" aria-modal="true" aria-label="'+e(title)+'" class="sf-dialog"><header><h2>'+e(title)+'</h2>'+button(svg('close'),'close','','sf-close')+'</header>'+body+'<p class="sf-error" role="alert"></p></section>';document.body.append(overlay);document.querySelector('.store-app').inert=true;overlay.querySelector('button').focus();overlay.addEventListener('click',ev=>{if(ev.target===overlay)close();});overlay.addEventListener('keydown',ev=>{if(ev.key==='Escape')close();if(ev.key==='Tab'){const all=[...overlay.querySelectorAll('button,input,select')].filter(x=>!x.disabled&&x.getClientRects().length);const first=all[0],last=all.at(-1);if(ev.shiftKey&&document.activeElement===first){ev.preventDefault();last.focus();}else if(!ev.shiftKey&&document.activeElement===last){ev.preventDefault();first.focus();}}});}
+function modal(title,body){if(overlay){overlay.remove();overlay=null;}else focusBefore=(openerEl&&openerEl.isConnected)?openerEl:document.activeElement;overlay=document.createElement('div');overlay.className='sf-overlay';overlay.innerHTML='<section role="dialog" aria-modal="true" aria-label="'+e(title)+'" class="sf-dialog"><header><h2>'+e(title)+'</h2>'+button(svg('close'),'close','','sf-close')+'</header>'+body+'<p class="sf-error" role="alert"></p></section>';document.body.append(overlay);document.querySelector('.store-app').inert=true;overlay.querySelector('button').focus();overlay.addEventListener('click',ev=>{if(ev.target===overlay)close();});overlay.addEventListener('keydown',ev=>{if(ev.key==='Escape')close();if(ev.key==='Tab'){const all=[...overlay.querySelectorAll('button,input,select')].filter(x=>!x.disabled&&x.getClientRects().length);const first=all[0],last=all.at(-1);if(ev.shiftKey&&document.activeElement===first){ev.preventDefault();last.focus();}else if(!ev.shiftKey&&document.activeElement===last){ev.preventDefault();first.focus();}}});}
 function detail(id){
  const t=api.themes.find(x=>x.id===id);if(!t)return;
  const info=themeProfiles[id]||{type:'聊天主题',scope:'以实际页面为准',note:'继续由原有主题系统管理外观。'};
@@ -240,7 +240,7 @@ async function handle(action,id){
  if(action==='confirm-upload'){const file=overlay.querySelector('#sfFile').files[0];const label=overlay.querySelector('#sfName').value;await model.addCreation(label,await imageData(file));close();api.render();api.toast('素材已保存');}
 }
 let pending=false;
-document.addEventListener('click',async ev=>{const b=ev.target.closest('[data-sf]');if(!b)return;ev.preventDefault();if(pending)return;pending=true;b.disabled=true;try{await handle(b.dataset.sf,b.dataset.id);}catch(error){if(overlay)overlay.querySelector('.sf-error').textContent=error.message;else api.toast(error.message);}finally{pending=false;b.disabled=false;}});
+document.addEventListener('click',async ev=>{const b=ev.target.closest('[data-sf]');if(!b)return;ev.preventDefault();if(pending)return;pending=true;openerEl=b;b.disabled=true;try{await handle(b.dataset.sf,b.dataset.id);}catch(error){if(overlay)overlay.querySelector('.sf-error').textContent=error.message;else api.toast(error.message);}finally{pending=false;b.disabled=false;openerEl=null;}});
 // Pause the floating art on cards scrolled out of the visible rail; keep the motion where it is seen.
 let animIO=null,animMO=null;
 const animWatched=new Set();

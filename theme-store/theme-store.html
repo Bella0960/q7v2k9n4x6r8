@@ -543,13 +543,11 @@
       document.querySelectorAll('.category-tab').forEach(function(button){button.classList.toggle('active',button.dataset.category===currentCategory);});
       var storefrontHTML=window.MAOMAOStorefront.render(currentCategory);
       if(storefrontHTML!==null)content.innerHTML=storefrontHTML;
-      else if(currentCategory==='discover')content.innerHTML=market?market.renderDiscover():'';
-      else if(currentCategory==='themes')content.innerHTML=renderThemes();
       else if(currentCategory==='bubbles')content.innerHTML=renderBubbles();
       else if(currentCategory==='widgets')content.innerHTML=market?market.renderWidgets():'';
       else if(currentCategory==='wallpapers')content.innerHTML=market?market.renderWallpapers():'';
       else if(currentCategory==='fonts')content.innerHTML=renderFonts();
-      else content.innerHTML=renderMine()+(market?market.renderMineExtra():'');
+      else content.innerHTML='<p class="sf-empty">这个分类暂不可用，请返回上一页。</p>';
       if(market&&(currentCategory==='wallpapers'||currentCategory==='discover'||currentCategory==='mine'))
         market.loadWallpaper(function(){if(['wallpapers','discover','mine'].indexOf(currentCategory)>=0)render();});
       if(currentCategory==='bubbles')fillScope();

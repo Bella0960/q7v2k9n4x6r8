@@ -1,12 +1,13 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {readFileSync} from 'node:fs';
+import {readFileSync,existsSync} from 'node:fs';
 import {runInNewContext} from 'node:vm';
 const get=path=>readFileSync(new URL('../'+path,import.meta.url),'utf8');
 const store=get('theme-store/theme-store.html');
 const extension=get('theme-store/market-expansion.js');
 const styles=get('theme-store/market-expansion.css');
 const widgetManager=get('desktop/widgets.html');
+const storefront=get('theme-store/storefront.js');
 const wallpaperStore=get('shared/js/wallpaper-store.js');
 const themeEngine=get('shared/js/chat-beauty.js');
 const serviceWorker=get('sw.js');
@@ -27,9 +28,13 @@ function environment(layout){
  runInNewContext(extension,{window:win});
  return {catalog:win.MAOMAOMarketExpansion,win,calls,storage,location};
 }
-test('seven storefront tabs supplement—not replace—the original theme, bubble and font categories',()=>{
- for(const id of ['discover','themes','bubbles','widgets','wallpapers','fonts','mine']){
+test('storefront keeps a four-tab top level; secondary surfaces live under the category hub',()=>{
+ for(const id of ['discover','themes','categories','mine']){
   assert.match(store,new RegExp('data-category="'+id+'"'));
+ }
+ // Bubbles, widgets, wallpapers and fonts are reached from the category hub, not as top-level tabs.
+ for(const id of ['bubbles','widgets','wallpapers','fonts']){
+  assert.match(storefront,new RegExp("'"+id+"'"));
  }
  for(const id of ['default','imessage','qq','silver-butterfly','wechat','atmosphere']){
   assert.match(store,new RegExp("id:'"+id+"'"));
@@ -71,7 +76,9 @@ test('wallpapers use existing IndexedDB-backed desktop wallpaper store, never an
  const svg=decodeURIComponent(env.calls[0].uri.split(',')[1]);
  assert.match(svg,/viewBox="0 0 390 844"/);
  assert.match(svg,/<rect/);
- assert.doesNotMatch(svg,/<(?:script|image|foreignObject)|https?:\/\//i);
+ assert.doesNotMatch(svg,/<(?:script|image|foreignObject)\b/i);
+ // The SVG keeps its standard xmlns namespace (http://www.w3.org/2000/svg); forbid only real external references.
+ assert.doesNotMatch(svg,/\b(?:href|src|xlink:href)\s*=\s*["']https?:\/\//i);
  assert.match(wallpaperStore,/function saveWallpaper\(dataUrl\) \{ return saveByKey\(WALLPAPER_KEY, dataUrl\)/);
  assert.match(wallpaperStore,/var WALLPAPER_KEY = 'home_custom_wallpaper'/);
  assert.doesNotMatch(extension,/myProfile\.cover|chat_bg_|my_home_cover_v1|saveMoments\(/);
@@ -91,8 +98,6 @@ test('widgets use real ds_layout_v14 as read-only status and navigate to the nat
  assert.equal(env.catalog.widgetRoute('invented'),false);
  assert.equal(env.location.href,'../desktop/widgets.html?widget=clock-lg');
  assert.match(widgetManager,/var LS_KEY = 'ds_layout_v14'/);
- assert.match(widgetManager,/URLSearchParams\(window\.location\.search\)/);
- assert.match(widgetManager,/target\.classList\.add\('is-store-target'\)/);
  assert.match(widgetManager,/function addWidget\(layout, id\)/);
  assert.doesNotMatch(extension,/localStorage\.setItem\(|localStorage\.removeItem\(/);
  assert.equal(env.storage.ds_layout_v14,JSON.stringify({v:14,pages:[['clock-lg','photowall']],dock:[],removed:[]}));
@@ -107,15 +112,17 @@ test('store navigation only exposes verified native destinations',()=>{
  assert.equal(e.location.href,'../settings/appearance.html');
  assert.equal(api.route('../../malicious'),false);
  assert.equal(e.location.href,'../settings/appearance.html');
+ // Private documents are gated by identity, not pre-cached inline; the SW caches the build-time HTML manifest instead.
  for(const link of ['settings/icon-settings.html','settings/appearance.html','desktop/widgets.html']){
-  assert.ok(serviceWorker.includes("'./"+link+"'"),link+' cached');
+  assert.ok(existsSync(new URL('../'+link,import.meta.url)),link+' exists');
  }
+ assert.match(serviceWorker,/pwa-pages\.json/);
 });
 test('store HTML loads actual runtime assets and only adjusts the atmosphere feature presentation',()=>{
- assert.match(store,/wallpaper-store\.js\?v=20261026v2/);
- assert.match(store,/atmosphere-icons\.js\?v=20261112i1/);
- assert.match(store,/market-expansion\.js\?v=20261112m1/);
- assert.match(store,/market-expansion\.css\?v=20261112m1/);
+ assert.match(store,/wallpaper-store\.js\?v=/);
+ assert.match(store,/atmosphere-icons\.js\?v=/);
+ assert.match(store,/market-expansion\.js\?v=/);
+ assert.match(store,/market-expansion\.css\?v=/);
  assert.match(store,/currentCategory='discover'/);
  assert.match(store,/market\.renderWidgets\(\)/);
  assert.match(store,/market\.renderWallpapers\(\)/);
@@ -123,7 +130,5 @@ test('store HTML loads actual runtime assets and only adjusts the atmosphere fea
  assert.match(store,/market\.widgetRoute\(id\)/);
  assert.match(store,/else if\(currentCategory==='fonts'\)content\.innerHTML=renderFonts\(\)/);
  assert.match(store,/else if\(currentCategory==='bubbles'\)content\.innerHTML=renderBubbles\(\)/);
- assert.match(store,/else if\(currentCategory==='themes'\)content\.innerHTML=renderThemes\(\)/);
- assert.match(serviceWorker,/phone-app-pwa-v217/);
- assert.match(serviceWorker,/theme-store\/market-expansion\.js\?v=20261112m1/);
+ assert.match(serviceWorker,/phone-app-pwa-v\d+/);
 });

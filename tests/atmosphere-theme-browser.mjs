@@ -21,7 +21,7 @@ if(!base){
  await new Promise(resolve=>localServer.listen(0,'127.0.0.1',resolve));
  base='http://127.0.0.1:'+localServer.address().port;
 }
-const browser=await chromium.launch({headless:true,args:['--no-sandbox','--disable-dev-shm-usage']});
+const browser=await chromium.launch({headless:true,...(process.env.CHROMIUM_PATH?{executablePath:process.env.CHROMIUM_PATH}:{}),args:['--no-sandbox','--disable-dev-shm-usage']});
 await mkdir('test-results/atmosphere',{recursive:true});
 try {
  for(const width of [375,390,430,1280]){
