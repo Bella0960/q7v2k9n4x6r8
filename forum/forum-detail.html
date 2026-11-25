@@ -565,7 +565,7 @@ function mergeForumPosts(stored,seedPosts,previousSeedSets){
       ?item.replies.filter(x=>x&&typeof x==='object'&&!Array.isArray(x)).slice(0,2):[];
     const replies=nested.map((x,j)=>{
       const rr=detailResident(x.residentId,index+j+3),replyText=String(x.text||'').trim().slice(0,220);
-      return replyText?{name:rr.name,avatar:'#'+['333333','555555','777777','444444'][j%4],residentId:rr.id,owner:'community',source:'forum-ai',text:replyText,time:now-(j+1)*70000,replyTo:String(x.replyTo||r.name),likes:0}:null;
+      return replyText?{name:rr.name,avatar:'#'+['333333','555555','777777','444444'][j%4],residentId:rr.id,owner:'community',source:'forum-ai',text:replyText,time:now-(j+1)*70000,replyTo:r.name,replyToType:'NPC',replyToActorId:r.id,likes:0}:null;
     }).filter(Boolean);
     return {name:r.name,avatar:'#'+['333333','555555','777777','444444'][index%4],residentId:r.id,owner:'community',source:'forum-ai',text:text,time:now-index*50000,likes:0,replies:replies};
   }
@@ -582,8 +582,8 @@ function mergeForumPosts(stored,seedPosts,previousSeedSets){
     if(status)status.textContent='社区里有人正在看这条帖子…';
     try{
       const residents=DETAIL_RESIDENTS.map((r,i)=>detailResident(r.id,i)).map(r=>({id:r.id,name:r.name,style:r.style}));
-      const existing=post.comments.slice(-5).map(c=>({name:c.name,text:c.text,replies:(c.replies||[]).map(x=>x.text)}));
-      const prompt='请为下面这条论坛帖子补上第一批自然的网友讨论。只返回 JSON。\n固定路人：'+JSON.stringify(residents)+'\n帖子：'+JSON.stringify({author:post.name,title:postTitle(),body:postBody(),topic:post.topic||''})+'\n已有评论（不要重复）：'+JSON.stringify(existing)+'\n要求：生成 3-4 条评论，至少有两种不同态度；评论要抓住帖子细节，有人追问、有人分享经历、有人补充或温和反对。选择 1-2 条评论加一条楼中楼回复，让讨论有来有回。禁止每条都夸楼主或只说“确实”“哈哈”。所有 residentId 必须来自固定路人。格式：{"comments":[{"residentId":"路人id","text":"评论内容","replies":[{"residentId":"路人id","text":"回复内容","replyTo":"被回复昵称"}]}]}';
+      const existing=post.comments.slice(-5).map(c=>({actor:forumActor(c),text:c.text,replies:(c.replies||[]).map(forumUtterance)}));
+      const prompt='请为下面这条论坛帖子补上第一批自然的网友讨论。只返回 JSON。\n固定路人：'+JSON.stringify(residents)+'\n帖子：'+JSON.stringify({author:forumActor(post),title:postTitle(),body:postBody(),topic:post.topic||''})+'\n已有评论（不要重复）：'+JSON.stringify(existing)+'\n要求：生成 3-4 条评论，至少有两种不同态度；评论要抓住帖子细节，有人追问、有人分享经历、有人补充或温和反对。选择 1-2 条评论加一条楼中楼回复，让讨论有来有回。禁止每条都夸楼主或只说“确实”“哈哈”。所有 residentId 必须来自固定路人。格式：{"comments":[{"residentId":"路人id","text":"评论内容","replies":[{"residentId":"路人id","text":"回复内容","replyTo":"被回复昵称"}]}]}';
       const result=await forumAIJSON(prompt,0.93,initialPost.mediaAssetIds);
       if(post!==initialPost||initialPost.aiCommentBatch==='v1')return;
       if(!result||!result.ok||!result.data||!Array.isArray(result.data.comments))throw new Error('评论生成结果无效');
@@ -862,7 +862,15 @@ function mergeForumPosts(stored,seedPosts,previousSeedSets){
     }
   }
 
-  function isOwn(c) { return c.name === '我' || c.owner === 'me'; }
+  function isOwn(c) { return !!c && c.owner === 'me' && !c.residentId && !c.roleId && c.source !== 'forum-ai'; }
+  function forumActor(c) {
+    c=c||{};
+    if(isOwn(c))return {type:'USER_SELF',id:'me',name:c.name||'我'};
+    if(c.residentId)return {type:'NPC',id:String(c.residentId),name:c.name||''};
+    if(c.roleId)return {type:'AI_ROLE',id:String(c.roleId),name:c.name||''};
+    return {type:'UNKNOWN',id:'',name:c.name||''};
+  }
+  function forumUtterance(c){return {actor:forumActor(c),text:String(c&&c.text||'')};}
 
   function getMyForumAvatar() {
     try { const profile = window.PhoneStorage && typeof PhoneStorage.getMyProfile === 'function' ? PhoneStorage.getMyProfile() : null; return profile && typeof profile.avatar === 'string' ? profile.avatar : ''; }
@@ -1226,8 +1234,8 @@ function mergeForumPosts(stored,seedPosts,previousSeedSets){
     return generateForumWorldContinuation(null,'请根据已有事实自然推进，想看最新结果');
   }
 
-  async function generateRepliesToUserComment(target,text,submittedImageIds){
-    if(!target)return;
+  async function generateRepliesToUserComment(target,text,submittedImageIds,submittedComment){
+    if(!target||!isOwn(submittedComment)||!(target===submittedComment||(target.replies||[]).includes(submittedComment)))return;
     // The AI call may finish after a comment is deleted or the page changes post.
     // Keep the original post identity; do not write orphaned replies or report success.
     const replyPost=post;
@@ -1246,12 +1254,12 @@ function mergeForumPosts(stored,seedPosts,previousSeedSets){
     if(status)status.textContent='有人看到你的留言，正在接话…';
     try{
       const residents=DETAIL_RESIDENTS.map((r,i)=>detailResident(r.id,i)).map(r=>({id:r.id,name:r.name,style:r.style}));
-      const threadContext={anchorName:target.name,anchorText:target.text,hasAttachedImages:!!((target.mediaAssetIds||[]).length||(submittedImageIds||[]).length),replies:(target.replies||[]).slice(-5).map(r=>({name:r.name,text:r.text}))};
-      const prompt='论坛里刚出现一条新留言，请让 1-2 位不同的路人自然回应它。只返回 JSON。\n路人资料：'+JSON.stringify(residents)+'\n帖子：'+JSON.stringify({title:postTitle(),body:postBody(),topic:post.topic||''})+'\n当前讨论串：'+JSON.stringify(threadContext)+'\n用户刚刚说：'+JSON.stringify(text)+'\n要求：回复要直接回应这句话和上下文，不要泛泛夸赞或重复已有内容；可以追问、分享相似经历或有礼貌地提出不同看法。最多两条，第二条可以接第一条的话。每条 10-55 字，保持口语和各自性格。格式：{"replies":[{"residentId":"路人id","text":"回复","replyTo":"我"}]}';
+      const threadContext={anchor:forumUtterance(target),hasAttachedImages:!!((target.mediaAssetIds||[]).length||(submittedImageIds||[]).length),replies:(target.replies||[]).slice(-5).map(forumUtterance),replyTarget:forumUtterance(submittedComment)};
+      const prompt='论坛里刚出现一条新留言，请让 1-2 位不同的路人自然回应它。只返回 JSON。\n路人资料：'+JSON.stringify(residents)+'\n帖子：'+JSON.stringify({title:postTitle(),body:postBody(),topic:post.topic||''})+'\n当前讨论串：'+JSON.stringify(threadContext)+'\n用户刚刚说：'+JSON.stringify(text)+'\n要求：回复要直接回应这句话和上下文，不要泛泛夸赞或重复已有内容；可以追问、分享相似经历或有礼貌地提出不同看法。最多两条，两条均回复明确标记的 USER_SELF 目标，不得把其他发言者视作用户本人。每条 10-55 字，保持口语和各自性格。格式：{"replies":[{"residentId":"路人id","text":"回复","replyTo":"我"}]}';
       const imageIds=Array.from(new Set([].concat(post.mediaAssetIds||[],target.mediaAssetIds||[],submittedImageIds||[]))).slice(0,2);
       const result=await forumAIJSON(prompt,0.94,imageIds);
       // Never persist generated replies to a deleted target or an old post.
-      if(post!==replyPost||!Array.isArray(replyPost.comments)||!replyPost.comments.includes(target)){
+      if(post!==replyPost||!Array.isArray(replyPost.comments)||!replyPost.comments.includes(target)||!isOwn(submittedComment)||!(target===submittedComment||(target.replies||[]).includes(submittedComment))){
         if(status&&post===replyPost)status.textContent='原评论已删除，本次网友回复已取消';
         return;
       }
@@ -1263,7 +1271,7 @@ function mergeForumPosts(stored,seedPosts,previousSeedSets){
       result.data.replies.slice(0,2).forEach((x,i)=>{
         if(!x||typeof x!=='object')return;
         const c=makeDetailAIComment({residentId:x.residentId,text:x.text},i);
-        if(c)addedReplies.push({name:c.name,avatar:c.avatar,residentId:c.residentId,owner:'community',source:'forum-ai',text:c.text,time:Date.now()+i*1000,replyTo:String(x.replyTo||'我'),likes:0});
+        if(c)addedReplies.push({name:c.name,avatar:c.avatar,residentId:c.residentId,owner:'community',source:'forum-ai',text:c.text,time:Date.now()+i*1000,replyTo:submittedComment.name||'我',replyToType:'USER_SELF',replyToActorId:'me',replyToCommentId:submittedComment.id,likes:0});
       });
       if(!addedReplies.length){
         if(status)status.textContent='暂时没有新的回应，稍后再看看';
@@ -1355,7 +1363,7 @@ function mergeForumPosts(stored,seedPosts,previousSeedSets){
       // After posting from author-only view, reveal the reader's saved comment.
       if(gossipView==='author')gossipView='all';
       renderPost();renderComments();
-      await generateRepliesToUserComment(replyContainer,text||'（只附了一张图片）',assetIds);
+      await generateRepliesToUserComment(replyContainer,text||'（只附了一张图片）',assetIds,savedItem);
     }catch(error){
       toast(error&&error.message?error.message:'评论图片保存失败，请重试');
     }finally{

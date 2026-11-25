@@ -720,40 +720,34 @@ a:active, button:active, [role="button"]:active { transform: scale(0.97); }</sty
         }
 
         // 解析一条动态的真实发布者（用户本人 / AI 角色 / 兜底）
+        // Identity is derived from stored identifiers, never display names.
+        function momentActor(item, isComment) {
+            item = item || {};
+            var id = String((isComment ? item.roleId || item.authorId : item.authorId) || '');
+            var me = getMyInfo();
+            if (item.byAI === true || item.roleId) {
+                if (!id || id === 'me') return { type: 'UNKNOWN', id: '', name: item.name || item.author || '' };
+                return { type: 'AI_ROLE', id: id, name: item.name || item.author || '' };
+            }
+            if (id === 'me' || (id && id === String(me.id) && !getCharacterList().some(function (r) { return String(r.id) === id; }))) {
+                return { type: 'USER_SELF', id: 'me', name: me.name || '我' };
+            }
+            if (id && getCharacterList().some(function (r) { return String(r.id) === id; })) {
+                return { type: 'AI_ROLE', id: id, name: item.name || item.author || '' };
+            }
+            return { type: 'UNKNOWN', id: '', name: item.name || item.author || '' };
+        }
+        function sameMomentActor(a, b) {
+            return a.type !== 'UNKNOWN' && a.type === b.type && a.id === b.id;
+        }
         function resolvePoster(m) {
-            try {
-                var me = getMyInfo();
-
-                // 1) 用户本人：显式标记，或旧帖按当前昵称匹配，或无类型标记的历史用户帖
-                var isMe = m.authorId === 'me' ||
-                    (m.authorId == null && m.byAI !== true && (!m.author || m.author === me.name || m.author === '我'));
-                if (isMe) {
-                    return { name: me.name || m.author || '我', avatar: me.avatar || m.avatar || '' };
-                }
-
-                // 2) AI 角色：先按 id 查，再按名字兜底匹配
-                var characters = getCharacterList();
-                var role = null;
-                if (m.authorId != null && m.authorId !== 'me') {
-                    for (var i = 0; i < characters.length; i++) {
-                        if (String(characters[i].id) === String(m.authorId)) { role = characters[i]; break; }
-                    }
-                }
-                if (!role && m.author) {
-                    for (var j = 0; j < characters.length; j++) {
-                        if (characters[j].name && characters[j].name === m.author) { role = characters[j]; break; }
-                    }
-                }
-                if (role) {
-                    return { name: role.name || '', avatar: role.avatar || '' };
-                }
-            } catch (e) {}
-
-            // 3) 兜底：帖子自身快照（名字最终由渲染层兜底为「未知用户」）→ 空头像触发灰色 SVG
-            return { name: (m && m.author) || '', avatar: (m && m.avatar) || '' };
+            var actor = momentActor(m, false);
+            if (actor.type === 'USER_SELF') return { name: getMyInfo().name, avatar: getMyInfo().avatar };
+            var role = actor.type === 'AI_ROLE' && getCharacterList().find(function (r) { return String(r.id) === actor.id; });
+            return role ? { name: role.name || '', avatar: role.avatar || '' } : { name: m.author || '', avatar: m.avatar || '' };
         }
 
-        // 相对时间（评论等使用）
+
         function formatTime(ts) {
             var diff = Date.now() - ts;
             if (diff < 0) diff = 0;
@@ -787,7 +781,7 @@ a:active, button:active, [role="button"]:active { transform: scale(0.97); }</sty
             var me = getMyInfo();
             // 按可见权限过滤：自己的动态始终可见
             var list = allList.filter(function (m) {
-                var isMine = m.authorId === me.id || m.authorId === 'me' || m.author === me.name || m.byAI === true;
+                var isMine = momentActor(m, false).type === 'USER_SELF';
                 if (isMine) return true; // 自己发的 / AI 角色发的（已在朋友圈里）都显示
                 var v = m.visibility || 'public';
                 if (v === 'public') return true;
@@ -992,6 +986,7 @@ a:active, button:active, [role="button"]:active { transform: scale(0.97); }</sty
             var commentTime = Date.now();
             var commentEntry = {
                 id: 'mc_' + commentTime + '_' + Math.floor(Math.random() * 1000),
+                authorId: 'me',
                 name: meName,
                 author: meName,
                 avatar: myAvatar,
@@ -1068,24 +1063,19 @@ a:active, button:active, [role="button"]:active { transform: scale(0.97); }</sty
         }
 
         function findRoleForPost(post) {
-            var characters = getCharacterList();
-            var authorId = String(post && post.authorId || '');
-            if (authorId && authorId !== 'me') {
-                for (var i = 0; i < characters.length; i++) {
-                    if (String(characters[i].id) === authorId) return characters[i];
-                }
-            }
-            var authorName = String(post && post.author || '');
-            if (authorName && authorName !== getMyInfo().name && authorName !== '我') {
-                for (var j = 0; j < characters.length; j++) {
-                    if (String(characters[j].name || '') === authorName) return characters[j];
-                }
-            }
-            return null;
+            var actor = momentActor(post, false);
+            return actor.type === 'AI_ROLE' ? getCharacterList().find(function (r) { return String(r.id) === actor.id; }) || null : null;
         }
 
         function requestMomentRoleComment(post, role, userComment) {
             if (!post || !role || !role.id) return;
+            var postActor = momentActor(post, false);
+            var replyActor = userComment ? momentActor(userComment, true) : postActor;
+            if (postActor.type === 'UNKNOWN' || replyActor.type === 'UNKNOWN') return;
+            if (!userComment && postActor.type !== 'USER_SELF') return;
+            if (userComment && (postActor.type !== 'AI_ROLE' || postActor.id !== String(role.id))) return;
+            var visibility = String(post.visibility || 'public');
+            if (postActor.type === 'USER_SELF' && (visibility === 'private' || (visibility === 'custom' && !(post.visibleTo || []).map(String).includes(String(role.id))) || !['public','friends','custom'].includes(visibility))) return;
             var config = getApiConfig();
             var apiKey = String(config.apiKey || '').trim();
             if (!apiKey) return;
@@ -1094,27 +1084,27 @@ a:active, button:active, [role="button"]:active { transform: scale(0.97); }</sty
             var model = String(config.model || 'gpt-3.5-turbo').trim();
             var persona = String(role.persona || role.prompt || role.description || '一个有自己性格和表达方式的人').trim();
             var tone = String(role.tone || '').trim();
-            var postText = String(post.content || (post.image ? '[用户发布了一张图片]' : '[图片动态]')).slice(0, 800);
+            var postText = String(post.content || (post.image ? '[发布者上传了图片]' : '[图片动态]')).slice(0, 800);
             var userText = userComment
                 ? String(userComment.text || (userComment.image ? '[用户评论了一张图片]' : '[用户发来评论]')).slice(0, 400)
                 : '';
             var newline = String.fromCharCode(10);
             var recentComments = (Array.isArray(post.commentList) ? post.commentList : []).slice(-6).map(function (c) {
-                return String(c.name || c.author || '用户') + '：' + String(c.text || (c.image ? '[图片]' : '')).slice(0, 160);
+                return JSON.stringify({ actor: momentActor(c, true), text: String(c.text || (c.image ? '[图片]' : '')).slice(0, 160) });
             }).join(newline);
             var systemPrompt = '你是' + String(role.name || '一个角色') + '。角色人设：' + persona +
                 (tone ? '。说话语气：' + tone : '') +
-                '。你正在使用自己的社交空间账号。请始终保持这个角色的性格、关系、语气和表达习惯，不要变成客服或通用助手。' +
+                '。当前发言者身份是 AI_ROLE，ID=' + String(role.id) + '。只有 USER_SELF 是真实用户，AI_ROLE、NPC、UNKNOWN 均不得当成真实用户；昵称不是身份。保持当前角色人设。' +
                 '评论应像真实社交动态下的自然留言，简短、有针对性，不要解释规则，不要输出标题。';
             if (window.RolePublicTimeline && typeof window.RolePublicTimeline.buildRolePrompt === 'function') {
                 var commentTimelinePrompt = window.RolePublicTimeline.buildRolePrompt(role.id, loadMoments(), { maxEntries: 3 });
                 if (commentTimelinePrompt) systemPrompt += '\n\n' + commentTimelinePrompt;
             }
-            var userPrompt = '这条动态的内容：' + postText +
+            var userPrompt = '动态作者：' + JSON.stringify(postActor) + newline + '这条动态的内容：' + postText +
                 (recentComments ? newline + '这条动态下面最近的评论：' + newline + recentComments : '') +
-                (userComment ? newline + '现在需要你回复' + String(userComment.name || '用户') + '的这条评论：' + userText +
+                (userComment ? newline + '现在需要你回复此明确身份的评论者 ' + JSON.stringify(replyActor) + ' 的评论：' + userText +
                     newline + '请针对这条评论直接回应，必要时可以接住对方的话题，不要重复动态正文。'
-                 : newline + '这是用户本人发布的动态。请结合你的真实人设、你和用户的关系以及动态内容，写一条自然的评论。') +
+                 : newline + '根据上面的动态作者身份、你的人设和动态内容写一条自然评论。') +
                 newline + '只输出评论正文，20 至 60 字，不要加引号或解释。';
 
             var startedAt = Date.now();
@@ -1151,7 +1141,8 @@ a:active, button:active, [role="button"]:active { transform: scale(0.97); }</sty
 
                 var saved = loadMoments();
                 var target = findPost(saved, post.id);
-                if (!target) return;
+                if (!target || !sameMomentActor(momentActor(target, false), postActor) || !getCharacterList().some(function (r) { return String(r.id) === String(role.id); })) return;
+                if (userComment && !(target.commentList || []).some(function (entry) { return entry.id === userComment.id && sameMomentActor(momentActor(entry, true), replyActor); })) return;
                 if (!Array.isArray(target.commentList)) target.commentList = [];
                 if (!Array.isArray(target.comments)) target.comments = [];
                 var replyTime = Date.now();
@@ -1166,7 +1157,9 @@ a:active, button:active, [role="button"]:active { transform: scale(0.97); }</sty
                     time: replyTime,
                     timestamp: replyTime,
                     byAI: true,
-                    replyToName: userComment ? (userComment.name || '我') : (getMyInfo().name || '我'),
+                    replyToName: replyActor.name,
+                    replyToType: replyActor.type,
+                    replyToActorId: replyActor.id,
                     replyToCommentId: userComment && userComment.id ? String(userComment.id) : ''
                 };
                 target.commentList.push(entry);
@@ -1204,8 +1197,7 @@ a:active, button:active, [role="button"]:active { transform: scale(0.97); }</sty
             if (!post) return;
             var me = getMyInfo();
             var authorId = String(post.authorId || '');
-            var isMine = authorId === 'me' || authorId === String(me.id || 'me') ||
-                (!authorId && (!post.author || post.author === me.name || post.author === '我'));
+            var isMine = momentActor(post, false).type === 'USER_SELF';
             if (!isMine) return;
 
             var mentioned = (post.mentions || []).map(function (id) { return String(id); });
@@ -1302,6 +1294,7 @@ a:active, button:active, [role="button"]:active { transform: scale(0.97); }</sty
 
         /* ================= @好友触发 AI 回复 ================= */
         function triggerMentionsReply(post) {
+            if (momentActor(post, false).type !== 'USER_SELF') return;
             var characters = getCharacterList();
             if (!characters.length) return;
             var config = getApiConfig();
@@ -1326,7 +1319,7 @@ a:active, button:active, [role="button"]:active { transform: scale(0.97); }</sty
                 var systemPrompt = '你是' + (role.name || '一个角色') + '。角色设定：' + persona +
                     (tone ? '。说话语气：' + tone : '') +
                     '。现在有人在社交空间动态里 @ 了你，你需要以第一人称在那条动态下面评论回复。';
-                var userPrompt = '动态内容：' + content +
+                var userPrompt = '动态作者身份：USER_SELF，真实用户本人。动态内容：' + content +
                     '\n请写一条你对这条动态的评论回复，口语化、自然真实，20~50 字。' +
                     '只输出评论正文本身，不要加引号或解释。';
 
@@ -1375,6 +1368,8 @@ a:active, button:active, [role="button"]:active { transform: scale(0.97); }</sty
                         avatar: role.avatar || '',
                         text: text,
                         replyToName: getMyInfo().name || '我',
+                        replyToType: 'USER_SELF',
+                        replyToActorId: 'me',
                         roleId: String(role.id || ''),
                         time: Date.now(),
                         timestamp: Date.now(),

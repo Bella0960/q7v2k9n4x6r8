@@ -330,12 +330,17 @@
                 var moments = Storage.getMoments();
                 // 只保留属于该角色的动态（或所有人）
                 var mine = moments.filter(function (m) {
-                    return String(m.authorId || '') === String(contactId)
-                        || String(m.authorId || '') === 'me';
+                    var id = String(m.authorId || '');
+                    if (id === 'me' && m.byAI === true) return false;
+                    if (id === String(contactId) && id !== 'me') return true;
+                    if (id !== 'me') return false;
+                    var visibility = String(m.visibility || 'public');
+                    return visibility === 'public' || visibility === 'friends' ||
+                        (visibility === 'custom' && Array.isArray(m.visibleTo) && m.visibleTo.map(String).includes(String(contactId)));
                 }).slice(-5);
                 if (mine.length) {
                     chunks.push('【朋友圈动态】最近 ' + mine.length + ' 条：\n' + mine.map(function (m) {
-                        return '• ' + (m.content || '[图片]') + ' (' + agoLabel(m.time) + ')';
+                        return JSON.stringify({ actor: { type: String(m.authorId) === 'me' ? 'USER_SELF' : 'AI_ROLE', id: String(m.authorId), name: m.author || '' }, text: m.content || '[图片]', time: agoLabel(m.time) });
                     }).join('\n'));
                 }
             } catch (e) {}

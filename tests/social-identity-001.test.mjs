@@ -1,0 +1,13 @@
+import test from 'node:test';
+import assert from 'node:assert/strict';
+import fs from 'node:fs';
+import vm from 'node:vm';
+const moments=fs.readFileSync('chat/moments/moments.html','utf8');
+const forum=fs.readFileSync('forum/forum-detail.html','utf8');
+const code=moments.slice(moments.indexOf('function momentActor('),moments.indexOf('function resolvePoster('));
+const ctx={getMyInfo:()=>({id:'account-1',name:'同名'}),getCharacterList:()=>[{id:'a',name:'同名'},{id:'b',name:'我'}]};
+vm.createContext(ctx);vm.runInContext(code,ctx);
+test('same name and 我 never imply self',()=>{assert.equal(ctx.momentActor({author:'同名'},false).type,'UNKNOWN');assert.equal(ctx.momentActor({author:'我',authorId:'b'},false).type,'AI_ROLE');assert.equal(ctx.momentActor({authorId:'me'},false).type,'USER_SELF');assert.equal(ctx.momentActor({authorId:'me',byAI:true},false).type,'UNKNOWN');assert.equal(ctx.momentActor({name:'同名',roleId:'a',byAI:true},true).id,'a');assert.equal(ctx.sameMomentActor(ctx.momentActor({authorId:'a'},false),ctx.momentActor({authorId:'b'},false)),false);});
+const fc=vm.createContext({});vm.runInContext(forum.slice(forum.indexOf('function isOwn(c)'),forum.indexOf('function forumUtterance(c)')),fc);
+test('forum NPC named 我 is not user',()=>{assert.equal(fc.isOwn({name:'我',residentId:'npc',owner:'community'}),false);assert.equal(fc.isOwn({name:'我'}),false);assert.equal(fc.isOwn({name:'我',owner:'me',residentId:'npc'}),false);assert.equal(fc.forumActor({name:'我',owner:'me'}).type,'USER_SELF');assert.equal(fc.forumActor({name:'我',residentId:'npc',owner:'community'}).type,'NPC');});
+test('reply targets set from trusted submitted comment rather than model names',()=>{assert.match(forum,/replyToActorId:'me',replyToCommentId:submittedComment.id/);assert.doesNotMatch(forum,/replyTo:String\(x.replyTo\|\|'我'\)/);assert.match(moments,/replyToActorId: replyActor.id/);});
