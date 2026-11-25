@@ -1,6 +1,9 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {DatabaseSync} from 'node:sqlite';
+import {DatabaseSync,backup} from 'node:sqlite';
+import {mkdtemp,rm} from 'node:fs/promises';
+import {join} from 'node:path';
+import {tmpdir} from 'node:os';
 import {createMaoSocial} from '../worker/lib/mao-social.js';
 import {MIGRATIONS,applyMigrations,splitSql} from '../worker/lib/migrations.js';
 
@@ -27,7 +30,9 @@ test('0017-0019 append to the current migration history and are idempotent on a 
 });
 
 
-test('isolated core upgrade preserves preexisting accounts, sessions, invites and audit rows; old migration mode remains compatible',()=>{
+test('isolated core upgrade preserves preexisting accounts, sessions, invites and audit rows; old migration mode remains compatible',async()=>{
+ const directory=await mkdtemp(join(tmpdir(),'mao-core-recovery-'));
+ const snapshotPath=join(directory,'core-before-social.sqlite');
  const db=new DatabaseSync(':memory:');
  try{
   db.exec('PRAGMA foreign_keys=ON');
@@ -43,8 +48,9 @@ test('isolated core upgrade preserves preexisting accounts, sessions, invites an
   exec('INSERT INTO mao_invite_codes (id,token_hash,target_account_id,created_by_account_id,created_at,expires_at) VALUES (?,?,?,?,?,?)','synthetic-invite','synthetic-invite-hash',pending,founder,1,999999);
   exec('INSERT INTO mao_account_audit (id,actor_account_id,target_account_id,action,created_at) VALUES (?,?,?,?,?)','synthetic-audit',founder,pending,'synthetic-only',1);
   const tables=['mao_accounts','mao_account_sessions','mao_invite_codes','mao_account_audit'];
-  const snapshot=()=>tables.map(table=>exec('SELECT * FROM '+table+' ORDER BY id'));
+  const snapshot=(read=exec)=>tables.map(table=>read('SELECT * FROM '+table+' ORDER BY id'));
   const before=snapshot(),versions=exec('SELECT * FROM schema_migrations ORDER BY version');
+  await backup(db,snapshotPath);
   assert.deepEqual(applyMigrations(exec,10),['0017_mao_social','0018_mao_social_e2ee','0019_mao_social_e2ee_media']);
   assert.deepEqual(snapshot(),before);
   assert.deepEqual(exec('SELECT * FROM schema_migrations ORDER BY version').slice(0,versions.length),versions);
@@ -57,7 +63,21 @@ test('isolated core upgrade preserves preexisting accounts, sessions, invites an
   assert.deepEqual(snapshot(),before);
   assert.throws(()=>exec('INSERT INTO mao_accounts (id,username,username_key,password_salt,password_hash,role,status,created_at,updated_at) VALUES (?,?,?,?,?,?,?,?,?)','MAO-XXXXXXXXXXXX','bad-admin','bad-admin','synthetic','synthetic','super_admin','active',1,1),/UNIQUE|constraint/i);
   assert.equal(exec("SELECT COUNT(*) AS n FROM mao_accounts WHERE role='super_admin'")[0].n,1);
- }finally{db.close()}
+
+  const restored=new DatabaseSync(snapshotPath,{readOnly:true});
+  try {
+   const read=sql=>restored.prepare(sql).all();
+   assert.deepEqual(snapshot(read),before);
+   assert.deepEqual(read('SELECT * FROM schema_migrations ORDER BY version'),versions);
+   assert.equal(read('PRAGMA integrity_check')[0].integrity_check,'ok');
+   assert.deepEqual(read('PRAGMA foreign_key_check'),[]);
+  } finally {
+   restored.close();
+  }
+ }finally{
+  db.close();
+  await rm(directory,{recursive:true,force:true});
+ }
 });
 
 

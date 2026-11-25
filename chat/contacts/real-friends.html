@@ -83,14 +83,16 @@ function status(s){el('status').textContent=s;}
 function requestId(){if(window.crypto&&crypto.randomUUID)return 'req_'+crypto.randomUUID().replace(/-/g,'');var a=new Uint8Array(18);crypto.getRandomValues(a);return 'req_'+Array.from(a,x=>x.toString(16).padStart(2,'0')).join('');}
 function messageId(){return 'msgclient_'+requestId();}
 function explain(err){var o=err&&err.message||'操作失败';return o.length>220?o.slice(0,220):o;}
+var sessionEpoch=0;
 var authErrors=new Set(['ACCOUNT_CONTEXT_CHANGED','ACCOUNT_CONTEXT_REQUIRED','LOGIN_REQUIRED',
-'ACCOUNT_DISABLED','SOCIAL_SESSION_EXPIRED','SOCIAL_LOGIN_REQUIRED','SOCIAL_INVITE_REQUIRED']);
+'ACCOUNT_DISABLED','INVITE_REQUIRED','IDENTITY_AUTHORITY_CHANGED','SOCIAL_SESSION_EXPIRED','SOCIAL_LOGIN_REQUIRED','SOCIAL_INVITE_REQUIRED']);
 function closeChat(){
 clearTimer();chatEpoch++;activeMessageLoad=null;seenMessageSeq.clear();currentFriendshipId=null;
 currentChat=null;cursor=0;pendingMessageId=null;pendingMessageText=null;
 el('messages').textContent='';el('chatText').value='';el('chatPanel').hidden=true;
 }
 function clearPrivateSession(){
+sessionEpoch++;
 closeChat();resetCode();account=null;pendingSendId=null;pendingSendFingerprint=null;
 for(var key of ['incoming','outgoing','friends','approvals','codeLabel','friendCode','friendNote']){
 var node=el(key);if(node){if('value' in node)node.value='';else node.textContent='';}
@@ -99,6 +101,7 @@ for(var section of ['inviteSection','requestsSection','friendsSection','approval
 el('accountLabel').textContent='登录状态已变化，请重新进入。';
 }
 async function api(path,method,body){
+var epoch=sessionEpoch;
 var authContext=account&&account.id;
 // All authenticated MAO endpoints require the page account namespace,
 // not just the session cookie. /api/accounts/me works without it on first load.
@@ -106,10 +109,11 @@ var headers={Accept:'application/json',...(body?{'Content-Type':'application/jso
 if(authContext)headers['X-MAO-Account-Context']=authContext;
 var response=await fetch(path,{method:method||'GET',credentials:'same-origin',cache:'no-store',redirect:'error',
 headers:headers,...(body?{body:JSON.stringify(body)}:{})});
-var result;try{result=await response.json()}catch(e){throw new Error('服务器没有返回合法 JSON。');}
+var result=await response.json().catch(()=>null);
+if(epoch!==sessionEpoch)throw new Error('登录状态已变化，请重新进入。');
 if(!response.ok||!result||result.ok!==true){
 var code=result&&result.error&&result.error.code||'';
-if(authErrors.has(code))clearPrivateSession();
+if(response.status===401||authErrors.has(code))clearPrivateSession();
 else if(path.indexOf('/api/social/chats/')===0 &&
 ['SOCIAL_NOT_APPROVED','SOCIAL_BLOCKED','SOCIAL_ACCOUNT_NOT_ACTIVE','SOCIAL_CHAT_NOT_ENABLED'].includes(code))closeChat();
 throw new Error(result&&result.error&&result.error.message||code||'HTTP '+response.status);

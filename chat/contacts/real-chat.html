@@ -138,18 +138,26 @@ function resetVisible() {
 function stop() {
   closed=true;identityEpoch++;if(timer){clearInterval(timer);timer=null;}
   resetVisible();owner=null;device=null;peerKey=null;db?.close();db=null;
+  friendLabel='';
+  $('peerTitle').textContent='私人对话';
+  $('peerState').textContent='会话已关闭';
 }
 async function api(path,{method='GET',body}={}){
+  if(closed)throw new Error('会话已关闭');
+  const epoch=identityEpoch;
   const headers={accept:'application/json'};
   if(owner)headers['x-mao-account-context']=owner.id;
   if(body)headers['content-type']='application/json';
   const res=await fetch(path,{method,headers,credentials:'same-origin',
     cache:'no-store',redirect:'error',...(body?{body:JSON.stringify(body)}:{})});
   const data=await res.json().catch(()=>null);
+  if(closed||epoch!==identityEpoch)throw new Error('会话已关闭');
   if(!res.ok||data?.ok!==true){
     const code=data?.error?.code||'NETWORK_ERROR';
-    if(['ACCOUNT_CONTEXT_CHANGED','ACCOUNT_DISABLED','LOGIN_REQUIRED','SOCIAL_SESSION_EXPIRED',
-      'SOCIAL_NOT_APPROVED','SOCIAL_BLOCKED','SOCIAL_ACCOUNT_NOT_ACTIVE'].includes(code)){
+    if(res.status===401||['ACCOUNT_CONTEXT_CHANGED','ACCOUNT_DISABLED','INVITE_REQUIRED',
+      'IDENTITY_AUTHORITY_CHANGED','SOCIAL_INVITE_REQUIRED','SOCIAL_NOT_APPROVED',
+      'SOCIAL_BLOCKED','SOCIAL_ACCOUNT_NOT_ACTIVE','SOCIAL_FRIENDSHIP_CHANGED',
+      'E2EE_KEY_CHANGED'].includes(code)){
       stop();setStatus('登录或好友关系已变化，请返回好友列表核对。',true);
     }
     throw new Error(data?.error?.message||'聊天服务器暂不可用');
@@ -749,6 +757,7 @@ $('compose').addEventListener('submit',async e=>{
       const envelope=await encryptText(text,key,{friendshipId:relation,
         senderId:ownerId,recipientId:peer,clientMessageId,
         sk:device.keyId,rk:peerKey.keyId});
+      if(closed||identityEpoch!==stamp||friendshipId!==relation)return;
       pending={text,friendshipId:relation,clientMessageId,envelope};
     }
     const result=await api('/api/social/e2ee/chats/'+encodeURIComponent(peer)+'/messages',
@@ -769,6 +778,9 @@ document.addEventListener('visibilitychange',()=>{
   if(document.visibilityState==='visible'&&!closed)fetchMessages();
 });
 window.addEventListener('pagehide',stop);
+window.addEventListener('pageshow',event=>{
+  if(event.persisted)location.reload();
+});
 start();
 </script>
 </body>

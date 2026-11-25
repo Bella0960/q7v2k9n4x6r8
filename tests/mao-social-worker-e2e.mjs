@@ -22,7 +22,6 @@ import { createDeviceIdentity, conversationKey, encryptText, decryptText } from 
 import { encryptMedia, decryptMedia, makeMediaMarker } from '../chat/contacts/real-chat-media.mjs';
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
-const VARS_PATH = path.join(ROOT, '.dev.vars');
 const PASSWORD = 'Temp-account-test-123456!';
 const WRANGLER_VERSION = '4.161.0';
 
@@ -47,19 +46,29 @@ function cookieHeader(response) {
 }
 
 async function main() {
-  if (existsSync(VARS_PATH)) {
-    throw new Error('Refusing to overwrite existing .dev.vars; run from an isolated checkout.');
-  }
   if (!existsSync(path.join(ROOT, 'dist', 'index.html'))) {
     throw new Error('Missing dist/index.html; run npm run build before this test.');
   }
   const secret = randomBytes(40).toString('base64url');
   const pepper = randomBytes(40).toString('base64url');
   const stateDir = await mkdtemp(path.join(os.tmpdir(), 'maomao-social-e2e-'));
+  const configPath = path.join(stateDir, 'wrangler.json');
   let child = null;
   const checks = [];
   try {
-    await writeFile(VARS_PATH,
+    await writeFile(configPath, JSON.stringify({
+      name: 'mao-social-local-test',
+      main: path.join(ROOT, 'worker.js'),
+      compatibility_date: '2026-10-27',
+      compatibility_flags: ['nodejs_compat'],
+      assets: {
+        directory: path.join(ROOT, 'dist'), binding: 'ASSETS',
+        html_handling: 'none', run_worker_first: true
+      },
+      durable_objects: {bindings: [{name:'CLOUD_DB', class_name:'CloudDatabase'}]},
+      migrations: [{tag:'v1', new_sqlite_classes:['CloudDatabase']}]
+    }));
+    await writeFile(path.join(stateDir, '.dev.vars'),
       'MAO_SUPER_ADMIN_BOOTSTRAP_SECRET=' + secret + '\n' +
       'DEVICE_SECRET_PEPPER=' + pepper + '\n' +
       'MAO_SOCIAL_ENABLED=true\n' +
@@ -72,7 +81,7 @@ async function main() {
     const npx = process.platform === 'win32' ? 'npx.cmd' : 'npx';
     child = spawn(npx, [
       '--yes', 'wrangler@' + WRANGLER_VERSION,
-      'dev', '--config', 'wrangler.preview.jsonc',
+      'dev', '--config', configPath,
       '--local', '--ip', '127.0.0.1', '--port', String(port),
       '--persist-to', stateDir
     ], {
@@ -452,6 +461,13 @@ async function main() {
     assert.equal(afterBlock.payload.friends.length, 0);
     pass('blocking removes the friend relationship from both account views');
 
+    const logout = await post('/api/accounts/logout', {}, {cookie: aliceCookie, accountId: alice.id});
+    assert.equal(logout.status, 200);
+    const revoked = await request('/api/social/e2ee/conversations',
+      {cookie: aliceCookie, accountId: alice.id});
+    assert.equal(revoked.status, 401);
+    pass('logout revokes the same cookie for encrypted social routes');
+
     console.log('ALL PASS: ' + checks.length + ' isolated Wrangler/SQLite Worker runtime assertions');
   } finally {
     if (child) {
@@ -472,7 +488,6 @@ async function main() {
       child.stdout?.destroy();
       child.stderr?.destroy();
     }
-    await rm(VARS_PATH, { force: true });
     await rm(stateDir, { recursive: true, force: true, maxRetries: 3, retryDelay: 200 });
   }
 }
