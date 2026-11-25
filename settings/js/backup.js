@@ -1034,7 +1034,7 @@
                         skipped++;
                         return;
                     }
-                    if (strict && value && typeof value === 'object') value = Object.assign({},value);
+                    if (strict && blobFields.length && value && typeof value === 'object') value = Object.assign({},value);
                     // blobFields 反向解码：base64 字符串 → Blob 实例；解码失败整条跳过。
                     // MIME 优先读伴生字段 __blobMime_<fieldName>（导出时写入），
                     // 无伴生字段时 fallback 到 value.format（字体预设兼容），
