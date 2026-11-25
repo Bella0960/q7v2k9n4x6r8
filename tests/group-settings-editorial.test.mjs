@@ -371,3 +371,38 @@ test('group settings binds initial account and edit snapshots instead of reloadi
   assert.ok(html.includes('writePreference(noticeSnapshot,val)'));
   assert.ok(html.includes("targets.length===1&&rid!=='__user'"));
 });
+
+
+test('group wallpaper transaction rejects stale background and scope and never overwrites other keys',async()=>{
+  const source=read('shared/js/wallpaper-store.js');
+  const start=source.indexOf('  function groupBackgroundKey('),end=source.indexOf('  function removeByKey(',start);
+  assert.ok(start>=0&&end>start);
+  const code=source.slice(start,end);
+  const A='data:image/png;base64,AAAA',B='data:image/png;base64,BBBB',C='data:image/png;base64,CCCC',K='chat_bg_g1';
+  function setup(){
+    const images=new Map([[K,{dataUrl:A}],['chat_bg_g2',{dataUrl:C}],['home_custom_wallpaper',{dataUrl:C}]]),legacy=new Map(),state={valid:true,writes:0};
+    const db={transaction(){let aborted=false,staged;const tx={abort(){aborted=true;queueMicrotask(()=>tx.onabort())},objectStore(){return {
+      get(key){const r={};queueMicrotask(()=>{r.result=images.get(key);r.onsuccess()});return r},
+      put(value,key){const r={};staged=[key,value];queueMicrotask(()=>{if(aborted)return;if(state.fail){tx.onerror();return}if(state.onPut)state.onPut();r.onsuccess();if(!aborted){images.set(...staged);state.writes++;queueMicrotask(()=>tx.oncomplete())}});return r}
+    }}};return tx}};
+    const ctx={window:{localStorage:{getItem:k=>legacy.get(k)??null,removeItem:k=>legacy.delete(k)}},STORE_NAME:'wallpapers',openDB:()=>state.unavailable?Promise.reject(Error('DB offline')):Promise.resolve(db),readDB:k=>Promise.resolve(images.get(k)?.dataUrl||''),Date,Promise,Error};
+    vm.runInNewContext(code,ctx);return {...ctx,state,images,legacy,check:()=>state.valid};
+  }
+  {const s=setup();s.images.delete(K);s.legacy.set(K,A);const snap=await s.snapshotGroupBackground(K,s.check);assert.equal(snap.legacy,A);assert.equal(s.images.has(K),false);assert.equal(s.state.writes,0);}
+  {const s=setup();const snap=await s.snapshotGroupBackground(K,s.check);assert.equal(await s.saveGroupBackground(snap,B,s.check),true);assert.equal(s.images.get(K).dataUrl,B);assert.equal(s.images.get('chat_bg_g2').dataUrl,C);assert.equal(s.images.get('home_custom_wallpaper').dataUrl,C);}
+  {const s=setup();const snap=await s.snapshotGroupBackground(K,s.check);s.images.set(K,{dataUrl:C});await assert.rejects(s.saveGroupBackground(snap,B,s.check));assert.equal(s.images.get(K).dataUrl,C);}
+  {const s=setup();const snap=await s.snapshotGroupBackground(K,s.check);s.legacy.set(K,C);await assert.rejects(s.saveGroupBackground(snap,B,s.check));assert.equal(s.legacy.get(K),C);assert.equal(s.images.get(K).dataUrl,A);}
+  {const s=setup();const snap=await s.snapshotGroupBackground(K,s.check);s.state.valid=false;await assert.rejects(s.saveGroupBackground(snap,B,s.check));assert.equal(s.state.writes,0);}
+  {const s=setup();const snap=await s.snapshotGroupBackground(K,s.check);s.state.onPut=()=>s.state.valid=false;await assert.rejects(s.saveGroupBackground(snap,B,s.check));assert.equal(s.images.get(K).dataUrl,A);assert.equal(s.state.writes,0);}
+  {const s=setup();const snap=await s.snapshotGroupBackground(K,s.check);s.state.fail=true;await assert.rejects(s.saveGroupBackground(snap,B,s.check));assert.equal(s.images.get(K).dataUrl,A);}
+  {const s=setup();const snap=await s.snapshotGroupBackground(K,s.check);s.state.unavailable=true;await assert.rejects(s.saveGroupBackground(snap,B,s.check));assert.equal(s.legacy.has(K),false);}
+  {const s=setup();for(const key of ['chat_bg_r1','home_custom_wallpaper','chat_bg_g'])await assert.rejects(s.snapshotGroupBackground(key,s.check));}
+  {const s=setup();s.legacy.set(K,A);const snap=await s.snapshotGroupBackground(K,s.check);assert.equal(await s.saveGroupBackground(snap,B,s.check),true);assert.equal(s.legacy.has(K),false);}
+});
+test('group wallpaper page preserves existing key and uses selection-time snapshot',()=>{
+  assert.ok(html.includes("var BG_KEY = 'chat_bg_' + roleId"));
+  assert.ok(html.includes('groupBackgroundSelection={scope:scope,snapshot:'));
+  assert.ok(html.includes('wallpaperStore.saveGroupBackground(snapshot,dataUrl'));
+  assert.ok(html.includes('return saveBackgroundImage(dataUrl,selection)'));
+  assert.ok(html.includes('saved!==true||!groupBackgroundCheck(selection.scope)'));
+});
