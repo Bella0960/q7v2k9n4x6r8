@@ -75,3 +75,14 @@ test('real Web Crypto validates known content and rejects flipped bytes',async()
  assert.equal(await verify(payload()),'');
  assert.ok(await verify(payload('YWJk')));
 });
+
+function assetReferenceFixture(){
+ const start=source.indexOf('    function validateRestorePayload('),end=source.indexOf('    // Match MediaRepository',start);
+ const defs=[{db:'maomao-assets',stores:[{store:'assets',keyPath:'assetId'},{store:'blobs',keyPath:'assetId',blobFields:['blob']},{store:'refs',keyPath:'assetId'},{store:'image_records',keyPath:'id'}]}];
+ const validate=new Function('backupTargets',source.slice(start,end)+'\nreturn validateRestorePayload;')(()=>defs);
+ const obj={__backup:{schema:2},data:{chat_history_A:'[]'},indexedDB:{'maomao-assets':{assets:[{assetId}],blobs:[{assetId,blob:'YWJj'}],refs:[],image_records:[{id:'img',characterId:'A',assetId}]}}};
+ return {validate,obj,media:obj.indexedDB['maomao-assets']};
+}
+test('valid generated image reference accepted',()=>{const f=assetReferenceFixture();assert.equal(f.validate(f.obj,''),'');});
+test('generated image reference without original rejected',()=>{const f=assetReferenceFixture();f.media.image_records[0].assetId='missing';assert.ok(f.validate(f.obj,''));});
+test('generated image with missing metadata rejected',()=>{const f=assetReferenceFixture();f.media.assets=[];assert.ok(f.validate(f.obj,''));});
