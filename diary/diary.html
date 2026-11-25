@@ -1375,7 +1375,7 @@ html,body{background:#f7f7f8}
 
   // ===== Char 自己往本子上写日记 =====
   function maybeAutoWriteCharEntry(){
-    if(!peekEnabled())return;
+    if(maybeAutoWriteCharEntry.inFlight||!peekEnabled())return;
     if(!window.PhoneAPI||typeof PhoneAPI.complete!=='function')return;
     var role=peekCurrentRole(),token;if(!role)return;
     try{token=diaryAccountToken();}catch(e){return;}
@@ -1384,7 +1384,8 @@ html,body{background:#f7f7f8}
     if(Date.now()-last<6*3600*1000)return; // 6 小时内不重复写
     var system;try{system='为当前虚构角色创作一篇自己的私人日记。以该角色既定的身份、背景、性格、习惯和表达方式组织文字，约200-400字。主题可为角色的日常、兴趣、观察或心情；情节属于虚构创作，不把未提供的用户经历当成事实，不擅自修改角色姓名、职业、背景、关系或经历。只输出日记正文，不要标题、前言或分点。\n'+diaryRoleContext(role,'角色日常日记 '+todayKey(),true);}catch(e){showToast(e.message);return;}
     var user='今天日期：'+new Date().toLocaleDateString('zh-CN')+'。写今天的日记。';
-    PhoneAPI.complete({system:system,user:user,temperature:0.85,timeoutMs:25000}).then(function(text){
+    maybeAutoWriteCharEntry.inFlight=true;
+    return Promise.resolve().then(function(){return PhoneAPI.complete({system:system,user:user,temperature:0.85,timeoutMs:25000});}).then(function(text){
       text=String(text||'').trim();
       if(text.length<20||!peekEnabled()||!diaryRoleReplyValid(role,text)||diaryAccountToken()!==token||!diaryCharacters().some(function(r){return r.id===role.id;}))return;
       var entry={id:'d_char_'+Date.now().toString(36)+'_'+Math.random().toString(36).slice(2,6),createdAt:new Date().toISOString(),date:todayKey(),title:'',content:text.slice(0,2000),mood:'平静',noteType:'日记',author:String(role.id),authorName:role.name,favorite:false,pinned:false,charWritten:true};
@@ -1392,7 +1393,7 @@ html,body{background:#f7f7f8}
       if(!persist()){entries.pop();return}
       try{localStorage.setItem(lastKey,String(Date.now()))}catch(e){}
       render();
-    }).catch(function(err){console.warn('[Char Peek] Char 写日记失败:',err&&err.message?err.message:err)});
+    }).catch(function(){showToast('角色日记生成失败，未保存');}).finally(function(){maybeAutoWriteCharEntry.inFlight=false;});
   }
   setTimeout(maybeAutoWriteCharEntry,3000);
 })();
