@@ -1299,7 +1299,7 @@ button:focus-visible,input:focus-visible,select:focus-visible{outline:1px solid 
             return who + '：' + String(m.text || m.content || m.desc || '').trim();
         }).filter(Boolean).join('\n');
         // Keep summary input bounded. The original messages are never changed or deleted.
-        if (transcript.length > 4000) transcript = transcript.slice(0, 3800) + '\n…（摘要输入达到上限，原文仍完整保留）';
+        if (transcript.length > 4000) { alert('本批文字超过整理上限，请缩小范围；原记录及进度均保留。'); return; }
         const btn = isAll ? document.getElementById('btnManualAll') : document.getElementById('btnManualRecent');
         btn.disabled = true;
         const oldText = btn.textContent;
@@ -1595,6 +1595,9 @@ button:focus-visible,input:focus-visible,select:focus-visible{outline:1px solid 
                 renderLib();
             } catch (err) {
                 alert('合并失败：' + (err.name === 'AbortError' ? '请求超时' : '网络错误'));
+            } finally {
+                btn.disabled = false;
+                btn.textContent = '确认合并';
             }
         });
     }
@@ -1654,7 +1657,7 @@ button:focus-visible,input:focus-visible,select:focus-visible{outline:1px solid 
     // 手动总结按钮
     document.getElementById('btnManualRecent').addEventListener('click', () => {
         const n = parseInt(document.getElementById('manualRange').value, 10);
-        const slice = readHistory(currentMemId).slice(-(isNaN(n) || n < 1 ? 30 : n));
+        const slice = readHistory(currentMemId).slice(-Math.min(30, isNaN(n) || n < 1 ? 30 : n));
         runSummary(slice, false);
     });
     document.getElementById('btnManualAll').addEventListener('click', () => {
