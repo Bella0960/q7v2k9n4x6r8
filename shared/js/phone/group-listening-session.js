@@ -163,10 +163,13 @@
     }
     function setQueue(token,ids){
       const denied=authorize(token);if(denied)return denied;
-      if(!Array.isArray(ids)||ids.length>100||new Set(ids).size!==ids.length||!validQueueTracks(ids)||
-        (session.trackId!==null&&!ids.includes(session.trackId)))return fail('INVALID_QUEUE');
+      if(!Array.isArray(ids)||ids.length>100)return fail('INVALID_QUEUE');
+      // Densify before validation: Array#some/every skip sparse slots.
+      const queue=Array.from(ids);
+      if(new Set(queue).size!==queue.length||!validQueueTracks(queue)||
+        (session.trackId!==null&&!queue.includes(session.trackId)))return fail('INVALID_QUEUE');
       if(!ensure())return fail('SCOPE_CHANGED');
-      session.queue=ids.slice();session.revision++;return ok('queue');
+      session.queue=queue;session.revision++;return ok('queue');
     }
     function join(token,id){
       const denied=authorize(token);if(denied)return denied;

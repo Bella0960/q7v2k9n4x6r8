@@ -173,3 +173,20 @@ test('queue replacement cancels an outstanding old source and copies caller queu
  assert.equal((await pending).ok,false);assert.deepEqual(h.api.getSnapshot().queue,['b','a']);
  assert.equal(h.audio.src,'');assert.equal((await h.api.play(done.snapshot)).ok,true);h.api.destroy();
 });
+
+test('sparse queue update cannot replace active queue or interrupt playback',async()=>{
+ for(const useBatch of [false,true]){
+  const h=fixture();
+  if(useBatch)h.opts.catalog.listTracks=()=>({ok:true,tracks:[...h.tracks.values()]});
+  try{
+   const s=(await h.api.play(ready(h))).snapshot,source=h.audio.src;
+   const sparse=['a'];sparse.length=2;
+   assert.equal(h.api.setQueue(s,sparse).code,'INVALID_QUEUE');
+   assert.equal(h.api.getSnapshot().revision,s.revision);
+   assert.deepEqual(h.api.getSnapshot().queue,['a']);
+   assert.equal(h.audio.src,source);assert.equal(h.audio.paused,false);
+   const valid=h.api.setQueue(s,['a','b']);assert.equal(valid.ok,true);
+   assert.deepEqual(valid.snapshot.queue,['a','b']);
+  }finally{h.api.destroy();}
+ }
+});
