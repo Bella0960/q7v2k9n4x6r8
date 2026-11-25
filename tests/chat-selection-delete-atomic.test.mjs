@@ -85,7 +85,7 @@ function scenario(options = {}) {
   const context = {
     window, document, localStorage,
     currentCharacter: { id: 'role-1' }, storageKey: key,
-    _chatHistoryUnreadable: false,
+    _chatHistoryUnreadable: false, isGroupChat: false,
     selectedBubbles: new Set(options.selection ?? ['m1']),
     loadMessages() { return JSON.parse(localStorage.getItem(key)); },
     ensureMid(m) { return m.mid; },
@@ -229,7 +229,7 @@ function clearScenario(options = {}) {
   const ctx = {
     window, document, navigator, localStorage,
     currentCharacter: { id: 'role-1' }, storageKey: key,
-    _chatHistoryUnreadable: false,
+    _chatHistoryUnreadable: false, isGroupChat: false,
     chatMessages: { innerHTML: 'old bubbles' },
     loadMessages() { return JSON.parse(localStorage.getItem(key)); },
     openModal(_title, html) {
@@ -385,7 +385,7 @@ function singleDeleteScenario(options = {}) {
   const context = {
     window, document, navigator, localStorage,
     currentCharacter: { id: 'role-1' }, storageKey: key,
-    _chatHistoryUnreadable: false,
+    _chatHistoryUnreadable: false, isGroupChat: false,
     loadMessages() { return JSON.parse(localStorage.getItem(key)); },
     resolveBubbleInPage(bubbleId) {
       const message = original.find(m => m.mid === bubbleId);
@@ -522,7 +522,7 @@ function editScenario(options = {}) {
   runInNewContext(messagePolicySource, { window, globalThis: window });
   const context = {
     window, document, localStorage, navigator,
-    currentCharacter: { id: 'role-1' }, storageKey: key, _chatHistoryUnreadable: false,
+    currentCharacter: { id: 'role-1' }, storageKey: key, _chatHistoryUnreadable: false, isGroupChat: false,
     loadMessages() {
       const snapshot = JSON.parse(localStorage.getItem(key));
       snapshots.push(snapshot);

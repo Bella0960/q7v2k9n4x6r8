@@ -41,7 +41,7 @@ function locks() {
 const helpers = section('        async function appendChatSafely(messages, guard) {',
     '        function saveMessages(list) {');
 const makeHelpers = new Function('window', 'currentCharacter', 'storageKey', 'showToast',
-    '_chatHistoryUnreadable', helpers + '\nreturn { appendChatSafely, replaceChatSafely };');
+    '_chatHistoryUnreadable', 'isGroupChat', helpers + '\nreturn { appendChatSafely, replaceChatSafely };');
 
 function tab(localStorage, lock, id = 'role') {
     const window = { localStorage, navigator: lock ? { locks: lock } : {} };
@@ -51,7 +51,7 @@ function tab(localStorage, lock, id = 'role') {
         window,
         toasts,
         ...makeHelpers(window, { id }, 'chat_history_' + id,
-            text => toasts.push(text), false)
+            text => toasts.push(text), false, false)
     };
 }
 
