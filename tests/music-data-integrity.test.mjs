@@ -9,6 +9,7 @@ import { runInNewContext, Script } from 'node:vm';
 
 const music = readFileSync(new URL('../music/music.html', import.meta.url), 'utf8');
 const backup = readFileSync(new URL('../settings/js/backup.js', import.meta.url), 'utf8');
+const controller = readFileSync(new URL('../shared/js/phone/music-playback-controller.js', import.meta.url), 'utf8');
 
 test('MUSIC-UI-001: actual embedded player script is syntactically valid', () => {
   const scripts = [...music.matchAll(/<script\s*>([\s\S]*?)<\/script>/g)];
@@ -22,7 +23,9 @@ test('MUSIC-UI-001: native-status ownership, favorites and playback remain', () 
   assert.match(music, /location\.hash === '#favorites'\) showFav\(\)/);
   assert.match(music, /id="audioPlayer"/);
   assert.match(music, /await getAudioBlob\(t\.id\)/);
-  assert.match(music, /window\.audio\.play\(\)/);
+  assert.match(music, /musicController\.play\(trackId\)/);
+  assert.match(controller, /await audio\.play\(\)/);
+  assert.doesNotMatch(music, /window\.audio\.play\(\)/);
 });
 
 test('MUSIC-IMPORT-002: existing settings opens multi-file MP3 picker without removing earlier controls', () => {
@@ -63,7 +66,9 @@ test('MUSIC-UI-001: import persists binary then catalog, rejects quota errors, p
   const play = music.slice(music.indexOf('async function playTrack(trackId)'), music.indexOf('function prevTrack()'));
   assert.doesNotMatch(play, /removeTrackFromFav\(/);
   assert.doesNotMatch(play, /removeTrackFromRecent\(/);
-  assert.match(play, /try \{ await window\.audio\.play\(\); \}/);
+  assert.match(play, /await musicController\.play\(trackId\)/);
+  assert.match(play, /if \(!result\.ok\)/);
+  assert.match(controller, /try\{await audio\.play\(\);\}catch\{return fail\(ticket,'PLAY_REJECTED'\);\}/);
 });
 
 test('MUSIC-UI-001: real cover assets and no base64 music image persistence', () => {
@@ -195,7 +200,8 @@ test('MUSIC-UI-001: no fake statusbar and local audio can resume after reload', 
   assert.doesNotMatch(music, /<div class="phone-camera"><\/div>/);
   assert.match(music, /src="\.\.\/shared\/js\/statusbar-control\.js"/);
   const play = music.slice(music.indexOf('async function togglePlay()'), music.indexOf('// 音频事件', music.indexOf('async function togglePlay()')));
-  assert.match(play, /selected\.source === 'local' && !currentBlobUrl/);
+  assert.match(play, /selected && !musicHasConfirmedSource\(selected\)/);
+  assert.match(controller,/function clearSource\(\)/);
   assert.match(play, /await playTrack\(selected\.id\)/);
   assert.match(play, /resumeTime > 0/);
 });

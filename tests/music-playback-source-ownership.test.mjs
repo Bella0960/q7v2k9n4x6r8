@@ -2,23 +2,26 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import {readFileSync} from 'node:fs';
 const page=readFileSync(new URL('../music/music.html',import.meta.url),'utf8');
-const helpers=page.slice(page.indexOf('  let currentBlobUrl = null;'),page.indexOf('  // ===== IndexedDB：audio store'));
+const moduleSource=readFileSync(new URL('../shared/js/phone/music-playback-controller.js',import.meta.url),'utf8');
+const helpers=page.slice(page.indexOf('  const musicController = window.MAOMusicPlaybackController.create('),page.indexOf('  // ===== IndexedDB：audio store'));
 const player=page.slice(page.indexOf('  async function playTrack(trackId)'),page.indexOf('  // 音频事件：进度更新'));
-assert.ok(helpers.includes('function musicPlaybackFailure') && player.includes('async function togglePlay'));
+assert.ok(helpers.includes('function musicPlaybackMessage') && player.includes('async function togglePlay'));
 function fixture(){
  const tracks=[{id:'a',name:'A',artist:'a',source:'local'},{id:'b',name:'B',artist:'b',source:'local'},{id:'c',name:'C',artist:'c',source:'local'}];
  const revokes=[],saved=[],events=[],toasts=[],elements=new Map();
- let nextUrl=0,read=async id=>({id}),start=async()=>{audio.paused=false};
- const audio={src:'',paused:true,ended:false,currentTime:0,duration:12,pause(){this.paused=true},removeAttribute(k){if(k==='src')this.src=''},load(){this.currentTime=0;this.ended=false;this.paused=true},play(){return start()}};
+ let nextUrl=0,read=async id=>({id}),start=async()=>{audio.paused=false},scope='test-account';
+ const audio={src:'',paused:true,ended:false,currentTime:0,duration:12,pause(){this.paused=true},removeAttribute(k){if(k==='src')this.src=''},load(){this.currentTime=0;this.ended=false;this.paused=true},play(){return start()},addEventListener(){},removeEventListener(){}};
  const document={getElementById(id){if(!elements.has(id))elements.set(id,{style:{}});return elements.get(id)}};
  const store={getItem(){return null},setItem(){},};
  const env={window:{audio,isShuffle:false},tracks,document,URL:{createObjectURL:()=> 'blob:'+ ++nextUrl,revokeObjectURL:url=>revokes.push(url)},getAudioBlob:id=>read(id),getTrackById:id=>tracks.find(t=>t.id===id),toast:m=>toasts.push(m),updatePlayIcon(){},renderAlbum(){},updateHeartIcon(){},closeImportSheet(){},renderTrackLyrics(){},musicDisplayArtist:t=>t.artist,readRecentIds:()=>[],saveRecentIds(){},localStorage:store,musicWarnOnce(){},showNP(){},musicApplyCurrentCover:async()=>{},musicEmitPlayback:type=>events.push({type,paused:audio.paused}),navigator:{},setTimeout(){}};
+ env.window.MAOGroupWriteGuard={account:()=>scope};env.window.URL=env.URL;
+ new Function('window',moduleSource)(env.window);
  const api=new Function('e',`const {window,tracks,document,URL,getAudioBlob,getTrackById,toast,updatePlayIcon,renderAlbum,updateHeartIcon,closeImportSheet,renderTrackLyrics,musicDisplayArtist,readRecentIds,saveRecentIds,localStorage,musicWarnOnce,showNP,musicApplyCurrentCover,musicEmitPlayback,navigator,setTimeout}=e;
- let playbackRevision=0,pendingPlayback=false,playbackSourceTrackId=null,currentIdx=0,playing=false;
+ let currentIdx=0,playing=false;
  function saveState(){e.saved(tracks[currentIdx].id)}
  `+helpers+player+`
- return {playTrack,togglePlay,musicPauseNative,musicDiscardAudioSource,state:()=>({id:tracks[currentIdx].id,source:playbackSourceTrackId,pending:pendingPlayback,playing,confirmed:musicHasConfirmedSource(tracks[currentIdx])})};`)({...env,saved:id=>saved.push(id)});
- return {api,audio,revokes,saved,events,toasts,read(fn){read=fn},start(fn){start=fn}};
+ return {playTrack,togglePlay,musicPauseNative,musicDiscardAudioSource,controller:musicController,state:()=>({id:tracks[currentIdx].id,source:musicController.getState().trackId,pending:musicController.getState().pending,playing,confirmed:musicHasConfirmedSource(tracks[currentIdx])})};`)({...env,saved:id=>saved.push(id)});
+ return {api,audio,revokes,saved,events,toasts,read(fn){read=fn},start(fn){start=fn},scope(value){scope=value},factory:env.window.MAOMusicPlaybackController};
 }
 test('failed native switch cannot label rejected bytes as previous track; retry reopens original',async()=>{
  const h=fixture();assert.equal(await h.api.playTrack('a'),true);
@@ -53,14 +56,14 @@ test('latest fast switch wins and obsolete deferred request cannot revoke active
 });
 test('pause during pending native play discards unconfirmed URL; late reject cannot change state',async()=>{
  const h=fixture();await h.api.playTrack('a');let reject;
- h.start(()=>new Promise((_,no)=>{reject=no}));const work=h.api.playTrack('b');await Promise.resolve();
+ h.start(()=>new Promise((_,no)=>{reject=no}));const work=h.api.playTrack('b');for(let i=0;i<12&&!reject;i++)await Promise.resolve();assert.equal(typeof reject,'function');
  const unconfirmed=h.audio.src;await h.api.togglePlay();reject(Error('AbortError'));assert.equal(await work,false);
  assert.equal(h.audio.src,'');assert.equal(h.api.state().source,null);assert.ok(h.revokes.includes(unconfirmed));assert.deepEqual(h.saved,['a']);
 });
 test('page teardown cancels pending work and revokes current URL',async()=>{
  const h=fixture();await h.api.playTrack('a');const url=h.audio.src;
  h.api.musicPauseNative();h.api.musicDiscardAudioSource();assert.equal(h.audio.src,'');assert.ok(h.revokes.includes(url));assert.equal(h.api.state().playing,false);
- assert.match(page,/window\.addEventListener\('pagehide', function\(\) \{\s*musicPauseNative\(\);\s*musicDiscardAudioSource\(\)/);
+ assert.match(page,/window\.addEventListener\('pagehide', function\(\) \{\s*musicPauseNative\(\);\s*musicEmitPlayback\('pause'\);\s*musicDiscardAudioSource\(\)/);
 });
 
 test('an obsolete failed read cannot publish an error over a newer confirmed song',async()=>{
@@ -69,4 +72,17 @@ test('an obsolete failed read cannot publish an error over a newer confirmed son
  const pending=h.api.playTrack('b');assert.equal(await h.api.playTrack('c'),true);const count=h.events.length;
  reject(Error('stale read'));assert.equal(await pending,false);
  assert.equal(h.events.length,count);assert.equal(h.api.state().id,'c');assert.equal(h.api.state().playing,true);
+});
+
+test('shared controller rejects a second owner for the same native audio element',async()=>{
+ const h=fixture();assert.throws(()=>h.factory.create({audio:h.audio,getTrack:()=>null,resolveSource:async()=>null,getScope:()=>''}),/already controlled/);
+ h.api.controller.dispose();const newOwner=h.factory.create({audio:h.audio,getTrack:()=>null,resolveSource:async()=>null,getScope:()=>''});newOwner.dispose();
+});
+test('scope changes during read stop current audio and prevent stale data from playing',async()=>{
+ const h=fixture();await h.api.playTrack('a');const src=h.audio.src;let release;
+ h.read(()=>new Promise(resolve=>{release=resolve}));const pending=h.api.playTrack('b');h.scope('other-account');release({id:'b'});
+ assert.equal(await pending,false);assert.equal(h.audio.paused,true);assert.equal(h.audio.src,'');assert.ok(h.revokes.includes(src));assert.deepEqual(h.saved,['a']);assert.equal(h.api.controller.getState().trackId,null);
+});
+test('shared seek clamps native time and refuses invalid values',async()=>{
+ const h=fixture();await h.api.playTrack('a');assert.equal(h.api.controller.seek(100).ok,true);assert.equal(h.audio.currentTime,12);assert.equal(h.api.controller.seek(-1).ok,true);assert.equal(h.audio.currentTime,0);assert.equal(h.api.controller.seek(NaN).ok,false);
 });
