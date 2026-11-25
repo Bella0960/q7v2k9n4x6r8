@@ -11,11 +11,12 @@
   function members(g) { return g && Array.isArray(g.members) ? g.members.filter(Boolean) : []; }
   function find(g, v) {
     var all = members(g), target = id(v);
-    if (!target) return null;
+    if (!target || target === '__user') return null;
     var exact = all.filter(function (m) { return id(m.id) === target; });
-    if (exact.length === 1) return exact[0];
+    if (exact.length) return exact.length === 1 ? exact[0] : null;
     var named = all.filter(function (m) { return id(m.name) === target || id(m.nickname) === target; });
-    return named.length === 1 ? named[0] : null;
+    if (named.length !== 1 || id(named[0].id) === '__user' || !id(named[0].id)) return null;
+    return all.filter(function(m){return id(m.id)===id(named[0].id);}).length===1?named[0]:null;
   }
   function rank(g, who) {
     who = id(who);
@@ -136,9 +137,12 @@
   }});
   registerAction('invite', { scope: 'admin', run: function (c) {
     var pool = Array.isArray(c.options.roles) ? c.options.roles : [];
-    var matches = pool.filter(function (r) { return r && r.id != null && (id(r.id) === c.target || id(r.name) === c.target); });
+    pool = pool.filter(function(r){return r&&id(r.id)&&id(r.id)!=='__user';});
+    var matches = pool.filter(function(r){return id(r.id)===c.target;});
+    if(!matches.length)matches=pool.filter(function(r){return id(r.name)===c.target;});
     if (matches.length !== 1) return fail('ROLE_NOT_FOUND', '没有找到唯一角色');
     var role = matches[0];
+    if(pool.filter(function(r){return id(r.id)===id(role.id);}).length!==1)return fail('ROLE_NOT_FOUND','角色身份不唯一');
     if (c.members.some(function (m) { return id(m.id) === id(role.id); })) return fail('ALREADY_MEMBER', '角色已在群里');
     c.group.members.push({ id: id(role.id), name: role.name || '角色', avatar: role.avatar || '',
       nickname: '', title: '', isAdmin: false, memberRole: 'member', muted: false, isMuted: false,
