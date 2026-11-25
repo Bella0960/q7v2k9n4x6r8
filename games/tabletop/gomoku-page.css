@@ -32,3 +32,12 @@
 .mao-gomoku-board__cell.is-win::after{outline:2px solid #777;outline-offset:1px}
 .mao-gomoku-board__cell[aria-disabled=true]{cursor:default}
 .mao-gomoku__footer{display:flex;align-items:flex-start;flex-wrap:wrap;gap:8px;margin-top:10px}.mao-gomoku__rules{flex:1;min-width:0}.mao-gomoku__rules p{font-size:11px;color:#555}
+
+.mao-gomoku__chat{margin-top:10px;background:#f7f7f9;border-radius:10px;padding:0 10px}
+.mao-gomoku__messages{max-height:132px;overflow:auto;scrollbar-width:none;overscroll-behavior:contain}
+.mao-gomoku__messages::-webkit-scrollbar{display:none}
+.mao-gomoku__message{background:white;border-radius:7px;padding:5px 8px;margin:4px 0;overflow-wrap:anywhere}
+.mao-gomoku__message small,.mao-gomoku__chat-note{font-size:11px;color:#666}.mao-gomoku__message p{margin:2px 0;white-space:pre-wrap}
+.mao-gomoku__target{width:100%;margin:6px 0}.mao-gomoku__composer{display:flex;gap:6px}
+.mao-gomoku__chat input,.mao-gomoku__chat button{font:inherit;min-height:44px;border:1px solid #e5e5e5;border-radius:9px;padding:7px 9px;background:#fff;color:#222}
+.mao-gomoku__input{min-width:0;flex:1}.mao-gomoku__stop{margin:6px 0}

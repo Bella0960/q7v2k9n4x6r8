@@ -12,11 +12,11 @@ class El{
 }
 const all=(e,cls)=>[...(e.className?.split(' ').includes(cls)?[e]:[]),...e.children.flatMap(c=>all(c,cls))];
 const wait=async()=>{for(let i=0;i<5000;i++)await Promise.resolve();};
-function fixture({ready=true,decideRole=null}={}){
+function fixture({ready=true,decideRole=null,discussion={}}={}){
   let sessionId='s1',reads=0;
   const doc=target({hidden:false,createElement:tag=>new El(doc,tag),querySelector:s=>({content:s.includes('mao-account-role')?'user':accountId})});
   const win=target({document:doc,navigator:{onLine:true},__MAO_ACCOUNT_SCOPE__:{ready,accountId,role:'user'},PhoneStorage:{result:{getCharacters(){reads++;return {ok:true,meta:{source:'ai_custom_characters'},value:[{id:'r1',name:'棋友一'},{id:'r2',name:'棋友二'},{id:'r3',name:'棋友三'}]};}}},fetch:async path=>({ok:true,json:async()=>path.endsWith('/me')?{account:{id:accountId,role:'user',status:'active'}}:{currentSessionId:sessionId}})});
-  const root=new El(doc,'div'),page=mountGomokuPage(root,{win,makeRoomId:()=> 'room',decideRole});
+  const root=new El(doc,'div'),page=mountGomokuPage(root,{win,makeRoomId:()=> 'room',decideRole,discussion});
   const one=c=>all(root,c)[0],choose=(c,value)=>{one(c).value=value;one(c).fire('change');};
   return {win,root,page,one,choose,session:x=>{sessionId=x;},reads:()=>reads};
 }
@@ -57,4 +57,16 @@ test('unready identity never reads roster; changed login after picker prevents s
   const f=fixture({ready:false});await wait();assert.equal(f.reads(),0);assert.equal(f.one('mao-gomoku__start').disabled,true);f.page.destroy();
   const g=fixture();await wait();g.choose('mao-gomoku__first','r1');g.session('s2');g.one('mao-gomoku__start').click();await wait();
   assert.equal(all(g.root,'mao-gomoku-board__cell').length,0);g.page.destroy();
+});
+
+test('folded public game chat addresses selected role, never invents reply without model',async()=>{
+  const f=fixture();await wait();f.choose('mao-gomoku__first','r1');f.one('mao-gomoku__start').click();await wait();
+  assert.ok(!f.one('mao-gomoku__chat').open);f.one('mao-gomoku__input').value='开始';f.one('mao-gomoku__send').click();await wait();
+  assert.equal(all(f.root,'mao-gomoku__message').length,1);assert.ok(f.one('mao-gomoku__chat-note').textContent.includes('没有可用模型'));f.page.destroy();
+  const calls=[],g=fixture({discussion:{generateRole:c=>{calls.push(c);return '可以。';},allowOutput:()=>true}});
+  await wait();g.choose('mao-gomoku__first','r1');const box=all(g.root,'mao-gomoku__observer')[1].children[0];box.checked=true;box.fire('change');g.one('mao-gomoku__start').click();await wait();
+  g.one('mao-gomoku__target').value='role:r2';g.one('mao-gomoku__input').value='观战感想？';g.one('mao-gomoku__send').click();await wait();
+  assert.equal(calls[0].selfSeatId,'role:r2');assert.equal(calls[0].game.legalMoves.length,0);assert.equal(all(g.root,'mao-gomoku__message').length,2);
+  g.win.navigator.onLine=false;g.win.fire('offline');assert.equal(all(g.root,'mao-gomoku__message').length,0);
+  g.win.navigator.onLine=true;g.one('mao-gomoku__next').click();await wait();assert.equal(all(g.root,'mao-gomoku__message').length,2);g.page.destroy();
 });

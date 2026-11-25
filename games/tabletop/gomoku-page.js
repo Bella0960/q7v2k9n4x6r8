@@ -1,7 +1,7 @@
 import {createBrowserRoomVerifier} from './account-room-context.js';
 import {createGomokuPageHost} from './gomoku-page-host.js';
 
-export function mountGomokuPage(root,{win=root?.ownerDocument?.defaultView,makeRoomId=()=>win.crypto.randomUUID(),decideRole=null,pace=()=>{}}={}){
+export function mountGomokuPage(root,{win=root?.ownerDocument?.defaultView,makeRoomId=()=>win.crypto.randomUUID(),decideRole=null,pace=()=>{},discussion={}}={}){
   if(!root?.ownerDocument||!win?.document||typeof makeRoomId!=='function')throw Error('GOMOKU_INVALID_PAGE');
   const doc=root.ownerDocument,verify=createBrowserRoomVerifier(win,{includeRoleLabels:true});
   const el=(tag,cls,text)=>{const n=doc.createElement(tag);if(cls)n.className=cls;if(text!==undefined)n.textContent=text;return n;};
@@ -21,7 +21,17 @@ export function mountGomokuPage(root,{win=root?.ownerDocument?.defaultView,makeR
   const meta=el('p','mao-gomoku__meta'),footer=el('footer','mao-gomoku__footer');
   const rules=el('details','mao-gomoku__rules');rules.append(el('summary','','玩法'),el('p','','黑先，五连及以上获胜。满盘无胜者为和棋。'));
   const next=btn('继续对局','mao-gomoku__next',()=>void advance()),pause=btn('暂停','mao-gomoku__pause',()=>{stopped=true;host.pause();}),end=btn('结束本局','mao-gomoku__end',()=>host.end());
-  next.hidden=true;footer.append(rules,next,pause,end);game.append(board,meta,footer);wrap.append(setup,game,note);root.replaceChildren(wrap);
+  const chat=el('details','mao-gomoku__chat'),messages=el('div','mao-gomoku__messages'),target=select('mao-gomoku__target','发言对象',[['','所有棋友']]),input=el('input','mao-gomoku__input');
+  messages.setAttribute('role','log');messages.setAttribute('aria-live','polite');input.maxLength=1000;input.placeholder='说点什么';input.setAttribute('aria-label','游戏发言');
+  const chatNote=el('p','mao-gomoku__chat-note'),row=el('div','mao-gomoku__composer'),send=btn('发送','mao-gomoku__send',()=>void submit()),stop=btn('停止生成','mao-gomoku__stop',()=>{host.stopChat();chatNote.textContent='已停止生成。';});
+  row.append(input,send);chat.append(el('summary','','游戏聊天'),messages,target,row,stop,chatNote);
+  let msgSeq=0;
+  function clearChat(){messages.replaceChildren();target.replaceChildren();input.value='';chatNote.textContent='';chat.open=false;chat.hidden=true;}
+  function renderMessages(items){if(!active||chat.hidden||disposed)return;messages.replaceChildren(...items.map(m=>{const n=el('div','mao-gomoku__message');n.append(el('small','',label(m.sender.seatId)),el('p','',m.text));return n;}));messages.scrollTop=messages.scrollHeight;}
+  function showChat(v){chat.hidden=false;target.replaceChildren();const o=el('option','','所有棋友');o.value='';target.append(o);target.value='';for(const s of v.seats.filter(s=>s.kind==='role')){const o=el('option','',label(s.seatId));o.value=s.seatId;target.append(o);}input.disabled=send.disabled=v.phase==='finished';chatNote.textContent=discussion.generateRole?'':'当前未接入聊天模型。';}
+  async function submit(){if(disposed||!active||chat.hidden||input.disabled||!input.value.trim())return;const stamp=epoch,text=input.value,replyToSeatId=target.value||null;input.value='';try{const result=await host.sendChat({messageId:String(++msgSeq),text,replyToSeatId});if(!disposed&&active&&stamp===epoch)chatNote.textContent=result.reason==='MODEL_UNAVAILABLE'?'已发送，当前没有可用模型。':result.reason==='SPEECH_LIMIT'?'已达到本局生成次数上限。':'';}catch{if(!disposed&&active&&stamp===epoch)chatNote.textContent='发言未完成，请查看记录。';}}
+  input.addEventListener('keydown',e=>{if(e.key==='Enter'&&!e.isComposing){e.preventDefault();void submit();}});
+  next.hidden=true;footer.append(rules,next,pause,end);game.append(board,meta,chat,footer);wrap.append(setup,game,note);root.replaceChildren(wrap);
   const label=id=>id==='user'?'我':active?.labels.get(id)??'棋友';
   const selectedObservers=new Set(),boxes=new Map();
   function clearPicker(){picker=null;selectedObservers.clear();boxes.clear();for(const s of [a,b]){const o=el('option','','选择棋友');o.value='';s.replaceChildren(o);s.value='';}observerList.replaceChildren();start.disabled=true;}
@@ -43,13 +53,14 @@ export function mountGomokuPage(root,{win=root?.ownerDocument?.defaultView,makeR
     }
     sync();
   }
-  const host=createGomokuPageHost(board,{win,labelForSeat:label,decideRole,pace,onView:v=>{
+  const host=createGomokuPageHost(board,{win,labelForSeat:label,decideRole,pace,discussion:{...discussion,onChange:renderMessages},onView:v=>{
     if(!active)return;
+    active.view=v;if(v.phase==='finished')input.disabled=send.disabled=true;
     meta.textContent=(active.watch?'观战':'对弈')+' · '+(active.difficulty==='hard'?'困难':active.difficulty==='easy'?'简单':'普通')+' · '+v.seats.filter(s=>s.mode==='observer').length+'位旁观';
   },onDecision:d=>{if(active)meta.textContent=meta.textContent.split(' · 策略：')[0]+' · 策略：'+(d.source==='model'?'模型':'本地');},onStatus:s=>{
     if(disposed)return;
-    if(s==='idle'){invalidate();active=null;game.hidden=true;setup.hidden=false;next.hidden=true;note.textContent='';return;}
-    if(s==='paused'){invalidate();stopped=true;next.hidden=false;pause.hidden=true;meta.textContent='';note.textContent='本局暂停，继续前将重新验证账号。';return;}
+    if(s==='idle'){invalidate();clearChat();active=null;game.hidden=true;setup.hidden=false;next.hidden=true;note.textContent='';return;}
+    if(s==='paused'){invalidate();clearChat();stopped=true;next.hidden=false;pause.hidden=true;meta.textContent='';note.textContent='本局暂停，继续前将重新验证账号。';return;}
     next.hidden=s!=='yield';pause.hidden=s==='finished';note.textContent=s==='thinking'?'棋友正在思考…':s==='finished'?'本局结束。':'';
   }});
   async function reload(){
@@ -66,7 +77,7 @@ export function mountGomokuPage(root,{win=root?.ownerDocument?.defaultView,makeR
     active={watch,difficulty:level,labels:new Map(c.roleLabels.map(r=>['role:'+r.id,r.name]))};stopped=false;
     try{const v=await host.start({roomId:makeRoomId(),opponents,observers:obs,watch,blackFirst:color.value==='black',difficulty:level,expectedIdentity:{accountId:c.accountId,sessionId:c.sessionId}});
       if(disposed||epoch!==stamp||!active){host.end();return;}
-      clearPicker();setup.hidden=true;game.hidden=false;
+      clearPicker();setup.hidden=true;game.hidden=false;showChat(v);
       if(v.turnSeatId!=='user')void advance();
     }catch{if(!disposed){host.end();note.textContent='无法开局，请重新读取角色。';}}
     finally{starting=false;refresh.disabled=false;sync();}
@@ -74,7 +85,7 @@ export function mountGomokuPage(root,{win=root?.ownerDocument?.defaultView,makeR
   async function advance(){
     if(disposed||!active||advancing)return;
     advancing=true;stopped=false;next.disabled=true;
-    try{const result=await host.resume();if(!disposed&&active&&!stopped)next.hidden=result.status!=='yield';}
+    try{const result=await host.resume();if(!disposed&&active&&!stopped){next.hidden=result.status!=='yield';if(chat.hidden&&active.view){showChat(active.view);const stamp=epoch;const items=await host.readChat();if(!disposed&&active&&stamp===epoch)renderMessages(items);}}}
     catch{if(!disposed&&active)note.textContent='暂时无法继续，请重新验证或结束本局。';}
     finally{advancing=false;next.disabled=false;}
   }
@@ -82,7 +93,7 @@ export function mountGomokuPage(root,{win=root?.ownerDocument?.defaultView,makeR
   function listen(t,n,f){t.addEventListener(n,f);listeners.push(()=>t.removeEventListener(n,f));}
   function inactive(){if(!active){invalidate();refresh.disabled=false;note.textContent='账号状态变化，请重新读取角色。';}}
   listen(win,'storage',inactive);listen(win,'offline',inactive);listen(doc,'visibilitychange',()=>{if(doc.hidden)inactive();});
-  function destroy(){if(disposed)return;disposed=true;invalidate();active=null;host.destroy();for(const remove of listeners.splice(0))remove();wrap.remove();}
+  function destroy(){if(disposed)return;disposed=true;invalidate();clearChat();active=null;host.destroy();for(const remove of listeners.splice(0))remove();wrap.remove();}
   listen(win,'pagehide',destroy);void reload();
   return Object.freeze({reload,destroy});
 }
