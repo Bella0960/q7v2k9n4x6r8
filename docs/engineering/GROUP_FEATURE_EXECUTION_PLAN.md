@@ -70,3 +70,9 @@ M02 历史记录：M02 独立原型：`previews/group-listening-preview.html`，
 - 新增 `tests/group-listening-catalog-browser.test.mjs`，让现行标准 QA 已有的 `node --test --test-concurrency=1` 自动发现真实 Chromium/IndexedDB 专项测试；保留独立 npm 测试命令。未修改公共工作流、发布脚本或既有安全门禁。
 - 本地 Node v22.16.0 对新增入口的语法检查、过滤测试发现检查通过（未执行浏览器断言）；冻结的三份核心文件与远端 Git blob 一致，沿用已确认的 16/16 单元测试证据。实际浏览器命令因缺少 Node Playwright 包返回 ERR_MODULE_NOT_FOUND，仍未完成真实 IndexedDB 验收。
 - 本轮线上 QA 版本与源码回执未能读取；保留上次 QA 基线冲突，未发出发布或重复验证请求。M03 不结项；M04 不进入产品集成。
+
+### M03 环境阻塞复核（2026-11-25）
+
+- 冻结源文件及已通过的 Node 16/16 测试文件的 Git blob 与远端一致；未重复运行无变化的单元测试。现有 Python Playwright 自带 Node Playwright Core 1.57.0-beta，能够启动系统 Chromium 144.0.7559.96。用独立合成 HTML/本地临时 HTTP 服务进行正常导航烟雾测试，返回 `net::ERR_BLOCKED_BY_ADMINISTRATOR`；未执行任何真实 IndexedDB 断言。没有改变或规避浏览器管理策略。
+- QA 站点的 qa-build-receipt.json 和 pwa-release.json 当前未能读取，公共 verify #45627498729 仍为失败；不凭旧候选部署，也不盲目重触发。
+- 当前真正的恢复点：有正常浏览器权限、仓库依赖与相同候选的授权开发环境中，执行 `npm run test:group:music-catalog:browser`。保存真实结果；若通过，再进行集成验收、M04。若失败，先处理具体业务失败。无需重建候选，不新增工程包，不以环境问题假冒产品测试通过。
