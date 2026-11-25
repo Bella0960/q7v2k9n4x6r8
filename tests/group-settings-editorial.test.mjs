@@ -87,7 +87,8 @@ test('group portrait modal, media reference and chat member-ID routing',()=>{
   assert.match(js,/dialog\.showModal\(\)/);
   assert.match(js,/await api\.save\(state,changes\)/);
   assert.match(portraits,/ownerId:JSON\.stringify\(\[s\.account,String\(s\.group\.id\),id\]\)/);
-  assert.match(portraits,/global\.localStorage\.setItem\('phone_groups',encoded\)/);
+  assert.match(portraits,/guard\.commit\(s\.expected,updated\)/);
+  assert.doesNotMatch(portraits,/localStorage\.setItem\(/);
   assert.doesNotMatch(portraits,/setItem\('(?:myProfile|ai_custom_characters)'/);
   assert.match(portraits,/record\.accountId===account/);
   assert.match(detail,/if\(isGroupChat\)fillGroupPortrait\(avatar,msg,true\)/);
@@ -150,7 +151,7 @@ test('portrait media ownership, isolated group, failed batch and stale selection
     async listByOwner(_type,id){return {ok:true,value:refs.get(id)||[]};}
     async toDataUrl(){return {ok:true,value:image};}
   }};
-  context.window=context;vm.runInNewContext(read('shared/js/phone/group-portraits.js'),context);
+  context.window=context;vm.runInNewContext(read('shared/js/phone/group-write-guard.js'),context);vm.runInNewContext(read('shared/js/phone/group-portraits.js'),context);
   const api=context.MAOGroupPortraits, blob=new Blob(['image'],{type:'image/png'});
   const original=data;
   failAt=2;
@@ -186,4 +187,30 @@ test('group nickname is editable without global profile writes and back routes t
   assert.match(js,/location\.href='chat-detail\.html\?id='/);
   assert.match(js,/&view=members&from=overview/);
   assert.match(js,/viewParams\.get\('from'\)==='overview'/);
+});
+
+test('portrait saves preserve other group writes during upload and retry safely after failure',async()=>{
+  let account='001',data=JSON.stringify([{id:'g1',members:[{id:'r'}]},{id:'g2',name:'original'}]),failWrite=false,changeDuringUpload=true;
+  const asset='as_'+'A'.repeat(32),context={Map,Blob,document:{querySelector:()=>({content:account})}};
+  context.localStorage={getItem:()=>data,setItem:(_key,v)=>{if(failWrite)throw Error('quota');data=v;}};
+  context.PhoneStorage={MediaRepository:class{
+    async putBlob(){if(changeDuringUpload){const list=JSON.parse(data);list[1].name='updated during upload';data=JSON.stringify(list);}return {ok:true,value:{assetId:asset}};}
+    async getBlob(){return {ok:true};}
+  }};
+  context.window=context;
+  vm.runInNewContext(read('shared/js/phone/group-write-guard.js'),context);
+  vm.runInNewContext(read('shared/js/phone/group-portraits.js'),context);
+  const api=context.MAOGroupPortraits,blob=new Blob(['image'],{type:'image/png'});
+  const snap=api.snapshot('g1');
+  await api.save(snap,new Map([['r',blob]]));
+  assert.equal(JSON.parse(data)[1].name,'updated during upload');
+  assert.equal(JSON.parse(data)[0].portraitOverridesV1.entries[0].assetId,asset);
+  changeDuringUpload=false;
+  const retry=api.snapshot('g1'),before=data;
+  failWrite=true;
+  await assert.rejects(api.save(retry,new Map([['r',null]])));
+  assert.equal(data,before);
+  failWrite=false;
+  await api.save(retry,new Map([['r',null]]));
+  assert.equal(JSON.parse(data)[0].portraitOverridesV1.entries.length,0);
 });
