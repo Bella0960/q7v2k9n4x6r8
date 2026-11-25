@@ -995,6 +995,7 @@
     function restoreStore(db, storeDef, records, clearOnRestore) {
         var mergeOnly = arguments[4] === true;
         var blobFields = storeDef.blobFields || [];
+        var strict = arguments[5] === true;
         return new Promise(function (resolve, reject) {
             // 无 clearOnRestore 且记录为空 → 跳过（原有行为，不影响非媒体库）
             if (!Array.isArray(records) || (!records.length && (!clearOnRestore || mergeOnly))) {
@@ -1004,7 +1005,12 @@
             var storeName = storeDef.store;
             var tx = db.transaction(storeName, 'readwrite');
             var store = tx.objectStore(storeName);
-            if (!mergeOnly) store.clear();
+            if (!mergeOnly) {
+                try { store.clear(); } catch (e) {
+                    if (strict) try { tx.abort(); } catch (_) {}
+                    reject(e); return;
+                }
+            }
             // 空数组 + clearOnRestore：只执行 clear()，不 put 任何记录
             if (!records.length) {
                 tx.oncomplete = function () { resolve({ written: 0, skipped: 0 }); };
@@ -1028,6 +1034,7 @@
                         skipped++;
                         return;
                     }
+                    if (strict && value && typeof value === 'object') value = Object.assign({},value);
                     // blobFields 反向解码：base64 字符串 → Blob 实例；解码失败整条跳过。
                     // MIME 优先读伴生字段 __blobMime_<fieldName>（导出时写入），
                     // 无伴生字段时 fallback 到 value.format（字体预设兼容），
@@ -1036,6 +1043,7 @@
                         for (var j = 0; j < blobFields.length; j++) {
                             var f = blobFields[j];
                             var v = value[f];
+                            if (strict && (typeof v !== 'string' || !v)) throw new Error('Missing encoded blob');
                             if (v && typeof v === 'string') {
                                 try {
                                     var mimeKey = '__blobMime_' + f;
@@ -1061,6 +1069,11 @@
             tx.oncomplete = function () { resolve({ written: written, skipped: skipped }); };
             tx.onerror = function () { reject(tx.error || new Error('Store write failed')); };
             tx.onabort = function () { reject(tx.error || new Error('Store write aborted')); };
+            // Production restore is strict: a synchronous decode/put failure
+            // must roll back the entire store, including its preceding clear.
+            if (strict && skipped) {
+                try { tx.abort(); } catch (e) { reject(e); }
+            }
         });
     }
 
@@ -1093,7 +1106,7 @@
                 // clearOnRestore: 空数组也调用 restoreStore（会执行 clear()），确保恢复状态与备份一致
                 if (!Array.isArray(records) ||
                     (!records.length && (!clearOnRestore || mergeOnly))) return next();
-                return restoreStore(db, def, records, clearOnRestore, mergeOnly).then(function (res) {
+                return restoreStore(db, def, records, clearOnRestore, mergeOnly, true).then(function (res) {
                     totalWritten += res.written;
                     totalSkipped += res.skipped;
                     return next();
@@ -1291,6 +1304,45 @@
         return '';
     }
 
+    // Match MediaRepository's content-addressed ID (SHA-256 first 20 bytes,
+    // uppercase base32). Verify original bytes without touching live storage.
+    async function verifyBackupAssetHashes(obj) {
+        var media = obj.indexedDB && obj.indexedDB['maomao-assets'];
+        if (!media || !Array.isArray(media.blobs) || !media.blobs.length) return '';
+        var crypto = window.crypto;
+        if (!crypto || !crypto.subtle || typeof crypto.subtle.digest !== 'function' ||
+            typeof window.atob !== 'function') return '当前浏览器无法核验图片指纹';
+        var alpha = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ234567', total = 0;
+        for (var row of media.blobs) {
+            if (!row || !/^as_[A-Z2-7]{32}$/.test(row.assetId) || typeof row.blob !== 'string')
+                return '图片资源标识或内容异常';
+            // Keep existing export bounds on imported bytes too; no skipped hash
+            // is allowed to masquerade as a verified restore.
+            var padding = row.blob.endsWith('==') ? 2 : row.blob.endsWith('=') ? 1 : 0;
+            var expectedSize = Math.floor(row.blob.length * 3 / 4) - padding;
+            total += expectedSize;
+            if (expectedSize > 30 * 1024 * 1024 || total > 90 * 1024 * 1024)
+                return '图片备份超出当前可安全校验的大小限制';
+            try {
+                var binary = window.atob(row.blob);
+                if (binary.length !== expectedSize) return '图片内容编码异常';
+                var bytes = new Uint8Array(binary.length);
+                for (var i=0; i<binary.length; i++) bytes[i] = binary.charCodeAt(i);
+                binary = null;
+                var digest = new Uint8Array(await crypto.subtle.digest('SHA-256',bytes));
+                bytes = null;
+                if (digest.length !== 32) return '图片指纹校验失败';
+                var bits=0, acc=0, hash='';
+                for (var j=0;j<20;j++) {
+                    acc=(acc<<8)|digest[j]; bits+=8;
+                    while(bits>=5) { hash+=alpha[(acc >>> (bits-5)) & 31]; bits-=5; }
+                }
+                if ('as_'+hash !== row.assetId) return '图片内容与原始指纹不一致，可能已损坏';
+            } catch (_) { return '图片内容无法完成指纹校验'; }
+        }
+        return '';
+    }
+
     function captureRestoreBaseline() {
         var out = Object.create(null);
         var keys = Object.keys(localStorage);
@@ -1384,6 +1436,10 @@
             if ((accountMeta || account) && (!account || account.ready !== true ||
                 (accountMeta && account.accountId !== String(accountMeta.content || '').trim()))) {
                 toast('账号存储尚未就绪，已阻止恢复'); return;
+            }
+            var hashError = await verifyBackupAssetHashes(obj);
+            if (hashError || window.__MAO_ACCOUNT_SCOPE__ !== account) {
+                toast('导入失败：' + (hashError || '账号已变化') + '，本机数据未改动'); return;
             }
             var preview;
             try { preview = captureRestoreBaseline(); }
