@@ -668,7 +668,7 @@ test('interrupted group reply retains only validated public prose and an error i
   assert.equal(build(raw,'你好',{...meta,memberId:'__user'}),null);
   assert.equal(build('{bad','你好',meta),null);
   assert.ok(html.indexOf('if(isGroupChat&&!streamResult.ok){')<html.indexOf('var groupTurnEffects = window.GroupTurnEffects'));
-  assert.ok(html.includes('currentRoleId,baseline,result.history,function(){return groupTurnCurrent(allowExit===true);}'));
+  assert.ok(html.includes('return groupTurnCurrent(allowExit===true||result.hasText===true);'));
   assert.ok(html.includes('if(!result||(allowExit===true&&!result.hasText))return false;'));
   assert.ok(html.includes('if(isRegen){restoreFailedRegeneration();return;}'));
 });

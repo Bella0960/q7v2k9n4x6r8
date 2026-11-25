@@ -5698,9 +5698,8 @@
             return {history:history,hasText:!!clean};
         }
 
-        // 页面被切走（返回列表/刷空间/发动态）时：如果 AI 还在说话，
-        // 把已经流出来的那半截消息立刻落库。localStorage 写入是同步的，
-        // 在页面卸载前一定完成，下一页轮询时就能读到未读 + 弹窗。
+        // 页面退出时，单聊保留既有同步处理；群聊只允许受共享锁保护的
+        // 最佳努力写入。浏览器终止文档时不保证异步操作完成。
         window.addEventListener('pagehide', function () {
             try {
                 // Best effort only: a browser may terminate the document before
@@ -7517,7 +7516,9 @@
                 });
                 if(!result||(allowExit===true&&!result.hasText))return false;
                 const saved=await window.ChatHistoryAtomic.replaceRawIfUnchanged(
-                    currentRoleId,baseline,result.history,function(){return groupTurnCurrent(allowExit===true);});
+                    currentRoleId,baseline,result.history,function(){
+                        return groupTurnCurrent(allowExit===true||result.hasText===true);
+                    });
                 return !!(saved&&saved.ok);
             }
             function discardStaleGroupTurn(){
@@ -7794,6 +7795,8 @@
                         saved=await persistInterruptedGroupReply(fullText,false,'连接中断，未收到可安全保存的回复');
                         if(!saved&&!groupPageExited)showToast('群回复未能安全保存，请重新进入聊天核对');
                     }
+                }catch(error){
+                    if(!groupPageExited)showToast('群回复未能安全保存，请重新进入聊天核对');
                 }finally{
                     if(!groupPageExited&&readGroupScope()){
                         if(_vl)vlRefresh();else renderAllMessages();
