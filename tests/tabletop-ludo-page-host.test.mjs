@@ -89,3 +89,18 @@ test('ending a game cancels event speech and no later message is rendered',async
   for(let i=0;i<100;i++)await Promise.resolve();
   assert.equal(changes.length,0);assert.equal(f.root.children.length,0);f.host.destroy();
 });
+
+test('verified host exports pending dice and restores on a fresh login without reroll',async()=>{
+  const f=fixture();await f.host.start({roomId:'room',roleIds:['r1']});
+  all(f.root,'mao-ludo__action')[0].click();await settle(f.host);
+  const save=await f.host.checkpoint();f.host.destroy();
+  const g=fixture({rollDie:()=>{throw Error('unexpected roll');}});g.session('s2');
+  const restored=await g.host.restore(save);
+  assert.equal(restored.game.die,6);assert.equal(restored.game.legalMoves.length,4);assert.equal(g.rolls(),0);
+  assert.deepEqual(await g.host.checkpoint(),save);g.host.destroy();
+});
+test('restore refuses a removed role or foreign account without displaying the board',async()=>{
+  const f=fixture();await f.host.start({roomId:'room',roleIds:['r1']});const save=await f.host.checkpoint();f.host.destroy();
+  const g=fixture();g.roles(['r2']);await assert.rejects(g.host.restore(save),/INVALID_CHECKPOINT_SEAT/);assert.equal(g.root.children.length,0);g.host.destroy();
+  const other=fixture();await assert.rejects(other.host.restore({...save,accountId:'MAO-BBBBBBBBBBBB'}),/INVALID_CHECKPOINT/);assert.equal(other.root.children.length,0);other.host.destroy();
+});

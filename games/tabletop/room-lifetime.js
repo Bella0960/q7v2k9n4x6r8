@@ -7,7 +7,7 @@ function readContext(getContext) {
   if (!c || !validId(c.accountId) || !validId(c.sessionId) || !Array.isArray(c.roleIds) || !Array.from(c.roleIds).every(validId)) fail('UNVERIFIED_CONTEXT');
   return {accountId:c.accountId,sessionId:c.sessionId,roleIds:[...new Set(c.roleIds)]};
 }
-export function createRoomLifetime({getContext,createDispatcher,spec,rules}) {
+export function createRoomLifetime({getContext,createDispatcher,spec,rules,checkpoint=null}) {
   if (typeof getContext !== 'function' || typeof createDispatcher !== 'function') fail('INVALID_RUNTIME_ADAPTER');
   const initial = readContext(getContext);
   const accountId = initial.accountId, sessionId = initial.sessionId;
@@ -20,7 +20,7 @@ export function createRoomLifetime({getContext,createDispatcher,spec,rules}) {
     if (c.accountId !== accountId || c.sessionId !== sessionId) { dispose(); fail('SCOPE_CHANGED'); }
     return c;
   }
-  dispatcher = createDispatcher({getContext:scopedContext,spec,rules});
+  dispatcher = createDispatcher({getContext:scopedContext,spec,rules,...(checkpoint===null?{}:{checkpoint})});
   scopedContext();
   function current() { scopedContext(); if (!dispatcher) fail('ROOM_DISPOSED'); return dispatcher; }
   function prepare(actor,roleId) {
@@ -75,6 +75,7 @@ export function createRoomLifetime({getContext,createDispatcher,spec,rules}) {
   }
   return Object.freeze({
     prepareBotTurn,viewBot,
+    checkpoint:()=>current().checkpoint(),
     viewUser: () => current().view('user'),
     viewRole,
     prepareUserAction: () => prepare('user',null),

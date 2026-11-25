@@ -93,6 +93,31 @@ export function createLudoPageHost(root,{win=root?.ownerDocument?.defaultView,on
     }catch(error){if(entry===e)end();throw error;}
     finally{busy=false;}
   }
+  // Internal restore hook for the future verified repository, not a file-import
+  // or user-editable state entry. Chat persistence remains a separate contract.
+  async function restore(checkpoint,{expectedIdentity=null}={}){
+    if(destroyed||busy||entry)fail('LUDO_PAGE_BUSY');
+    if(!checkpoint||checkpoint.gameId!=='ludo'||typeof checkpoint.roomId!=='string'||!['classic','adventure'].includes(checkpoint.mode))fail('LUDO_PAGE_INVALID_CHECKPOINT');
+    const stamp=++epoch;busy=true;let e;
+    try{
+      const session=createBrowserRoomSession({win,spec:{roomId:checkpoint.roomId,gameId:'ludo'},rules:createLudoRules({rollDie,mode:checkpoint.mode}),expectedIdentity,checkpoint});
+      e={roomId:checkpoint.roomId,session,board:null,revision:-1,driver:null,discussion:null,eventView:null,runStamp:stamp};
+      e.driver=createLudoTurnDriver({session,pace,decide:decideRole,onView:view=>publish(e,view,e.runStamp)});
+      entry=e;report('opening');
+      const view=await session.viewUser();check(e,stamp);
+      if(view.phase==='playing')e.discussion=createLudoDiscussion({...discussion,session,view,onChange:messages=>{
+        if(entry===e&&e.board&&!destroyed)discussion.onChange?.(messages);
+      }});
+      publish(e,view,stamp);report(view.phase==='finished'?'finished':view.turnSeatId==='user'?'ready':'yield');
+      return view;
+    }catch(error){if(entry===e)end();throw error;}
+    finally{busy=false;}
+  }
+  async function checkpoint(){
+    const e=entry,stamp=epoch;
+    if(destroyed||!e?.board)fail('LUDO_PAGE_BUSY');
+    const saved=await e.session.checkpoint();check(e,stamp);return saved;
+  }
   async function resume(){
     const e=entry;if(destroyed||!e||busy)fail('LUDO_PAGE_BUSY');
     busy=true;const stamp=epoch;
@@ -105,5 +130,5 @@ export function createLudoPageHost(root,{win=root?.ownerDocument?.defaultView,on
   }
   root.replaceChildren();
   function chat(){if(destroyed||!entry?.board||!entry.discussion)fail('LUDO_DISCUSSION_NOT_ACTIVE');return entry.discussion;}
-  return Object.freeze({start,resume,end,destroy,sendChat:message=>chat().send(message),readChat:()=>chat().read(),stopChat:()=>entry?.discussion?.stop(),status:()=>destroyed?'disposed':busy?'busy':entry?entry.board?'open':'paused':'idle'});
+  return Object.freeze({start,restore,checkpoint,resume,end,destroy,sendChat:message=>chat().send(message),readChat:()=>chat().read(),stopChat:()=>entry?.discussion?.stop(),status:()=>destroyed?'disposed':busy?'busy':entry?entry.board?'open':'paused':'idle'});
 }

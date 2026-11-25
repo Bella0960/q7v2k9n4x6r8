@@ -77,7 +77,7 @@ export function createRoomDispatcher({getContext, spec, rules, checkpoint=null})
       return clone({schema:1,gameId:'ludo',mode:rules.checkpointMode,accountId:room.accountId,roomId:room.roomId,startRevision:initial.revision,seats:initial.seats,moves:history});
     });},
     view(actor){return guarded(()=>view(actor,getContext()));},
-    token(actor){return guarded(()=>{if(terminal(room)) fail('ROOM_TERMINAL');const t=roomToken(room,getContext(),actor);if(replayable)issued.add(t);return t;});},
+    token(actor){return guarded(()=>{if(terminal(room)) fail('ROOM_TERMINAL');const t=roomToken(room,getContext(),actor);if(replayable){Object.freeze(t);issued.add(t);}return t;});},
     dispatch(actor,token,action){return guarded(()=>{
       const ctx=getContext();check(actor,token,ctx);
       if(terminal(room)) fail('ROOM_TERMINAL');

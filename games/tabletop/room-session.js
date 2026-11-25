@@ -8,7 +8,7 @@ function checked(value) {
   if (!value || !validId(value.accountId) || !validId(value.sessionId) || !Array.isArray(value.roleIds) || !Array.from(value.roleIds).every(validId)) fail('UNVERIFIED_CONTEXT');
   return Object.freeze({accountId:value.accountId,sessionId:value.sessionId,roleIds:Object.freeze([...new Set(value.roleIds)])});
 }
-export function createRoomSession({verifyContext,createLifetime,spec,rules}={}) {
+export function createRoomSession({verifyContext,createLifetime,spec,rules,checkpoint=null}={}) {
   if (typeof verifyContext!=='function' || typeof createLifetime!=='function') fail('INVALID_SESSION_ADAPTER');
   let status='idle', context=null, lifetime=null, pending=null, rosterRevision=0;
   function dispose() {
@@ -36,7 +36,7 @@ export function createRoomSession({verifyContext,createLifetime,spec,rules}={}) 
         if(previous&&(previous.accountId!==next.accountId||previous.sessionId!==next.sessionId)) fail('SCOPE_CHANGED');
         if(previous&&(previous.roleIds.length!==next.roleIds.length||previous.roleIds.some(id=>!next.roleIds.includes(id)))) rosterRevision++;
         context=next;status='ready';
-        if(!lifetime) lifetime=createLifetime({getContext,spec,rules});
+        if(!lifetime) lifetime=createLifetime({getContext,spec,rules,...(checkpoint===null?{}:{checkpoint})});
         if(status==='disposed') {const old=lifetime;lifetime=null;old?.dispose();fail('ROOM_DISPOSED');}
         return true;
       } catch(error) {
@@ -64,6 +64,7 @@ export function createRoomSession({verifyContext,createLifetime,spec,rules}={}) 
   return Object.freeze({
     refresh,dispose,status:()=>status,
     viewUser:()=>active().viewUser(),
+    checkpoint:()=>active().checkpoint(),
     viewRole:roleId=>active().viewRole(roleId),
     viewBot:seatId=>active().viewBot(seatId),
     prepareUserAction:()=>bind(active().prepareUserAction()),

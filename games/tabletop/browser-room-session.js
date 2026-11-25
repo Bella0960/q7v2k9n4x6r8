@@ -21,7 +21,7 @@ function sameMembership(event) {
   const a=rosterSet(event.oldValue),b=rosterSet(event.newValue);
   return a&&b&&a.size===b.size&&[...a].every(id=>b.has(id));
 }
-export function createBrowserRoomSession({win=globalThis.window,spec,rules,expectedIdentity=null}={}) {
+export function createBrowserRoomSession({win=globalThis.window,spec,rules,expectedIdentity=null,checkpoint=null}={}) {
   if(!win?.document||typeof win.addEventListener!=='function'||typeof win.removeEventListener!=='function'||
      typeof win.document.addEventListener!=='function'||typeof win.document.removeEventListener!=='function') fail('INVALID_BROWSER_RUNTIME');
   let discussionController=new AbortController(),lastVerified=null;
@@ -30,6 +30,8 @@ export function createBrowserRoomSession({win=globalThis.window,spec,rules,expec
   }
   if(expectedIdentity!==null&&(!validId(expectedIdentity.accountId)||!validId(expectedIdentity.sessionId)))fail('INVALID_EXPECTED_IDENTITY');
   const expected=expectedIdentity&&{accountId:expectedIdentity.accountId,sessionId:expectedIdentity.sessionId};
+  // Snapshot before asynchronous verification; only a trusted repository caller may supply it.
+  const saved=checkpoint===null?null:JSON.parse(JSON.stringify(checkpoint));
   const verify=createBrowserRoomVerifier(win);
   const session=createRoomSession({verifyContext:async options=>{
     const next=await verify(options);
@@ -39,7 +41,7 @@ export function createBrowserRoomSession({win=globalThis.window,spec,rules,expec
     if(lastVerified&&(lastVerified.accountId!==next.accountId||lastVerified.sessionId!==next.sessionId||
        lastVerified.roleIds.length!==next.roleIds.length||lastVerified.roleIds.some(id=>!next.roleIds.includes(id)))) cancelDiscussion();
     lastVerified=next;return next;
-  },createLifetime:args=>createRoomLifetime({...args,createDispatcher:createRoomDispatcher}),spec,rules});
+  },createLifetime:args=>createRoomLifetime({...args,createDispatcher:createRoomDispatcher}),spec,rules,checkpoint:saved});
   let disposed=false,started=false,pending=null,epoch=0,eventRevision=0,lastError=null;
   const listeners=[];
   function listen(target,name,handler) {
@@ -130,6 +132,7 @@ export function createBrowserRoomSession({win=globalThis.window,spec,rules,expec
     refresh,dispose,status:()=>disposed?'disposed':session.status(),
     lastError:()=>lastError?.message??null,
     async viewUser(){await refresh();guard();return session.viewUser();},
+    async checkpoint(){await refresh();guard();return session.checkpoint();},
     async viewRole(roleId){
       await refresh();guard();
       const stamp=epoch,view=session.viewRole(roleId);
