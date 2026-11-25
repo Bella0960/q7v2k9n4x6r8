@@ -44,6 +44,8 @@
     <script src="../../shared/js/phone/world-events-memory.js?v=20261123-eco6"></script>
     <script src="../../shared/js/phone/group-chat-policy.js?v=20261118groupvoice1"></script>
     <script src="../../shared/js/phone/group-write-guard.js?v=20261125g10"></script>
+    <script src="../../shared/js/phone/group-call-roster.js?v=20261126c04"></script>
+    <script src="../../shared/js/phone/group-call-turn.js?v=20261126c04"></script>
     <script src="../../shared/js/group-governance.js?v=20261125scope3"></script>
     <script src="../../shared/js/phone/music-catalog-adapter.js?v=20261126m03"></script>
     <script src="../../shared/js/phone/music-playback-controller.js?v=20261126m04c1"></script>
@@ -5901,7 +5903,7 @@
                     groupAutoFollowupToken = previousGroupAutoFollowupToken;
                     return;
                 }
-                if(callTurn){callTurn.userMid=blockedMsg.mid;if(!callCurrent())return;}
+                if(callTurn){callTurn.userMid=blockedMsg.mid;if(!callCurrent())return;callTurn.progress();}
                 if (isGroupChat && !silent) groupAutoFollowupToken += 1;
                 if (blockedQuote && typeof window.clearQuote === 'function') window.clearQuote();
                 if (_vl) vlRefresh(); else appendMessageToDOM(blockedMsg);
@@ -5952,7 +5954,7 @@
                         groupAutoFollowupToken = previousGroupAutoFollowupToken;
                         return;
                     }
-                    if(callTurn){callTurn.userMid=userMsg.mid;if(!callCurrent())return;}
+                    if(callTurn){callTurn.userMid=userMsg.mid;if(!callCurrent())return;callTurn.progress();}
                     if (isGroupChat && !silent) groupAutoFollowupToken += 1;
                     if (quoteSnapshot && typeof window.clearQuote === 'function') window.clearQuote();
                     if (!silent) {
@@ -6054,7 +6056,7 @@
                         if (typeof showToast === 'function') showToast('消息已保存，但会话更新未确认，请重新进入聊天');
                         return;
                     }
-                    if(callTurn){callTurn.userMid=userMsg.mid;if(!callCurrent())return;}
+                    if(callTurn){callTurn.userMid=userMsg.mid;if(!callCurrent())return;callTurn.progress();}
                     sourceGateUser = { mid: userMsg.mid, time: userMsg.time };
                     if (isGroupChat && !silent) groupAutoFollowupToken += 1;
                     if (quoteSnapshot && typeof window.clearQuote === 'function') window.clearQuote();
@@ -8246,6 +8248,7 @@
                             }
                         }
                         if(callTurn&&replySaved&&callCurrent())replyMessages.forEach(function(message){if(message.mid&&!message.silent&&!message.isError&&(!message.type||message.type==='text'))callTurn.replyMids.push(message.mid);});
+                        if(callTurn&&replySaved&&callCurrent())callTurn.progress();
                         var replySaveFailed = !replySaved;
                         if (replySaved && autoMomentContent && momentTurnCurrent(autoMomentsRoleId) &&
                             String(currentCharacter.id) === autoMomentsRoleId &&
@@ -8600,18 +8603,20 @@
         // Private binding: a normal sendMsg options object cannot opt into the
         // group-call path by adding fields. The overlay uses this dedicated API.
         const groupCallReceiptBindings=new WeakMap();
-        window.sendGroupCallMessage=async function(text,token,isCurrent){
+        window.sendGroupCallMessage=async function(text,token,isCurrent,onProgress){
             if(!isGroupChat||!token||typeof isCurrent!=='function'||typeof text!=='string'||!text.trim())return null;
             const scope=readGroupScope();
             if(!scope||token.accountId!==scope.account||token.groupId!==String(currentRoleId))return null;
             const callTurn={userMid:'',replyMids:[],maxFollowups:scope.group.members.length+2,
                 current:function(){try{return !groupPageExited&&groupGuard.account()===scope.account&&groupGuard.matches(scope)&&String(currentRoleId)===token.groupId&&isCurrent(token)===true;}catch{return false;}}};
+            function receipt(){return Object.freeze({accountId:scope.account,groupId:token.groupId,userMid:callTurn.userMid,replyMids:Object.freeze(callTurn.replyMids.slice())});}
+            callTurn.progress=function(){if(callTurn.current()&&callTurn.userMid&&typeof onProgress==='function'){try{onProgress(receipt());}catch(error){/* view errors do not affect the sender */}}};
             if(!callTurn.current())return null;
             const options={text:text.trim()};
             groupCallReceiptBindings.set(options,callTurn);
             try{await sendMsg(options);}catch(error){/* only confirmed saved IDs are returned */}
             if(!callTurn.current()||!callTurn.userMid)return null;
-            return Object.freeze({accountId:scope.account,groupId:token.groupId,userMid:callTurn.userMid,replyMids:Object.freeze(callTurn.replyMids.slice())});
+            return receipt();
         };
         window.addEventListener('maomao:followup-message', function (event) {
             var detail = event && event.detail ? event.detail : null;
@@ -10685,7 +10690,7 @@
         mountGroupListeningView();
     </script>
     <script src="js/chat-extras.js?t=20261122cards4"></script>
-    <script src="../call/call-overlay.js?v=20261121call1"></script>
+    <script src="../call/call-overlay.js?v=20261126c04"></script>
     <script>
     function openNarrationModal() {
         var m = document.createElement('div');

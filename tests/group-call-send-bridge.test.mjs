@@ -39,3 +39,9 @@ test('actual sender uses locked append, verified reply save, scope guard and bou
  assert.match(page,/void sendMsg\(\{contextOnly:true,silent:true,groupFollowup:true/);
  assert.match(page,/if\(!callTurn\)\{input\.value = '';input\.style\.height = 'auto';updateSendBtnState\(\);\}/);
 });
+
+test('progress publishes exact committed receipt and stops after scope revocation',async()=>{
+ let h;h=mount(async(opts,turn)=>{turn.userMid='u1';turn.progress();turn.replyMids.push('r1');turn.progress();h.revoke();turn.replyMids.push('r2');turn.progress();});
+ const seen=[];assert.equal(await h.send('你好',h.token,h.guard,value=>seen.push(value)),null);
+ assert.deepEqual(seen.map(x=>x.replyMids),[[],['r1']]);
+});

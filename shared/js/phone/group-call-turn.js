@@ -43,11 +43,9 @@
    return Object.freeze({ok:true,token});
   }
   function canContinue(token){return current()&&!!pending&&pending.token===token;}
-  function settle(token,receipt){
+  function inspect(token,receipt){
    if(!canContinue(token))return fail('STALE_TURN');
    const turn=pending;
-   // Consume exactly once even if the caller reports a failed/ambiguous result.
-   pending=null;
    if(!receipt||receipt.accountId!==initial.accountId||receipt.groupId!==initial.groupId||
       !validId(receipt.userMid)||!Array.isArray(receipt.replyMids))return fail('UNCONFIRMED');
    const ids=[receipt.userMid,...Array.from(receipt.replyMids)];
@@ -67,9 +65,15 @@
    if(!current())return fail('SCOPE_CHANGED');
    return Object.freeze({ok:true,userMid:receipt.userMid,replies:Object.freeze(replies)});
   }
+  function settle(token,receipt){
+   if(!canContinue(token))return fail('STALE_TURN');
+   const result=inspect(token,receipt);
+   pending=null;
+   return result;
+  }
   function abandon(token){if(!canContinue(token))return false;pending=null;return true;}
   function close(){closed=true;pending=null;}
-  return Object.freeze({begin,canContinue,settle,abandon,close});
+  return Object.freeze({begin,canContinue,inspect,settle,abandon,close});
  }
  root.MAOGroupCallTurn=Object.freeze({version:1,create});
 })(window);

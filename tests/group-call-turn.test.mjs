@@ -38,3 +38,10 @@ test('unavailable primary fails closed; confirmed user with no reply is not a fa
  const h=fixture();h.data.delete('chat_history_g-call');assert.equal(h.api.begin(u.text).code,'HISTORY_UNAVAILABLE');
  h.write(h.history);const t=h.api.begin(u.text).token;h.write([...h.history,u]);const r=h.api.settle(t,h.receipt('u1',[]));assert.equal(r.ok,true);assert.deepEqual(r.replies,[]);
 });
+
+test('progress inspection is repeatable and does not consume the active token',()=>{
+ const h=fixture(),t=h.api.begin(u.text).token;h.write([...h.history,u,a]);
+ assert.equal(h.api.inspect(t,h.receipt('u1',['a1'])).ok,true);assert.equal(h.api.canContinue(t),true);
+ h.write([...h.history,u,a,b]);assert.equal(h.api.inspect(t,h.receipt()).replies.length,2);
+ assert.equal(h.api.settle(t,h.receipt()).ok,true);assert.equal(h.api.canContinue(t),false);
+});
