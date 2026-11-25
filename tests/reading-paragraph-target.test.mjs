@@ -139,3 +139,23 @@ test('default book overrides preserve seed text, persist tombstones and isolate 
  assert.deepEqual(Array.from(c.applySeedShelfOverrides(records,b),book=>book.id),['b1','b2','b3']);
  assert.equal(seedBooks[1].coverImage,undefined);
 });
+
+test('native touch swipe hides chrome and a stationary tap restores it without a synthesized click',()=>{
+ const chrome=html.slice(html.indexOf('  function setReadingChrome('),html.indexOf('  function closeSheets()'));
+ const touch=html.slice(html.indexOf('  var readerTouchStart=null,lastReadingTouchReveal=0;'),html.indexOf("  readerBody.addEventListener('wheel'"));
+ let hidden=false,controls=false,now=10000;
+ const handlers={};
+ const c=vm.createContext({state:{book:{id:'b1'}},settings:{mode:'scroll'},readerView:{getAttribute:()=> 'false',classList:{toggle:(k,v)=>hidden=v,contains:()=>hidden}},readerControls:{classList:{toggle:(k,v)=>controls=v,contains:()=>controls}},sheetBackdrop:{classList:{contains:()=>false}},readerBody:{addEventListener:(k,fn)=>handlers[k]=fn},readingGestureMoved:false,paragraphHoldOpenedAt:0,Date:{now:()=>now},cancelParagraphHold:()=>{}});
+ vm.runInContext(chrome+touch,c);
+ const evt=(x,y,interactive=false)=>({touches:[{clientX:x,clientY:y}],changedTouches:[{clientX:x,clientY:y}],target:{closest:()=>interactive?{}:null}});
+ for(const mode of ['scroll','smooth']){
+  c.settings.mode=mode;
+  handlers.touchstart(evt(100,150));handlers.touchmove(evt(70,100));handlers.touchend(evt(70,100));
+  assert.equal(hidden,true);assert.equal(controls,false);
+  now+=700;handlers.touchstart(evt(40,45));now+=70;handlers.touchend(evt(40,45));
+  assert.equal(hidden,false);assert.equal(controls,true);
+ }
+ handlers.touchstart(evt(100,150));handlers.touchmove(evt(70,100));handlers.touchend(evt(70,100));
+ now+=700;handlers.touchstart(evt(40,45,true));now+=70;handlers.touchend(evt(40,45,true));assert.equal(hidden,true);
+ handlers.touchstart(evt(40,45));now+=600;handlers.touchend(evt(40,45));assert.equal(hidden,true);
+});
