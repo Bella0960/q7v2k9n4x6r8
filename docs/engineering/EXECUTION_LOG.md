@@ -647,3 +647,10 @@ On the next turn/session, read this file and the current `AGENTS.md` first. Cont
 - ecf05ba270afe7b323c6dd6172e8029a308cf219 的三套群设置 Chromium 回归在 #44843160164 通过。完整发布仍须以 QA-only 门禁和同源 SHA 回执为准。
 
 - 第二轮定位记忆清理回归仍走旧入口，旧档案的角色副本与群共享 ID 时还会遮蔽群记录。明确从群选项入口进入时优先按群 ID 读取，单聊入口沿用原规则。Vite 和四套 Chromium 专项（含 375、390、430、1100px 的记忆清理）在 #44843984791 通过。
+
+
+## 2026-11-25｜DESKTOP-DRAG-PERF-001｜原 #496 拖拽专项
+
+- 用户授权重构拖拽，沿用原分支和 rAF/transform；新增几何缓存、滚动/尺寸/DOM 失效和真实占位变动才写入，测量在 ghost transform 写入之前，隐藏 Dock 不参与碰撞。
+- 文件：index.html、tests/default-desktop-layout.test.mjs。无数据结构、存储键、主题或默认布局改动。松手保存和取消不保存的原路径保留。
+- 新增实际缓存函数 VM 行为断言；Node/Vite/Chromium/真机均尚未运行，不可当作通过。原 #496 与当前 main/已发布候选存在分叉，必须选择性整合到最新 QA 基线并完成 375/390/430 DPR3 拖拽、跨页、Dock、取消、掉帧检测后再发布。禁止直接合并旧分支。

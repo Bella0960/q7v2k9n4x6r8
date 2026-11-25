@@ -406,3 +406,42 @@ test('drag clones retain measured source dimensions; minute ticks avoid unnecess
   assert.match(index,/if \(renderedDay === dayKey\) return/);
   assert.match(index,/if \(!eventEl\.isContentEditable && eventEl\.textContent !== data\.event\)/);
 });
+
+
+test('drag geometry cache reuses stable measurements and invalidates on real placement', () => {
+  const start = index.indexOf('      function invalidateDragGeometry() {');
+  const end = index.indexOf('      function setDragAvatarPosition(cx, cy) {', start);
+  assert.ok(start >= 0 && end > start);
+  let reads = 0, writes = 0;
+  const rect = () => { reads++; return { left: 0, right: 10, top: 0, bottom: 10, width: 10, height: 10 }; };
+  const tile = { getBoundingClientRect: rect };
+  const placeholder = { getBoundingClientRect: rect };
+  const dragEl = { getBoundingClientRect: () => { throw new Error('hidden source measured'); } };
+  const grid = { children: [placeholder, tile, dragEl], insertBefore(node, sibling) {
+    writes++; this.children = this.children.filter(x => x !== node);
+    this.children.splice(sibling ? this.children.indexOf(sibling) : this.children.length, 0, node);
+    node.parentNode = this;
+  } };
+  placeholder.parentNode = grid;
+  const ctx = { dragBounds: null, dragGeometry: null, placeholder, dragEl,
+    homeScreen: { getBoundingClientRect: rect }, dockBar: { getBoundingClientRect: rect },
+    nextPlaceableSibling(el) { return grid.children.slice(grid.children.indexOf(el)+1).find(x => x !== dragEl && x !== placeholder) || null; } };
+  runInNewContext(index.slice(start,end) + '\nthis.api = { getDragBounds, getDragGeometry, invalidateDragGeometry, placeDragPlaceholder };', ctx);
+  const api = ctx.api;
+  api.getDragBounds(); api.getDragGeometry(grid);
+  assert.equal(reads,4);
+  for (let i=0;i<100;i++) { api.getDragBounds(); api.getDragGeometry(grid); }
+  assert.equal(reads,4, 'stable drag must not remeasure tiles');
+  assert.equal(api.placeDragPlaceholder(grid,tile),false);
+  assert.equal(writes,0);
+  assert.equal(api.placeDragPlaceholder(grid,null),true);
+  assert.equal(writes,1);
+  api.getDragBounds(); api.getDragGeometry(grid);
+  assert.equal(reads,8,'placement must invalidate cached geometry');
+  api.invalidateDragGeometry();
+  api.getDragGeometry(grid);
+  assert.equal(reads,10);
+  assert.match(index,/document\.addEventListener\('scroll', invalidateDragGeometry, true\)/);
+  assert.match(index,/document\.removeEventListener\('scroll', invalidateDragGeometry, true\)/);
+  assert.match(index,/finally \{ setDragAvatarPosition\(cx, cy\); \}/);
+});
