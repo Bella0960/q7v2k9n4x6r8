@@ -1172,6 +1172,7 @@ function mergeForumPosts(stored,seedPosts,previousSeedSets){
   // Theme-specific fictional events progress without overwriting the original post.
   async function generateForumWorldContinuation(target,readerText){
     if(!post||!window.ForumWorldEvents||!ForumWorldEvents.isEvent(post)||worldReplyBusy||worldPageHidden)return false;
+    const sourcePost=post;
     const state=ForumWorldEvents.progress(post);
     if(state.finished){toast('这件事已经有了结果');return false;}
     worldReplyBusy=true;renderPost();
@@ -1195,7 +1196,7 @@ function mergeForumPosts(stored,seedPosts,previousSeedSets){
         '\n校园应体现课程/社团/宿舍的现实安排，修仙遵循宗门规矩和修为代价，赛博描绘居民生活与技术限制，都市强调真实人际选择，自定义主题遵守世界书。不要把故事写成统一的反转八卦。人物和经历纯属虚构。'+
         '\n返回格式：{"update":"新进展完整正文","newFacts":["这次新增具体事实A","新增事实B"]}。';
       const result=await forumAIJSON(prompt,0.88,[]);
-      if(worldPageHidden)return false;
+      if(worldPageHidden||post!==sourcePost||post.worldEvent!==world)return false;
       if(!result||!result.ok||!result.data)throw new Error('没有生成有效的事件进展');
       const checked=ForumWorldEvents.checkUpdate(result.data,[postBody()].concat(oldUpdates.map(x=>x.text)),world.facts);
       if(!checked.ok)throw new Error(checked.reason);

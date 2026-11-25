@@ -1,0 +1,9 @@
+import test from 'node:test';
+import assert from 'node:assert/strict';
+import fs from 'node:fs';
+import vm from 'node:vm';
+const source=fs.readFileSync('shared/js/phone/chat-context-policy.js','utf8');
+const win={};vm.runInNewContext(source,{window:win});const map=win.ChatContextPolicy.mapHistoryToApiMessages;
+test('legacy sent and received content remains readable without rewriting storage',()=>{const h=[{role:'sent',content:'旧用户文字',unknownField:{keep:1}},{role:'received',content:'旧角色文字',customFlag:'keep'}];const before=JSON.stringify(h);const x=map(h,String,{});assert.equal(x[0].content,'旧用户文字');assert.equal(x[1].content,'旧角色文字');assert.equal(x[1].role,'assistant');assert.equal(JSON.stringify(h),before);});
+test('mixed old and new group rows never infer identity from names',()=>{const h=[{role:'received',name:'我',content:'旧记录'},{role:'assistant',memberId:'b',text:'新记录',unknownField:3},{role:'sent',content:'本人记录'}];const before=JSON.stringify(h);const x=map(h,String,{isGroupChat:true,speakerId:'a',groupMembers:[{id:'a',name:'我'},{id:'b',name:'我'}]});assert.match(x[0].content,/"type":"UNKNOWN"/);assert.match(x[1].content,/"type":"AI_ROLE","id":"b"/);assert.match(x[2].content,/"type":"USER_SELF"/);assert.equal(JSON.stringify(h),before);});
+test('stream write checkpoints surround the request and protect unload snapshots',()=>{const s=fs.readFileSync('chat/chat/chat-detail.html','utf8');const before=s.indexOf('if (!await turnServerCurrent())');const stream=s.indexOf('streamResult = await PhoneStream.chat',before);const after=s.indexOf('if (!await turnServerCurrent())',stream);assert.ok(before>=0&&stream>before&&after>stream);assert.match(s,/typeof inflightSnapshot.isCurrent !== 'function' \|\| !inflightSnapshot.isCurrent\(\)/);assert.match(s,/var replySaved = turnIdentityCurrent\(\) && saveMessages\(historyList\)/);});

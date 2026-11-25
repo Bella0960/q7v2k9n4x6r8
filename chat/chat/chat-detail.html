@@ -5638,7 +5638,8 @@
         // 在页面卸载前一定完成，下一页轮询时就能读到未读 + 弹窗。
         window.addEventListener('pagehide', function () {
             try {
-                if (!aiSending || !inflightSnapshot || singleChatPartialSaved) return;
+                if (!aiSending || !inflightSnapshot || singleChatPartialSaved ||
+                    typeof inflightSnapshot.isCurrent !== 'function' || !inflightSnapshot.isCurrent()) return;
                 var raw = String(inflightSnapshot.text || '').trim();
                 if (!raw) return;
                 var cleaned = stripInternalReasoning(raw)
@@ -5680,6 +5681,18 @@
         }
 
         async function sendMsgTurn(opts) {
+            const turnScopeApi = window.PhoneAPI;
+            const turnAccountTicket = turnScopeApi && typeof turnScopeApi.captureWriteScope === 'function'
+                ? turnScopeApi.captureWriteScope() : null;
+            const turnConversationId = String(currentCharacter.id);
+            const turnStorageKey = storageKey;
+            function turnIdentityCurrent() {
+                return !!turnAccountTicket && turnScopeApi.isWriteScopeCurrent(turnAccountTicket) &&
+                    String(currentCharacter.id) === turnConversationId && storageKey === turnStorageKey;
+            }
+            async function turnServerCurrent() {
+                return turnIdentityCurrent() && await turnScopeApi.verifyWriteScope(turnAccountTicket) && turnIdentityCurrent();
+            }
             const input = document.getElementById('chat-input');
             const sendState = (window.ChatSendPolicy && typeof window.ChatSendPolicy.normalizeOptions === 'function')
                 ? window.ChatSendPolicy.normalizeOptions(opts, input.value)
@@ -7078,7 +7091,7 @@
             var momentSource = retryTarget || sourceGateUser;
             function momentTurnCurrent(id) {
                 try {
-                    return !isGroupChat && !_chatHistoryUnreadable && String(currentCharacter.id) === String(id) &&
+                    return turnIdentityCurrent() && !isGroupChat && !_chatHistoryUnreadable && String(currentCharacter.id) === String(id) &&
                         storageKey === 'chat_history_' + id && _chatHistoryBaselines.has(historyList) &&
                         localStorage.getItem(storageKey) === _chatHistoryBaselines.get(historyList);
                 } catch (e) { return false; }
@@ -7416,6 +7429,7 @@
                     .replace(/\[(?:游|游戏|游戏私|游戏私聊|游戏猜|游戏猜测|游戏揭|游戏揭晓|群|群私|群私聊)[^\]\r\n]{0,1000}$/g, '');
             }
             function paintStreamLive(text) {
+                if (!turnIdentityCurrent()) { inflightSnapshot = null; return; }
                 // Do not display a draft post or an unverified success claim during streaming.
                 if (momentsAction) {
                     lastPaintedStreamText = typeof text === 'string' ? text : '';
@@ -7425,6 +7439,7 @@
                 lastPaintedStreamText = typeof text === 'string' ? text : '';
                 // 同步快照，供 pagehide 时把半截消息落库
                 inflightSnapshot = !isGroupChat && isRegen ? null : {
+                    isCurrent: turnIdentityCurrent,
                     text: (function () {
                         var snapshotText = lastPaintedStreamText;
                         if (window.MomentsChatAction) snapshotText = window.MomentsChatAction.stripAuto(snapshotText);
@@ -7547,6 +7562,21 @@
             // 流式请求：核心引擎已抽离至 shared/js/phone/phone_stream.js
             //（三段式超时 / SSE 半包解析 / 残留收尾 / rAF 节流 / 中断保文，全部内聚在模块内）
             // 永不 reject：结果对象 { ok, fullText, error }，fullText 中断时 = 已收到的部分
+            async function cancelStaleIdentityTurn() {
+                inflightSnapshot = null;
+                streamNodes.forEach(function (node) { if (node && node.parentNode) node.parentNode.removeChild(node); });
+                streamNodes = [];
+                if (_vl) _vl.streaming = false;
+                const loading = document.getElementById(statusId);
+                if (loading) loading.remove();
+                aiSending = false;
+                if (chatTitleEl) chatTitleEl.textContent = originalTitleText;
+                if (typeof showToast === 'function') showToast('账号或角色会话已变化，本轮未保存，请重新进入聊天');
+            }
+            if (!await turnServerCurrent()) {
+                await cancelStaleIdentityTurn();
+                return;
+            }
             const chatResponseTimeoutMs = 60000;
             let streamResult;
             try {
@@ -7579,6 +7609,10 @@
                         detail: (streamErr && streamErr.message) ? String(streamErr.message) : '流式请求意外中断'
                     }
                 };
+            }
+            if (!await turnServerCurrent()) {
+                await cancelStaleIdentityTurn();
+                return;
             }
             fullText = typeof streamResult.fullText === 'string'
                 ? streamResult.fullText
@@ -7990,7 +8024,7 @@
                                 delete retryResolved.message.sendFailedReason;
                             }
                         }
-                        var replySaved = saveMessages(historyList);
+                        var replySaved = turnIdentityCurrent() && saveMessages(historyList);
                         // No secondary state change from a failed/partial/unpersisted turn.
                         if (replySaved && streamResult.ok) {
                             if (parsedMem.memories.length && !isGroupChat)

@@ -727,3 +727,7 @@ Previous candidate 42330588 passed public verify 45547443279, not deployed. Remo
 
 ### SOCIAL-IDENTITY-001 fourth patch | account request fence
 Previous candidate 89a93c8f passed public QA 45548703261; not deployed. Added opt-in PhoneAPI session guard to forum JSON AI, Moments raw comments/menu publication capture original account and role profile, verify session before and after model calls, recheck local scope and role before write/lock. Forum gossip/manual reply rejects replaced post; role post validates role ID and ownership. No authentication core, namespace or data migration changes. Syntax checks passed; new account-fence tests added; full Node/Chromium not yet verified. Remaining: chat streaming, media uploads, other continuation paths and apps, physical account-switch test.
+
+
+### SOCIAL-IDENTITY-001 fifth patch | chat stream and compatibility
+Fourth candidate 2658c63c QA 45556048898 still running at start; preserve it, no overwrite or parallel release. Chat turn captures original account and conversation, checks session before and after stream, stops stale paint, pagehide partial save requires matching local account/conversation, Moments write and reply save recheck local identity. Forum world continuation refuses replaced post. Added compatibility contract and regression tests. No schema/storage key change. Remaining: full Node and Chromium, verify actual old/new cached clients and physical account switch, media and other app call sites. No deployment.

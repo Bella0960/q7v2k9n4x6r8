@@ -227,3 +227,8 @@ chat-extras.js 当前依赖详情页中的 loadMessages、saveMessages、appendM
 - 线下 chat/date/date.html 共用候选解析、成功剧情格式解包；chat/date/journey.html 共用严格 JSON 提取且仍要求 4 条有效消息。
 - PhoneAPI.completeJSON 在模块已加载时委托严格解析；其他页面与主动联系动态依赖按需加载同一模块。原 ID、角色协议、世界书、存储键和旧消息格式不变。
 - 验收：tests/ai-response-parser.test.mjs、tests/date-reply-options-parser.test.mjs、npm run test:chat:contract，以及原 QA 完整 Node/Vite/Chromium 发布门禁；Android/iOS 真机另行验收。
+
+
+### SOCIAL-IDENTITY-001 | 新旧版本兼容约束（2026-11-25）
+- 本次身份隔离规则优先于本文早期“无角色 ID 的旧用户记忆全局兼容”的描述。旧记录只读保留；无明确归属的全局用户记忆不注入任何角色，未知群成员不根据昵称推断。可信角色独立存储桶的原有记录继续按原桶读取，明确标为其他角色的记录拒绝注入。
+- 保留原有存储键、消息扩展字段、旧 content/received/sent 格式和页面显示；新代码使用现有 ID/账号命名空间，禁止破坏性迁移或重写历史。旧缓存未加载身份校验能力时，涉及 AI 写回的路径应拒绝生成/提交而不是回退到不隔离的方式。新版读取旧数据、旧版读取新增元数据、混合版本及回滚均须单独验证；尚未完成真实浏览器跨版本回归。
