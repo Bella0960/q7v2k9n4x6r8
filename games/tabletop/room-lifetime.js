@@ -63,15 +63,15 @@ export function createRoomLifetime({getContext,createDispatcher,spec,rules,check
   function viewBot(seatId) {
     if(!botId(seatId)) fail('INVALID_BOT_SEAT');
     const v=current().view(seatId);
-    if(!['ludo','gomoku','werewolf'].includes(v.gameId)||!['playing','finished'].includes(v.phase)||
-      !v.seats.some(s=>s.seatId===seatId&&s.kind==='bot'&&s.mode==='player')) fail('BOT_CANNOT_VIEW');
+    if(!['ludo','gomoku','turtle','werewolf'].includes(v.gameId)||!['playing','finished'].includes(v.phase)||
+      !v.seats.some(s=>s.seatId===seatId&&s.kind==='bot'&&(s.mode==='player'||v.gameId==='turtle'&&s.mode==='moderator'))) fail('BOT_CANNOT_VIEW');
     return v;
   }
   function prepareBotTurn(seatId) {
     if(!botId(seatId)) fail('INVALID_BOT_SEAT');
     const v=current().view(seatId);
-    if(!['ludo','gomoku','werewolf'].includes(v.gameId)||v.phase!=='playing'||(v.gameId!=='werewolf'?v.turnSeatId!==seatId:!v.game?.legalKinds?.length)||
-      !v.seats.some(s=>s.seatId===seatId&&s.kind==='bot'&&s.mode==='player')) fail('BOT_CANNOT_MOVE');
+    if(!['ludo','gomoku','turtle','werewolf'].includes(v.gameId)||v.phase!=='playing'||(v.gameId==='turtle'?v.game?.activeSeatId!==seatId||!v.game?.legalKinds?.length:v.gameId!=='werewolf'?v.turnSeatId!==seatId:!v.game?.legalKinds?.length)||
+      !v.seats.some(s=>s.seatId===seatId&&s.kind==='bot'&&(s.mode==='player'||v.gameId==='turtle'&&s.mode==='moderator'))) fail('BOT_CANNOT_MOVE');
     return Object.freeze({view:v,commit:prepare(seatId,null)});
   }
   return Object.freeze({

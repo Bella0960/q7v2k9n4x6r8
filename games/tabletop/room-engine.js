@@ -72,7 +72,8 @@ export function reduceRoom(room,ctx,actorSeatId,token,action) {
     }
     case 'fillBots': {
       lobby();checkRoster(room,ctx);
-      if(!['ludo','gomoku','werewolf'].includes(room.gameId)) fail('BOTS_UNSUPPORTED');
+      if(!['ludo','gomoku','turtle','werewolf'].includes(room.gameId)) fail('BOTS_UNSUPPORTED');
+      if(room.gameId==='turtle'&&room.seats.some(s=>s.kind==='bot'&&s.mode==='moderator'))fail('MODERATOR_ALREADY_ASSIGNED');
       const count=action.playerCount, real=participants(room).filter(s=>s.kind!=='bot').length;
       if(!Number.isInteger(count)||count<room.minSeats||count>room.maxSeats||count<real||(p?.exact&&!p.exact.includes(count))) fail('INVALID_PLAYER_COUNT');
       next.seats=next.seats.filter(s=>s.kind!=='bot');

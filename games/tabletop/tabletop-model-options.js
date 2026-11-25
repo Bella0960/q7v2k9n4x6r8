@@ -115,6 +115,6 @@ export function createTabletopModelOptions({win,identity,gameId,charge,authorize
  }
  if(gameId==='ludo')return {decideRole:move,discussion:{generateRole:speak,generateBot:speak,allowOutput:allow}};
  if(gameId==='gomoku')return {decideRole:move,decideBot:move,discussion:{generateRole:speak,generateBot:speak,allowOutput:allow}};
- if(gameId==='turtle')return {askRole:turn,judgeRole:turn,allowPlayerText:allow};
+ if(gameId==='turtle')return {askRole:turn,judgeRole:turn,askBot:turn,judgeBot:turn,allowPlayerText:allow};
  return {decideRole:turn,decideBot:turn,allowSpeech:allow};
 }
