@@ -427,6 +427,52 @@ try {
           },originalGroups);
         }
       }finally{await groupReader.close();await context.unroute(readerUrl,readerRoute);}
+      // M06: exercise the actual chat page, not the isolated preview.
+      const chat=await context.newPage(), chatErrors=[];
+      chat.on('pageerror',err=>chatErrors.push(err.message));
+      await chat.route('**/*',route=>route.request().url().startsWith(new URL(BASE).origin+'/')?route.continue():route.abort());
+      await page.evaluate(()=>{
+        localStorage.setItem('phone_groups',JSON.stringify([{id:'g-listen-ui',name:'一起听歌测试群',ownerId:'__user',members:[{id:'listen-role',name:'测试成员'}]}]));
+        localStorage.setItem('ai_custom_characters',JSON.stringify([{id:'listen-role',name:'测试成员'}]));
+      });
+      try{
+        await chat.goto(new URL('/chat/chat/chat-detail.html?id=g-listen-ui',BASE).href);
+        const entry=chat.locator('[data-group-listening-entry]');
+        await entry.waitFor({state:'attached'});
+        assert.equal(await chat.locator('[data-group-listening-audio]').count(),0,'lazy creation');
+        await chat.locator('#plus-action-btn').click();
+        await chat.locator('[data-plus-section="group"]').click();
+        await entry.click();
+        const dialog=chat.locator('#groupListeningDialog'),strip=chat.locator('#groupListeningStrip');
+        await dialog.waitFor({state:'visible'});
+        const track=dialog.locator('[data-glisten-track]').filter({hasNotText:'__unused__'});
+        assert.equal(await track.count(),2);
+        await track.first().check();await track.nth(1).check();
+        // Repeat the synthetic one-second WAV during UI interaction; no real media mocked.
+        await chat.evaluate(()=>{const original=HTMLMediaElement.prototype.play;HTMLMediaElement.prototype.play=function(){if(this.dataset.groupListeningAudio)this.loop=true;return original.call(this);};});
+        await dialog.locator('[data-glisten-start]').click();
+        await strip.waitFor({state:'visible'});
+        await chat.waitForFunction(()=>{const a=document.querySelector('[data-group-listening-audio]');return a&&!a.paused;});
+        assert.ok((await strip.boundingBox()).height<=60,'compact playback card');
+        assert.ok(await chat.evaluate(()=>document.documentElement.scrollWidth<=innerWidth),'no horizontal overflow');
+        await chat.locator('#chat-input').fill('听歌时继续编辑聊天消息');
+        assert.equal(await chat.evaluate(()=>document.querySelector('[data-group-listening-audio]').paused),false);
+        await strip.getByRole('button',{name:'打开一起听歌详情'}).click();
+        await dialog.locator('[data-glisten-member="listen-role"]').click();
+        assert.equal(await dialog.locator('[data-glisten-member="listen-role"]').getAttribute('aria-pressed'),'true');
+        await dialog.getByRole('button',{name:'暂停',exact:true}).click();
+        await chat.waitForFunction(()=>document.querySelector('[data-group-listening-audio]').paused);
+        await dialog.getByRole('button',{name:'播放',exact:true}).click();
+        await chat.waitForFunction(()=>!document.querySelector('[data-group-listening-audio]').paused);
+        await dialog.getByRole('button',{name:'下一首'}).click();
+        await chat.waitForFunction(()=>!document.querySelector('[data-group-listening-audio]').paused);
+        await dialog.locator('[data-glisten-end]').click();
+        await strip.waitFor({state:'hidden'});assert.equal(await chat.locator('[data-group-listening-audio]').count(),0);
+        await chat.goto(new URL('/chat/chat/chat-detail.html?id=listen-role',BASE).href);
+        assert.equal(await chat.locator('[data-group-listening-entry]').count(),0,'single-chat unaffected');
+        assert.equal(await chat.locator('[data-feat="music-app"]').count(),1,'original music shortcut retained');
+        assert.deepEqual(chatErrors,[]);
+      }finally{await chat.close();}
       assert.deepEqual(pageErrors, [], 'no uncaught JS errors at ' + width);
       console.log('PASS Chromium ' + width + 'px: viewport, import Blob, reload, playback, cover, LRC, playlist');
     } finally {

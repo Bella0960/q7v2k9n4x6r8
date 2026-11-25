@@ -45,6 +45,11 @@
     <script src="../../shared/js/phone/group-chat-policy.js?v=20261118groupvoice1"></script>
     <script src="../../shared/js/phone/group-write-guard.js?v=20261125g10"></script>
     <script src="../../shared/js/group-governance.js?v=20261125scope3"></script>
+    <script src="../../shared/js/phone/music-catalog-adapter.js?v=20261126m03"></script>
+    <script src="../../shared/js/phone/music-playback-controller.js?v=20261126m04c1"></script>
+    <script src="../../shared/js/phone/group-listening-session.js?v=20261126m05"></script>
+    <script src="../../shared/js/phone/group-listening-view.js?v=20261126m06"></script>
+    <link rel="stylesheet" href="../../shared/css/group-listening-view.css?v=20261126m06">
     <script src="../../shared/js/phone/group-portraits.js?v=20261125scope1"></script>
     <script src="../../shared/js/phone/group-game-session.js?v=20261116game11"></script>
     <script src="../../shared/js/phone/group-turn-effects.js?v=20261125scope1"></script>
@@ -10598,6 +10603,19 @@
             });
         })();
 
+        // Group-only listening extension. No player is created until explicit selection.
+        let groupListeningView = null;
+        function mountGroupListeningView(){
+            if(!isGroupChat||!readGroupScope()||!window.MAOGroupListeningView)return;
+            groupListeningView=window.MAOGroupListeningView.mount({
+                host:document.querySelector('.phone-mockup'),header:document.querySelector('.chat-header'),
+                menu:document.getElementById('plusGroupActions'),getGroupScope:readGroupScope,
+                hasRole:id=>!!getRoleById(id),memberName:groupMemberDisplayName,
+                paintAvatar:(el,id,member)=>fillGroupPortrait(el,id==='__user'?getMyAvatar():groupSpeakerAvatarForMessage(null,member),id),
+                notify:showToast
+            });
+        }
+        mountGroupListeningView();
     </script>
     <script src="js/chat-extras.js?t=20261122cards4"></script>
     <script src="../call/call-overlay.js?v=20261121call1"></script>
