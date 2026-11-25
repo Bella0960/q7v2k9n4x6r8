@@ -96,8 +96,29 @@
       if (m.quote && typeof m.quote === 'object' && m.quote.text) {
         var quoteText = String(m.quote.text).trim().slice(0, 500);
         var quoteAuthor = String(m.quote.authorName || '').trim();
-        if (quoteText) {
-          content = '[引用回复上下文' + (quoteAuthor ? '，原消息来自' + quoteAuthor : '') +
+        var quoteMid = String(m.quote.mid || '');
+        var sources = quoteMid ? (Array.isArray(history) ? history : []).filter(function (row) {
+          return row && String(row.mid || '') === quoteMid;
+        }) : [];
+        var source = sources.length === 1 ? sources[0] : null;
+        var safeSource = source && !source.isError && !source.sendFailed && !source.silent &&
+          source.type !== 'group_private' && source.type !== 'group_game_private' &&
+          source.visibility !== 'private' && source.visibility !== 'role_only';
+        // A group quote may outlive its source. Do not feed an unverified or private
+        // snapshot into a shared group request; the stored quote remains visible.
+        if (quoteText && (!isGroupChat || safeSource)) {
+          var actor = {type:'UNKNOWN',id:''};
+          if (safeSource) {
+            if ((source.role === 'user' || source.role === 'sent') &&
+                !source.memberId && !source.roleId && source.byAI !== true) actor.type = 'USER_SELF';
+            else if (source.role === 'assistant' || source.role === 'received') {
+              var quotedMember = memberForMessage(source);
+              if (quotedMember) actor = {type:'AI_ROLE',id:String(quotedMember.id)};
+              else if (!isGroupChat && !source.memberId && !source.roleId) actor.type = 'AI_ROLE';
+            }
+          }
+          content = '[引用回复上下文，原作者身份=' + JSON.stringify(actor) +
+            (quoteAuthor ? '，历史显示名（非身份依据）=' + JSON.stringify(quoteAuthor) : '') +
             '：「' + quoteText + '」]\n' + content;
         }
       }

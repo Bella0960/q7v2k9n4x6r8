@@ -248,7 +248,7 @@ test('quoted chat messages carry their source into the model context', () => {
   ])));
   assert.deepEqual(mapped, [{
     role: 'user',
-    content: '[引用回复上下文，原消息来自TA：「那我们周末去看看？」]\n我觉得可以。'
+    content: '[引用回复上下文，原作者身份={"type":"UNKNOWN","id":""}，历史显示名（非身份依据）="TA"：「那我们周末去看看？」]\n我觉得可以。'
   }]);
 });
 

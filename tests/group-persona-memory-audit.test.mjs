@@ -81,7 +81,7 @@ test('a group speaker reads only OWN opted-in direct long-term memory and no oth
   assert.equal(fn({memorySharing:true},true,{id:'a',memory:'A'},()=>{throw Error('game secrets exposed')},x=>x),'群聊正文');
 });
 
-test('voice history attributes legacy names only when the selected identity is unique', () => {
+test('voice history ignores legacy display names even when a name is unique', () => {
   const duplicates=[{id:'a',name:'阿月'}, {id:'b',nickname:'阿月'}];
   const history=[
     {role:'assistant',name:'阿月',text:'我是旧昵称的说话风格'},

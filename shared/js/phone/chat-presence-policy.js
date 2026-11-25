@@ -56,7 +56,7 @@
 
   function isUsableAssistantMessage(message) {
     if (!message || typeof message !== 'object') return false;
-    if (message.isError || message.role === 'system_error' || message.silent ||
+    if (message.isError || isPrivateOrFailed(message) || message.role === 'system_error' || message.silent ||
         message.mode === 'date' || message.mode === 'narration' || message.mode === 'offline' ||
         message.voiceMode === 'date' || message.voiceMode === 'narration' || message.voiceMode === 'offline') return false;
     if (message.type && message.type !== 'text') return false;
@@ -66,25 +66,22 @@
   function matchesSpeaker(message, options) {
     if (options.isGroupChat !== true) return true;
     var speakerId = options.speakerId == null ? '' : String(options.speakerId);
-    var speakerName = String(options.speakerName || '').trim();
-    if (speakerId) {
-      var messageId = message.memberId == null ? '' : String(message.memberId);
-      if (messageId) return messageId === speakerId;
-      // Old rows without memberId may use an obsolete display nickname.
-      // Never learn the wrong character's voice from an ambiguous nickname.
-      var savedName = String(message.name || '').trim();
-      if (!speakerName || savedName !== speakerName) return false;
-      var members = Array.isArray(options.groupMembers) ? options.groupMembers : [];
-      if (members.length) {
-        var matched = members.filter(function (member) {
-          return member && (String(member.nickname || '').trim() === savedName ||
-            String(member.name || '').trim() === savedName);
-        });
-        if (matched.length !== 1 || String(matched[0].id) !== speakerId) return false;
-      }
-      return true;
-    }
-    return !!speakerName && String(message.name || '').trim() === speakerName;
+    var messageId = message.memberId == null ? '' : String(message.memberId);
+    return !!speakerId && messageId === speakerId &&
+      (!Array.isArray(options.groupMembers) || options.groupMembers.some(function(member) {
+        return member && String(member.id) === speakerId;
+      }));
+  }
+
+  function isPrivateOrFailed(message) {
+    return message.sendFailed || message.type === 'group_private' ||
+      message.type === 'group_game_private' || message.visibility === 'private' ||
+      message.visibility === 'role_only';
+  }
+
+  function isConflictingUserMessage(message, options) {
+    return options.isGroupChat === true && (message.role === 'user' || message.role === 'sent') &&
+      !!(message.memberId || message.roleId || message.byAI === true);
   }
 
   function collectHabitMessages(history, options) {
@@ -315,7 +312,7 @@
 
   function isUsableEmotionMessage(message) {
     if (!message || typeof message !== 'object') return false;
-    if (message.silent || message.isError || message.role === 'system_error') return false;
+    if (message.silent || message.isError || isPrivateOrFailed(message) || message.role === 'system_error') return false;
     if (message.type && message.type !== 'text') return false;
     if (message.mode === 'date' || message.mode === 'narration' || message.mode === 'offline' ||
         message.voiceMode === 'date' || message.voiceMode === 'narration' || message.voiceMode === 'offline') return false;
@@ -364,7 +361,7 @@
 
     for (var i = list.length - 1; i >= 0 && scanned < maxScan; i--) {
       var message = list[i];
-      if (!isUsableEmotionMessage(message)) continue;
+      if (!isUsableEmotionMessage(message) || isConflictingUserMessage(message, options)) continue;
       if (message.role === 'assistant' || message.role === 'received') {
         if (!matchesSpeaker(message, options)) continue;
       }
@@ -377,7 +374,7 @@
       var signalIsFromAssistant = message.role === 'assistant' || message.role === 'received';
       for (var j = i + 1; j < list.length; j++) {
         var later = list[j];
-        if (!isUsableEmotionMessage(later)) continue;
+        if (!isUsableEmotionMessage(later) || isConflictingUserMessage(later, options)) continue;
         if (signalIsFromAssistant) {
           // A role-authored signal stays relevant until the user responds.
           if (later.role === 'user' || later.role === 'sent') turnsSince += 1;
@@ -481,7 +478,7 @@
 
     for (var i = list.length - 1; i >= 0 && scanned < maxScan && notes.length < maxNotes; i--) {
       var message = list[i];
-      if (!isConversationTextMessage(message)) continue;
+      if (!isConversationTextMessage(message) || isPrivateOrFailed(message) || isConflictingUserMessage(message, options)) continue;
       scanned += 1;
 
       var isAssistant = message.role === 'assistant' || message.role === 'received';

@@ -286,7 +286,9 @@
 
         // 3. 长期记忆
         try {
-            var memories = Storage.getMemories(contactId);
+            var memories = (Storage.getMemories(contactId) || []).filter(function (memory) {
+                return memory && (typeof memory === 'string' || memory.sourceRoleId == null || String(memory.sourceRoleId) === String(contactId));
+            });
             if (memories && memories.length) {
                 var memText = memories.map(function (m) {
                     if (typeof m === 'string') return m;
@@ -302,9 +304,18 @@
             var history = Storage.getChatHistory(contactId);
             if (history && history.length) {
                 // 取最近 30 条
-                var recent = history.slice(-30).map(function (msg) {
-                    var who = msg.role === 'assistant' ? (role.name || 'TA') : '我';
-                    return who + '：' + (msg.content || msg.text || '');
+                var recent = history.slice(-30).filter(function (msg) {
+                    return msg && !msg.isError && !msg.sendFailed && !msg.silent &&
+                        msg.type !== 'group_private' && msg.type !== 'group_game_private' &&
+                        msg.visibility !== 'private' && msg.visibility !== 'role_only' &&
+                        ['user','sent','assistant','received'].includes(msg.role);
+                }).map(function (msg) {
+                    var isUser = msg.role === 'user' || msg.role === 'sent';
+                    var declaredId = String(msg.memberId || msg.roleId || '');
+                    var actor = { type:'UNKNOWN', id:'' };
+                    if (isUser && !declaredId && msg.byAI !== true) actor = { type:'USER_SELF', id:'me' };
+                    if (!isUser && (!declaredId || declaredId === String(contactId))) actor = { type:'AI_ROLE', id:String(contactId), name:role.name || '' };
+                    return JSON.stringify({ actor:actor, text:msg.content || msg.text || '' });
                 }).join('\n');
                 parts.push(section('近期聊天', recent));
             }
