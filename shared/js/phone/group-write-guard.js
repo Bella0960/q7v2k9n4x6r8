@@ -2,16 +2,19 @@
 (function installGroupWriteGuard(global){
   'use strict';
   function account(){var m=global.document.querySelector('meta[name="mao-account-id"]');return m?String(m.content||'').trim():'';}
+  function scopeAllowed(value){return !!value||/^(localhost|127\.0\.0\.1|\[::1\])$/.test(String(global.location&&global.location.hostname||''));}
   function read(id){
     if(typeof id!=='string'||id.charAt(0)!=='g')return null;
+    var owner=account();if(!scopeAllowed(owner))return null;
     var raw=global.localStorage.getItem('phone_groups'),groups=JSON.parse(raw||'[]');
-    if(!Array.isArray(groups))return null;
+    if(!Array.isArray(groups)||account()!==owner)return null;
     var matches=groups.filter(function(x){return x&&String(x.id)===id;});
-    return matches.length===1?{id:id,account:account(),serialized:JSON.stringify(matches[0]),group:matches[0]}:null;
+    return matches.length===1?{id:id,account:owner,serialized:JSON.stringify(matches[0]),group:matches[0]}:null;
   }
   function change(expected,next,remove){
     try{
-      if(!expected||(!remove&&(!next||String(next.id)!==expected.id))||account()!==expected.account)return {ok:false,reason:'scope'};
+      var owner=account();
+      if(!expected||!scopeAllowed(owner)||(!remove&&(!next||String(next.id)!==expected.id))||owner!==expected.account)return {ok:false,reason:'scope'};
       var raw=global.localStorage.getItem('phone_groups'),groups=JSON.parse(raw||'[]');
       if(!Array.isArray(groups))return {ok:false,reason:'invalid'};
       var matches=groups.reduce(function(out,x,i){if(x&&String(x.id)===expected.id)out.push(i);return out;},[]);
