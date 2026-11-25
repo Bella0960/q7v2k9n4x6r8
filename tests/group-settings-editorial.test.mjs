@@ -13,10 +13,12 @@ test('group-only adapter parses and exits without touching DOM in single-chat mo
 });
 test('adapter loads after original settings handlers and delegates existing operations', () => {
   assert.ok(html.indexOf('refreshMeta();\n</script>') < html.indexOf('src="../../shared/js/group-settings-editorial.js'));
-  for (const id of ['actionGroupNotice','gpAvatarEditBtn','actionSearchHistory','actionBackground','actionGroupManage','gpInviteToggle','actionPin','actionTimeAware','actionSound']) {
+  for (const id of ['actionGroupNotice','actionSearchHistory','actionBackground','actionGroupManage','gpInviteToggle','actionPin','actionTimeAware','actionSound']) {
     assert.ok(html.includes('id="'+id+'"'),id);
     assert.ok(js.includes("'"+id+"'"),id);
   }
+  assert.ok(html.includes('id="gpAvatarEditBtn"')); // original group icon control still exists in group info
+  assert.match(js,/btn\('gp-shortcut','群内头像',openPortraits\)/);
   assert.doesNotMatch(js, /\b(?:setItem|removeItem|saveCurrentGroup|saveByKey|fetch)\s*\(/);
 });
 test('only the member strip collapses; no group name overlays cover', () => {
@@ -133,4 +135,42 @@ test('write guard rejects stale and cross-account updates and verifies readback'
   assert.equal(api.commit(snap,snap.group).reason,'storage');
   fail=false;data=JSON.stringify([{id:'g2'}]);
   assert.equal(api.commit(snap,snap.group).reason,'stale');
+});
+
+test('portrait media ownership, isolated group, failed batch and stale selection',async()=>{
+  const context={Map,Blob,document:{querySelector:()=>({content:account})}};
+  const A='as_'+'A'.repeat(32),B='as_'+'B'.repeat(32), image='data:image/png;base64,AAAA';
+  let account='001',data=JSON.stringify([{id:'g1',members:[{id:'r',avatar:'old'}]},{id:'g2',members:[{id:'r',avatar:'other'}]}]), count=0, failAt=0;
+  const refs=new Map();
+  context.localStorage={getItem:()=>data,setItem:(_key,v)=>{data=v;}};
+  context.PhoneStorage={MediaRepository:class{
+    async putBlob(blob,opts){count++;if(count===failAt)return {ok:false};const id=count%2?A:B;refs.set(opts.ownerId,[{assetId:id}]);return {ok:true,value:{assetId:id}};}
+    async getBlob(){return {ok:true};}
+    async listByOwner(_type,id){return {ok:true,value:refs.get(id)||[]};}
+    async toDataUrl(){return {ok:true,value:image};}
+  }};
+  context.window=context;vm.runInNewContext(read('shared/js/phone/group-portraits.js'),context);
+  const api=context.MAOGroupPortraits, blob=new Blob(['image'],{type:'image/png'});
+  const original=data;
+  failAt=2;
+  await assert.rejects(api.save(api.snapshot('g1'),new Map([['r',blob],['__user',blob]])));
+  assert.equal(data,original);
+  failAt=0;
+  await api.save(api.snapshot('g1'),new Map([['r',blob]]));
+  let list=JSON.parse(data),group=list[0];
+  assert.equal(await api.resolve(group,'r'),image);
+  assert.equal(await api.resolve(list[1],'r'),'');
+  assert.equal(group.members[0].avatar,'old');
+  account='002';assert.equal(await api.resolve(group,'r'),'');
+  assert.throws(()=>api.snapshot('g1'));
+  account='001';
+  const stale=api.snapshot('g1');
+  list[0].name='new';data=JSON.stringify(list);
+  await assert.rejects(api.save(stale,new Map([['r',null]])));
+  const forged={id:'g2',members:[{id:'r'}],portraitOverridesV1:group.portraitOverridesV1};list[1]=forged;data=JSON.stringify(list);
+  assert.equal(await api.resolve(forged,'r'),'');
+  api.forgetMember(list[0],'r');data=JSON.stringify(list);
+  assert.equal(await api.resolve(group,'r'),'');
+  await api.save(api.snapshot('g1'),new Map([['r',null]]));
+  assert.equal(JSON.parse(data)[0].portraitOverridesV1.entries.length,0);
 });
