@@ -229,10 +229,28 @@ try{
   await page.locator('#shelfView[aria-hidden=false]').waitFor();
   await book.waitFor();
   phase=width+7;
+  console.log('SEALED_BROWSER_CHECKPOINT:391');
   const holdBook=async(card=book)=>{
+   await page.locator('#shelfView[aria-hidden=false]').waitFor();
+   await page.locator('#bookActionSheet.is-open').waitFor({state:'hidden'});
    await card.scrollIntoViewIfNeeded();
-   const box=await card.boundingBox();await page.mouse.move(box.x+box.width/2,box.y+box.height/2);
-   await page.mouse.down();await page.waitForTimeout(650);await page.mouse.up();
+   // Let the scroll events settle before pressing; a pending scroll event
+   // legitimately cancels the application's stationary long-press timer.
+   await page.evaluate(()=>new Promise(resolve=>requestAnimationFrame(()=>requestAnimationFrame(resolve))));
+   const box=await card.boundingBox();
+   assert.ok(box,'book hold target is visible');
+   const name=await card.locator('.book-name').innerText();
+   const id=await card.getAttribute('data-book-id');
+   const point={x:box.x+box.width/2,y:box.y+box.height/2,id};
+   await page.mouse.move(point.x,point.y);
+   await page.waitForFunction(({x,y,id})=>document.elementFromPoint(x,y)?.closest('#shelfGrid .book-card')?.dataset.bookId===id,point,{timeout:5000});
+   // The app uses a 550ms timer. Keep a real pointer pressed until its menu
+   // is observed, rather than racing a fixed 650ms host-side sleep.
+   await page.mouse.down();
+   try {
+    await page.locator('#bookActionSheet.is-open').waitFor({timeout:8000});
+    assert.equal(await page.locator('#bookActionTitle').innerText(),name,'wrong book action target');
+   } finally {await page.mouse.up();}
    await page.locator('#bookActionSheet.is-open').waitFor();
   };
   await holdBook();
@@ -241,6 +259,7 @@ try{
   assert.equal(await page.locator('[data-detail-chapter]').count(),2);
   await page.locator('#bookDetailBack').click();
   await page.locator('#shelfView[aria-hidden=false]').waitFor();
+  console.log('SEALED_BROWSER_CHECKPOINT:392');
   await holdBook();
   const png=await page.evaluate(()=>{const c=document.createElement('canvas');c.width=80;c.height=120;const g=c.getContext('2d');g.fillStyle='#444';g.fillRect(0,0,80,120);return c.toDataURL('image/png').split(',')[1];});
   const chooser=page.waitForEvent('filechooser');
@@ -249,23 +268,31 @@ try{
   await book.locator('.has-custom img').waitFor();
   await page.reload();
   await book.locator('.has-custom img').waitFor();
+  console.log('SEALED_BROWSER_CHECKPOINT:393');
   const before=await page.locator('#shelfGrid .book-card').count();
   await holdBook();
   page.once('dialog',d=>d.accept());
   await page.locator('#deleteShelfBook').click();
   await book.waitFor({state:'detached'});
   await page.reload();
+  await page.locator('#shelfView[aria-hidden=false]').waitFor();
+  await page.locator('#shelfGrid [data-book-id="b1"]').waitFor();
   assert.equal(await page.locator('#shelfGrid .book-card').count(),before-1);
   assert.equal(await book.count(),0);
+  console.log('SEALED_BROWSER_CHECKPOINT:394');
   const defaultBook=page.locator('#shelfGrid [data-book-id="b2"]');
   await defaultBook.click();
   await page.locator('#readerView[aria-hidden=false]').waitFor();
   await page.locator('#readerBack').click();
+  await page.locator('#shelfView[aria-hidden=false]').waitFor();
   await page.locator('.tab-item[data-route="home"]').click();
+  await page.locator('#homeView[aria-hidden=false]').waitFor();
   await page.waitForFunction(()=>document.querySelector('#homeGrid .book-card')?.dataset.bookId==='b2');
   await page.reload();
+  await page.locator('#homeView[aria-hidden=false]').waitFor();
   await page.waitForFunction(()=>document.querySelector('#homeGrid .book-card')?.dataset.bookId==='b2');
   await page.locator('.tab-item[data-route="shelf"]').click();
+  console.log('SEALED_BROWSER_CHECKPOINT:500');
   await holdBook(defaultBook);
   const defaultChooser=page.waitForEvent('filechooser');
   await page.locator('#changeBookCover').click();
@@ -273,14 +300,18 @@ try{
   await defaultBook.locator('.has-custom img').waitFor();
   await page.reload();
   await defaultBook.locator('.has-custom img').waitFor();
+  console.log('SEALED_BROWSER_CHECKPOINT:600');
   await holdBook(defaultBook);
   page.once('dialog',d=>d.accept());
   await page.locator('#deleteShelfBook').click();
   await defaultBook.waitFor({state:'detached'});
   await page.reload();
+  console.log('SEALED_BROWSER_CHECKPOINT:700');
+  await page.locator('#shelfView[aria-hidden=false]').waitFor();
   await page.locator('#shelfGrid [data-book-id="b1"]').waitFor();
   assert.equal(await defaultBook.count(),0);
   await page.locator('.tab-item[data-route="home"]').click();
+  await page.locator('#homeView[aria-hidden=false]').waitFor();
   assert.equal(await page.locator('#homeGrid [data-book-id="b2"]').count(),0);
   assert.equal(await page.locator('#homeGrid .book-card').count(),2);
   assert.deepEqual(errors,[]);
