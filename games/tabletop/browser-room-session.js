@@ -21,16 +21,19 @@ function sameMembership(event) {
   const a=rosterSet(event.oldValue),b=rosterSet(event.newValue);
   return a&&b&&a.size===b.size&&[...a].every(id=>b.has(id));
 }
-export function createBrowserRoomSession({win=globalThis.window,spec,rules}={}) {
+export function createBrowserRoomSession({win=globalThis.window,spec,rules,expectedIdentity=null}={}) {
   if(!win?.document||typeof win.addEventListener!=='function'||typeof win.removeEventListener!=='function'||
      typeof win.document.addEventListener!=='function'||typeof win.document.removeEventListener!=='function') fail('INVALID_BROWSER_RUNTIME');
   let discussionController=new AbortController(),lastVerified=null;
   function cancelDiscussion() {
     const old=discussionController;discussionController=new AbortController();old.abort();
   }
+  if(expectedIdentity!==null&&(!validId(expectedIdentity.accountId)||!validId(expectedIdentity.sessionId)))fail('INVALID_EXPECTED_IDENTITY');
+  const expected=expectedIdentity&&{accountId:expectedIdentity.accountId,sessionId:expectedIdentity.sessionId};
   const verify=createBrowserRoomVerifier(win);
   const session=createRoomSession({verifyContext:async options=>{
     const next=await verify(options);
+    if(expected&&(next.accountId!==expected.accountId||next.sessionId!==expected.sessionId))fail('SCOPE_CHANGED');
     // Same-document roster changes are observable on successful verification
     // even without a storage event. Cancel only the current discussion signal.
     if(lastVerified&&(lastVerified.accountId!==next.accountId||lastVerified.sessionId!==next.sessionId||

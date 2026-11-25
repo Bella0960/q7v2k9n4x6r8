@@ -60,3 +60,9 @@ test('start snapshots the selected role IDs before asynchronous verification',as
   const f=fixture();const roles=['r1'];const start=f.host.start({roomId:'room',roleIds:roles});roles[0]='r2';
   const v=await start;assert.equal(v.seats[1].roleId,'r1');f.host.destroy();
 });
+
+test('picker identity pins session before first invitation, even with identical role IDs',async()=>{
+  const f=fixture();f.session('s2');
+  await assert.rejects(f.host.start({roomId:'room',roleIds:['r1'],expectedIdentity:{accountId,sessionId:'s1'}}),/SCOPE_CHANGED/);
+  assert.equal(f.root.children.length,0);f.host.destroy();
+});

@@ -6,9 +6,9 @@ import {createLudoDiscussion} from './ludo-discussion.js';
 
 // Opt-in page controller. The host must load the canonical account scope and
 // PhoneStorage first. No fixture identities, storage writes or route registration.
-export function createLudoPageHost(root,{win=root?.ownerDocument?.defaultView,onStatus=()=>{},pace=()=>{},rollDie,discussion={},decideRole=null}={}){
+export function createLudoPageHost(root,{win=root?.ownerDocument?.defaultView,onStatus=()=>{},pace=()=>{},rollDie,discussion={},decideRole=null,labelForSeat=()=>undefined}={}){
   const fail=code=>{throw Error(code);};
-  if(!root?.ownerDocument||!win?.document||typeof onStatus!=='function'||typeof pace!=='function'||!discussion||typeof discussion!=='object'||(decideRole!==null&&typeof decideRole!=='function')||(rollDie!==undefined&&typeof rollDie!=='function'))fail('LUDO_INVALID_PAGE_HOST');
+  if(!root?.ownerDocument||!win?.document||typeof onStatus!=='function'||typeof pace!=='function'||typeof labelForSeat!=='function'||!discussion||typeof discussion!=='object'||(decideRole!==null&&typeof decideRole!=='function')||(rollDie!==undefined&&typeof rollDie!=='function'))fail('LUDO_INVALID_PAGE_HOST');
   let entry=null,destroyed=false,busy=false,epoch=0;
   const listeners=[];
   function listen(target,name,fn){target.addEventListener(name,fn);listeners.push(()=>target.removeEventListener(name,fn));}
@@ -37,7 +37,7 @@ export function createLudoPageHost(root,{win=root?.ownerDocument?.defaultView,on
     check(e,stamp);
     if(view.roomId!==e.roomId||view.gameId!=='ludo'||view.selfSeatId!=='user'||!['playing','finished'].includes(view.phase))fail('LUDO_PAGE_INVALID_VIEW');
     if(e.revision===view.revision&&e.board)return;
-    if(!e.board)e.board=createLudoBoardView(root,{onMove:action=>move(e,action),labelForSeat:id=>/^bot:[1-3]$/.test(id)?'普通棋手 '+id.slice(4):undefined});
+    if(!e.board)e.board=createLudoBoardView(root,{onMove:action=>move(e,action),labelForSeat:id=>/^bot:[1-3]$/.test(id)?'普通棋手 '+id.slice(4):labelForSeat(id)});
     e.board.render(view);e.revision=view.revision;
     if(view.phase==='finished')e.discussion?.stop();
   }
@@ -62,13 +62,13 @@ export function createLudoPageHost(root,{win=root?.ownerDocument?.defaultView,on
     }catch(error){if(entry===e&&stamp===epoch){pause('paused');if(e.session.status()==='disposed')end();}throw error;}
     finally{busy=false;}
   }
-  async function start({roomId,roleIds=[],playerCount=Math.max(2,roleIds?.length+1),mode='classic'}={}){
+  async function start({roomId,roleIds=[],playerCount=Math.max(2,roleIds?.length+1),mode='classic',expectedIdentity=null}={}){
     if(destroyed||busy||entry)fail('LUDO_PAGE_BUSY');
     if(typeof roomId!=='string'||!roomId.trim()||!Array.isArray(roleIds)||roleIds.length>3||!Number.isInteger(playerCount)||playerCount<2||playerCount>4||roleIds.length>=playerCount||!['classic','adventure'].includes(mode)||new Set(roleIds).size!==roleIds.length||!Array.from(roleIds).every(id=>typeof id==='string'&&id.trim()===id&&id.length>0&&id.length<=256))fail('LUDO_PAGE_INVALID_PLAYERS');
     const selected=[...roleIds];busy=true;const stamp=++epoch;
     let e;
     try{
-      const session=createBrowserRoomSession({win,spec:{roomId,gameId:'ludo'},rules:createLudoRules({rollDie,mode})});
+      const session=createBrowserRoomSession({win,spec:{roomId,gameId:'ludo'},expectedIdentity,rules:createLudoRules({rollDie,mode})});
       e={roomId,session,board:null,revision:-1,driver:null,discussion:null,runStamp:stamp};
       e.driver=createLudoTurnDriver({session,pace,decide:decideRole,onView:view=>publish(e,view,e.runStamp)});
       entry=e;report('opening');

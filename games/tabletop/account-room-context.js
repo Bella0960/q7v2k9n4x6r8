@@ -61,7 +61,7 @@ export async function verifyRoomContext({request,readScope,readScopedRoster,sign
 
 // Browser contract from the released QA scope. Not auto-installed or enabled:
 // the page must load the authenticated Worker-injected scope before PhoneStorage.
-export function createBrowserRoomVerifier(win=globalThis.window) {
+export function createBrowserRoomVerifier(win=globalThis.window,{includeRoleLabels=false}={}) {
   function readScope() {
     const s=win?.__MAO_ACCOUNT_SCOPE__;
     const pageAccountId=win?.document?.querySelector('meta[name="mao-account-id"]')?.content;
@@ -77,11 +77,13 @@ export function createBrowserRoomVerifier(win=globalThis.window) {
     const result=storage.getCharacters();
     const after=scopeSnapshot(readScope);
     if(after.accountId!==before.accountId || after.role!==before.role) fail('ACCOUNT_SCOPE_CHANGED');
-    if(result?.ok===false && result.error?.code==='NOT_FOUND') return {accountId,sessionId,roleIds:[]};
+    if(result?.ok===false && result.error?.code==='NOT_FOUND') return {accountId,sessionId,roleIds:[],roleLabels:[]};
     if(result?.ok!==true || result.meta?.source!=='ai_custom_characters' || !Array.isArray(result.value)) fail('ROSTER_UNVERIFIED');
     const roleIds=Array.from(result.value,role=>role?.id);
     if(!roleIds.every(validId)) fail('ROSTER_UNVERIFIED');
-    return {accountId,sessionId,roleIds};
+    const roleLabels=includeRoleLabels?Array.from(result.value,role=>Object.freeze({id:role.id,name:typeof role.name==='string'&&role.name.trim()?role.name.trim().slice(0,80):'未命名角色'})):[];
+    if(includeRoleLabels&&new Set(roleIds).size!==roleIds.length) fail('ROSTER_UNVERIFIED');
+    return {accountId,sessionId,roleIds,roleLabels};
   }
   return async ({signal}={})=>{
     const initial=scopeSnapshot(readScope);
@@ -110,10 +112,10 @@ export function createBrowserRoomVerifier(win=globalThis.window) {
       if(controller.signal.aborted) fail('CONTEXT_CANCELLED');
       const current=scopeSnapshot(readScope);
       if(current.accountId!==initial.accountId || current.role!==initial.role) fail('ACCOUNT_SCOPE_CHANGED');
-      const latest=new Set(readScopedRoster(context).roleIds);
+      const latestRoster=readScopedRoster(context),latest=new Set(latestRoster.roleIds);
       if(latest.size!==context.roleIds.length || context.roleIds.some(id=>!latest.has(id))) fail('ROSTER_CHANGED');
       if(controller.signal.aborted) fail('CONTEXT_CANCELLED');
-      return context;
+      return includeRoleLabels?Object.freeze({...context,roleLabels:Object.freeze(latestRoster.roleLabels)}):context;
     }
     try {return await Promise.race([verify(),deadline]);}
     finally {clearTimeout(timer);signal?.removeEventListener('abort',cancel);}
