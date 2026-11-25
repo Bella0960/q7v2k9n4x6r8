@@ -42,3 +42,11 @@ test('pause wipes identity, same login restores, changed login closes private vi
  f.win.fire('storage',{key:null});f.session('s2');f.one('mao-wolf__resume').click();await wait();assert.equal(f.one('mao-wolf__role').textContent,'');assert.equal(f.one('mao-wolf__game').hidden,true);f.page.destroy();
 });
 test('unready identity never reads characters',async()=>{const f=fixture({ready:false});await wait();assert.equal(f.reads(),0);assert.equal(f.one('mao-wolf__start').disabled,true);f.page.destroy();});
+
+test('anonymous fill allows six-player match without custom roster; restore retains private identity and does not rerun',async()=>{
+ const f=fixture();await wait();const fill=f.one('mao-wolf__fill');fill.checked=true;fill.fire('change');assert.equal(f.one('mao-wolf__start').disabled,false);
+ f.one('mao-wolf__start').click();await wait();assert.equal(all(f.root,'mao-wolf__seat').length,6);assert.equal(f.one('mao-wolf__role').textContent,'狼人');
+ const saved=await f.page.saveMatch();assert.equal(saved.board.seats.filter(s=>s.kind==='bot').length,5);f.page.destroy();
+ const g=fixture({randomIndex:()=>{throw Error('must not reshuffle');}});await wait();g.session('s2');await g.page.reload();
+ const v=await g.page.restoreMatch(saved);assert.equal(v.game.selfRole,'wolf');assert.equal(v.revision,saved.board.startRevision);assert.equal(all(g.root,'mao-wolf__seat').length,6);assert.ok(g.one('mao-wolf__private').textContent.includes('棋友 1'));g.page.destroy();
+});
