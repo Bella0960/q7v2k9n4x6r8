@@ -99,6 +99,19 @@ button{font:inherit;color:inherit;cursor:pointer;border:0;background:transparent
 .book-name{display:block;font-family:var(--serif);font-size:12px;letter-spacing:.01em;color:var(--ink);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .book-author{display:block;font-size:8px;color:var(--muted);letter-spacing:.08em;margin-top:4px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 
+/* Book details share the existing editorial reading visual system. */
+.book-detail-intro{display:grid;grid-template-columns:96px minmax(0,1fr);gap:20px;align-items:center;padding:18px 0 26px}
+.book-detail-title{margin:0 0 10px;font:400 23px/1.4 var(--serif);overflow-wrap:anywhere}
+.book-detail-meta{font:400 11px/1.7 var(--sans);color:#777;overflow-wrap:anywhere}
+.book-detail-actions{display:flex;align-items:center;gap:16px;margin-top:16px}
+.book-detail-read{background:#171717;color:white;padding:11px 15px;border-radius:4px;font:400 12px var(--sans)}
+.book-detail-list .toc-item{width:100%;min-height:44px;text-align:left}
+.book-detail-list .toc-name{white-space:normal;overflow-wrap:anywhere}
+.book-detail-list .toc-item+.toc-item{border-top:1px solid #efefef}
+.import-help{margin-top:8px;color:#777;font:400 11px/1.7 var(--sans)}
+.import-help summary{cursor:pointer;padding:8px 0;list-style:none}
+.import-help summary::-webkit-details-marker{display:none}
+.import-help p{margin:0 0 8px}
 /* ===== 起始页页脚 ===== */
 .poster-foot{display:flex;justify-content:space-between;align-items:flex-end;margin-top:26px;padding:13px 0 0;border-top:1px solid var(--line)}
 .foot-copy{font-size:8px;letter-spacing:.14em;color:#777;line-height:1.9;text-transform:uppercase}
@@ -383,6 +396,23 @@ button{font:inherit;color:inherit;cursor:pointer;border:0;background:transparent
     </div>
   </section>
 
+  <section class="view reader is-hidden" id="bookDetailView" aria-label="书籍详情" aria-hidden="true">
+    <header class="reader-head">
+      <button class="head-back" type="button" id="bookDetailBack" aria-label="返回起始页"><svg viewBox="0 0 24 24"><path d="m15 18-6-6 6-6"/><path d="M9 12h11"/></svg></button>
+      <h2 class="reader-title">书籍详情</h2>
+    </header>
+    <div class="scroll" id="bookDetailScroll">
+      <section class="book-detail-intro">
+        <div id="bookDetailCover"></div>
+        <div><h1 class="book-detail-title" id="bookDetailName"></h1><div class="book-detail-meta" id="bookDetailMeta"></div>
+          <div class="book-detail-actions"><button type="button" class="book-detail-read" id="bookDetailRead">开始阅读</button></div>
+        </div>
+      </section>
+      <div class="section-head"><span class="section-title">目录</span><span class="section-count" id="bookDetailCount"></span></div>
+      <div class="book-detail-list" id="bookDetailChapters"></div>
+    </div>
+  </section>
+
   <!-- ==================== 页面 B：书架（只留书） ==================== -->
   <section class="view above-tabbar is-hidden" id="shelfView" aria-label="书架" aria-hidden="true">
     <div class="topline"></div>
@@ -439,22 +469,15 @@ button{font:inherit;color:inherit;cursor:pointer;border:0;background:transparent
       <section class="set-block">
         <div class="section-head">
           <span class="section-title">数据与操作</span>
-          <span class="section-count">03 Items</span>
+          <span class="section-count">02 Items</span>
         </div>
         <div class="set-list">
           <button class="set-row" type="button" id="importRow">
             <span>
-              <span class="set-label">导入本地书籍</span>
-              <span class="set-sub">Import local text</span>
+              <span class="set-label">导入书籍</span>
+              <span class="set-sub">TXT / EPUB · 系统文件</span>
             </span>
             <svg class="row-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 5v14M5 12h14"/></svg>
-          </button>
-          <button class="set-row" type="button" id="writeRow">
-            <span>
-              <span class="set-label">让 TA 写一本</span>
-              <span class="set-sub">Ask TA to write one</span>
-            </span>
-            <svg class="row-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="m9 6 6 6-6 6"/></svg>
           </button>
           <button class="set-row" type="button" id="clearRow">
             <span>
@@ -464,13 +487,14 @@ button{font:inherit;color:inherit;cursor:pointer;border:0;background:transparent
             <span class="set-value">清空</span>
           </button>
         </div>
+        <details class="import-help"><summary>如何导入网盘书籍</summary><p>在系统文件选择器中选择已接入的网盘位置。若看不到百度网盘等位置，请在网盘应用中将 TXT 或 EPUB 下载或保存到本机，再在这里导入。不会要求网盘账号或密码，也不读取整个网盘。</p></details>
       </section>
 
 
       <div style="height:26px"></div>
     </div>
 
-    <!-- 隐藏的本地文件选择器：仅接受 .txt -->
+    <!-- 系统文件选择器：支持本机及系统已接入的文件提供方，TXT / EPUB -->
     <input type="file" id="importFile" accept=".txt,.epub,text/plain,application/epub+zip" hidden>
   </section>
 
@@ -1068,6 +1092,7 @@ button{font:inherit;color:inherit;cursor:pointer;border:0;background:transparent
   /* ===== 阅读状态 ===== */
   var state = { book: null, ch: 0 };
   var lastMain = 'home';
+  var detailBookId='',readerReturnRoute='';
 
   /* ===== 工具 ===== */
   function esc(s) {
@@ -2010,7 +2035,8 @@ button{font:inherit;color:inherit;cursor:pointer;border:0;background:transparent
     MAIN_ROUTES.forEach(function (r) { setHidden(document.getElementById(r + 'View'), true); });
   }
 
-  function openReader(book) {
+  function openReader(book, chapter) {
+    setHidden(document.getElementById('bookDetailView'),true);
     state.book = book;
     state.ch = 0;
     buildReader(book);
@@ -2020,7 +2046,30 @@ button{font:inherit;color:inherit;cursor:pointer;border:0;background:transparent
     hideAllMain();
     setHidden(readerView, false);
     setMode(settings.mode);   /* 按当前翻页模式布局 */
-    restoreReadingPosition(book);
+    if(Number.isInteger(chapter)&&chapter>=0&&chapter<book.chapters.length){goChapter(chapter,true);saveExplicitChapterPosition(book,chapter);}else restoreReadingPosition(book);
+  }
+
+  function saveExplicitChapterPosition(book,chapter){
+    try{if(book.chapters[chapter]&&book.chapters[chapter].paras.length)saveReadingPosition(makeReadingTarget(book,chapter,0));}catch(e){showToast('阅读位置未能保存');}
+  }
+  function openBookDetail(book){
+    closeSheets();toggleControls(false);hideAllMain();setHidden(readerView,true);
+    detailBookId=book.id;
+    var view=document.getElementById('bookDetailView');
+    setHidden(view,false);
+    var cover=document.getElementById('bookDetailCover');cover.innerHTML=cardHtml(book,0);
+    var coverEl=cover.querySelector('.book-cover');
+    if(coverEl){cover.replaceChildren(coverEl);}
+    document.getElementById('bookDetailName').textContent=book.name;
+    document.getElementById('bookDetailMeta').textContent=(book.author||'未知作者')+' · '+book.chapters.length+' 章';
+    document.getElementById('bookDetailCount').textContent=book.chapters.length+' 章';
+    document.getElementById('bookDetailChapters').innerHTML=book.chapters.map(function(c,i){
+      return '<button class="toc-item" type="button" data-detail-chapter="'+i+'"><span class="toc-no">'+pad2(i+1)+'</span><span class="toc-name">'+esc(c.title||c.label||('第'+(i+1)+'章'))+'</span></button>';
+    }).join('');
+    var label='开始阅读';
+    try{var raw=localStorage.getItem(coReadKey('progress',readerAccountToken())+':'+encodeURIComponent(book.id));var p=raw?JSON.parse(raw):null;if(p&&Number.isInteger(p.chapter)&&book.chapters[p.chapter]&&Number.isInteger(p.paragraph)&&book.chapters[p.chapter].paras[p.paragraph])label='继续阅读';}catch(e){}
+    document.getElementById('bookDetailRead').textContent=label;
+    document.getElementById('bookDetailScroll').scrollTop=0;
   }
 
   /* ===== 路由（哈希） ===== */
@@ -2037,11 +2086,23 @@ button{font:inherit;color:inherit;cursor:pointer;border:0;background:transparent
 
   function applyRoute(route) {
     if (!route) route = 'home';
+    if (route.indexOf('detail-')===0){
+      var detail=findBook(route.slice(7));
+      if(detail){lastMain='home';openBookDetail(detail);return;}
+      route='home';
+    }
+    if(route.indexOf('read-detail-')===0){
+      var parts=route.slice(12).split('?'),detailReader=findBook(parts[0]);
+      if(detailReader){readerReturnRoute='detail-'+detailReader.id;var match=/^chapter=(\d+)$/.exec(parts[1]||'');openReader(detailReader,match?Number(match[1]):undefined);return;}
+      route='home';
+    }
     if (route.indexOf('read-') === 0) {
       var book = findBook(route.slice(5));
-      if (book) { openReader(book); return; }
+      if (book) { readerReturnRoute='';openReader(book); return; }
       route = lastMain;
     }
+    readerReturnRoute='';
+    setHidden(document.getElementById('bookDetailView'),true);
     setHidden(readerView, true);
     toggleControls(false);
     closeSheets();
@@ -2115,7 +2176,7 @@ button{font:inherit;color:inherit;cursor:pointer;border:0;background:transparent
     if (!card) return;
     if(Date.now()-shelfHoldOpenedAt<800||sheetBackdrop.classList.contains('is-open'))return;
     var book = findBook(card.dataset.bookId);
-    if (book) go('read-' + book.id);
+    if (book) go((card.closest('#homeGrid')?'detail-':'read-') + book.id);
   });
 
   /* Shelf management operates on one captured book and the existing IDB store. */
@@ -2284,8 +2345,11 @@ button{font:inherit;color:inherit;cursor:pointer;border:0;background:transparent
   });
 
   document.getElementById('readerBack').addEventListener('click', function () {
-    go(lastMain);
+    go(readerReturnRoute||lastMain);
   });
+  document.getElementById('bookDetailBack').addEventListener('click',function(){go('home');});
+  document.getElementById('bookDetailRead').addEventListener('click',function(){if(findBook(detailBookId))go('read-detail-'+detailBookId);});
+  document.getElementById('bookDetailChapters').addEventListener('click',function(e){var row=e.target.closest('[data-detail-chapter]');var book=findBook(detailBookId);if(row&&book&&book.chapters[Number(row.dataset.detailChapter)])go('read-detail-'+detailBookId+'?chapter='+row.dataset.detailChapter);});
 
   document.getElementById('ctrlToc').addEventListener('click', openToc);
   document.getElementById('ctrlPrev').addEventListener('click', function () { goChapter(state.ch - 1); });
@@ -2427,10 +2491,6 @@ button{font:inherit;color:inherit;cursor:pointer;border:0;background:transparent
     importInput.click();
   });
 
-  /* 让 TA 写一本：先给一个极简弹窗占位 */
-  document.getElementById('writeRow').addEventListener('click', function () {
-    openDialog('让 TA 写一本', '这一步还没有接通。等它准备好，会在这里把写好的书放进你的书架。');
-  });
 
   /* ===== 启动：恢复已导入书籍、段评，再渲染书架 ===== */
   Promise.all([restoreLocalBooks(), loadReaderComments()]).then(function () {
