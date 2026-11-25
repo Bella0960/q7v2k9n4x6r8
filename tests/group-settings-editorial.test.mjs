@@ -302,7 +302,7 @@ test('group creation never overwrites damaged, duplicate, stale or foreign-accou
 });
 test('chat list create menu reaches original modal and waits for verified save',()=>{
   const list=read('chat/chat/chat.html');
-  assert.ok(list.includes('group-write-guard.js?v=20261125g4'));
+  assert.ok(list.includes('group-write-guard.js?v=20261125g8'));
   assert.ok(list.includes("document.getElementById('menuGroup').addEventListener('click',function(){"));
   assert.ok(list.includes("document.getElementById('wechatMenu').style.display='none';\n        openModal();"));
   assert.ok(list.includes('guard.create(modalAccount,'));
@@ -428,4 +428,18 @@ test('group shared settings route to scoped saves, keeping original private keys
   for(const kind of ['pin','memory','time','sound'])assert.ok(html.includes("scopedSetting('"+kind+"')"));
   for(const expression of ['saveScopedSetting(pinSnapshot,next)','saveScopedSetting(memorySnapshot,n)','saveScopedSetting(timeSnapshot,JSON.stringify(data))','saveScopedSetting(soundSnapshot,value)'])assert.ok(html.includes(expression));
   assert.ok(html.includes("if(!saveSound(key)){renderSub();renderList();return;}"));
+});
+
+test('account switch during final storage reread blocks creation and modification before any write',()=>{
+  function setup(){
+    const state={account:'001',reads:0,writes:0,raw:JSON.stringify([{id:'g1',members:[]},{id:'g2'}])};
+    const ctx={document:{querySelector:()=>({content:state.account})},location:{hostname:'preview.mao520.com'},localStorage:{getItem(){state.reads++;if(state.reads===state.switchAt)state.account='002';return state.raw},setItem(k,v){state.writes++;state.raw=v}}};ctx.window=ctx;
+    vm.runInNewContext(read('shared/js/phone/group-write-guard.js'),ctx);return {state,api:ctx.MAOGroupWriteGuard};
+  }
+  {const {state,api}=setup();const old=state.raw;state.switchAt=2;assert.equal(api.create('001',{id:'g3'}).ok,false);assert.equal(state.writes,0);assert.equal(state.raw,old);}
+  {const {state,api}=setup();const snap=api.read('g1'),old=state.raw;state.switchAt=3;assert.equal(api.commit(snap,{...snap.group,name:'new'}).ok,false);assert.equal(state.writes,0);assert.equal(state.raw,old);}
+  {const {state,api}=setup();const snap=api.read('g1'),old=state.raw;state.switchAt=3;assert.equal(api.remove(snap).ok,false);assert.equal(state.writes,0);assert.equal(state.raw,old);}
+});
+test('all four group pages load the same current write guard',()=>{
+  for(const path of ['chat/chat/chat.html','chat/chat/chat-detail.html','chat/chat/chat-settings.html','chat/chat/group-play.html'])assert.ok(read(path).includes('group-write-guard.js?v=20261125g8'),path);
 });
