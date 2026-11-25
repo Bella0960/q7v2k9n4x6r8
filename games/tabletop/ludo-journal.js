@@ -45,14 +45,17 @@ export function createGameJournal({getContext,maxMatches=512,snapshot=null,gameI
     if(!f||!c.roleIds.includes(f.roleId))fail('JOURNAL_FRAGMENT_UNAVAILABLE');
     return f;
   }
+  function replayView(board,c){
+    return createRoomDispatcher({getContext:()=>c,spec:{gameId:board.gameId,roomId:board.roomId},
+      rules:board.gameId==='werewolf'?createWerewolfRulesFromMode(board.mode):board.gameId==='turtle'?createTurtleRulesFromMode(board.mode):board.gameId==='gomoku'?createGomokuRules():createLudoRules({mode:board.mode}),checkpoint:board}).view('user');
+  }
   function recordMatch(board,chat=null){
     const c=current();
     const gomoku=board?.gameId==='gomoku',turtle=board?.gameId==='turtle',wolf=board?.gameId==='werewolf';
     if(!board||board.accountId!==c.accountId||!allowedGames.has(board.gameId)||!id(board.roomId)||!(wolf?typeof board.mode==='string'&&board.mode.startsWith('werewolf-v1:'):turtle?typeof board.mode==='string'&&board.mode.startsWith('puzzle-v1:'):gomoku?board.mode==='freestyle':['classic','adventure'].includes(board.mode)))fail('JOURNAL_INVALID_MATCH');
     // The authoritative engine derives the terminal result and all positions.
     // A caller-provided winner, summary or timestamp cannot settle a match.
-    const d=createRoomDispatcher({getContext:()=>c,spec:{gameId:board.gameId,roomId:board.roomId},rules:wolf?createWerewolfRulesFromMode(board.mode):turtle?createTurtleRulesFromMode(board.mode):gomoku?createGomokuRules():createLudoRules({mode:board.mode}),checkpoint:board});
-    const v=d.view('user');
+    const v=replayView(board,c);
     if(v.phase!=='finished'||!(v.result?.kind==='win'&&(wolf?v.result.winnerSeatIds.length>0:v.result.winnerSeatIds.length===1)||(gomoku||turtle||wolf)&&v.result?.kind==='draw'&&v.result.winnerSeatIds.length===0))fail('JOURNAL_MATCH_UNFINISHED');
     const winner=v.result.winnerSeatIds[0]??null;
     const recordKey=JSON.stringify([board.gameId,v.roomId]);
@@ -79,7 +82,7 @@ export function createGameJournal({getContext,maxMatches=512,snapshot=null,gameI
     same(c);
     const prior=records.get(recordKey);
     if(prior){
-      if(JSON.stringify(prior)!==JSON.stringify(entry))fail('JOURNAL_MATCH_CONFLICT');
+      if(JSON.stringify(prior)!==JSON.stringify(entry)||JSON.stringify(replays.get(recordKey))!==JSON.stringify({board,chat}))fail('JOURNAL_MATCH_CONFLICT');
       if(messageFragments.some(f=>JSON.stringify(fragments.get(f.id))!==JSON.stringify(f)))fail('JOURNAL_MATCH_CONFLICT');
       return {duplicate:true,record:clone(prior)};
     }
@@ -134,6 +137,24 @@ export function createGameJournal({getContext,maxMatches=512,snapshot=null,gameI
     return {fragmentId:fid,enabled};
   }
   function list(){const c=current();const out=[...records.values()].filter(e=>e.players.every(p=>p.kind!=='role'||c.roleIds.includes(p.roleId)));same(c);return clone(out);}
+  // Owner-only public transcript. No raw checkpoint or model request.
+  function review({gameId,roomId,offset=0,limit=50}={}){
+    const c=current();if(!allowedGames.has(gameId)||!id(roomId)||!Number.isInteger(offset)||offset<0||!Number.isInteger(limit)||limit<1||limit>100)fail('JOURNAL_REVIEW_DENIED');
+    const key=JSON.stringify([gameId,roomId]),record=records.get(key),saved=replays.get(key);
+    if(!record||!saved||record.players.some(p=>p.kind==='role'&&!c.roleIds.includes(p.roleId)))fail('JOURNAL_REVIEW_DENIED');
+    const v=replayView(saved.board,c);let entries=[];
+    if(gameId==='ludo'||gameId==='gomoku'){
+      const log=(gameId==='ludo'?validateLudoChatCheckpoint(v,saved.chat):validateGomokuChatCheckpoint(v,saved.chat)).log;
+      entries=log.read('user',{limit:log.maxMessages}).map(m=>({kind:'speech',seatId:m.sender.seatId,text:m.text}));
+    }else if(gameId==='turtle'){
+      // Public questions and answers only; omit solution and hint text.
+      entries=v.game.history.map(m=>({kind:m.kind,seatId:m.seatId,...(['ask','guess'].includes(m.kind)?{text:m.text}:m.kind==='answer'?{verdict:m.verdict}:m.kind==='judge'?{correct:m.correct}:{})}));
+    }else{
+      // No private night actions, inspections, team choices or role deck.
+      entries=v.game.publicEvents.map(m=>({kind:m.kind,round:m.round,...(m.seatId?{seatId:m.seatId}:{}),...(m.kind==='speech'?{text:m.text}:['dawn','vote-result'].includes(m.kind)?{outSeatId:m.outSeatId??null}:{})}));
+    }
+    same(c);return clone({record,items:entries.slice(offset,offset+limit),total:entries.length});
+  }
   // Trusted private repository payload only. Replay terminal actions to derive
   // facts instead of trusting imported summaries. Includes hidden action data;
   // never use this as a public export or model input.
@@ -162,5 +183,5 @@ export function createGameJournal({getContext,maxMatches=512,snapshot=null,gameI
     }
     same(c);
   }
-  return Object.freeze({recordMatch:board=>recordMatch(board),recordSavedMatch,permit,read,manage,setRecall,list,checkpoint,close(){closed=true;}});
+  return Object.freeze({recordMatch:board=>recordMatch(board),recordSavedMatch,permit,read,manage,setRecall,list,review,checkpoint,close(){closed=true;}});
 }

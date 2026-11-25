@@ -26,7 +26,31 @@ export function mountGameJournal(root,{roles,run,onBack=()=>{}}={}){
      const line=el('article','mao-table-journal__row'),heading=el('div','mao-table-journal__line'),result=r.gameId==='werewolf'?(r.winningTeam==='wolf'?'狼人阵营获胜':r.winningTeam==='village'?'好人阵营获胜':'和局'):r.gameId==='turtle'?(r.winnerSeatId?label(r.winnerSeatId)+'猜中谜底':'谜底已揭晓'):(r.winnerSeatId?label(r.winnerSeatId)+'获胜':'和局');
      heading.append(el('strong','',names[r.gameId]??'游戏'),el('span','',result));
      line.append(heading,el('p','mao-table-note',r.players.map(p=>label(p.seatId)).join('、')+(r.title?' · '+r.title:'')+(Number.isInteger(r.moves)?' · '+r.moves+'步':'')));
-     content.append(line);
+     const detail=el('details','mao-table-journal__fragment'),summary=el('summary','','查看公开交流'),body=el('div','mao-table-journal__review');detail.append(summary,body);
+     let start=0,loading=false,loaded=false;
+     async function showReview(){
+       if(disposed||loading)return;loading=true;const stamp=epoch;
+       try{
+         const data=await run(j=>j.review({gameId:r.gameId,roomId:r.roomId,offset:start,limit:50}));
+         if(disposed||stamp!==epoch)return;body.replaceChildren();
+         if(!data.items.length)body.append(el('p','mao-table-note','暂无公开交流记录。'));
+         const verdicts={yes:'是',no:'否',irrelevant:'无关',unclear:'无法确定'};
+         for(const m of data.items){
+           let value=m.text;
+           if(m.kind==='answer')value=verdicts[m.verdict]??'已回答';
+           if(m.kind==='judge')value=m.correct?'猜中谜底':'尚未猜中';
+           if(m.kind==='hint')value='使用了提示';
+           if(m.kind==='pass')value='跳过';
+           if(m.kind==='dawn'||m.kind==='vote-result')value=(m.kind==='dawn'?'新一轮开始':'投票结束')+' · '+(m.outSeatId?label(m.outSeatId)+'出局':'无人出局');
+           body.append(el('p','mao-table-journal__text',(m.round?'第 '+m.round+' 轮 · ':'')+(m.seatId?label(m.seatId)+'：':'')+(value??'公开事件')));
+         }
+         if(start>0)body.append(btn('上一页交流','mao-table-link',()=>{start=Math.max(0,start-50);void showReview();}));
+         if(start+50<data.total)body.append(btn('下一页交流','mao-table-link',()=>{start+=50;void showReview();}));
+         loaded=true;
+       }catch{if(!disposed&&stamp===epoch)body.replaceChildren(el('p','mao-table-note','暂时无法读取，请关闭后重试。'));}
+       finally{loading=false;}
+     }
+     detail.addEventListener('toggle',()=>{if(detail.open&&!loaded)void showReview();});line.append(detail);content.append(line);
    }
  }
  function drawMemory(items){
