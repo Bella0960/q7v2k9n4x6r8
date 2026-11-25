@@ -1557,11 +1557,140 @@
         return '';
     }
 
+    // A recovery archive is evidence, not a full or module backup. Its
+    // affected stores may be only a subset of the device's media databases.
+    function sameRecoveryPoint(a,b) {
+        return !!(a && b && a.role === b.role && a.createdAt === b.createdAt &&
+            a.media === b.media && JSON.stringify(a.snap) === JSON.stringify(b.snap));
+    }
+    function recoveryScope() {
+        var account = window.__MAO_ACCOUNT_SCOPE__;
+        var meta = document.querySelector('meta[name="mao-account-id"]');
+        if ((meta || account) && (!account || account.ready !== true ||
+            typeof account.accountId !== 'string' || !account.accountId ||
+            (meta && account.accountId !== String(meta.content || '').trim()))) throw new Error('account-not-ready');
+        return {account:account, name:'maomao-restore-v1:'+ (account ? encodeURIComponent(account.accountId) : 'legacy')};
+    }
+    async function withRecoveryLock(action, requireSharedLock) {
+        var scope = recoveryScope();
+        function current() {
+            try { return recoveryScope().account === scope.account; } catch (_) { return false; }
+        }
+        var locks = window.navigator && window.navigator.locks;
+        if (locks && typeof locks.request === 'function') {
+            return locks.request(scope.name,{mode:'exclusive',ifAvailable:true},function(lock) {
+                if (!lock) throw new Error('restore-busy');
+                if (!current()) throw new Error('account-changed');
+                return action(current);
+            });
+        }
+        // Legacy browsers can keep the existing import path, but must not
+        // discard a point when another tab could still be importing.
+        if (requireSharedLock) throw new Error('shared-lock-unavailable');
+        if (withRecoveryLock.busy) throw new Error('restore-busy');
+        withRecoveryLock.busy = true;
+        try { if (!current()) throw new Error('account-changed'); return await action(current); }
+        finally { withRecoveryLock.busy = false; }
+    }
+    function makeRecoveryArchive(record) {
+        if (!record || record.role !== RP_ROLE_PRE || !Number.isFinite(record.createdAt) ||
+            !record.snap || typeof record.snap !== 'object' || Array.isArray(record.snap))
+            throw new Error('invalid-recovery-point');
+        var snap=Object.create(null), omitted=0;
+        Object.keys(record.snap).forEach(function(k) {
+            if (typeof record.snap[k] !== 'string') throw new Error('invalid-recovery-value');
+            if (neverBackupKey(k) || SECRET_KEYS.indexOf(k) >= 0 ||
+                ['__proto__','prototype','constructor'].includes(k) || /^__mao_account_v1__/.test(k)) {
+                omitted++; return;
+            }
+            snap[k]=record.snap[k];
+        });
+        var media=null, mediaRows=0;
+        if (record.media !== undefined) {
+            if (typeof record.media !== 'string') throw new Error('invalid-recovery-media');
+            media=JSON.parse(record.media);
+            if (!media || typeof media !== 'object' || Array.isArray(media)) throw new Error('invalid-recovery-media');
+            var targets=new Map(backupTargets().map(function(t){return [t.db,t];}));
+            Object.keys(media).forEach(function(name) {
+                var item=media[name], target=targets.get(name);
+                if (!target || !item || typeof item.existed !== 'boolean' ||
+                    !item.stores || typeof item.stores !== 'object' || Array.isArray(item.stores))
+                    throw new Error('invalid-recovery-database');
+                var allowed=new Set(target.stores.map(function(d){return d.store;}));
+                if (!item.existed && Object.keys(item.stores).length) throw new Error('invalid-absent-database');
+                if (item.existed && (!Number.isInteger(item.version)||item.version<1)) throw new Error('invalid-recovery-version');
+                Object.keys(item.stores).forEach(function(sn) {
+                    if (!allowed.has(sn)||!Array.isArray(item.stores[sn])) throw new Error('invalid-recovery-store');
+                    mediaRows+=item.stores[sn].length;
+                });
+            });
+        }
+        return {__recovery:{app:BACKUP_APP,format:1,createdAt:record.createdAt,
+            completeBackup:false,automaticRestore:false,knownCredentialKeysOmitted:omitted,
+            mediaCaptured:media!==null},data:snap,media:media,counts:{local:Object.keys(snap).length,media:mediaRows}};
+    }
+    function downloadRecoveryArchive(archive) {
+        var blob=new Blob([JSON.stringify(archive)],{type:'application/json'});
+        var url=URL.createObjectURL(blob),a=document.createElement('a');
+        try {
+            a.href=url;
+            a.download='maomao-recovery-'+new Date(archive.__recovery.createdAt).toISOString().replace(/[:.]/g,'-')+'.json';
+            document.body.appendChild(a); a.click();
+        } finally { a.remove(); setTimeout(function(){URL.revokeObjectURL(url);},1500); }
+    }
+    function deleteExactRecoveryPoint(expected,isCurrent) {
+        return rpOpen().then(function(db) {
+            return new Promise(function(resolve,reject) {
+                var tx=db.transaction(RP_STORE_NAME,'readwrite'),store=tx.objectStore(RP_STORE_NAME),deleted=false;
+                var req=store.get(RP_ROLE_PRE);
+                req.onsuccess=function() {
+                    try {
+                        if (!isCurrent() || !sameRecoveryPoint(req.result,expected)) {tx.abort();return;}
+                        store.delete(RP_ROLE_PRE); deleted=true;
+                    } catch (_) { try {tx.abort();} catch(e){reject(e);} }
+                };
+                tx.oncomplete=function(){resolve(deleted);};
+                tx.onabort=function(){resolve(false);};
+                tx.onerror=function(){reject(tx.error || new Error('recovery-delete-failed'));};
+            }).finally(function(){db.close();});
+        });
+    }
+    // Export requests do not prove the browser wrote a file. Releasing the
+    // point requires explicit user verification and a fresh exact match.
+    async function manageRecoveryPoint(action,exported) {
+        return withRecoveryLock(async function(isCurrent) {
+            var rec=await rpReadSnapshot(RP_ROLE_PRE);
+            if (!isCurrent()) throw new Error('account-changed');
+            if (!rec) return {state:'missing'};
+            if (action==='view') {
+                var archive=makeRecoveryArchive(rec);
+                return {state:'available',createdAt:rec.createdAt,counts:archive.counts,
+                    mediaCaptured:archive.__recovery.mediaCaptured};
+            }
+            if (action==='export') {
+                var archive=makeRecoveryArchive(rec);
+                if (!confirm('恢复档案可能含私人聊天与图片。已排除已知凭据键，但仍请妥善保管。它不是完整备份，暂不能直接导入。确定导出？')) return {state:'cancelled'};
+                if (!isCurrent()) throw new Error('account-changed');
+                downloadRecoveryArchive(archive);
+                return {state:'export-requested',record:rec,account:recoveryScope().account};
+            }
+            if (action==='release') {
+                if (!exported || exported.account !== recoveryScope().account ||
+                    !sameRecoveryPoint(rec,exported.record)) return {state:'export-required'};
+                if (!confirm('请先在文件管理器确认恢复档案已保存且可打开。释放后将删除本机这一个恢复点，不会自动恢复任何数据。确认已保存并释放？')) return {state:'cancelled'};
+                if (!isCurrent()) throw new Error('account-changed');
+                return {state:await deleteExactRecoveryPoint(rec,isCurrent)?'released':'changed'};
+            }
+            throw new Error('unknown-recovery-action');
+        },action==='release');
+    }
+
     function handleImportFile(file) {
         var requestedScope = arguments[1];
         if (!file) return;
         var reader = new FileReader();
         reader.onload = async function (ev) {
+          try { return await withRecoveryLock(async function () {
             var obj, rawText = String(ev.target.result);
             try { obj = JSON.parse(rawText); }
             catch (e) {
@@ -1571,6 +1700,7 @@
             }
             var duplicateError = validateUniqueBackupKeys(rawText);
             if (duplicateError) { toast('导入失败：' + duplicateError + '，本机数据未改动'); return; }
+            if (obj && obj.__recovery) { toast('这是恢复档案，不是普通备份，暂不能直接导入'); return; }
             var err = validateBackup(obj);
             if (err) { toast('导入失败：' + err); return; }
             if (obj.__backup.complete === false) {
@@ -1609,7 +1739,7 @@
                 ? '只恢复「' + backupRegistry().get(scope).label + '」模块（本机数据 ' + count + ' 项'
                   + (idbTotal ? '，共享媒体 ' + idbTotal + ' 项' : '') + '）' + label
                   + '。\\n\\n不会清空其他模块。共享图片和字体按记录合并，但同名记录可能更新。'
-                  + '本机恢复点只保障 localStorage；恢复前请另存一份完整备份。确定继续？'
+                  + '本机恢复点保留文字和本次涉及的媒体记录，但不支持自动跨库回滚。恢复前请另存完整备份。确定继续？'
                 : '将用备份覆盖当前全部数据（localStorage ' + count + ' 项'
                   + (idbTotal ? '，IndexedDB ' + idbTotal + ' 项' : '') + '）' + label
                   + '。\\n\\n当前数据会先自动导出一份安全备份，localStorage 导入失败会自动回滚。确定继续？';
@@ -1654,7 +1784,7 @@
             var mediaSnapshot;
             try {
                 if (await rpReadSnapshot(RP_ROLE_PRE)) {
-                    toast('存在尚未处理的恢复点，已阻止覆盖。请先保留原恢复数据'); return;
+                    toast('存在尚未处理的恢复点。请到设置的数据管理中查看和导出恢复档案'); return;
                 }
                 mediaSnapshot = await captureMediaRestorePoint(obj,scope,stillCurrent);
             } catch (_) { toast('无法完整建立媒体恢复前副本，本机数据未改动'); return; }
@@ -1806,6 +1936,7 @@
             var tail = backupFileWarn || '';
             toast(parts.join('，') + tail + '，正在刷新…');
             setTimeout(function () { location.reload(); }, 700);
+          },false); } catch (_) { toast('恢复操作暂不可用或已有操作进行中，本机恢复点请妥善保留'); }
         };
         reader.onerror = function () { toast('导入失败：文件读取失败'); };
         reader.readAsText(file);
@@ -1839,6 +1970,34 @@
             handleImportFile(selected, chosen);
         });
     }
+
+    // Recovery point management uses the existing data section and does not
+    // inspect private text or media in the DOM.
+    var recoveryStatus=$('recoveryPointStatus'), recoveryView=$('rowViewRecoveryPoint'),
+        recoveryExport=$('rowExportRecoveryPoint'), recoveryRelease=$('rowReleaseRecoveryPoint');
+    var recoveryExported=null, recoveryBusy=false;
+    async function runRecoveryAction(action) {
+        if (recoveryBusy || !recoveryStatus) return;
+        recoveryBusy=true;
+        try {
+            var result=await manageRecoveryPoint(action,recoveryExported);
+            if (result.state==='available') {
+                recoveryStatus.textContent='建立于 '+new Date(result.createdAt).toLocaleString()+
+                    ' · 文字 '+result.counts.local+' 项 · '+(result.mediaCaptured?'媒体 '+result.counts.media+' 条':'旧恢复点未记录媒体');
+            } else if (result.state==='missing') {recoveryExported=null;recoveryStatus.textContent='当前没有待处理的恢复点';}
+            else if (result.state==='export-requested') {recoveryExported=result;recoveryStatus.textContent='已请求导出，请到文件管理器确认文件保存成功后再释放恢复点';}
+            else if (result.state==='export-required') {recoveryExported=null;recoveryStatus.textContent='请先导出当前恢复点并确认文件保存';}
+            else if (result.state==='released') {recoveryExported=null;recoveryStatus.textContent='已释放恢复点，可重新导入；本机业务数据未被恢复';}
+            else if (result.state==='changed') {recoveryExported=null;recoveryStatus.textContent='恢复点已变化或未能删除，请重新查看';}
+        } catch(e) {
+            recoveryStatus.textContent=e && e.message==='shared-lock-unavailable'?
+                '此浏览器无法安全释放恢复点，请更新浏览器。原恢复点仍保留。':
+                '恢复点操作未完成，可能正在恢复或存储异常。请保留原数据。';
+        } finally {recoveryBusy=false;}
+    }
+    if(recoveryView) recoveryView.addEventListener('click',function(){runRecoveryAction('view');});
+    if(recoveryExport) recoveryExport.addEventListener('click',function(){runRecoveryAction('export');});
+    if(recoveryRelease) recoveryRelease.addEventListener('click',function(){runRecoveryAction('release');});
 
     // 绑定 DATA 分组入口
     var exp = $('rowExportData');
