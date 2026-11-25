@@ -113,3 +113,29 @@ test('auto and manual comments use novel-reader context, never unrelated life hi
   assert.equal(h.calls(),1);
  }
 });
+
+test('recent bookshelf prioritizes the last opened imported or default book, preserves legacy progress, and omits deleted books',()=>{
+ const start=html.indexOf('  function recentBookPicks('),end=html.indexOf('  function renderHome()',start);
+ assert.ok(start>0&&end>start);
+ const pick=vm.runInNewContext(html.slice(start,end)+'\nrecentBookPicks');
+ const books=[{id:'b1'},{id:'b2'},{id:'b3'},{id:'imported'}];
+ const progress={b1:{chapter:0,paragraph:0},b3:{lastReadAt:20},imported:{lastReadAt:30}};
+ assert.deepEqual(Array.from(pick(books,id=>progress[id]),b=>b.id),['imported','b3','b1']);
+ progress.b2={lastReadAt:40};
+ assert.deepEqual(Array.from(pick(books,id=>progress[id]),b=>b.id),['b2','imported','b3']);
+ assert.deepEqual(Array.from(pick(books.filter(b=>b.id!=='b2'),id=>progress[id]),b=>b.id),['imported','b3','b1']);
+});
+test('default book overrides preserve seed text, persist tombstones and isolate account tokens',()=>{
+ const start=html.indexOf('  function seedShelfOverrideId('),end=html.indexOf('  function restoreLocalBooks()',start);
+ assert.ok(start>0&&end>start);
+ const seedBooks=[{id:'b1',chapters:[{paras:['original']}]},{id:'b2',chapters:[{paras:['keep']}]},{id:'b3',chapters:[]}];
+ const c=vm.createContext({seedBooks});vm.runInContext(html.slice(start,end),c);
+ const a='account-a',b='account-b';
+ const records=[{id:c.seedShelfOverrideId(a,'b1'),readerShelfOverride:1,seedBookId:'b1',accountToken:a,hidden:true},{id:c.seedShelfOverrideId(a,'b2'),readerShelfOverride:1,seedBookId:'b2',accountToken:a,coverImage:'data:image/jpeg;base64,AAAA'}];
+ const owned=c.applySeedShelfOverrides(records,a);
+ assert.deepEqual(Array.from(owned,book=>book.id),['b2','b3']);
+ assert.equal(owned[0].coverImage,records[1].coverImage);
+ assert.equal(owned[0].chapters[0].paras[0],'keep');
+ assert.deepEqual(Array.from(c.applySeedShelfOverrides(records,b),book=>book.id),['b1','b2','b3']);
+ assert.equal(seedBooks[1].coverImage,undefined);
+});
