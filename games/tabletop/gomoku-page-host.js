@@ -23,7 +23,9 @@ export function createGomokuPageHost(root,{win=root?.ownerDocument?.defaultView,
     if(v.roomId!==e.roomId||v.gameId!=='gomoku'||v.selfSeatId!=='user'||!['playing','finished'].includes(v.phase))fail('GOMOKU_INVALID_VIEW');
     if(e.board&&e.revision===v.revision)return;
     if(!e.board)e.board=createGomokuBoardView(root,{labelForSeat,onMove:a=>move(e,a),onError:()=>{}});
-    e.board.render(v);e.revision=v.revision;if(v.phase==='finished')e.discussion?.stop();try{onView(v);}catch{}
+    const committed=e.revision>=0&&v.revision===e.revision+1;
+    e.board.render(v);e.revision=v.revision;if(v.phase==='finished')e.discussion?.stop();else if(committed&&e.discussion)void e.discussion.react(v).catch(()=>{});
+    try{onView(v);}catch{}
   }
   async function run(e,stamp){
     check(e,stamp);e.runStamp=stamp;report('thinking');
@@ -72,6 +74,7 @@ export function createGomokuPageHost(root,{win=root?.ownerDocument?.defaultView,
       return {schema:1,board,chat,difficulty:e.difficulty};
     }finally{busy=false;}
   }
+  async function archiveMatch(journal){const e=entry,stamp=epoch;if(typeof journal?.recordSavedMatch!=='function')fail('GOMOKU_INVALID_JOURNAL');const saved=await saveMatch();check(e,stamp);return journal.recordSavedMatch(saved);}
   async function restoreMatch(saved,{expectedIdentity=null}={}){
     if(destroyed||busy||entry)fail('GOMOKU_PAGE_BUSY');
     if(!saved||Object.keys(saved).length!==4||saved.schema!==1||saved.board?.gameId!=='gomoku'||!saved.chat||
@@ -97,5 +100,5 @@ export function createGomokuPageHost(root,{win=root?.ownerDocument?.defaultView,
   }
   root.replaceChildren();
   function chat(){if(!entry?.board||!entry.discussion||destroyed)fail('GOMOKU_CHAT_INACTIVE');return entry.discussion;}
-  return Object.freeze({start,saveMatch,restoreMatch,resume,end,destroy,pause,sendChat:m=>chat().send(m),readChat:()=>chat().read(),stopChat:()=>entry?.discussion?.stop(),status:()=>destroyed?'disposed':busy?'busy':entry?entry.board?'open':'paused':'idle'});
+  return Object.freeze({start,saveMatch,restoreMatch,archiveMatch,resume,end,destroy,pause,sendChat:m=>chat().send(m),readChat:()=>chat().read(),stopChat:()=>entry?.discussion?.stop(),status:()=>destroyed?'disposed':busy?'busy':entry?entry.board?'open':'paused':'idle'});
 }

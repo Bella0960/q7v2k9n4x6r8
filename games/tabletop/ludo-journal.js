@@ -1,6 +1,8 @@
 import {createRoomDispatcher} from './room-dispatcher.js';
 import {createLudoRules} from './ludo-rules.js';
 import {validateLudoChatCheckpoint} from './ludo-discussion.js';
+import {createGomokuRules} from './gomoku-rules.js';
+import {validateGomokuChatCheckpoint} from './gomoku-discussion.js';
 
 // Internal, account-scoped in-memory journal. The caller must supply an
 // authenticated context and validated repository records, never model output.
@@ -16,7 +18,10 @@ function scope(getContext){
 }
 const fragmentId=(roomId,roleId,source)=>JSON.stringify([roomId,roleId,source]);
 const grantId=(fragmentId,roleId,channel)=>JSON.stringify([fragmentId,roleId,channel]);
-export function createLudoJournal({getContext,maxMatches=512}={}){
+export function createLudoJournal(options={}){return createGameJournal({...options,gameIds:['ludo']});}
+export function createGameJournal({getContext,maxMatches=512,gameIds=['ludo','gomoku']}={}){
+  if(!Array.isArray(gameIds)||!gameIds.length||!gameIds.every(g=>['ludo','gomoku'].includes(g)))fail('JOURNAL_SPEC');
+  const allowedGames=new Set(gameIds);
   if(typeof getContext!=='function'||!Number.isInteger(maxMatches)||maxMatches<1||maxMatches>4096)fail('JOURNAL_SPEC');
   const initial=scope(getContext),records=new Map(),fragments=new Map(),grants=new Set();
   let closed=false;
@@ -40,19 +45,22 @@ export function createLudoJournal({getContext,maxMatches=512}={}){
   }
   function recordMatch(board,chat=null){
     const c=current();
-    if(!board||board.accountId!==c.accountId||board.gameId!=='ludo'||!id(board.roomId)||!['classic','adventure'].includes(board.mode))fail('JOURNAL_INVALID_MATCH');
+    const gomoku=board?.gameId==='gomoku';
+    if(!board||board.accountId!==c.accountId||!allowedGames.has(board.gameId)||!id(board.roomId)||!(gomoku?board.mode==='freestyle':['classic','adventure'].includes(board.mode)))fail('JOURNAL_INVALID_MATCH');
     // The authoritative engine derives the terminal result and all positions.
     // A caller-provided winner, summary or timestamp cannot settle a match.
-    const d=createRoomDispatcher({getContext:()=>c,spec:{gameId:'ludo',roomId:board.roomId},rules:createLudoRules({mode:board.mode}),checkpoint:board});
+    const d=createRoomDispatcher({getContext:()=>c,spec:{gameId:board.gameId,roomId:board.roomId},rules:gomoku?createGomokuRules():createLudoRules({mode:board.mode}),checkpoint:board});
     const v=d.view('user');
-    if(v.phase!=='finished'||v.result?.kind!=='win'||v.result.winnerSeatIds.length!==1)fail('JOURNAL_MATCH_UNFINISHED');
-    const winner=v.result.winnerSeatIds[0];
-    const entry={schema:1,accountId:c.accountId,roomId:v.roomId,gameId:'ludo',mode:board.mode,revision:v.revision,
-      winnerSeatId:winner,players:v.seats.map(s=>({seatId:s.seatId,kind:s.kind,...(s.kind==='role'?{roleId:s.roleId}:{}),finished:v.game.players.find(p=>p.seatId===s.seatId).planes.filter(p=>p.zone==='finished').length}))};
-    const publicMessages=chat===null?[]:validateLudoChatCheckpoint(v,chat).log.read('user').filter(m=>m.sender.kind==='role');
-    const messageFragments=publicMessages.map(m=>({schema:1,id:fragmentId(v.roomId,m.sender.roleId,m.id),roomId:v.roomId,roleId:m.sender.roleId,kind:'public-message',gameId:'ludo',text:m.text,time:m.time,sourceMessageId:m.id}));
+    if(v.phase!=='finished'||!(v.result?.kind==='win'&&v.result.winnerSeatIds.length===1||gomoku&&v.result?.kind==='draw'&&v.result.winnerSeatIds.length===0))fail('JOURNAL_MATCH_UNFINISHED');
+    const winner=v.result.winnerSeatIds[0]??null;
+    const recordKey=JSON.stringify([board.gameId,v.roomId]);
+    const memoryId=(roleId,source)=>gomoku?JSON.stringify(['gomoku',v.roomId,roleId,source]):fragmentId(v.roomId,roleId,source);
+    const entry={schema:1,accountId:c.accountId,roomId:v.roomId,gameId:board.gameId,mode:board.mode,revision:v.revision,
+      winnerSeatId:winner,players:v.seats.map(s=>({seatId:s.seatId,kind:s.kind,...(s.kind==='role'?{roleId:s.roleId}:{}),...(gomoku?{mode:s.mode,color:v.game.players.find(p=>p.seatId===s.seatId)?.color??null}:{finished:v.game.players.find(p=>p.seatId===s.seatId).planes.filter(p=>p.zone==='finished').length})})),...(gomoku?{moves:v.game.count}:{} )};
+    const publicMessages=chat===null?[]:(gomoku?validateGomokuChatCheckpoint(v,chat):validateLudoChatCheckpoint(v,chat)).log.read('user').filter(m=>m.sender.kind==='role');
+    const messageFragments=publicMessages.map(m=>({schema:1,id:memoryId(m.sender.roleId,m.id),roomId:v.roomId,roleId:m.sender.roleId,kind:'public-message',gameId:board.gameId,text:m.text,time:m.time,sourceMessageId:m.id}));
     same(c);
-    const prior=records.get(v.roomId);
+    const prior=records.get(recordKey);
     if(prior){
       if(JSON.stringify(prior)!==JSON.stringify(entry))fail('JOURNAL_MATCH_CONFLICT');
       if(messageFragments.some(f=>JSON.stringify(fragments.get(f.id))!==JSON.stringify(f)))fail('JOURNAL_MATCH_CONFLICT');
@@ -62,14 +70,15 @@ export function createLudoJournal({getContext,maxMatches=512}={}){
     // Facts are not fabricated emotional memories; each saved role receives
     // its own result. Bots have no durable identity and receive no fragments.
     const next=entry.players.filter(p=>p.kind==='role').map(p=>({
-      schema:1,id:fragmentId(v.roomId,p.roleId,'result'),roomId:v.roomId,roleId:p.roleId,kind:'result',
-      gameId:'ludo',mode:entry.mode,outcome:p.seatId===winner?'win':'loss',finished:p.finished
+      schema:1,id:memoryId(p.roleId,'result'),roomId:v.roomId,roleId:p.roleId,kind:'result',
+      gameId:board.gameId,mode:entry.mode,outcome:gomoku&&p.mode==='observer'?'observed':winner===null?'draw':p.seatId===winner?'win':'loss',...(gomoku?{color:p.color,moves:entry.moves}:{finished:p.finished})
     }));
-    records.set(v.roomId,entry);for(const f of [...next,...messageFragments])fragments.set(f.id,f);
+    records.set(recordKey,entry);for(const f of [...next,...messageFragments])fragments.set(f.id,f);
     return {duplicate:false,record:clone(entry)};
   }
   function recordSavedMatch(saved){
-    if(!exact(saved,['schema','board','chat'])||saved.schema!==1||!saved.board||!saved.chat)fail('JOURNAL_INVALID_MATCH');
+    const gomoku=saved?.board?.gameId==='gomoku';
+    if(!exact(saved,gomoku?['schema','board','chat','difficulty']:['schema','board','chat'])||saved.schema!==1||!saved.board||!saved.chat||gomoku&&!['easy','normal','hard'].includes(saved.difficulty))fail('JOURNAL_INVALID_MATCH');
     return recordMatch(saved.board,saved.chat);
   }
   function permit({fragmentId:fid,targetRoleId,channel,allowed}={}){
