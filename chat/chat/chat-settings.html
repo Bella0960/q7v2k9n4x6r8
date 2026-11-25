@@ -10,7 +10,7 @@
 <script src="../../shared/js/phone/phone_storage.js"></script>
 <script src="../../shared/js/phone/storage/media-repository.js?v=20261107v2"></script>
 <script src="../../shared/js/phone/group-portraits.js?v=20261125g4"></script>
-<script src="../../shared/js/phone/group-write-guard.js?v=20261125g6"></script>
+<script src="../../shared/js/phone/group-write-guard.js?v=20261125g7"></script>
 <style>
   * { box-sizing: border-box; margin: 0; padding: 0; -webkit-tap-highlight-color: transparent; }
   body {
@@ -3000,7 +3000,19 @@
   var pinToggle = document.getElementById('pinToggle');
   var pinSub = document.getElementById('pinSub');
 
+  function scopedSetting(kind){
+    var group=isGroupSetting&&loadCurrentGroup();
+    return group?window.MAOGroupWriteGuard.readPreference(groupReadSnapshots.get(group),kind):null;
+  }
+  function saveScopedSetting(snapshot,value){
+    if(!window.MAOGroupWriteGuard.writePreference(snapshot,String(value)).ok){
+      showToast('群设置已变化或保存失败，请重新打开后重试');return false;
+    }
+    return true;
+  }
+  var pinSnapshot=null;
   function readPinned() {
+    if(isGroupSetting){pinSnapshot=scopedSetting('pin');return !!pinSnapshot&&pinSnapshot.raw==='true';}
     return localStorage.getItem(PIN_KEY) === 'true';
   }
   function refreshPinUI(pinned) {
@@ -3012,7 +3024,10 @@
     refreshPinUI(readPinned());
     actionPin.addEventListener('click', function () {
       var next = !pinToggle.checked;
-      try {
+      if(isGroupSetting){
+        if(!saveScopedSetting(pinSnapshot,next)){refreshPinUI(readPinned());return;}
+        refreshPinUI(readPinned());
+      }else try {
         localStorage.setItem(PIN_KEY, next);
       } catch (e) {
         showToast('操作失败，请重试');
@@ -3245,8 +3260,10 @@
   var memOptList = document.getElementById('memOptList');
   var memLimitSub = document.getElementById('memLimitSub');
 
+  var memorySnapshot=null;
   function readMemoryLimit() {
-    var n = parseInt(localStorage.getItem(MEM_LIMIT_KEY), 10);
+    if(isGroupSetting)memorySnapshot=scopedSetting('memory');
+    var n = parseInt(isGroupSetting?(memorySnapshot&&memorySnapshot.raw):localStorage.getItem(MEM_LIMIT_KEY), 10);
     return MEM_LIMIT_OPTIONS.indexOf(n) !== -1 ? n : 20; // 未设置/脏值默认 20
   }
   function markMemoryOption(n) {
@@ -3283,7 +3300,9 @@
       if (!opt || !memOptList.contains(opt)) return;
       var n = parseInt(opt.getAttribute('data-limit'), 10);
       if (MEM_LIMIT_OPTIONS.indexOf(n) === -1) return;
-      try {
+      if(isGroupSetting){
+        if(!saveScopedSetting(memorySnapshot,n)){refreshMemLimitUI();return;}
+      }else try {
         localStorage.setItem(MEM_LIMIT_KEY, n);
       } catch (err) {
         showToast('保存失败，请重试');
@@ -3308,9 +3327,11 @@
   var tcSaveBtn = document.getElementById('tcSaveBtn');
   var tcDraftMode = 'real'; // 抽屉打开期间的临时选择，点保存才落盘
 
+  var timeSnapshot=null;
   function readTimeConfig() {
     try {
-      var raw = localStorage.getItem(TC_KEY);
+      if(isGroupSetting)timeSnapshot=scopedSetting('time');
+      var raw = isGroupSetting?(timeSnapshot&&timeSnapshot.raw):localStorage.getItem(TC_KEY);
       if (raw) {
         var o = JSON.parse(raw);
         if (o && TC_MODES.indexOf(o.mode) !== -1) {
@@ -3334,6 +3355,7 @@
   }
   function openTcSheet() {
     var cfg = readTimeConfig();
+    if(isGroupSetting&&!timeSnapshot){showToast('群资料不可用，请重新进入');return;}
     tcDraftMode = cfg.mode;
     tcVirtualInput.value = cfg.virtualTimeStr;
     markTcOption(tcDraftMode);
@@ -3371,7 +3393,9 @@
         return;
       }
       var data = { mode: tcDraftMode, virtualTimeStr: virtualStr };
-      try {
+      if(isGroupSetting){
+        if(!saveScopedSetting(timeSnapshot,JSON.stringify(data)))return;
+      }else try {
         localStorage.setItem(TC_KEY, JSON.stringify(data));
       } catch (e) {
         showToast('保存失败，请重试');
@@ -3662,10 +3686,16 @@
     var entry = document.getElementById('actionSound');
     if (!overlay || !entry || !list) return;
 
+    var soundSnapshot=null;
     function currentKey() {
       var v = null;
-      try { v = localStorage.getItem('sound_char_' + roleId); } catch (e) {}
+      if(isGroupSetting){soundSnapshot=scopedSetting('sound');v=soundSnapshot&&soundSnapshot.raw;}
+      else try { v = localStorage.getItem('sound_char_' + roleId); } catch (e) {}
       return v || 'default';
+    }
+    function saveSound(value){
+      if(isGroupSetting)return saveScopedSetting(soundSnapshot,value);
+      try{localStorage.setItem('sound_char_'+roleId,value);return true;}catch(error){showToast('音效保存失败，请重试');return false;}
     }
     function renderSub() {
       var k = currentKey();
@@ -3678,7 +3708,7 @@
       defItem.className = 'sound-option' + (cur === 'default' ? ' active' : '');
       defItem.innerHTML = '<span class="so-name">跟随全局默认</span><span class="so-check">✓</span>';
       defItem.addEventListener('click', function () {
-        try { localStorage.setItem('sound_char_' + roleId, 'default'); } catch (e) {}
+        if(!saveSound('default')){renderSub();renderList();return;}
         renderSub(); renderList();
       });
       list.appendChild(defItem);
@@ -3687,7 +3717,7 @@
         item.className = 'sound-option' + (cur === key ? ' active' : '');
         item.innerHTML = '<span class="so-name">' + SoundSystem.SOUNDS[key] + '</span><span class="so-check">✓</span>';
         item.addEventListener('click', function () {
-          try { localStorage.setItem('sound_char_' + roleId, key); } catch (e) {}
+          if(!saveSound(key)){renderSub();renderList();return;}
           SoundSystem.playKey(key);
           renderSub(); renderList();
         });
