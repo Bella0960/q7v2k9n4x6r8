@@ -11,7 +11,7 @@ const styles = read('../chat/call/call-overlay.css');
 
 test('chat detail loads the call experience stylesheet and script', () => {
   assert.match(detail, /call\/call-overlay\.css\?v=20261121call1/);
-  assert.match(detail, /call\/call-overlay\.js\?v=20261126c05/);
+  assert.match(detail, /call\/call-overlay\.js\?v=20261126c06/);
   assert.ok(detail.indexOf('js/chat-extras.js') < detail.indexOf('../call/call-overlay.js'));
 });
 

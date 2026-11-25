@@ -30,7 +30,7 @@ test('group overlay is actually wired to exact receipt admission, scope lifecycl
  assert.match(overlay,/if\(groupTurn\)groupTurn\.close\(\)/);
  assert.match(overlay,/var isSpeaker = !!latestSpeakerId && id === latestSpeakerId;/);
  for(const path of ['shared/js/phone/group-call-roster.js','shared/js/phone/group-call-turn.js','chat/call/call-overlay.js']){
-  const version=path.endsWith('call-overlay.js')?'20261126c05':'20261126c04';
+  const version=path.endsWith('call-overlay.js')?'20261126c06':'20261126c04';
   assert.ok(sw.includes(path+'?v='+version));assert.ok(page.includes(path.replace('chat/call/','call/')+'?v='+version));
  }
 });
@@ -46,4 +46,12 @@ test('hangup clears old document drag handlers and detached mouse moves are guar
  assert.match(overlay,/function clearMiniDrag\(\)\{[\s\S]*?removeEventListener\('mousemove',onMiniMouseMove\);[\s\S]*?removeEventListener\('mouseup',onMiniMouseUp\)/);
  assert.match(overlay,/function finish\(saveRecord\)[\s\S]*?clearMiniDrag\(\);/);
  assert.match(overlay,/function onMiniMouseMove\(e\) \{\s*if \(finished\|\|!isDragging\|\|!mini\.parentElement\) return;/);
+});
+
+test('group hangup cancels only the active group request and forwards its signal',()=>{
+ assert.match(overlay,/if\(groupRequestController\)\{groupRequestController\.abort\(\);groupRequestController=null;\}/);
+ assert.match(overlay,/groupRequestController=controller;/);
+ assert.match(overlay,/\},controller\?\.signal\);/);
+ assert.ok(page.includes('phone_stream.js?v=20261126c06'));
+ assert.ok(sw.includes('phone_stream.js?v=20261126c06'));
 });

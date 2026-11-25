@@ -134,6 +134,7 @@
     var connected = false;
     var finished = false;
     var sending = false;
+    var groupRequestController = null;
     var hiddenSelfView = false;
     var flippedSelfView = false;
     var startedAt = Date.now();
@@ -570,6 +571,7 @@
       if (finished) return;
       finished = true;
       if(groupTurn)groupTurn.close();
+      if(groupRequestController){groupRequestController.abort();groupRequestController=null;}
       clearMiniDrag();
       if (connectTimer) global.clearTimeout(connectTimer);
       if (tickTimer) global.clearInterval(tickTimer);
@@ -591,6 +593,8 @@
       var admission=groupTurn.begin(text);
       if(!admission.ok){stateEl.textContent='当前通话暂不可发送';if(!groupRoster.isCurrent())finish(false);return;}
       var token=admission.token,confirmedUser=false;
+      var controller=typeof global.AbortController==='function'?new global.AbortController():null;
+      groupRequestController=controller;
       sending=true;sendButton.disabled=true;input.disabled=true;stateEl.textContent='群成员正在回复…';
       function showConfirmed(result){
         if(!result?.ok||finished)return;
@@ -602,7 +606,7 @@
       try{
         var receipt=await global.sendGroupCallMessage(text,token,groupTurn.canContinue,function(progress){
           if(!finished)showConfirmed(groupTurn.inspect(token,progress));
-        });
+        },controller?.signal);
         if(finished)return;
         var verified=groupTurn.settle(token,receipt);
         if(!groupRoster.isCurrent()){finish(false);return;}
@@ -620,6 +624,7 @@
         groupTurn.abandon(token);
         if(!finished)stateEl.textContent='发送未确认，请检查聊天记录后重试';
       }finally{
+        if(groupRequestController===controller)groupRequestController=null;
         sending=false;
         if(!finished&&connected){input.disabled=false;sendButton.disabled=!input.value.trim();try{input.focus();}catch(error){}}
       }

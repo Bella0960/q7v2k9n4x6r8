@@ -127,6 +127,7 @@ test('actual group call UI: mobile and desktop, exact progress, draft, hangup an
      // hangs up while the transport is pending. Force a late paint and result.
      await page.evaluate(()=>{
       PhoneStream.chat=opts=>new Promise(resolve=>{
+       window.fixtureCallSignal=opts.signal;
        window.resolveLateCall=()=>{opts.onPaint('不应出现的迟到回复');resolve({ok:true,fullText:'不应出现的迟到回复',error:null});};
       });
      });
@@ -134,6 +135,7 @@ test('actual group call UI: mobile and desktop, exact progress, draft, hangup an
      await page.waitForFunction(()=>typeof window.resolveLateCall==='function');
      await layer.locator('[data-call-action="end"]').click();
      await layer.waitFor({state:'detached'});
+     assert.equal(await page.evaluate(()=>window.fixtureCallSignal?.aborted),true);
      await page.waitForFunction(()=>JSON.parse(localStorage.getItem('chat_history_g-call-qa')).filter(m=>m.type==='call').length===2);
      await page.evaluate(()=>window.resolveLateCall());
      await page.waitForFunction(()=>!singleChatSendPending);

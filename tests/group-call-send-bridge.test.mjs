@@ -54,3 +54,12 @@ test('revoked call stream paint exits before any text is read or rendered',()=>{
  const guard=new Function('callTurn','callCurrent','discardStaleGroupTurn','isGroupChat',page.slice(a,b)+'\nthrow Error("unexpected paint");}\nreturn paintStreamLive;')({},()=>false,notify=>{assert.equal(notify,false);discarded++;},true);
  guard('迟到回复');assert.equal(discarded,1);
 });
+
+test('caller cancellation invalidates the existing sender scope and blocks receipts',async()=>{
+ const controller=new AbortController();
+ const h=mount(async(opts,turn)=>{assert.equal(turn.signal,controller.signal);turn.userMid='u1';controller.abort();assert.equal(turn.current(),false);});
+ assert.equal(await h.send('你好',h.token,h.guard,undefined,controller.signal),null);
+ assert.equal(await h.send('你好',h.token,h.guard,undefined,controller.signal),null);
+ assert.match(page,/signal: callTurn\?\.signal/);
+ assert.match(page,/if\(isGroupChat&&!callTurn&&!isRegen&&!isManualContinue&&!momentsAction\)/);
+});

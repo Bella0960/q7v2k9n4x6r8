@@ -33,7 +33,7 @@
     <script src="../../shared/js/phone/role-gallery-image-autonomy.js?v=20261111v2"></script>
     <script src="../../shared/js/phone/role_family_cards.js?v=20261028v3"></script>
     <script src="../../shared/js/phone/memory_recall.js?v=20261118groupmemory1"></script>
-    <script src="../../shared/js/phone/phone_stream.js?v=20261121global2"></script>
+    <script src="../../shared/js/phone/phone_stream.js?v=20261126c06"></script>
     <script src="../../shared/js/phone/chat-message-policy.js?v=20261029v5"></script>
     <script src="../../shared/js/phone/chat-send-policy.js?v=20261122-draftfix1"></script>
     <script src="../../shared/js/phone/chat-context-policy.js?v=20261125public1"></script>
@@ -7731,7 +7731,7 @@
             }
             if(!groupTurnCurrent()){discardStaleGroupTurn();return;}
             const chatResponseTimeoutMs = 60000;
-            if(isGroupChat&&!isRegen&&!isManualContinue&&!momentsAction){
+            if(isGroupChat&&!callTurn&&!isRegen&&!isManualContinue&&!momentsAction){
                 groupInterruptedSave=function(){
                     return persistInterruptedGroupReply(lastPaintedStreamText,true).catch(function(){return false;});
                 };
@@ -7750,6 +7750,7 @@
                     topP: config.topP,
                     connectMs: chatResponseTimeoutMs,
                     watchdogMs: chatResponseTimeoutMs,
+                    signal: callTurn?.signal,
                     onPaint: paintStreamLive
                 });
                 if (!streamResult || typeof streamResult !== 'object') {
@@ -8609,12 +8610,12 @@
         // Private binding: a normal sendMsg options object cannot opt into the
         // group-call path by adding fields. The overlay uses this dedicated API.
         const groupCallReceiptBindings=new WeakMap();
-        window.sendGroupCallMessage=async function(text,token,isCurrent,onProgress){
+        window.sendGroupCallMessage=async function(text,token,isCurrent,onProgress,signal){
             if(!isGroupChat||!token||typeof isCurrent!=='function'||typeof text!=='string'||!text.trim())return null;
             const scope=readGroupScope();
             if(!scope||token.accountId!==scope.account||token.groupId!==String(currentRoleId))return null;
-            const callTurn={userMid:'',replyMids:[],maxFollowups:scope.group.members.length+2,
-                current:function(){try{return !groupPageExited&&groupGuard.account()===scope.account&&groupGuard.matches(scope)&&String(currentRoleId)===token.groupId&&isCurrent(token)===true;}catch{return false;}}};
+            const callTurn={userMid:'',replyMids:[],signal:signal,maxFollowups:scope.group.members.length+2,
+                current:function(){try{return !signal?.aborted&&!groupPageExited&&groupGuard.account()===scope.account&&groupGuard.matches(scope)&&String(currentRoleId)===token.groupId&&isCurrent(token)===true;}catch{return false;}}};
             function receipt(){return Object.freeze({accountId:scope.account,groupId:token.groupId,userMid:callTurn.userMid,replyMids:Object.freeze(callTurn.replyMids.slice())});}
             callTurn.progress=function(){if(callTurn.current()&&callTurn.userMid&&typeof onProgress==='function'){try{onProgress(receipt());}catch(error){/* view errors do not affect the sender */}}};
             if(!callTurn.current())return null;
@@ -10696,7 +10697,7 @@
         mountGroupListeningView();
     </script>
     <script src="js/chat-extras.js?t=20261122cards4"></script>
-    <script src="../call/call-overlay.js?v=20261126c05"></script>
+    <script src="../call/call-overlay.js?v=20261126c06"></script>
     <script>
     function openNarrationModal() {
         var m = document.createElement('div');
