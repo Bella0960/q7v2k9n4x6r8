@@ -121,13 +121,29 @@
       return (cfg && cfg.vars && typeof cfg.vars === 'object') ? cfg.vars : null;
     } catch (e) { return null; }
   }
-  function beautyActive(roleId) {
-    var g = readBeautyVars(BEAUTY_GLOBAL_KEY);
-    if (g && Object.keys(g).length > 0) return true;
-    if (roleId) {
-      var r = readBeautyVars(BEAUTY_ROLE_PREFIX + roleId);
-      if (r && Object.keys(r).length > 0) return true;
+  // Only explicit ordinary-bubble customizations may opt the legacy frosted
+  // bubble rule aside. Avatar, backdrop, theme preset, timestamp, payment /
+  // red-packet, layout and unknown fields must not raise the marker, otherwise
+  // the built-in frosted default would step down for a non-bubble setting.
+  function hasMeaningfulValue(value) {
+    if (value === null || value === undefined || value === '') return false;
+    if (Array.isArray(value)) return value.length > 0;
+    return true;
+  }
+  function isBubbleVar(key, value) {
+    if (!hasMeaningfulValue(value)) return false;
+    return key.indexOf('myBubble') === 0 || key.indexOf('partnerBubble') === 0;
+  }
+  function beautyVarsActive(vars) {
+    if (!vars || typeof vars !== 'object' || Array.isArray(vars)) return false;
+    for (var k in vars) {
+      if (Object.prototype.hasOwnProperty.call(vars, k) && isBubbleVar(k, vars[k])) return true;
     }
+    return false;
+  }
+  function beautyActive(roleId) {
+    if (beautyVarsActive(readBeautyVars(BEAUTY_GLOBAL_KEY))) return true;
+    if (roleId && beautyVarsActive(readBeautyVars(BEAUTY_ROLE_PREFIX + roleId))) return true;
     return false;
   }
   function currentRoleId() {
@@ -151,7 +167,7 @@
       : ['number',field.default,field.min,field.max];
     if (type === 'color' && !/^#[a-f0-9]{6}$/i.test(definition[1])) return false;
     if (type === 'number' && (!Number.isFinite(definition[1]) ||
-        !Number.isFinite(definition[2]) || !Number.isFinite(definition[3]) ||
+        !Number.isFinite(definition[2]) || !Number.isFinite(definition[3])) ||
         definition[2] > definition[1] || definition[1] > definition[3])) return false;
     SPECS[group][key] = definition;
     EXTENSION_FIELDS[group].push([key,String(field.label||key).slice(0,40),
