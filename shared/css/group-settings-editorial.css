@@ -36,15 +36,6 @@
 .gp-editorial-home .gp-shortcuts .action-body{flex:0 1 auto;display:block}
 .gp-editorial-home .gp-shortcuts .action-title{font-size:13px;font-weight:500;white-space:nowrap}
 .gp-editorial-home .gp-shortcuts .action-icon,.gp-editorial-home .gp-shortcuts .action-sub,.gp-editorial-home .gp-shortcuts .action-arrow{display:none!important}
-.gp-editorial-home .gp-section-title{font-size:16px;font-weight:500;line-height:1.3;margin:12px 1px 9px}
-.gp-editorial-home .gp-quick{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:4px;margin-bottom:20px}
-.gp-editorial-home .gp-quick > .settings-card{background:transparent;margin:0!important;border-radius:0!important}
-.gp-editorial-home .gp-quick .action-row{min-height:76px;display:flex;flex-direction:column-reverse;justify-content:center;align-items:center;gap:9px!important;padding:8px 1px!important;text-align:center}
-.gp-editorial-home .gp-quick .action-body{flex:0 1 auto;align-items:center;gap:4px}
-.gp-editorial-home .gp-quick .action-title{font-size:12px;white-space:normal;line-height:1.4}
-.gp-editorial-home .gp-quick .action-sub{font-size:10px;color:#777;max-width:100%;line-height:1.3}
-.gp-editorial-home .gp-quick .action-icon,.gp-editorial-home .gp-quick .action-arrow,.gp-editorial-home .gp-quick #pinSub,.gp-editorial-home .gp-quick .knob-txt{display:none!important}
-.gp-editorial-home .gp-quick .ios-switch{pointer-events:none}
 .gp-editorial-home .gp-notice-slot{background:transparent;margin:0!important}
 .gp-editorial-home .gp-notice-slot:not(.is-open){display:none}
 .gp-editorial-home .gp-notice-slot #actionGroupNotice{display:none!important}
@@ -63,3 +54,7 @@
 .gp-editorial-home button:focus-visible{outline:2px solid #555;outline-offset:2px}
 .gp-editorial .section-label{color:#666;letter-spacing:.08em}
 @media(prefers-reduced-motion:reduce){.gp-editorial-home .gp-drawer{transition:none}}
+
+.gp-editorial-home .gp-pin-card #pinSub,.gp-editorial-home .gp-pin-card .knob-txt{display:none!important}
+.gp-editorial-home .gp-pin-card .ios-switch{pointer-events:none;flex-shrink:0}
+.gp-editorial-home .gp-pin-card .action-body{flex:1;min-width:0}
