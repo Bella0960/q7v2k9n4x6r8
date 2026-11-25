@@ -24,9 +24,17 @@
   }
   function jsonRecord(value) {
     if (!value || typeof value !== 'object' || Array.isArray(value)) fail('INVALID_PAYLOAD');
+    // Require JSON data, not opaque browser objects which JSON.stringify silently discards.
     let encoded;
     try {
-      encoded = JSON.stringify(value, (key,v) => {
+      encoded = JSON.stringify(value, function(key,v) {
+        const original = this[key];
+        if (original && typeof original === 'object') {
+          const proto = Object.getPrototypeOf(original);
+          if (!Array.isArray(original) && proto !== Object.prototype && proto !== null) fail('INVALID_PAYLOAD');
+          if (Object.getOwnPropertySymbols(original).length) fail('INVALID_PAYLOAD');
+        }
+        if (original !== v) fail('INVALID_PAYLOAD');
         if (v === undefined || typeof v === 'function' || typeof v === 'symbol' || typeof v === 'bigint' ||
             (typeof v === 'number' && !Number.isFinite(v))) fail('INVALID_PAYLOAD');
         return v;
@@ -124,7 +132,7 @@
                   if(old.encoded !== row.encoded) fail('IDEMPOTENCY_CONFLICT');
                   duplicate++; keys.push(old.sequence); continue;
                 }
-                if(!Number.isSafeInteger(state.count+1)) fail('SEQUENCE_EXHAUSTED');
+                if(!Number.isSafeInteger(state.count+1)||state.count+1>=Number.MAX_SAFE_INTEGER) fail('SEQUENCE_EXHAUSTED');
                 const sequence=++state.count;
                 await request(records.add({partition,sequence,id:row.id,encoded:row.encoded}));
                 added++; keys.push(sequence);
