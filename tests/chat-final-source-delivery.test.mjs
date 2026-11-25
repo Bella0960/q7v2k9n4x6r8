@@ -79,7 +79,12 @@ test('chat always verifies last assembled apiMessages before PhoneStream.chat an
   const audit=detail.indexOf('const finalPayloadAudit =');
   const send=detail.indexOf('streamResult = await PhoneStream.chat(',audit);
   assert.ok(audit>0&&send>audit,'final audit must precede transport');
-  assert.match(detail.slice(audit,send),/messages: apiMessages/);
+  assert.match(detail.slice(0,audit),/validateFinalApiMessages\(\{[\s\S]*?messages: messages/);
+  assert.match(detail.slice(audit,send),/const finalPayloadAudit = auditFinalMessages\(apiMessages\)/);
+  assert.match(detail.slice(audit,send),/const outboundPayloadAudit = auditFinalMessages\(outboundApiMessages\)/);
+  assert.match(detail.slice(audit,send),/if \(!outboundPayloadAudit\.ok \|\| outboundMissingRegex\)\s*\{[\s\S]*?stopForMissingRoleSource\('final-source-audit'[\s\S]*?return;/);
+  assert.match(detail.slice(send),/PhoneStream\.chat\(\{[\s\S]*?messages: outboundApiMessages,/);
+  assert.ok(detail.indexOf('const outboundPayloadAudit =',audit)>detail.indexOf('await window.MAOMAOPromptDiagnostic.beforeSend(outboundApiMessages)',audit));
   assert.match(detail.slice(audit,send),/if \(!finalPayloadAudit\.ok \|\| missingRegex\)\s*\{/);
   assert.match(detail.slice(audit,send),/stopForMissingRoleSource\('final-source-audit'/);
   assert.match(detail.slice(audit,send),/return;/);

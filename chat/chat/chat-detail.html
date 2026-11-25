@@ -7473,8 +7473,8 @@
                     messages: messages
                 }) : {ok:false,missing:['final-verifier']};
             const finalPayloadAudit = auditFinalMessages(apiMessages);
-            // The last barrier checks the actual messages passed to PhoneStream,
-            // not only a preliminary systemPrompt assembled before other features.
+            // Verify mandatory canonical sources before any optional extension.
+            // The actual transport payload is checked again after the preview.
             const missingRegex = regexSystemHead &&
                 (!apiMessages[0] || apiMessages[0].role !== 'system' ||
                     !String(apiMessages[0].content || '').startsWith(roleIdentityHead + '\n\n' + regexSystemHead));
@@ -7705,6 +7705,21 @@
                     stopForMissingRoleSource('music-context-updated', '诊断期间听歌状态已变化，本轮未发送');
                     return;
                 }
+            }
+            // Final fail-closed check of the exact array passed to transport,
+            // even when an optional extension was rejected or diagnostics disabled.
+            const outboundPayloadAudit = auditFinalMessages(outboundApiMessages);
+            const outboundMissingRegex = regexSystemHead &&
+                (!outboundApiMessages[0] || outboundApiMessages[0].role !== 'system' ||
+                    !String(outboundApiMessages[0].content || '').startsWith(roleIdentityHead + '\n\n' + regexSystemHead));
+            if (!outboundPayloadAudit.ok || outboundMissingRegex) {
+                const missingSources = (outboundPayloadAudit.missing || []).concat(
+                    outboundMissingRegex ? ['enabled-regex-system'] : []
+                );
+                discardStaleGroupTurn(false);
+                stopForMissingRoleSource('final-source-audit',
+                    '聊天资料未完整进入请求（' + missingSources.join('、') + '），本轮已停止');
+                return;
             }
             if(!groupTurnCurrent()){discardStaleGroupTurn();return;}
             const chatResponseTimeoutMs = 60000;
