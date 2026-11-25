@@ -651,7 +651,7 @@ test('invitation acceptance refuses duplicate role ids and orphan history',()=>{
 });
 
 test('interrupted group reply retains only validated public prose and an error in one replacement',()=>{
-  const html=load('chat/chat/chat-detail.html'),start=html.indexOf('        function buildInterruptedGroupHistory('),end=html.indexOf('\n        // 页面被切走',start);
+  const html=load('chat/chat/chat-detail.html'),start=html.indexOf('        function buildInterruptedGroupHistory('),end=html.indexOf('\n        // 页面退出时',start);
   assert.ok(start>=0&&end>start);
   const code=html.slice(start,end);
   const build=new Function('stripInternalReasoning','ensureMid',code+'\nreturn buildInterruptedGroupHistory;')(
