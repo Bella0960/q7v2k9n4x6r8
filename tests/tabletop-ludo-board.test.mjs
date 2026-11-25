@@ -100,3 +100,22 @@ test('skipped roll identifies the next player and keeps board read-only for user
   assert.match(all(root,'mao-ludo__active')[0].textContent,/测试棋手/);
   assert.equal(all(root,'mao-ludo__action').length,0);host.destroy();
 });
+
+test('older room snapshot cannot roll back the displayed board or restore stale controls',()=>{
+  const d=setup(),root=makeRoot(),calls=[];
+  const host=createLudoBoardView(root,{onMove:a=>calls.push(a)});
+  const old=d.view('user');host.render(old);
+  act(d,'user',{kind:'roll'});host.render(d.view('user'));
+  const current=all(root,'mao-ludo__action')[0];
+  host.render(old);
+  assert.match(all(root,'mao-ludo__status')[0].textContent,/选择要移动/);
+  assert.equal(all(root,'mao-ludo__action').length,4);
+  assert.equal(all(root,'mao-ludo__action')[0],current);
+  current.click();assert.deepEqual(calls[0].move,{kind:'choose',plane:0});host.destroy();
+});
+test('a mounted board refuses a different room until the host explicitly replaces it',()=>{
+  const d=setup(),root=makeRoot(),host=createLudoBoardView(root,{onMove:()=>{}});
+  const view=d.view('user');host.render(view);
+  assert.throws(()=>host.render({...view,roomId:'different-room'}),/LUDO_BOARD_ROOM_CHANGED/);
+  assert.equal(all(root,'mao-ludo__action')[0].textContent,'掷骰子');host.destroy();
+});

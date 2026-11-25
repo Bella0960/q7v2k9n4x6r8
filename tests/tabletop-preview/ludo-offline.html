@@ -895,6 +895,10 @@ function createLudoBoardView(root,{onMove,labelForSeat}={}){
     if(destroyed)throw Error('LUDO_BOARD_DISPOSED');
     if(view?.selfSeatId!=='user')throw Error('LUDO_BOARD_USER_ONLY');
     const next=buildLudoBoard(view),before=model;
+    // Each mounted board belongs to one room. Delayed render callbacks may
+    // arrive out of order; never replace a newer committed view with an old one.
+    if(before&&next.roomId!==before.roomId)throw Error('LUDO_BOARD_ROOM_CHANGED');
+    if(before&&next.revision<before.revision)return;
     const transition=before&&before.roomId===next.roomId&&next.revision===before.revision+1;
     const motion=transition&&!doc.defaultView?.matchMedia?.('(prefers-reduced-motion: reduce)')?.matches;
     stopAnimations();
