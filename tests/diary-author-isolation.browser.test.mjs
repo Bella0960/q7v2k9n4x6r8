@@ -53,6 +53,8 @@ test('diary real mobile browser: separate user comments from role-authored diari
      await page.locator('#readerMoreBtn').click();
      assert.equal(await page.locator('#readerComment').isVisible(),false);
      assert.equal(await page.locator('#readerComment').isDisabled(),true);
+     await page.locator('#readerMenuLayer').click({position:{x:8,y:8}});
+     await page.locator('#readerMenuLayer').waitFor({state:'hidden'});
      await page.locator('#readerClose').click();
     }
     await page.locator('[data-open-entry="d_user"]').click();
