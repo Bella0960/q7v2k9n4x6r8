@@ -11,7 +11,7 @@
     <link rel="stylesheet" href="../../shared/css/chat-beauty-runtime.css?v=20261031v1">
     <link rel="stylesheet" href="../call/call-overlay.css?v=20261121call1">
     <script src="../../shared/js/phone/phone_storage.js?v=20261121memory1"></script>
-    <script src="../../shared/js/phone/chat-history-atomic.js?v=20261118v3"></script>
+    <script src="../../shared/js/phone/chat-history-atomic.js?v=20261125scope1"></script>
     <script src="../../shared/js/phone/chat-regex-policy.js?v=20261120prompt1"></script>
     <script src="../../shared/js/phone/prompt-diagnostic.js?v=20261120qa1"></script>
     <script src="../../shared/js/phone/storage/repository.js"></script>
@@ -2429,8 +2429,8 @@
                 if (raw) {
                     const roles = JSON.parse(raw);
                     if (Array.isArray(roles)) {
-                        const target = roles.find(r => String(r.id) === String(roleId));
-                        if (target) return target;
+                        const matches = roles.filter(r => r&&String(r.id)===String(roleId));
+                        if(matches.length===1)return matches[0];
                     }
                 }
             } catch (e) {
@@ -3234,7 +3234,7 @@
             }
             const groupScope=isGroupChat?readGroupScope():null;
             if(isGroupChat&&!groupScope)return false;
-            var saved = await atomic.appendManyIf(currentCharacter.id, messages, isGroupChat?function(latest){return groupGuard.matches(groupScope)&&groupGuard.account()===groupPageAccount&&(!guard||guard(latest)===true);}:guard);
+            var saved = await atomic.appendManyIf(currentCharacter.id, messages, isGroupChat?function(latest){return !groupPageExited&&groupGuard.matches(groupScope)&&groupGuard.account()===groupPageAccount&&(!guard||guard(latest)===true);}:guard);
             if (!saved || !saved.ok) {
                 if (typeof showToast === 'function') showToast('消息未能安全保存，请检查存储空间或刷新后重试');
                 return false;
@@ -3242,13 +3242,16 @@
             return true;
         }
         async function replaceChatSafely(expected, next) {
-            if(isGroupChat&&!readGroupScope())return false;
+            const groupScope=isGroupChat?readGroupScope():null;
+            if(isGroupChat&&!groupScope)return false;
             if (_chatHistoryUnreadable || storageKey !== 'chat_history_' + currentCharacter.id ||
                 !window.ChatHistoryAtomic || typeof window.ChatHistoryAtomic.replaceIfUnchanged !== 'function') {
                 if (typeof showToast === 'function') showToast('会话记录不可安全写入，请刷新后重试');
                 return false;
             }
-            var saved = await window.ChatHistoryAtomic.replaceIfUnchanged(currentCharacter.id, expected, next);
+            var saved = isGroupChat
+                ? await window.ChatHistoryAtomic.replaceIfUnchanged(currentCharacter.id,expected,next,function(){return !groupPageExited&&groupGuard.matches(groupScope)&&groupGuard.account()===groupPageAccount;})
+                : await window.ChatHistoryAtomic.replaceIfUnchanged(currentCharacter.id, expected, next);
             if (!saved || !saved.ok) {
                 if (typeof showToast === 'function') showToast(
                     saved && saved.error && saved.error.code === 'CONFLICT'
@@ -3257,6 +3260,20 @@
                 );
                 return false;
             }
+            return true;
+        }
+
+        async function saveGroupReplyLocked(list,validate){
+            if(!isGroupChat||!readGroupScope()||!_chatHistoryBaselines.has(list)||!window.ChatHistoryAtomic||typeof window.ChatHistoryAtomic.replaceRawIfUnchanged!=='function')return false;
+            const raw=_chatHistoryBaselines.get(list);
+            if(typeof raw!=='string'||storageKey!=='chat_history_'+currentCharacter.id)return false;
+            const encoded=JSON.stringify(list);
+            const saved=await window.ChatHistoryAtomic.replaceRawIfUnchanged(currentCharacter.id,raw,JSON.parse(encoded),validate);
+            if(!saved||!saved.ok||!readGroupScope()){
+                if(typeof showToast==='function')showToast(saved&&saved.meta&&saved.meta.writeMayHavePersisted?'回复保存结果待确认，请重新进入聊天':'群回复未安全保存，请刷新后重试');
+                return false;
+            }
+            _rememberChatBaseline(list,encoded);
             return true;
         }
 
@@ -7375,6 +7392,7 @@
             const latestSpeaker = isGroupChat
                 ? (groupReplyPick && getRoleById(groupReplyPick.id))
                 : getRoleById(roleForTurn.id);
+            const groupSpeakerBaseline=isGroupChat&&latestSpeaker?JSON.stringify(latestSpeaker):null;
             let storedProtocolAtSend = '';
             try { storedProtocolAtSend = localStorage.getItem('chat_rp_protocol_') || ''; }
             catch (protocolReadErr) {
@@ -7433,7 +7451,7 @@
             let groupReplyVisible = false;
             function groupTurnCurrent(){
                 if(!isGroupChat)return true;
-                try{return !groupPageExited&&!!turnGroup&&groupGuard.account()===groupPageAccount&&groupGuard.matches(turnGroup)&&!!groupReplyPick&&currentGroupSpeaker(String(groupReplyPick.id))&&_chatHistoryBaselines.has(historyList)&&localStorage.getItem(storageKey)===_chatHistoryBaselines.get(historyList)&&groupGuard.account()===groupPageAccount;}catch(error){return false;}
+                try{return !groupPageExited&&!!turnGroup&&groupGuard.account()===groupPageAccount&&groupGuard.matches(turnGroup)&&!!groupReplyPick&&currentGroupSpeaker(String(groupReplyPick.id))&&groupSpeakerBaseline!==null&&JSON.stringify(getRoleById(groupReplyPick.id))===groupSpeakerBaseline&&_chatHistoryBaselines.has(historyList)&&localStorage.getItem(storageKey)===_chatHistoryBaselines.get(historyList)&&groupGuard.account()===groupPageAccount;}catch(error){return false;}
             }
             function discardStaleGroupTurn(){
                 inflightSnapshot=null;
@@ -8034,7 +8052,7 @@
                                 delete retryResolved.message.sendFailedReason;
                             }
                         }
-                        var replySaved = groupTurnCurrent() && saveMessages(historyList);
+                        var replySaved = isGroupChat ? await saveGroupReplyLocked(historyList,groupTurnCurrent) : saveMessages(historyList);
                         if(isGroupChat&&!replySaved)groupReplyVisible=false;
                         // No secondary state change from a failed/partial/unpersisted turn.
                         if (replySaved && streamResult.ok) {
