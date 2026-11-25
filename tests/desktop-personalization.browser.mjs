@@ -584,13 +584,21 @@ try{
         });
         assert.ok(quick?.editing&&quick.touchAction==='none','glass edit tile does not own touch gesture');
         assert.equal(await hp.evaluate(()=>matchMedia('(pointer: coarse)').matches&&window.LiquidGlass.capabilities.liveRefraction),false,'touch profile retained live SVG refraction');
+        diagnosticPhase=430;
         await ht('touchStart',quick.x,quick.y);
         try{
+          // No selector wait or sleep before the first move. Multiple increments
+          // cross the compositor touch slop and prove a real continuing gesture.
+          diagnosticPhase=431;
           await ht('touchMove',quick.x+14,quick.y);
+          await ht('touchMove',quick.x+30,quick.y);
           await hp.waitForSelector('.drag-avatar',{timeout:3000});
-          await hp.waitForFunction(x=>Math.abs(parseFloat(document.querySelector('.drag-avatar')?.style.getPropertyValue('--drag-x'))-x)<2,quick.x+14,{timeout:3000});
+          diagnosticPhase=432;
+          await ht('touchMove',quick.x+40,quick.y);
+          await hp.waitForFunction(x=>Math.abs(parseFloat(document.querySelector('.drag-avatar')?.style.getPropertyValue('--drag-x'))-x)<2,quick.x+40,{timeout:3000});
           assert.equal(await hp.evaluate(()=>getComputedStyle(document.querySelector('.drag-avatar .maomao-liquid-glass-icon'),'::after').display),'none','ghost still paints live optical overlay');
         }finally{await ht('touchCancel');}
+        diagnosticPhase=433;
         await hp.waitForFunction(()=>!document.querySelector('.drag-avatar,.drag-placeholder,.is-dragging-source'));
         assert.deepEqual(await readLayout(hp),heavyLayout,'fast touch cancellation changed saved layout');
         await hc.send('Emulation.setCPUThrottlingRate',{rate:4});
