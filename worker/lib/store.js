@@ -681,6 +681,41 @@ class CloudStore {
     return Boolean(row);
   }
 
+  // One atomic SQL reservation for every potentially billed attempt. Count
+  // failures/timeouts too, because a provider may have billed the request.
+  reserveCloudModelAttempt({ activityId, attemptCount, accountId, characterId, deviceId, now, limits, timeoutMs }) {
+    if (![activityId,accountId,characterId,deviceId].every(v => typeof v === 'string' && v.length > 0 && v.length <= 256) ||
+        !Number.isSafeInteger(attemptCount) || attemptCount < 1 || !Number.isSafeInteger(now) || now <= 0 ||
+        !Number.isSafeInteger(timeoutMs) || timeoutMs <= 0 || !limits ||
+        ![limits.global,limits.account,limits.role].every(v => Number.isSafeInteger(v) && v > 0 && v <= 10000) ||
+        limits.role > limits.account || limits.account > limits.global) return false;
+    const id = 'cloud_model_attempt:' + JSON.stringify([accountId,characterId,activityId,attemptCount]);
+    const detail = JSON.stringify({accountId,characterId,activityId,attemptCount});
+    const since = now - 86400000;
+    const inserted = this.exec(
+      `INSERT INTO execution_log (id,device_id,kind,status,reason_code,detail_json,duration_ms,created_at)
+       SELECT ?,?,'cloud_model_budget','started','attempt_reserved',?,0,?
+       WHERE EXISTS (
+         SELECT 1 FROM activity_queue q JOIN devices d ON d.id=q.device_id
+         WHERE q.id=? AND q.character_id=? AND q.device_id=? AND d.user_id=?
+           AND d.revoked_at IS NULL AND q.status='running' AND q.locked_by='cloud_model_executor'
+           AND q.attempt_count=? AND q.locked_until>?
+       )
+       AND (SELECT COUNT(*) FROM execution_log WHERE kind='cloud_model_budget' AND created_at>=?) < ?
+       AND (SELECT COUNT(*) FROM execution_log WHERE kind='cloud_model_budget' AND created_at>=?
+         AND json_extract(detail_json,'$.accountId')=?) < ?
+       AND (SELECT COUNT(*) FROM execution_log WHERE kind='cloud_model_budget' AND created_at>=?
+         AND json_extract(detail_json,'$.accountId')=? AND json_extract(detail_json,'$.characterId')=?) < ?
+       ON CONFLICT(id) DO NOTHING RETURNING id`,
+      id,deviceId,detail,now,activityId,characterId,deviceId,accountId,attemptCount,now+timeoutMs+1000,
+      since,limits.global,since,accountId,limits.account,since,accountId,characterId,limits.role
+    )[0];
+    if (inserted?.id !== id) return false;
+    const row = this.exec('SELECT id,device_id,detail_json,created_at,kind,status FROM execution_log WHERE id=?',id)[0];
+    return Boolean(row && row.id===id && row.device_id===deviceId && row.detail_json===detail &&
+      Number(row.created_at)===now && row.kind==='cloud_model_budget' && row.status==='started');
+  }
+
   countRecentExecutions(deviceId, kind, since) {
     // Count every attempt, not only successful sends. Otherwise repeated
     // failures could bypass the per-device rate limit by never succeeding.
@@ -977,6 +1012,180 @@ class CloudStore {
       userId,
       characterId
     )[0] || null;
+  }
+
+  getUserContextSharing(userId) {
+    return this.exec(
+      'SELECT user_id, enabled, updated_at, updated_by_device_id FROM user_context_sharing WHERE user_id = ?',
+      userId
+    )[0] || null;
+  }
+
+  setUserContextSharing({ userId, enabled, deviceId, now }) {
+    if (typeof enabled !== 'boolean') return null;
+    const value = enabled ? 1 : 0;
+    return this.transaction(() => {
+      if (!this.isActiveAccountDevice(userId, deviceId)) return null;
+      this.exec(
+        `INSERT INTO user_context_sharing (user_id, enabled, updated_at, updated_by_device_id)
+         VALUES (?, ?, ?, ?)
+         ON CONFLICT(user_id) DO UPDATE SET
+           enabled = excluded.enabled,
+           updated_at = excluded.updated_at,
+           updated_by_device_id = excluded.updated_by_device_id`,
+        userId, value, now, deviceId
+      );
+      if (value === 0) {
+        this.exec('DELETE FROM character_context_snapshots WHERE user_id = ?', userId);
+        this.exec(
+          `UPDATE activity_queue
+           SET status = 'superseded', locked_by = NULL, locked_until = NULL,
+               next_attempt_at = NULL, updated_at = ?
+           WHERE status IN ('waiting', 'retry', 'running') AND kind = 'contact'
+             AND CASE WHEN json_valid(payload_json) THEN json_extract(payload_json,'$.executionMode') END = 'cloud'
+             AND device_id IN (SELECT id FROM devices WHERE user_id = ?)`,
+          now, userId
+        );
+      }
+      return this.getUserContextSharing(userId);
+    });
+  }
+
+  recordCharacterContextSnapshot({
+    userId, characterId, eventId, deviceId, characterName = '',
+    personaText = '', recentMessages = [], lastUserMessageAt, now,
+    eventLimit = 600, windowStart = Number(now) - 3600000
+  }) {
+    if (![userId,characterId,eventId,deviceId].every(v=>typeof v==='string'&&v.length>0&&v.length<=256) ||
+        !Number.isSafeInteger(now) || now<=0 || typeof characterName!=='string' || Array.from(characterName).length>80 ||
+        typeof personaText!=='string' || Array.from(personaText).length>5000 ||
+        !Number.isSafeInteger(lastUserMessageAt) || lastUserMessageAt<0 || lastUserMessageAt>now+60000 ||
+        !Array.isArray(recentMessages) || recentMessages.length>12 ||
+        (lastUserMessageAt===0 && recentMessages.length!==0) ||
+        recentMessages.some(m=>!m||Object.keys(m).length!==2||!['user','assistant'].includes(m.role)||typeof m.content!=='string'||Array.from(m.content).length>600)) {
+      return { conflict:true,saved:false,reason:'invalid_snapshot' };
+    }
+    const messagesJson = serializeStoreJson(recentMessages, 9000, 'context.recentMessages');
+    const normalizedName = String(characterName || '');
+    const normalizedPersona = String(personaText || '');
+    const normalizedLastUserAt = Number(lastUserMessageAt);
+
+    return this.transaction(() => {
+      if (!this.isActiveAccountDevice(userId,deviceId)) return {revoked:true,saved:false};
+      const sharing=this.getUserContextSharing(userId);
+      if (!sharing || Number(sharing.enabled)!==1) return {disabled:true,saved:false};
+      const existingEvent = this.exec(
+        `SELECT event_id, context_version, device_id FROM character_context_events
+         WHERE user_id = ? AND character_id = ? AND event_id = ?`,
+        userId, characterId, eventId
+      )[0] || null;
+      let contextVersion = existingEvent ? Number(existingEvent.context_version || 0) : 0;
+      if (existingEvent && (contextVersion < 1 || existingEvent.device_id !== deviceId)) {
+        return { conflict: true, saved: false, reason: 'event_version_unavailable' };
+      }
+
+      if (existingEvent && !this.getCharacterContextSnapshot({userId,characterId,contextVersion})) {
+        return {conflict:true,saved:false,reason:'event_snapshot_expired'};
+      }
+      const latest=this.getLatestCharacterContextSnapshot({userId,characterId});
+      if (!existingEvent && latest && Number(latest.last_user_message_at)>normalizedLastUserAt) return {conflict:true,saved:false,reason:'stale_snapshot'};
+      if (!existingEvent) {
+        if (this.countRecentCharacterContextEvents(deviceId, windowStart) >= eventLimit) {
+          return { limited: true, saved: false };
+        }
+        const insertedEvent = this.exec(
+          `INSERT OR IGNORE INTO character_context_events
+            (user_id, character_id, event_id, device_id, created_at, context_version)
+           VALUES (?, ?, ?, ?, ?, NULL) RETURNING event_id`,
+          userId, characterId, eventId, deviceId, now
+        )[0];
+        if (!insertedEvent) return { conflict: true, saved: false, reason: 'event_collision' };
+        const versionRow = this.exec(
+          `INSERT INTO character_context_versions
+            (user_id, character_id, version, updated_at, updated_by_device_id)
+           VALUES (?, ?, 1, ?, ?)
+           ON CONFLICT(user_id, character_id) DO UPDATE SET
+             version = character_context_versions.version + 1,
+             updated_at = excluded.updated_at,
+             updated_by_device_id = excluded.updated_by_device_id
+           RETURNING version`,
+          userId, characterId, now, deviceId
+        )[0];
+        contextVersion = Number(versionRow && versionRow.version || 0);
+        if (!Number.isSafeInteger(contextVersion) || contextVersion < 1) {
+          throw new Error('context version update failed');
+        }
+        this.exec(
+          `UPDATE character_context_events SET context_version = ?
+           WHERE user_id = ? AND character_id = ? AND event_id = ? AND context_version IS NULL`,
+          contextVersion, userId, characterId, eventId
+        );
+      }
+
+      const existingSnapshot = this.exec(
+        `SELECT source_device_id, character_name, persona_text,
+                recent_messages_json, last_user_message_at
+         FROM character_context_snapshots
+         WHERE user_id = ? AND character_id = ? AND context_version = ?`,
+        userId, characterId, contextVersion
+      )[0] || null;
+      if (existingSnapshot) {
+        const same = existingSnapshot.source_device_id === deviceId &&
+          existingSnapshot.character_name === normalizedName &&
+          existingSnapshot.persona_text === normalizedPersona &&
+          existingSnapshot.recent_messages_json === messagesJson &&
+          Number(existingSnapshot.last_user_message_at) === normalizedLastUserAt;
+        return same ? { saved: true, duplicate: true, contextVersion }
+          : { conflict: true, saved: false, reason: 'snapshot_immutable' };
+      }
+
+      const insertedSnapshot = this.exec(
+        `INSERT INTO character_context_snapshots
+          (user_id, character_id, context_version, source_device_id,
+           character_name, persona_text, recent_messages_json,
+           last_user_message_at, updated_at)
+         SELECT ?, ?, ?, ?, ?, ?, ?, ?, ?
+         WHERE EXISTS (SELECT 1 FROM user_context_sharing WHERE user_id = ? AND enabled = 1)
+         RETURNING context_version`,
+        userId, characterId, contextVersion, deviceId, normalizedName,
+        normalizedPersona, messagesJson, normalizedLastUserAt, now, userId
+      )[0];
+      if (insertedSnapshot) {
+        this.exec(
+          `DELETE FROM character_context_snapshots
+           WHERE user_id = ? AND character_id = ? AND context_version < ?`,
+          userId, characterId, contextVersion
+        );
+      }
+      return insertedSnapshot ? { saved: true, duplicate: false, contextVersion }
+        : { disabled: true, saved: false };
+    });
+  }
+
+  getLatestCharacterContextSnapshot({ userId, characterId }) {
+    const current=this.getCharacterContextVersion(userId,characterId);
+    return current ? this.getCharacterContextSnapshot({userId,characterId,contextVersion:Number(current.version)}) : null;
+  }
+
+  getCharacterContextSnapshot({ userId, characterId, contextVersion }) {
+    const row=this.exec(
+      `SELECT s.user_id, s.character_id, s.context_version, s.source_device_id,
+              s.character_name, s.persona_text, s.recent_messages_json,
+              s.last_user_message_at, s.updated_at
+       FROM character_context_snapshots s
+       INNER JOIN user_context_sharing sharing
+         ON sharing.user_id = s.user_id AND sharing.enabled = 1
+       INNER JOIN character_context_versions current
+         ON current.user_id = s.user_id AND current.character_id = s.character_id
+        AND current.version = s.context_version AND current.updated_by_device_id = s.source_device_id
+       INNER JOIN devices source
+         ON source.id = s.source_device_id AND source.user_id = s.user_id
+        AND source.revoked_at IS NULL
+       WHERE s.user_id = ? AND s.character_id = ? AND s.context_version = ?
+       LIMIT 1`,
+      userId, characterId, contextVersion
+    )[0] || null;
+    return row && this.isActiveAccountDevice(userId,row.source_device_id) ? row : null;
   }
 
   countRecentCharacterContextEvents(deviceId, since) {
@@ -1662,6 +1871,52 @@ class CloudStore {
     )[0] || null;
   }
 
+  // The task result and all message rows commit in a single SQLite transaction.
+  // The legacy single-message repair path must never reinterpret group JSON.
+  completeCloudActivityWithOutboundGroup({id,owner,attemptCount,now,groupId,contextVersion,sourceDeviceId,messages}) {
+    if (owner!=='cloud_model_executor' || !Number.isSafeInteger(attemptCount)||attemptCount<1||
+        !Number.isSafeInteger(now)||now<=0||!Number.isSafeInteger(contextVersion)||contextVersion<1||
+        groupId!=='cloudgrp_'+id+'_'+attemptCount||!Array.isArray(messages)||messages.length<1||messages.length>4||
+        messages.some((m,i)=>!m||m.serverMessageId!==groupId+'_'+String(i+1).padStart(2,'0')||
+          m.dedupeKey!==groupId+':'+String(i+1)||!m.payload||m.payload.type!=='text'||
+          typeof m.payload.text!=='string'||!m.payload.text.trim()||Array.from(m.payload.text).length>600)) return null;
+    const prepared=messages.map((m,i)=>({serverMessageId:m.serverMessageId,dedupeKey:m.dedupeKey,payload:m.payload,groupId,groupIndex:i+1,groupCount:messages.length}));
+    const resultJson=serializeStoreJson(prepared,12000,'cloud.group');
+    const conflict=new Error('cloud group outbox conflict');
+    try { return this.transaction(()=>{
+      const task=this.exec(`SELECT q.*,d.user_id FROM activity_queue q JOIN devices d ON d.id=q.device_id
+        WHERE q.id=? AND q.device_id=? AND q.kind='contact' AND q.attempt_count=? AND d.revoked_at IS NULL
+        AND CASE WHEN json_valid(q.payload_json) THEN json_extract(q.payload_json,'$.executionMode') END='cloud'`,
+        id,sourceDeviceId,attemptCount)[0];
+      if (!task||!this.isActiveAccountDevice(task.user_id,sourceDeviceId)) return null;
+      const payload=JSON.parse(task.payload_json);
+      if (payload.contextVersion!==contextVersion || payload.sourceDeviceId!==sourceDeviceId) return null;
+      const already=task.status==='completed';
+      if (already) {
+        if(task.result_group_id!==groupId||task.result_json!==resultJson||Number(task.result_message_count)!==prepared.length) return null;
+        // Replays verify the original durable result, never recreate deleted rows.
+        const rows=this.exec('SELECT * FROM outbound_messages WHERE group_id=? ORDER BY group_index',groupId);
+        if(rows.length!==prepared.length||rows.some((row,i)=>row.device_id!==sourceDeviceId||row.character_id!==task.character_id||row.server_message_id!==prepared[i].serverMessageId||row.dedupe_key!==prepared[i].dedupeKey||row.payload_json!==JSON.stringify(prepared[i].payload)||Number(row.group_index)!==i+1||Number(row.group_count)!==prepared.length))return null;
+        return {completed:true,alreadyCompleted:true,groupId,messageCount:prepared.length,serverMessageIds:prepared.map(m=>m.serverMessageId),outboundInserted:0,outboundIdempotent:prepared.length};
+      }
+      const snapshot=this.getCharacterContextSnapshot({userId:task.user_id,characterId:task.character_id,contextVersion});
+      if(task.status!=='running'||task.locked_by!==owner||Number(task.locked_until)<=now||
+         !snapshot||snapshot.source_device_id!==sourceDeviceId) return null;
+      const updated=this.exec(`UPDATE activity_queue SET status='completed',locked_by=NULL,locked_until=NULL,next_attempt_at=NULL,
+        updated_at=?,result_json=?,result_server_message_id=?,result_dedupe_key=?,result_group_id=?,result_message_count=?
+        WHERE id=? AND status='running' AND locked_by=? AND attempt_count=? AND locked_until>? RETURNING id`,
+        now,resultJson,prepared[0].serverMessageId,'outbound-group:'+groupId,groupId,prepared.length,id,owner,attemptCount,now)[0];
+      if(!updated)return null;
+      for(const m of prepared){
+        const row=this.enqueueOutboundMessage({id:'out_'+m.serverMessageId,deviceId:sourceDeviceId,userId:task.user_id,characterId:task.character_id,serverMessageId:m.serverMessageId,dedupeKey:m.dedupeKey,payload:m.payload,now});
+        if(row.inserted!==true)throw conflict;
+        const stamped=this.exec('UPDATE outbound_messages SET group_id=?,group_index=?,group_count=? WHERE server_message_id=? AND device_id=? AND character_id=? RETURNING server_message_id',groupId,m.groupIndex,m.groupCount,m.serverMessageId,sourceDeviceId,task.character_id)[0];
+        if(stamped?.server_message_id!==m.serverMessageId)throw conflict;
+      }
+      return {completed:true,alreadyCompleted:false,groupId,messageCount:prepared.length,serverMessageIds:prepared.map(m=>m.serverMessageId),outboundInserted:prepared.length,outboundIdempotent:0};
+    }); } catch(error){ if(error===conflict)return {completed:false,conflict:true}; throw error; }
+  }
+
   completeActivityWithOutbound({
     id, owner, attemptCount, now, serverMessageId, dedupeKey, payload
   }) {
@@ -1782,6 +2037,7 @@ class CloudStore {
        WHERE q.status = 'completed'
          AND q.result_json IS NOT NULL
          AND q.result_server_message_id IS NOT NULL
+         AND COALESCE(q.result_dedupe_key,'') NOT LIKE 'outbound-group:%'
          AND NOT EXISTS (
            SELECT 1 FROM outbound_messages o
            WHERE o.server_message_id = q.result_server_message_id
@@ -1833,6 +2089,7 @@ class CloudStore {
          AND q.character_id = ? AND q.status = 'completed'
          AND q.result_json IS NOT NULL
          AND q.result_server_message_id IS NOT NULL
+         AND COALESCE(q.result_dedupe_key,'') NOT LIKE 'outbound-group:%'
          AND NOT EXISTS (
            SELECT 1 FROM outbound_messages o
            WHERE o.server_message_id = q.result_server_message_id
@@ -1875,6 +2132,36 @@ class CloudStore {
     return { repaired, deferred };
   }
 
+
+  listDueCloudActivities(now, limit) {
+    const safeLimit = Math.max(1, Math.min(50, Math.floor(Number(limit) || 10)));
+    return this.exec(
+      `SELECT q.*, d.user_id AS user_id,
+              d.revoked_at AS source_device_revoked_at
+       FROM activity_queue q
+       LEFT JOIN devices d ON d.id = q.device_id
+       WHERE q.kind = 'contact'
+         AND CASE
+           WHEN json_valid(q.payload_json)
+           THEN json_extract(q.payload_json, '$.executionMode')
+           ELSE NULL
+         END = 'cloud'
+         AND (
+           (q.status IN ('waiting', 'retry')
+             AND COALESCE(q.next_attempt_at, q.scheduled_at) <= ?
+             AND (q.locked_until IS NULL OR q.locked_until <= ?))
+           OR (q.status = 'running'
+             AND q.locked_until IS NOT NULL
+             AND q.locked_until <= ?)
+         )
+       ORDER BY COALESCE(q.next_attempt_at, q.scheduled_at) ASC, q.id ASC
+       LIMIT ?`,
+      now,
+      now,
+      now,
+      safeLimit
+    );
+  }
 
   listDueActivities(now, limit) {
     return this.exec(
