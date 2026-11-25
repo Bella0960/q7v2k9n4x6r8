@@ -973,6 +973,15 @@
         <span class="sr-label">导入音乐</span>
         <span class="sr-val">›</span>
       </div>
+      <details class="music-source-settings" style="padding:10px 0;border-bottom:1px solid #f0f0f3;">
+        <summary style="font-size:14px;color:#333;cursor:pointer;">音乐来源</summary>
+        <p style="font-size:12px;color:#666;line-height:1.6;margin:10px 0;">网易云音乐、QQ音乐：粘贴官方歌曲或歌单的完整网页链接。当前在官方页面播放，不导入音频、不支持群内同步。</p>
+        <form id="musicSourceForm" onsubmit="return openMusicSource(event)" style="display:flex;flex-direction:column;gap:8px;">
+          <input id="musicSourceLink" type="url" inputmode="url" autocomplete="off" maxlength="2048" required aria-label="官方歌曲或歌单链接" placeholder="粘贴完整网页链接" style="box-sizing:border-box;width:100%;border:1px solid #e5e5e5;border-radius:10px;padding:10px;font:inherit;font-size:13px;background:#fff;color:#333;">
+          <button type="submit" class="music-extra-action">在官方音乐页面打开</button>
+          <p id="musicSourceStatus" role="status" aria-live="polite" style="font-size:12px;color:#666;line-height:1.5;margin:0;"></p>
+        </form>
+      </details>
       <div class="setting-row" onclick="closeSetting();showTimer()">
         <span class="sr-label">睡眠定时</span>
         <span class="sr-val" id="settingTimer">未开启 ›</span>
@@ -2724,6 +2733,56 @@
     closeProfile();
     document.getElementById('settingMask').classList.add('show');
     document.getElementById('settingSheet').classList.add('show');
+  }
+
+  // GROUP-MUSIC-001: official-link handoff, not an audio provider or a new catalog.
+  function parseMusicSourceLink(value) {
+    if (typeof value !== 'string' || value.length > 2048) return null;
+    const raw = value.trim();
+    if (!/^https:\/\//i.test(raw) || /[\s\\\u0000-\u001f\u007f]/.test(raw)) return null;
+    let url;
+    try { url = new URL(raw); } catch { return null; }
+    if (url.protocol !== 'https:' || url.username || url.password || url.port) return null;
+    const host = url.hostname;
+    if (host === 'music.163.com' || host === 'y.music.163.com') {
+      let path = url.pathname, params = url.searchParams;
+      if (url.hash.startsWith('#/')) {
+        if (path !== '/' || url.search || url.hash.startsWith('#//')) return null;
+        let fragment;
+        try { fragment = new URL(url.hash.slice(1), 'https://music.163.com'); } catch { return null; }
+        path = fragment.pathname; params = fragment.searchParams;
+      }
+      const match = /^\/(?:m\/)?(song|playlist)\/?$/.exec(path);
+      const ids = params.getAll('id');
+      if (!match || ids.length !== 1 || !/^[1-9][0-9]{0,19}$/.test(ids[0])) return null;
+      return { provider: 'netease', kind: match[1], id: ids[0], url: 'https://music.163.com/#/' + match[1] + '?id=' + ids[0], playback: 'external' };
+    }
+    if (host === 'y.qq.com' || host === 'i2.y.qq.com') {
+      const song = /^\/(?:n\/ryqq\/songDetail|a\/song)\/([A-Za-z0-9]{1,40})\/?$/.exec(url.pathname);
+      const list = /^\/n\/ryqq\/playlist\/([1-9][0-9]{0,19})\/?$/.exec(url.pathname);
+      if (song) return { provider: 'qq', kind: 'song', id: song[1], url: 'https://i2.y.qq.com/a/song/' + song[1], playback: 'external' };
+      if (list) return { provider: 'qq', kind: 'playlist', id: list[1], url: 'https://y.qq.com/n/ryqq/playlist/' + list[1], playback: 'external' };
+    }
+    return null;
+  }
+  function openMusicSource(event) {
+    event.preventDefault();
+    var input = document.getElementById('musicSourceLink');
+    var status = document.getElementById('musicSourceStatus');
+    var source = parseMusicSourceLink(input.value);
+    if (!source) {
+      status.textContent = '暂不支持此链接。请复制网易云音乐或QQ音乐的完整歌曲、歌单网页链接。';
+      return false;
+    }
+    var link = document.createElement('a');
+    link.href = source.url;
+    link.target = '_blank';
+    link.rel = 'noopener noreferrer';
+    document.body.appendChild(link);
+    try { link.click(); status.textContent = '已请求打开官方页面，未导入歌曲。'; }
+    catch (error) { status.textContent = '无法打开，请在浏览器中打开官方链接。'; }
+    finally { link.remove(); }
+    return false;
   }
   function openMusicImportFromSettings() {
     // 复用原有多文件导入与 IndexedDB 持久化，保持手机浏览器的同步用户手势。

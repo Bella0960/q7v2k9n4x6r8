@@ -76,3 +76,7 @@ M02 历史记录：M02 独立原型：`previews/group-listening-preview.html`，
 - 冻结源文件及已通过的 Node 16/16 测试文件的 Git blob 与远端一致；未重复运行无变化的单元测试。现有 Python Playwright 自带 Node Playwright Core 1.57.0-beta，能够启动系统 Chromium 144.0.7559.96。用独立合成 HTML/本地临时 HTTP 服务进行正常导航烟雾测试，返回 `net::ERR_BLOCKED_BY_ADMINISTRATOR`；未执行任何真实 IndexedDB 断言。没有改变或规避浏览器管理策略。
 - QA 站点的 qa-build-receipt.json 和 pwa-release.json 当前未能读取，公共 verify #45627498729 仍为失败；不凭旧候选部署，也不盲目重触发。
 - 当前真正的恢复点：有正常浏览器权限、仓库依赖与相同候选的授权开发环境中，执行 `npm run test:group:music-catalog:browser`。保存真实结果；若通过，再进行集成验收、M04。若失败，先处理具体业务失败。无需重建候选，不新增工程包，不以环境问题假冒产品测试通过。
+
+
+### 2026-11-25 · GROUP-MUSIC-001 M03a official music sources
+Owner explicitly requested one shared music catalog and NetEase/QQ source channels. Existing import writes music_local_tracks and maomao-media-store/audio, exactly the existing adapter's inputs. Independent external handoff in existing music settings; full known official song/playlist URLs only, canonicalized, no credential handling, remote fetch, persistence, media extraction, or in-app playback claim. Short links, provider SDK licensing and authorized playback remain open. QQ official H5 SDK documented for IoT panels; general PWA eligibility not verified. No changes to local music library, data schema, chat, or QA. Inline script parsed; initial parser Node fixture 19/19 before final malformed-fragment hardening; final repository test added, not yet run. Container GitHub DNS failed; direct contents write failed, use Git tree commit. M03 actual IDB/browser gate remains open; M04 not started.
