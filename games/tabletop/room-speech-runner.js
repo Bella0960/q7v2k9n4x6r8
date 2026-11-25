@@ -12,7 +12,7 @@ function audience(value,seatId) {
   return [...value];
 }
 export function createRoomSpeechRunner({chatLog,roleSeatIds,prepare,generate,authorize,validateCommit,timeoutMs=30000,maxPerRound=6,maxPerRoom=128,now=Date.now}={}) {
-  if(!chatLog||typeof chatLog.append!=='function'||typeof prepare!=='function'||typeof generate!=='function'||typeof authorize!=='function'||typeof validateCommit!=='function'||typeof now!=='function'||!Number.isSafeInteger(timeoutMs)||timeoutMs<1||timeoutMs>120000) fail('INVALID_SPEECH_RUNNER');
+  if(!chatLog||typeof chatLog.append!=='function'||typeof chatLog.assertAppendable!=='function'||typeof prepare!=='function'||typeof generate!=='function'||typeof authorize!=='function'||typeof validateCommit!=='function'||typeof now!=='function'||!Number.isSafeInteger(timeoutMs)||timeoutMs<1||timeoutMs>120000) fail('INVALID_SPEECH_RUNNER');
   const queue=createRoomSpeechQueue({roleSeatIds,maxPerRound,maxPerRoom});
   let running=false;
   function check(ticket){if(ticket.signal.aborted) fail('SPEECH_CANCELLED');}
@@ -31,6 +31,10 @@ export function createRoomSpeechRunner({chatLog,roleSeatIds,prepare,generate,aut
       check(ticket);
       if(!prepared||!Object.hasOwn(prepared,'request')) fail('INVALID_SPEECH_REQUEST');
       const initial=audience(prepared.audienceSeatIds,ticket.seatId);
+      // Avoid a provider call when the trusted log already knows this message
+      // cannot be accepted. This is not a reservation or a monetary budget.
+      chatLog.assertAppendable({senderSeatId:ticket.seatId,messageId:ticket.jobId,audienceSeatIds:initial});
+      check(ticket);
       let text;
       try {text=await generate(prepared.request,{signal});} catch {fail('SPEECH_GENERATION_FAILED');}
       check(ticket);

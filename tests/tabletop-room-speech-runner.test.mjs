@@ -90,3 +90,28 @@ test('joint dispatcher, role source, context, log and runner preserve seat data 
   assert.match(requests[0].system,/PERSONA-ONE/);assert.match(requests[1].system,/PERSONA-TWO/);
   assert.deepEqual(log.read('user'),[]);assert.deepEqual(log.read('role:r1').map(m=>m.id),['p1','a']);assert.deepEqual(log.read('role:r2').map(m=>m.id),['p2','b']);
 });
+
+test('already full room refuses generation before invoking provider',async()=>{
+  const log=createRoomChatLog({roomId:'r',seats,maxMessages:1});
+  log.append({senderSeatId:'user',messageId:'u',audienceSeatIds:ids,time:1},'existing');
+  const f=fixture({chatLog:log});await assert.rejects(f.runner.runRound([job('a')]),/CHAT_CAPACITY_REACHED/);
+  assert.equal(f.calls.length,0);assert.equal(log.read('user').length,1);
+});
+test('unknown audience or sender refuses provider before generating',async()=>{
+  const f=fixture({prepare:()=>({request:{seat:'role:r1'},audienceSeatIds:['role:r1','role:foreign']})});
+  await assert.rejects(f.runner.runRound([job('a')]),/INVALID_CHAT_AUDIENCE/);assert.equal(f.calls.length,0);
+  const g=fixture({roleSeatIds:['role:foreign']});
+  await assert.rejects(g.runner.runRound([job('b','role:foreign')]),/CHAT_UNKNOWN_SEAT|INVALID_SPEECH_AUDIENCE/);assert.equal(g.calls.length,0);
+});
+test('existing message id refuses generation before invoking provider',async()=>{
+  const f=fixture();f.log.append({senderSeatId:'user',messageId:'a',audienceSeatIds:ids,time:1},'existing');
+  await assert.rejects(f.runner.runRound([job('a')]),/CHAT_MESSAGE_ID_CONFLICT/);assert.equal(f.calls.length,0);assert.equal(f.log.read('user')[0].text,'existing');
+});
+test('closed log refuses generation before invoking provider',async()=>{
+  const f=fixture();f.log.close();await assert.rejects(f.runner.runRound([job('a')]),/CHAT_CLOSED/);assert.equal(f.calls.length,0);
+});
+test('capacity changes while generation is pending still reject at append without deleting user message',async()=>{
+  const log=createRoomChatLog({roomId:'r',seats,maxMessages:1}),d=defer();const f=fixture({chatLog:log,generate:()=>d.promise});
+  const p=f.runner.runRound([job('a')]);await tick();log.append({senderSeatId:'user',messageId:'u',audienceSeatIds:ids,time:1},'new');d.resolve('reply');
+  await assert.rejects(p,/CHAT_CAPACITY_REACHED/);assert.deepEqual(log.read('user').map(m=>m.id),['u']);
+});

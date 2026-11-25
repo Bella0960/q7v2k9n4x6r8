@@ -31,6 +31,16 @@ export function createRoomChatLog({roomId,seats,maxMessages=4096,maxTextLength=4
     if(!Array.isArray(ids)||!ids.length||ids.length>members.size||!Array.from(ids).every(id=>members.has(id))||new Set(ids).size!==ids.length||!ids.includes(senderSeatId)) fail('INVALID_CHAT_AUDIENCE');
     return new Set(ids);
   }
+  // Read-only admission check for a new generated message. No reservation:
+  // user messages may still arrive before generation finishes, so append
+  // must independently enforce all existing checks.
+  function assertAppendable({senderSeatId,messageId,audienceSeatIds}={}) {
+    member(senderSeatId);
+    if(!validId(messageId)) fail('INVALID_CHAT_MESSAGE');
+    audience(audienceSeatIds,senderSeatId);
+    if(byId.has(messageId)) fail('CHAT_MESSAGE_ID_CONFLICT');
+    if(entries.length>=maxMessages) fail('CHAT_CAPACITY_REACHED');
+  }
   function append({senderSeatId,messageId,audienceSeatIds,time}={},text) {
     const sender=member(senderSeatId);
     if(!validId(messageId)||!Number.isSafeInteger(time)||time<0||typeof text!=='string'||!text.trim()||text.length>maxTextLength) fail('INVALID_CHAT_MESSAGE');
@@ -53,5 +63,5 @@ export function createRoomChatLog({roomId,seats,maxMessages=4096,maxTextLength=4
     // No global sequence, recipient list, total count or hidden-message gaps.
     return entries.filter(entry=>entry.readers.has(seatId)).slice(-count).map(entry=>entry.message);
   }
-  return Object.freeze({roomId,maxMessages,append,read,close(){closed=true;}});
+  return Object.freeze({roomId,maxMessages,assertAppendable,append,read,close(){closed=true;}});
 }
