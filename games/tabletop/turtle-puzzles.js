@@ -25,7 +25,31 @@ const puzzles=[
  {id:'two-cups',title:'两只杯子',difficulty:'normal',prompt:'桌上两只杯子里装着同一种饮料，一位客人喝完一杯后，另一杯的饮料却减少了。没人碰另一只杯子。为什么？',
  answer:'两只杯子原本用于计量同一份饮料，其中一只杯子底部连接了通向另一只杯子的细管；喝掉一杯中的液体后，两边液面重新平衡。',
  hints:['两只杯子不是完全独立的。','液体可以在两个容器之间流动。'],
- facts:[['connected','两个杯子相连吗？','yes'],['evap','饮料是因为蒸发减少的吗？','no'],['tube','存在连接液体的管子吗？','yes'],['taste','饮料味道重要吗？','irrelevant']]}
+ facts:[['connected','两个杯子相连吗？','yes'],['evap','饮料是因为蒸发减少的吗？','no'],['tube','存在连接液体的管子吗？','yes'],['taste','饮料味道重要吗？','irrelevant']]},
+ {id:'double-ticket',title:'两张入场券',difficulty:'easy',prompt:'一位观众只买了一张演出票，却在检票时递出了两张有效的券，工作人员没有要求补票。为什么？',
+ answer:'另一张是免费领取的座位升级凭证，不是一张额外的演出票。',
+ hints:['两张券的用途不同。','其中一张与座位有关。'],
+ facts:[['extra','第二张券是另一张演出票吗？','no'],['seat','第二张券与座位有关吗？','yes'],['upgrade','它是座位升级凭证吗？','yes'],['time','演出时间重要吗？','irrelevant']]},
+ {id:'white-paper',title:'白纸上的图案',difficulty:'easy',prompt:'一张完全没有画过的白纸，被放在桌上后出现了复杂的花纹。没人往纸上写画，也没有用墨水。为什么？',
+ answer:'窗边的镂空装饰把阳光投在白纸上，花纹是光影。',
+ hints:['花纹不一定是纸的一部分。','光线在这里很重要。'],
+ facts:[['ink','花纹是墨水留下的吗？','no'],['light','花纹与光线有关吗？','yes'],['shadow','有镂空物件投下影子吗？','yes'],['size','纸的大小重要吗？','irrelevant']]},
+ {id:'quiet-shop',title:'没有顾客的忙碌店铺',difficulty:'normal',prompt:'一家店一天没有任何顾客进门，店员却忙着打包，最后的销售记录并不是零。为什么？',
+ answer:'顾客在网上下单，店员在店里准备配送订单。',
+ hints:['交易不一定需要见面。','店员收到的是远程订单。'],
+ facts:[['door','顾客必须进门才能下单吗？','no'],['web','订单来自网络吗？','yes'],['delivery','店员在准备配送吗？','yes'],['weather','天气重要吗？','irrelevant']]},
+ {id:'backward-map',title:'反着看的地图',difficulty:'normal',prompt:'游客拿着正确的地图却一直走错方向，后来把地图转了半圈，所有路线就看明白了。他的位置没有变化。为什么？',
+ answer:'地图原先与游客面向的方向相反，转半圈后地图方向与实际方向一致。',
+ hints:['地图内容本身没有错。','关键是纸面方向和实际朝向的关系。'],
+ facts:[['wrong','地图画错了吗？','no'],['direction','这与地图朝向有关吗？','yes'],['align','旋转后地图与实际朝向一致吗？','yes'],['paper','纸张材质重要吗？','irrelevant']]},
+ {id:'extra-umbrella',title:'多出来的伞',difficulty:'normal',prompt:'办公室有三个人，各带来一把伞。下班时每个人拿走自己的伞，门口却还剩一把伞。没有第四个人来过。为什么？',
+ answer:'门口原先就放着一把办公室公用伞，三人的伞是后来带来的。',
+ hints:['题目没有说门口原来是空的。','剩下的是不属于任何一人的公用物品。'],
+ facts:[['visitor','有第四个人来过吗？','no'],['before','办公室原先就有一把伞吗？','yes'],['shared','剩下的是公用伞吗？','yes'],['color','伞的颜色重要吗？','irrelevant']]},
+ {id:'blank-photo',title:'空白照片',difficulty:'normal',prompt:'摄影师按下快门后得到一张几乎全白的照片。他没有拍错，照片也不是废片。为什么？',
+ answer:'他在拍摄白色背景样张，用于校准布光和相机曝光，照片的用途并不是记录人物或景物。',
+ hints:['拍照也可以是准备工作。','白色画面被用来检查摄影设备的设置。'],
+ facts:[['error','相机发生故障了吗？','no'],['calibrate','照片用于检查拍摄设置吗？','yes'],['background','他拍的是白色背景吗？','yes'],['person','照片里必须有人吗？','no']]}
 ];
 const copy=v=>JSON.parse(JSON.stringify(v));
 export function listTurtlePuzzles(){return puzzles.map(({id,title,difficulty,prompt})=>({id,title,difficulty,prompt}));}

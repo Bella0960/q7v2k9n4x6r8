@@ -1,7 +1,7 @@
 import {createBrowserRoomVerifier} from './account-room-context.js';
 import {createBrowserRoomSession} from './browser-room-session.js';
 import {listTurtlePuzzles} from './turtle-puzzles.js';
-import {createTurtleRules,TURTLE_VERDICTS} from './turtle-rules.js';
+import {createTurtleRules,createTurtleRulesFromMode,TURTLE_VERDICTS} from './turtle-rules.js';
 import {createTurtleTurnDriver} from './turtle-turn-driver.js';
 
 // Opt-in project page. No live route until canonical account integration.
@@ -122,5 +122,27 @@ export function mountTurtlePage(root,{win=root?.ownerDocument?.defaultView,makeR
  listen(win,'offline',inactive);listen(win,'storage',inactive);listen(doc,'visibilitychange',()=>{if(doc.hidden)inactive();});
  function destroy(){if(disposed)return;disposed=true;finish();for(const remove of listeners.splice(0))remove();wrap.remove();}
  listen(win,'pagehide',destroy);void reload();
- return Object.freeze({reload,destroy});
+ // Internal hooks for the approved account-scoped repository. No public file
+ // import, browser storage writes, or automatic regeneration during restore.
+ async function saveMatch(){
+   const e=active,stamp=epoch;if(disposed||busy||paused||!e||!view)fail('TURTLE_PAGE_BUSY');
+   busy=true;try{const board=await e.session.checkpoint();check(e,stamp);return {schema:1,board};}finally{busy=false;}
+ }
+ async function restoreMatch(saved){
+   if(disposed||busy||active||!picker)fail('TURTLE_PAGE_BUSY');
+   if(!saved||Object.keys(saved).length!==2||saved.schema!==1||saved.board?.gameId!=='turtle')fail('TURTLE_INVALID_MATCH');
+   const copy=JSON.parse(JSON.stringify(saved.board)),c=picker,stamp=++epoch;let e;busy=true;
+   try{
+     const rules=createTurtleRulesFromMode(copy.mode);
+     const session=createBrowserRoomSession({win,spec:{roomId:copy.roomId,gameId:'turtle'},rules,checkpoint:copy,expectedIdentity:{accountId:c.accountId,sessionId:c.sessionId}});
+     e={roomId:copy.roomId,session,driver:null,stamp,labels:new Map(c.roleLabels.map(r=>['role:'+r.id,r.name]))};active=e;paused=false;
+     e.driver=createTurtleTurnDriver({session,askRole,judgeRole,allowPlayerText,pace,onView:v=>render(e,v,e.stamp)});
+     const v=await session.viewUser();check(e,stamp);clearPicker();setup.hidden=true;game.hidden=false;render(e,v,stamp);note.textContent='';return v;
+   }catch(error){if(active===e)finish();throw error;}finally{busy=false;}
+ }
+ async function archiveMatch(journal){
+   if(typeof journal?.recordSavedMatch!=='function')fail('TURTLE_INVALID_JOURNAL');
+   const e=active,stamp=epoch,saved=await saveMatch();check(e,stamp);return journal.recordSavedMatch(saved);
+ }
+ return Object.freeze({reload,destroy,saveMatch,restoreMatch,archiveMatch});
 }

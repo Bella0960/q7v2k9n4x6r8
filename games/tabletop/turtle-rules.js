@@ -29,7 +29,8 @@ export function createTurtleRules({puzzleId,maxQuestions=60}={}){
      ![null,'solved','revealed','limit'].includes(s.ended)||Boolean(s.ended)!==(room.phase==='finished'))fail('TURTLE_INVALID_STATE');
    return r;
  }
- return Object.freeze({gameId:'turtle',
+ return Object.freeze({gameId:'turtle',checkpointVersion:1,checkpointMode:'puzzle-v1:'+puzzle.id+':'+maxQuestions,
+ replayStep(args){return createTurtleRules({puzzleId,maxQuestions}).step(args);},
  init(room){const {host,players}=roster(room);return {schema:1,puzzleId:puzzle.id,host,players,index:0,history:[],questions:0,hints:0,pending:null,ended:null};},
  step({state,room,actorSeatId,move}){
    check(state,room);
@@ -94,4 +95,11 @@ export function createTurtleRules({puzzleId,maxQuestions=60}={}){
      ...(finished?{endReason:s.ended}:{})};
  }
  });
+}
+
+// Decode only known, versioned catalog IDs. Never accept a solution from a save.
+export function createTurtleRulesFromMode(mode){
+ const m=typeof mode==='string'&&/^puzzle-v1:([a-z0-9-]+):([1-9][0-9]{0,2})$/.exec(mode);
+ if(!m)fail('TURTLE_INVALID_CHECKPOINT_MODE');
+ return createTurtleRules({puzzleId:m[1],maxQuestions:Number(m[2])});
 }
