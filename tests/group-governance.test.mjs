@@ -414,3 +414,32 @@ test('group home uses current account scope and captured write snapshot',()=>{
   assert.ok(home.includes("setPreference('myNickname', value, current)"));
   assert.equal(home.includes("write('phone_groups', JSON.stringify(groups)"),false);
 });
+
+
+test('legacy group-play uses the captured account-ready snapshot and never writes while rendering relationships',()=>{
+  const play=load('chat/chat/group-play.html'),guard=load('shared/js/phone/group-write-guard.js');
+  for(const [,script] of play.matchAll(/<script(?:\s[^>]*)?>([\s\S]*?)<\/script>/g))if(script.trim())new vm.Script(script);
+  const a=play.indexOf('    function persist(message){'),b=play.indexOf('    function renderSettings(){',a);
+  assert.ok(a>=0&&b>a);
+  const persistSrc=play.slice(a,b);
+  function setup(){
+    let data=JSON.stringify([{id:'g1',ownerId:'__user',name:'old',members:[{id:'r1'},{id:'r2'}],settings:{}},{id:'g2',name:'other'}]);
+    const state={id:'MAO-AAAAAAAAAAAA',ready:true,writes:0,fail:false,notices:[],blocked:0};
+    const window={document:{querySelector(q){return {content:q.includes('role')?'member':state.id};}},location:{hostname:'preview.mao520.com'},get __MAO_ACCOUNT_SCOPE__(){return {accountId:state.id,role:'member',ready:state.ready};},localStorage:{getItem(){return data;},setItem(k,v){state.writes++;if(state.fail)throw Error('quota');data=v;}}};
+    vm.runInNewContext(guard,{window});
+    const api=window.MAOGroupWriteGuard,base=api.read('g1');
+    const env=new Function('guard','groupBase','notify','rejectWrite','normalizeForDisplay','var group=groupBase.group;function currentSnapshot(){return guard.matches(groupBase)};'+persistSrc+';return {persist,group:()=>group};')(api,base,x=>state.notices.push(x),()=>{state.blocked++;return false;},g=>g);
+    return {state,env,get:()=>JSON.parse(data),replace:v=>{data=JSON.stringify(v);}};
+  }
+  {const h=setup(),rows=h.get();rows[1].name='newer';h.replace(rows);h.env.group().name='updated';assert.equal(h.env.persist('ok'),true);assert.equal(h.get()[1].name,'newer');h.env.group().name='second';assert.equal(h.env.persist('ok'),true);assert.equal(h.get()[0].name,'second');}
+  {const h=setup(),rows=h.get();rows[0].name='newer';h.replace(rows);h.env.group().name='stale';assert.equal(h.env.persist('ok'),false);assert.equal(h.state.writes,0);assert.equal(h.get()[0].name,'newer');assert.equal(h.state.notices.length,0);}
+  {const h=setup();h.state.fail=true;h.env.group().name='bad';assert.equal(h.env.persist('ok'),false);assert.equal(h.get()[0].name,'old');assert.equal(h.state.notices.length,0);assert.equal(h.state.blocked,1);}
+  {const h=setup();h.state.ready=false;h.env.group().name='bad';assert.equal(h.env.persist('ok'),false);assert.equal(h.state.writes,0);}
+  const render=play.slice(play.indexOf('    function renderRelationships(){'),play.indexOf('    function groupMemberName'));
+  assert.doesNotMatch(render,/\bpersist\(/);assert.ok(render.includes('finally{group=originalGroup;}'));
+  const change=play.slice(play.indexOf("var field=input.getAttribute('data-setting');"),play.indexOf("document.getElementById('groupChatMode').addEventListener"));
+  assert.ok(change.indexOf('if(!persist(')>=0&&change.indexOf('if(!persist(')<change.indexOf('localStorage.removeItem'));
+  assert.ok(change.includes('&&currentSnapshot()'));
+  assert.ok(play.includes('!nextOwner||String(nextOwner.id)!==nextOwnerId'));
+  assert.ok(play.includes("if(!currentSnapshot()){rejectWrite();return;}"));
+});
