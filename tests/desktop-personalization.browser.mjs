@@ -42,7 +42,7 @@ const readLayout=page=>page.evaluate(()=>JSON.parse(localStorage.getItem('ds_lay
 try{
   for(const [width,height] of [[375,667],[390,844],[430,932]]){
     step='open_'+width;
-    const context=await browser.newContext({viewport:{width,height},isMobile:true,hasTouch:true,serviceWorkers:'block',deviceScaleFactor:2});
+    const context=await browser.newContext({viewport:{width,height},isMobile:true,hasTouch:true,serviceWorkers:'block',deviceScaleFactor:3});
     const page=await context.newPage();
     const errors=[];
     page.on('pageerror',e=>errors.push(e.message));
@@ -141,6 +141,36 @@ try{
     await touch('touchMove',x+10,y+10);
     await page.waitForFunction(()=>document.body.classList.contains('home-dragging') &&
       !!document.querySelector('.drag-avatar')?.style.getPropertyValue('--drag-x'));
+    // Warm one stable slot, then measure real geometry reads during touch jitter.
+    const slot = await page.locator('.drag-placeholder').boundingBox();
+    assert.ok(slot && slot.width>0 && slot.height>0);
+    const slotX=slot.x+slot.width/2, slotY=slot.y+slot.height/2;
+    await touch('touchMove',slotX,slotY);
+    await pause(120);
+    await page.evaluate(()=>{
+      const original=Element.prototype.getBoundingClientRect;
+      let reads=0;
+      Element.prototype.getBoundingClientRect=function(){
+        if(this.parentElement?.classList.contains('desktop-grid')) reads++;
+        return original.call(this);
+      };
+      window.__dragMeasureEnd=()=>{
+        Element.prototype.getBoundingClientRect=original;
+        delete window.__dragMeasureEnd;
+        return reads;
+      };
+    });
+    let stableReads;
+    try {
+      for(let i=0;i<12;i++){
+        await touch('touchMove',slotX+(i%2?1:-1),slotY);
+        await pause(20);
+      }
+    } finally {
+      stableReads=await page.evaluate(()=>window.__dragMeasureEnd());
+    }
+    assert.ok(stableReads<12,'stable slot should not trigger a full tile scan on every touch: '+stableReads);
+    console.log('DESKTOP_DRAG_METRIC width='+width+' stable_tile_rect_reads='+stableReads);
     await touch('touchCancel');
     await page.waitForFunction(()=>!document.body.classList.contains('home-dragging')&&!document.querySelector('.drag-avatar'));
     assert.deepEqual(await readLayout(page),baseline,'touch cancellation saved a partial drag');

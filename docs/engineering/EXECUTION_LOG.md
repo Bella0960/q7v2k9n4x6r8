@@ -654,3 +654,5 @@ On the next turn/session, read this file and the current `AGENTS.md` first. Cont
 - 用户授权重构拖拽，沿用原分支和 rAF/transform；新增几何缓存、滚动/尺寸/DOM 失效和真实占位变动才写入，测量在 ghost transform 写入之前，隐藏 Dock 不参与碰撞。
 - 文件：index.html、tests/default-desktop-layout.test.mjs。无数据结构、存储键、主题或默认布局改动。松手保存和取消不保存的原路径保留。
 - 新增实际缓存函数 VM 行为断言；Node/Vite/Chromium/真机均尚未运行，不可当作通过。原 #496 与当前 main/已发布候选存在分叉，必须选择性整合到最新 QA 基线并完成 375/390/430 DPR3 拖拽、跨页、Dock、取消、掉帧检测后再发布。禁止直接合并旧分支。
+
+- 独立 Node 22 mock harness（复制新缓存函数，不是完整仓库测试）2/2 通过：100 次稳定查询无额外 rect 读取、占位移动失效、滚动/resize/observer 失效与清理。已补真实 Chromium 375/390/430 DPR3 稳定槽位高频触摸 rect 读取计数；尚未执行。
