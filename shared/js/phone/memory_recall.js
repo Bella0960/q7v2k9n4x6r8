@@ -327,10 +327,133 @@
     }
     return { ok:true, indexedMessages:docs.size, historyLength:count, search:search, dispose:dispose };
   }
+  /* Read-side adapter for the existing authenticated storage namespace.
+   * Exact primary bytes are the authority, not message count, timestamps or
+   * a lossy hash. Legacy-only history deliberately keeps the old read path.
+   * A session handle is never persisted or shared across accounts.
+   */
+  function createStoredHistorySession(options) {
+    options = options || {};
+    var id = options.conversationId;
+    var readSelection = options.getCurrentConversationId;
+    var isCurrentPage = options.isCurrentPage;
+    var storage = global.localStorage;
+    var initialAccount = global.__MAO_ACCOUNT_SCOPE__;
+    var accountId = initialAccount && initialAccount.ready === true &&
+      typeof initialAccount.accountId === 'string' && initialAccount.accountId.trim()
+      ? initialAccount.accountId : '';
+    var accountRole = initialAccount && initialAccount.role;
+    var revision = 0, generation = 0, snapshot = null, index = null, pending = null, closed = false;
+    var key = 'chat_history_' + id;
+    function fail(reason) { return { ok:false, reason:reason }; }
+    function authorized() {
+      try {
+        var current = global.__MAO_ACCOUNT_SCOPE__;
+        return !closed && !!accountId && current && current.ready === true &&
+          current.accountId === accountId && current.role === accountRole &&
+          typeof id === 'string' && !!id.trim() && id.charAt(0) !== 'g' &&
+          typeof readSelection === 'function' && String(readSelection()) === id &&
+          typeof isCurrentPage === 'function' && isCurrentPage() === true &&
+          global.localStorage === storage;
+      } catch (_) { return false; }
+    }
+    function readRaw() {
+      if (!authorized()) return fail('stale-scope');
+      try {
+        var raw = storage.getItem(key);
+        // A missing primary key is not proof that legacy history is empty.
+        return typeof raw === 'string' ? { ok:true, raw:raw } : fail('primary-unavailable');
+      } catch (_) { return fail('storage-unavailable'); }
+    }
+    function invalidate() {
+      generation++;
+      if (index) index.dispose();
+      index = null;
+      snapshot = null;
+      pending = null;
+    }
+    function close() {
+      if (closed) return;
+      closed = true;
+      invalidate();
+      if (typeof global.removeEventListener === 'function') {
+        global.removeEventListener('pagehide', close);
+        global.removeEventListener('storage', onStorage);
+      }
+    }
+    function onStorage(event) {
+      // Existing namespace exposes physical keys for normal accounts.
+      // Be conservative on clear and the current account's primary key.
+      var k = event && event.key;
+      var physical = '__mao_account_v1__' + encodeURIComponent(accountId) + '__' + key;
+      if (!k || k === key || k === physical) invalidate();
+    }
+    if (!authorized()) return fail('invalid-scope');
+    if (typeof global.addEventListener === 'function') {
+      global.addEventListener('pagehide', close);
+      global.addEventListener('storage', onStorage);
+    }
+    function ensureIndex() {
+      var current = readRaw();
+      if (!current.ok) { invalidate(); return Promise.resolve(current); }
+      if (snapshot !== null && current.raw !== snapshot) invalidate();
+      if (index) return Promise.resolve({ ok:true, generation:generation, handle:index });
+      if (pending) return pending;
+      var history;
+      try { history = JSON.parse(current.raw); }
+      catch (_) { invalidate(); return Promise.resolve(fail('corrupt-history')); }
+      if (!Array.isArray(history)) { invalidate(); return Promise.resolve(fail('corrupt-history')); }
+      snapshot = current.raw;
+      var thisGeneration = generation;
+      var scope = { kind:'role', accountId:accountId, conversationId:id, revision:String(++revision) };
+      function currentScope() {
+        if (generation !== thisGeneration || snapshot === null) return null;
+        var now = readRaw();
+        return now.ok && now.raw === snapshot ? scope : null;
+      }
+      var build = createHistoryIndex(history, {
+        scope:scope, getCurrentScope:currentScope, yieldControl:options.yieldControl
+      }).then(function (result) {
+        if (generation !== thisGeneration || !currentScope()) {
+          if (result.ok) result.dispose();
+          if (generation === thisGeneration) invalidate();
+          return fail('stale-scope');
+        }
+        pending = null;
+        if (!result.ok) { invalidate(); return result; }
+        index = result;
+        return { ok:true, generation:thisGeneration, handle:result };
+      }, function () {
+        if (generation === thisGeneration) invalidate();
+        return fail('index-failed');
+      });
+      pending = build;
+      return build;
+    }
+    async function search(query, searchOptions) {
+      var ready = await ensureIndex();
+      if (!ready.ok) return ready;
+      // ensureIndex may legitimately have invalidated the previous snapshot.
+      // Recheck the captured handle and exact live snapshot before use.
+      var handle = ready.handle;
+      if (ready.generation !== generation || handle !== index) return fail('stale-scope');
+      var live = readRaw();
+      if (!handle || !live.ok || snapshot === null || live.raw !== snapshot) {
+        invalidate(); return fail('stale-scope');
+      }
+      var scope = { kind:'role', accountId:accountId, conversationId:id, revision:String(revision) };
+      var params = Object.assign({}, searchOptions || {}, { scope:scope });
+      var result = handle.search(query, params);
+      if (!result.ok && result.reason === 'stale-scope') invalidate();
+      return result;
+    }
+    return { ok:true, search:search, invalidate:invalidate, dispose:close };
+  }
   global.MemoryRecall = {
     cleanText:cleanText, normalize:normalize, tokensOf:tokensOf,
     getMemories:getMemories, saveMemories:saveMemories, upsertMemory:upsertMemory,
     searchHistoryMessages:searchHistoryMessages, buildHistoricalRecallText:buildHistoricalRecallText,
-    memoryValue:memoryValue, createHistoryIndex:createHistoryIndex
+    memoryValue:memoryValue, createHistoryIndex:createHistoryIndex,
+    createStoredHistorySession:createStoredHistorySession
   };
 })(window);
