@@ -65,47 +65,144 @@
     var base = category === 'key' || category === 'anniversary' ? 1 : (category === 'detail' || category === 'preference' ? 0.7 : 0.45);
     return importance * base * Math.pow(2, -days / half) * boost;
   }
+  // Mutation reads must never treat an unreadable primary as a new empty list.
+  // Use the actual existing account-scoped storage if present. Legacy-only
+  // data can be read, but malformed primary/root data blocks the operation.
+  function readMutationSnapshot(roleId) {
+    try {
+      var storage = global.localStorage;
+      if (storage && typeof storage.getItem === 'function') {
+        var primary = storage.getItem('chat_memories_' + roleId);
+        if (primary !== null) {
+          var list = JSON.parse(primary);
+          return Array.isArray(list) ? { ok:true, list:list, primary:primary } : { ok:false };
+        }
+        var rootRaw = storage.getItem('phone_data_v2');
+        var root = rootRaw === null ? {} : JSON.parse(rootRaw);
+        if (!root || typeof root !== 'object' || Array.isArray(root)) return { ok:false };
+        var bucket = Object.prototype.hasOwnProperty.call(root, roleId) ? root[roleId] : null;
+        if (bucket != null && (typeof bucket !== 'object' || Array.isArray(bucket))) return { ok:false };
+        var legacy = bucket && bucket.memories;
+        if (legacy != null && (!legacy || !Array.isArray(legacy.items))) return { ok:false };
+        return { ok:true, list:legacy ? legacy.items : [], primary:null, root:rootRaw };
+      }
+      // Compatibility for existing storage adapters / isolated test fixtures.
+      if (global.PhoneStorage && typeof global.PhoneStorage.getMemories === 'function') {
+        var records = global.PhoneStorage.getMemories(roleId);
+        if (!Array.isArray(records)) return { ok:false };
+        return { ok:true, list:JSON.parse(JSON.stringify(records)), adapter:JSON.stringify(records) };
+      }
+    } catch (_) {}
+    return { ok:false };
+  }
+  function sameMutationSnapshot(a,b) {
+    return !!(a.ok && b.ok && a.primary === b.primary && a.root === b.root && a.adapter === b.adapter);
+  }
+  function validRoleId(roleId) {
+    return typeof roleId === 'string' && !!roleId.trim() && roleId.trim() === roleId &&
+      ['__proto__','prototype','constructor'].indexOf(roleId) < 0;
+  }
+  function ownedBy(item,roleId) {
+    return item && (item.sourceRoleId == null || String(item.sourceRoleId) === roleId) &&
+      (item.roleId == null || String(item.roleId) === roleId);
+  }
+  function sameSource(item,input,roleId) {
+    return item.sourceRoleId != null && String(item.sourceRoleId) === roleId &&
+      (item.source || 'manual') === (input.source || 'manual') &&
+      ['sourceMessageTime','sourceMessageIndex','sourceStartIndex','sourceEndIndex'].every(function(field) {
+        return (item[field] == null && input[field] == null) || item[field] === input[field];
+      });
+  }
+  function hasAnchor(item) {
+    return (item.sourceMessageTime != null && item.sourceMessageIndex != null) ||
+      (item.sourceStartIndex != null && item.sourceEndIndex != null);
+  }
+  function requestedStatus(input) {
+    var source = input.source || 'manual';
+    // Inferred content must not become an established fact merely because the
+    // generation caller supplied "confirmed" or "fixed".
+    if (['ai-marker','manual-summary','auto-summary','merge-candidate','correction-candidate'].indexOf(source) >= 0) return 'pending';
+    return input.status === 'fixed' || input.status === 'pending' ? input.status : 'confirmed';
+  }
   function upsertMemory(roleId, input) {
     input = input || {};
-    var content = cleanText(input.content || input.text || '');
-    if (!roleId || !content) return { ok: false, reason: 'empty' };
-    content = content.slice(0, 600);
-    if (input.sourceRoleId != null && String(input.sourceRoleId) !== String(roleId)) return { ok: false, reason: 'scope-mismatch' };
-    var key = normalize(content), list = getMemories(roleId), now = Date.now();
-    if (!Array.isArray(list) || list.some(function(item) { return !item || typeof item !== 'object' || Array.isArray(item); })) return { ok: false, reason: 'invalid-existing-data' };
-    var existing = list.find(function (item) {
-      return item.sourceRoleId != null && String(item.sourceRoleId) === String(roleId) &&
-        (item.source || 'manual') === (input.source || 'manual') &&
-        ['sourceMessageTime','sourceMessageIndex','sourceStartIndex','sourceEndIndex'].every(function(field) {
-          return (item[field] == null && input[field] == null) || item[field] === input[field];
-        }) && key && normalize(item.content || item.text || '') === key;
-    });
-    if (existing) {
-      existing.reinforcementCount = Math.max(1, Number(existing.reinforcementCount) || 1) + 1;
-      existing.lastReinforcedAt = now; existing.updatedAt = now;
-      existing.importance = Math.max(1, Math.min(5, Math.max(Number(existing.importance) || 3, Number(input.importance) || 3)));
-      if (existing.status !== 'fixed' && input.status === 'fixed') existing.status = 'fixed';
-      // Never replace original provenance with a later source.
-      return saveMemories(roleId, list) ? { ok: true, duplicate: true, memory: existing } : { ok: false, reason: 'save-failed' };
-    }
+    var rawContent = input.content || input.text || '';
+    var content = typeof rawContent === 'string' ? cleanText(rawContent) : '';
+    if (!validRoleId(roleId) || !content) return { ok:false, reason:'empty' };
+    // An archive excerpt may be explicitly created by the caller; do not
+    // silently discard the tail of an input here or conflate truncated facts.
+    if (content.length > 600) return { ok:false, reason:'content-too-long' };
+    if (!ownedBy(input,roleId)) return { ok:false, reason:'scope-mismatch' };
+    var before = readMutationSnapshot(roleId);
+    if (!before.ok) return { ok:false, reason:'read-failed' };
+    var list = before.list, now = Date.now(), status = requestedStatus(input);
+    if (list.some(function(item) { return !item || typeof item !== 'object' || Array.isArray(item); })) return { ok:false, reason:'invalid-existing-data' };
     var category = ['key','plot','detail','anniversary','preference'].indexOf(input.category) >= 0 ? input.category : 'detail';
-    var memory = {
-      id: 'mem_' + now.toString(36) + '_' + list.length.toString(36),
-      content: content, category: category,
-      importance: Math.max(1, Math.min(5, Number(input.importance) || 3)),
-      status: input.status === 'fixed' || input.status === 'pending' ? input.status : 'confirmed',
-      createdAt: Number(input.createdAt) || now, lastReinforcedAt: now,
-      reinforcementCount: Math.max(1, Number(input.reinforcementCount) || 1),
-      source: input.source || 'manual', sourceRoleId: String(roleId)
-    };
-    ['sourceMessageTime','sourceMessageIndex','sourceStartIndex','sourceEndIndex'].forEach(function (key) {
-      if (input[key] != null) memory[key] = input[key];
+    var conflict = list.some(function(item) {
+      return ownedBy(item,roleId) && sameSource(item,input,roleId) && hasAnchor(input) &&
+        cleanText(item.content || item.text || '') !== content;
     });
-    // Keep the legacy storage guard until a verified IndexedDB migration exists.
-    // Reject new entries at capacity; never evict previously stored memories.
-    if (list.length >= 300) return { ok: false, reason: 'capacity' };
-    list.push(memory);
-    return saveMemories(roleId, list) ? { ok: true, duplicate: false, memory: memory } : { ok: false, reason: 'save-failed' };
+    if (conflict) status = 'pending';
+    var existingIndex = list.findIndex(function(item) {
+      return ownedBy(item,roleId) && sameSource(item,input,roleId) &&
+        cleanText(item.content || item.text || '') === content &&
+        (item.category || 'detail') === category &&
+        (item.status || 'confirmed') === status;
+    });
+    var duplicate = existingIndex >= 0;
+    var memory;
+    if (duplicate) {
+      var existing = list[existingIndex];
+      memory = Object.assign({}, existing, {
+        reinforcementCount:Math.max(1,Number(existing.reinforcementCount) || 1) + 1,
+        lastReinforcedAt:now, updatedAt:now,
+        importance:Math.max(1,Math.min(5,Math.max(Number(existing.importance)||3,Number(input.importance)||3)))
+      });
+      list[existingIndex] = memory;
+    } else {
+      if (list.length >= 300) return { ok:false, reason:'capacity' };
+      var usedIds = new Set(list.map(function(item) { return String(item.id || ''); }));
+      var n = list.length, id;
+      do { id = 'mem_' + now.toString(36) + '_' + (n++).toString(36); } while (usedIds.has(id));
+      memory = {
+        id:id, content:content, category:category,
+        importance:Math.max(1,Math.min(5,Number(input.importance)||3)),
+        status:status, createdAt:Number(input.createdAt)||now, lastReinforcedAt:now,
+        reinforcementCount:Math.max(1,Number(input.reinforcementCount)||1),
+        source:input.source || 'manual', sourceRoleId:roleId
+      };
+      ['sourceMessageTime','sourceMessageIndex','sourceStartIndex','sourceEndIndex'].forEach(function(key) {
+        if (input[key] != null) memory[key] = input[key];
+      });
+      list.push(memory);
+    }
+    if (!sameMutationSnapshot(before, readMutationSnapshot(roleId))) return { ok:false, reason:'stale-memory' };
+    return saveMemories(roleId,list) ? { ok:true, duplicate:duplicate, memory:memory, conflict:conflict } : { ok:false, reason:'save-failed' };
+  }
+
+  // Review-only correction proposal. The existing confirmed/fixed record
+  // remains unchanged. A future explicitly authorized review transaction must
+  // verify the original snapshot and update the active projection together.
+  function planMemoryCorrection(roleId, records, expected, replacement) {
+    if (!validRoleId(roleId) || !Array.isArray(records) || !expected || !expected.id ||
+        expected.sourceRoleId == null || String(expected.sourceRoleId) !== roleId ||
+        !ownedBy(expected,roleId)) return { ok:false, reason:'invalid-scope' };
+    var matches = records.filter(function(item) { return item && String(item.id) === String(expected.id); });
+    if (matches.length !== 1 || !ownedBy(matches[0],roleId) ||
+        JSON.stringify(matches[0]) !== JSON.stringify(expected)) return { ok:false, reason:'stale-memory' };
+    var original = matches[0];
+    if (['confirmed','fixed'].indexOf(original.status || 'confirmed') < 0) return { ok:false, reason:'not-confirmed' };
+    if (typeof replacement !== 'string') return { ok:false, reason:'invalid-content' };
+    var text = cleanText(replacement);
+    if (!text || text.length > 600) return { ok:false, reason:'invalid-content' };
+    if (text === cleanText(original.content || original.text || '')) return { ok:false, reason:'unchanged' };
+    return {
+      ok:true, requiresReview:true, original:JSON.parse(JSON.stringify(original)),
+      candidate:{ content:text, category:original.category || 'detail',
+        importance:Math.max(1,Math.min(5,Number(original.importance)||3)),
+        status:'pending', source:'correction-candidate', sourceRoleId:roleId,
+        sourceMemoryIds:[String(original.id)] }
+    };
   }
   function searchHistoryMessages(history, query, options) {
     options = options || {}; history = Array.isArray(history) ? history : [];
@@ -453,7 +550,7 @@
     cleanText:cleanText, normalize:normalize, tokensOf:tokensOf,
     getMemories:getMemories, saveMemories:saveMemories, upsertMemory:upsertMemory,
     searchHistoryMessages:searchHistoryMessages, buildHistoricalRecallText:buildHistoricalRecallText,
-    memoryValue:memoryValue, createHistoryIndex:createHistoryIndex,
+    memoryValue:memoryValue, planMemoryCorrection:planMemoryCorrection, createHistoryIndex:createHistoryIndex,
     createStoredHistorySession:createStoredHistorySession
   };
 })(window);
