@@ -1999,7 +1999,9 @@ button{font:inherit;color:inherit;cursor:pointer;border:0;background:transparent
   }
 
   function setReadingChrome(show){readerView.classList.toggle('is-reading-chrome-hidden',!show);}
-  function hideReadingChromeForGesture(){if(!state.book||readerView.getAttribute('aria-hidden')==='true'||settings.mode==='none'||sheetBackdrop.classList.contains('is-open'))return;setReadingChrome(false);toggleControls(false);}
+  function canUseReadingChrome(){return !!state.book&&readerView.getAttribute('aria-hidden')==='false'&&!sheetBackdrop.classList.contains('is-open');}
+  function hideReadingChromeForGesture(){if(!canUseReadingChrome()||settings.mode==='none')return;setReadingChrome(false);toggleControls(false);}
+  function revealReadingChrome(){if(!canUseReadingChrome())return;setReadingChrome(true);toggleControls(true);}
   function toggleControls(force) {
     var open = (typeof force === 'boolean') ? force : !readerControls.classList.contains('is-open');
     readerControls.classList.toggle('is-open', open);
@@ -2359,7 +2361,7 @@ button{font:inherit;color:inherit;cursor:pointer;border:0;background:transparent
   /* 段评入口优先处理；普通正文点击才呼出阅读控制栏。 */
   readerBody.addEventListener('click', function (e) {
     var trigger = e.target.closest ? e.target.closest('[data-paragraph-comment]') : null;
-    if(!trigger&&(Date.now()-paragraphHoldOpenedAt<700||readingGestureMoved)){readingGestureMoved=false;e.preventDefault();return;}
+    if(!trigger&&(Date.now()-paragraphHoldOpenedAt<700||readingGestureMoved||Date.now()-lastReadingTouchReveal<450)){readingGestureMoved=false;e.preventDefault();return;}
     if (trigger) {
       e.preventDefault();
       var page = trigger.closest('.chapter-page');
@@ -2370,21 +2372,40 @@ button{font:inherit;color:inherit;cursor:pointer;border:0;background:transparent
     }
     if (tocSheet.classList.contains('is-open') || readSettings.classList.contains('is-open') ||
         paragraphSheet.classList.contains('is-open') || importDialog.classList.contains('is-open')) return;
-    if(readerView.classList.contains('is-reading-chrome-hidden')){setReadingChrome(true);toggleControls(true);}else toggleControls();
+    if(readerView.classList.contains('is-reading-chrome-hidden'))revealReadingChrome();else toggleControls();
   });
   var readingGesture=null,readingGestureMoved=false;
   readerBody.addEventListener('pointerdown',function(e){readingGestureMoved=false;readingGesture={x:e.clientX,y:e.clientY,id:e.pointerId};},{passive:true});
   readerBody.addEventListener('pointermove',function(e){if(readingGesture&&readingGesture.id===e.pointerId&&Math.hypot(e.clientX-readingGesture.x,e.clientY-readingGesture.y)>10){readingGestureMoved=true;hideReadingChromeForGesture();}},{passive:true});
   ['pointerup','pointercancel','pointerleave'].forEach(function(type){readerBody.addEventListener(type,function(){readingGesture=null;},{passive:true});});
-  var readerTouchStart=null;
-  readerBody.addEventListener('touchstart',function(e){var t=e.touches[0];readerTouchStart=t?{x:t.clientX,y:t.clientY}:null;},{passive:true});
-  readerBody.addEventListener('touchmove',function(e){var t=e.touches[0];if(t&&readerTouchStart&&Math.hypot(t.clientX-readerTouchStart.x,t.clientY-readerTouchStart.y)>10){readingGestureMoved=true;hideReadingChromeForGesture();}},{passive:true});
+  var readerTouchStart=null,lastReadingTouchReveal=0;
+  // Touch gestures are independent of PointerEvent delivery: native scrolling can
+  // cancel pointer events and suppress the synthesized click while momentum stops.
+  readerBody.addEventListener('touchstart',function(e){
+    readingGestureMoved=false;var t=e.touches[0];
+    readerTouchStart=e.touches.length===1&&t?{x:t.clientX,y:t.clientY,at:Date.now(),interactive:!!(e.target.closest&&e.target.closest('button,a,input,textarea,select,[data-paragraph-comment]')),moved:false}:null;
+  },{capture:true,passive:true});
+  readerBody.addEventListener('touchmove',function(e){
+    var t=e.touches[0],start=readerTouchStart;
+    if(start&&e.touches.length!==1){start.moved=true;return;}
+    if(t&&start&&Math.hypot(t.clientX-start.x,t.clientY-start.y)>10){start.moved=true;readingGestureMoved=true;cancelParagraphHold();hideReadingChromeForGesture();}
+  },{capture:true,passive:true});
+  readerBody.addEventListener('touchend',function(e){
+    var start=readerTouchStart;readerTouchStart=null;
+    var t=e.changedTouches[0];
+    if(!start||!t||start.interactive||start.moved||Math.hypot(t.clientX-start.x,t.clientY-start.y)>10||Date.now()-start.at>=500||Date.now()-paragraphHoldOpenedAt<700)return;
+    if(canUseReadingChrome()&&readerView.classList.contains('is-reading-chrome-hidden')){
+      readingGestureMoved=false;lastReadingTouchReveal=Date.now();revealReadingChrome();
+    }
+  },{capture:true,passive:true});
+  readerBody.addEventListener('touchcancel',function(){readerTouchStart=null;},{capture:true,passive:true});
   readerBody.addEventListener('wheel',function(e){if(e.deltaX||e.deltaY)hideReadingChromeForGesture();},{passive:true});
   readerBody.addEventListener('keydown',function(e){if(['ArrowDown','ArrowUp','ArrowLeft','ArrowRight','PageDown','PageUp','Home','End'].indexOf(e.key)>=0)hideReadingChromeForGesture();});
 
   /* 滚动 / 滑动 → 反算当前章，与目录、页码联动（无动画模式不参与） */
   readerBody.addEventListener('scroll', function () {
     if (!state.book || settings.mode === 'none') return;
+    if(readerTouchStart&&readerTouchStart.moved)hideReadingChromeForGesture();
     var i = indexFromScroll();
     if (i >= 0 && i !== state.ch) { state.ch = i; syncReaderUi(); }
   }, { passive: true });
