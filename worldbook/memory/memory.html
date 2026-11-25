@@ -762,6 +762,59 @@ button:focus-visible,input:focus-visible,select:focus-visible{outline:1px solid 
 .mem-overview-fold b{color:#171717;font-weight:650;font-variant-numeric:tabular-nums}
 .mem-overview-fold .fold-mark{flex-shrink:0;color:#555;font:italic 13px/1 var(--serif)}
 </style>
+<style id="memory-archive-editorial-refinement">
+/* Scope: memory page only. Native controls and existing data routes are retained. */
+.mem-header:before,.mem-header:after{content:none!important;display:none!important}
+.mem-header{padding:calc(38px + env(safe-area-inset-top,0px)) 24px 18px!important}
+.mem-header-row{display:flex!important;align-items:center!important;gap:12px!important}
+.mem-title{font:500 30px/1.25 "Songti SC","Noto Serif CJK SC",Georgia,serif!important;letter-spacing:.015em!important}
+.mem-back{position:static!important;width:44px!important;height:44px!important;flex:0 0 44px!important;border-radius:50%!important;background:#f7f7f9!important;justify-content:center!important;opacity:1!important}
+.mem-back svg{width:17px!important;height:17px!important;stroke-width:1.5!important}
+.mem-tabs{gap:28px!important;border-bottom:1px solid #eee!important}
+.mem-tab{font:500 14px/1.5 var(--sans)!important;letter-spacing:0!important;min-height:44px!important}
+.mem-section-title{font:600 12px/1.5 var(--sans)!important;letter-spacing:0!important;border-bottom:0!important;padding:0!important;color:#666!important}
+.mem-card-glass{border-bottom:0!important}
+.char-picker{gap:16px!important}
+.char-avatar{width:48px!important;height:48px!important}
+.char-avatar img{filter:none!important}
+.char-name{font:12px/1.5 var(--sans)!important;max-width:72px!important}
+.mem-card-glass:has(.mem-mood-text){padding:16px!important;margin:14px 0 12px!important;border:0!important;border-radius:16px!important;background:#f7f7f9!important}
+.mem-label{font:12px/1.5 var(--sans)!important;letter-spacing:0!important}
+.mem-mood-text{font:500 16px/1.5 var(--sans)!important}
+.mem-event-text{font:13px/1.65 var(--sans)!important}
+.mem-subtabs{margin:18px 0 12px!important;gap:24px!important;border-bottom:0!important}
+.mem-subtab{font:500 14px/1.5 var(--sans)!important;min-height:44px}
+.mem-stream-heading{border-bottom:0!important;padding-bottom:8px!important}
+.mem-stream-heading strong{font:500 20px/1.35 "Songti SC",Georgia,serif!important;letter-spacing:0!important}
+.mem-stream-heading span{font:12px/1.5 var(--sans)!important;letter-spacing:0!important}
+#memory-overview.open{border:0!important;padding:14px 0!important}
+#memory-overview .memory-overview-title{font:500 20px/1.4 "Songti SC",Georgia,serif!important;letter-spacing:0!important}
+#memory-overview .memory-overview-note,.mem-overview-fold{font:12px/1.65 var(--sans)!important}
+#memory-overview .memory-overview-kicker{display:none!important}
+.mem-overview-fold{border-bottom:0!important;min-height:44px}
+#memory-overview .memory-metrics{border:0!important;padding:8px 0!important}
+#memory-overview .memory-metrics span{font-size:11px!important}
+#memory-overview .memory-archive-cta{font-size:13px!important;min-height:44px;border:0!important}
+#memory-archive-tools{border:0!important}
+#memory-archive-tools .memory-search-wrap{border:0!important;border-radius:12px!important;background:#f7f7f9!important;min-height:44px}
+#memory-archive-search{font-size:14px!important}
+#memory-archive-tools .memory-archive-caption{font-size:11px!important}
+#mem-list .memory-archive-entry{padding:14px 0!important;gap:6px 10px!important;border-bottom:1px solid #f0f0f3!important}
+#mem-list .memory-archive-entry .mem-line-time{font:11px/1.6 var(--sans)!important}
+#mem-list .memory-archive-entry .mem-line-content{font:14px/1.75 var(--sans)!important}
+#mem-list .memory-save-as-longterm{font:12px/1.5 var(--sans)!important;min-height:44px;border:0!important}
+#memory-archive-more{font-size:13px!important;min-height:44px;border:0!important}
+.fold-card,.fold-card:last-of-type{border:0!important}
+.fold-head{min-height:48px!important;padding:12px 23px 12px 0!important}
+.fold-title{font:500 14px/1.5 var(--sans)!important}
+.fold-sub,.toggle-hint,.mem-scope-note,.tool-note{font:12px/1.65 var(--sans)!important}
+.toggle-label,.sum-label,.sum-value,.field-label,.manual-banner{font-size:13px!important}
+.btn-primary,.btn-ghost,.cat-chip,.lib-btn{min-height:44px!important;font-size:13px!important}
+.lib-item{border-top:0!important;border-bottom:1px solid #f0f0f3!important;padding:14px 0!important}
+.lib-text{font:14px/1.75 var(--sans)!important}
+.lib-meta,.lib-tag{font-size:11px!important}
+.lib-actions{flex-wrap:wrap}
+</style>
 </head>
 <body>
 <div class="phone-mockup">
@@ -800,9 +853,9 @@ button:focus-visible,input:focus-visible,select:focus-visible{outline:1px solid 
 
                 <!-- 今日碎片（v2 会改写为「最近一次真实对话」） -->
                 <div class="mem-card-glass">
-                    <div class="mem-label">今日碎片</div>
+                    <div class="mem-label">最近对话</div>
                     <div id="mem-daily-mood" class="mem-mood-text">载入中...</div>
-                    <div id="mem-daily-event" class="mem-event-text">捕捉思维中...</div>
+                    <div id="mem-daily-event" class="mem-event-text">正在读取已保存记录…</div>
                 </div>
 
                 <!-- 记忆的两种视图：原始聊天时间流 / 提炼后的长期记忆 -->
@@ -815,8 +868,8 @@ button:focus-visible,input:focus-visible,select:focus-visible{outline:1px solid 
                     <div class="mem-stream-drawer open" id="mem-stream-drawer">
                         <section class="mem-drawer-panel mem-stream-panel" role="region" aria-label="聊天时间流">
                             <div class="mem-stream-heading">
-                                <strong>Memory</strong>
-                                <span>PERSONAL NOTES</span>
+                                <strong>聊天档案</strong>
+                                <span>原始记录</span>
                             </div>
                             <div id="mem-list" class="mem-list-container"></div>
                             <button type="button" class="mem-stream-toggle" id="memStreamToggle" aria-label="展开/收起全部记忆">
@@ -1166,17 +1219,22 @@ button:focus-visible,input:focus-visible,select:focus-visible{outline:1px solid 
         if (fixed) parts.push(fixed + '条已固定');
         el.textContent = parts.join(' · ');
     }
+    let renderedLibraryRole = null;
+    let renderedLibraryRows = [];
     function renderLib() {
         const list = document.getElementById('libList');
         const arr = loadMemories(currentMemId);
+        renderedLibraryRole = String(currentMemId || '');
+        renderedLibraryRows = arr.map(m => JSON.stringify(m));
         refreshLibSub();
         if (!arr.length) {
             list.innerHTML = '<div class="lib-empty">暂无记忆，总结后会自动生成</div>';
             return;
         }
         const order = { fixed: 0, pending: 1, confirmed: 2 };
-        arr.sort((a, b) => (order[a.status] || 3) - (order[b.status] || 3));
-        list.innerHTML = arr.map((m, i) => {
+        const rows = arr.map((memory, index) => ({memory, index}));
+        rows.sort((a, b) => (order[a.memory.status] ?? 3) - (order[b.memory.status] ?? 3));
+        list.innerHTML = rows.map(({memory: m, index: i}) => {
             const st = m.status || 'confirmed';
             const tagCls = st === 'pending' ? 'pending' : (st === 'fixed' ? 'fixed' : '');
             let btns = '';
@@ -1613,7 +1671,11 @@ button:focus-visible,input:focus-visible,select:focus-visible{outline:1px solid 
         const act = btn.getAttribute('data-act');
         const idx = parseInt(btn.getAttribute('data-i'), 10);
         const arr = loadMemories(currentMemId);
-        if (isNaN(idx) || !arr[idx]) return;
+        if (String(currentMemId || '') !== renderedLibraryRole || !Number.isInteger(idx) || !arr[idx] || JSON.stringify(arr[idx]) !== renderedLibraryRows[idx]) {
+            renderLib();
+            alert('记忆已更新，请重新选择要操作的记录。');
+            return;
+        }
         if (act === 'confirm') arr[idx].status = 'confirmed';
         else if (act === 'fix') arr[idx].status = 'fixed';
         else if (act === 'unfix') arr[idx].status = 'confirmed';
