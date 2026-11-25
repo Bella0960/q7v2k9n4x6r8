@@ -30,6 +30,20 @@ test('group overlay is actually wired to exact receipt admission, scope lifecycl
  assert.match(overlay,/if\(groupTurn\)groupTurn\.close\(\)/);
  assert.match(overlay,/var isSpeaker = !!latestSpeakerId && id === latestSpeakerId;/);
  for(const path of ['shared/js/phone/group-call-roster.js','shared/js/phone/group-call-turn.js','chat/call/call-overlay.js']){
-  assert.ok(sw.includes(path+'?v=20261126c04'));assert.ok(page.includes(path.replace('chat/call/','call/')+'?v=20261126c04'));
+  const version=path.endsWith('call-overlay.js')?'20261126c05':'20261126c04';
+  assert.ok(sw.includes(path+'?v='+version));assert.ok(page.includes(path.replace('chat/call/','call/')+'?v='+version));
  }
+});
+
+test('a closing or invalidated overlay cannot report a phantom reopen',()=>{
+ const start=extract('  function start(mode, character) {','    var groupRoster=null,groupTurn=null,groupCallMids=new Set();');
+ const fn=new Function('activeSession',start+'\nreturn false;}\nreturn start;');
+ assert.equal(fn({contactId:'g1',isGroupCall:true,open:()=>false})('group',{id:'g1'}),false);
+ assert.equal(fn({contactId:'g1',isGroupCall:true,open:()=>true})('group',{id:'g1'}),true);
+ assert.equal(fn({contactId:'g1',isGroupCall:true,open:()=>true})('group',{id:'g2'}),false);
+});
+test('hangup clears old document drag handlers and detached mouse moves are guarded',()=>{
+ assert.match(overlay,/function clearMiniDrag\(\)\{[\s\S]*?removeEventListener\('mousemove',onMiniMouseMove\);[\s\S]*?removeEventListener\('mouseup',onMiniMouseUp\)/);
+ assert.match(overlay,/function finish\(saveRecord\)[\s\S]*?clearMiniDrag\(\);/);
+ assert.match(overlay,/function onMiniMouseMove\(e\) \{\s*if \(finished\|\|!isDragging\|\|!mini\.parentElement\) return;/);
 });

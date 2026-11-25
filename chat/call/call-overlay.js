@@ -102,8 +102,7 @@
     if (!character || !character.id) return false;
     if (activeSession) {
       if(activeSession.contactId!==String(character.id)||activeSession.isGroupCall!==isGroupCall)return false;
-      activeSession.open();
-      return true;
+      return activeSession.open()===true;
     }
     var groupRoster=null,groupTurn=null,groupCallMids=new Set();
     var groupData = isGroupCall ? readGroupData(character.id) : null;
@@ -112,7 +111,7 @@
       if(!groupData||!global.MAOGroupCallRoster||!global.MAOGroupCallTurn||typeof global.sendGroupCallMessage!=='function')return false;
       groupRoster=global.MAOGroupCallRoster.create({
         getGroupId:function(){return typeof readGroupScope==='function'&&typeof currentRoleId!=='undefined'&&String(currentRoleId)===String(character.id)&&readGroupScope()?String(currentRoleId):null;},
-        hasRole:function(id){return typeof getRoleById==='function'&&!!getRoleById(id);}
+        hasRole:function(id){var role=typeof getRoleById==='function'&&getRoleById(id);return !!(role&&String(role.persona||role.prompt||'').trim());}
       });
       if(!groupRoster)return false;
       var snapshot=groupRoster.getSnapshot();
@@ -180,7 +179,7 @@
           '</div>',
         '</div>',
         '<div class="maomao-call-group-view" data-group-view hidden>',
-          '<div class="maomao-call-group-head"><span>GROUP / PARTICIPANTS</span><strong data-group-count></strong></div>',
+          '<div class="maomao-call-group-head"><span>通话成员</span><strong data-group-count></strong></div>',
           '<div class="maomao-call-group-grid" data-group-grid></div>',
           '<div class="maomao-call-group-state" data-group-state>正在邀请群成员…</div>',
         '</div>',
@@ -269,6 +268,7 @@
     }
 
     mini.addEventListener('mousedown', function(e) {
+      if(finished||e.target.closest?.('[data-call-action]'))return;
       isDragging = true;
       hasMoved = false;
       dragStartX = e.clientX;
@@ -280,8 +280,8 @@
       e.preventDefault();
     });
 
-    document.addEventListener('mousemove', function(e) {
-      if (!isDragging) return;
+    function onMiniMouseMove(e) {
+      if (finished||!isDragging||!mini.parentElement) return;
       var dx = e.clientX - dragStartX;
       var dy = e.clientY - dragStartY;
       if (Math.abs(dx) > 3 || Math.abs(dy) > 3) hasMoved = true;
@@ -295,19 +295,21 @@
       mini.style.left = newLeft + 'px';
       mini.style.top = newTop + 'px';
       mini.style.right = 'auto';
-    });
-
-    document.addEventListener('mouseup', function() {
+    }
+    function onMiniMouseUp() {
       if (!isDragging) return;
       isDragging = false;
       if (!hasMoved) {
         var openBtn = mini.querySelector('[data-call-action="open"]');
         if (openBtn) openBtn.click();
       }
-    });
+    }
+    document.addEventListener('mousemove',onMiniMouseMove);
+    document.addEventListener('mouseup',onMiniMouseUp);
 
     // 触屏拖动
     mini.addEventListener('touchstart', function(e) {
+      if(finished||e.target.closest?.('[data-call-action]')||!e.touches.length)return;
       isDragging = true;
       hasMoved = false;
       var touch = e.touches[0];
@@ -320,7 +322,7 @@
     }, { passive: true });
 
     mini.addEventListener('touchmove', function(e) {
-      if (!isDragging) return;
+      if(finished||!isDragging||!mini.parentElement||!e.touches.length)return;
       var touch = e.touches[0];
       var dx = touch.clientX - dragStartX;
       var dy = touch.clientY - dragStartY;
@@ -338,12 +340,20 @@
     }, { passive: false });
 
     mini.addEventListener('touchend', function() {
+      if(!isDragging||finished)return;
       isDragging = false;
       if (!hasMoved) {
         var openBtn = mini.querySelector('[data-call-action="open"]');
         if (openBtn) openBtn.click();
       }
     });
+
+    mini.addEventListener('touchcancel',function(){isDragging=false;});
+    function clearMiniDrag(){
+      isDragging=false;
+      document.removeEventListener('mousemove',onMiniMouseMove);
+      document.removeEventListener('mouseup',onMiniMouseUp);
+    }
 
     roleNameEl.textContent = displayName;
     videoCaptionEl.textContent = displayName;
@@ -480,13 +490,14 @@
     }
 
     function open() {
-      if (finished) return;
-      if(isGroupCall&&!groupRoster.isCurrent()){finish(false);return;}
+      if (finished) return false;
+      if(isGroupCall&&!groupRoster.isCurrent()){finish(false);return false;}
       layer.hidden = false;
       mini.hidden = true;
       if (connected) {
         try { input.focus({ preventScroll: true }); } catch (error) { input.focus(); }
       }
+      return true;
     }
 
     function minimize() {
@@ -559,6 +570,7 @@
       if (finished) return;
       finished = true;
       if(groupTurn)groupTurn.close();
+      clearMiniDrag();
       if (connectTimer) global.clearTimeout(connectTimer);
       if (tickTimer) global.clearInterval(tickTimer);
       duration = connected ? Math.max(0, Math.floor((Date.now() - connectedAt) / 1000)) : 0;
@@ -578,10 +590,11 @@
     async function sendGroupText(text){
       var admission=groupTurn.begin(text);
       if(!admission.ok){stateEl.textContent='当前通话暂不可发送';if(!groupRoster.isCurrent())finish(false);return;}
-      var token=admission.token;
+      var token=admission.token,confirmedUser=false;
       sending=true;sendButton.disabled=true;input.disabled=true;stateEl.textContent='群成员正在回复…';
       function showConfirmed(result){
         if(!result?.ok||finished)return;
+        confirmedUser=true;
         groupCallMids.add(result.userMid);
         result.replies.forEach(function(reply){groupCallMids.add(reply.mid);});
         input.value='';input.style.height='auto';renderTranscript();
@@ -595,8 +608,9 @@
         if(!groupRoster.isCurrent()){finish(false);return;}
         if(verified.ok){
           showConfirmed(verified);
-          stateEl.textContent=verified.replies.length?'已连接 · 文字交流':'消息已保存 · 暂无回复';
-        }else if(groupCallMids.size&&input.value===''){
+          var sent=currentMessages().find(function(m){return m.mid===verified.userMid;});
+          stateEl.textContent=verified.replies.length?'已连接 · 文字交流':sent?.sendFailed?'消息已保存，回复失败，请在聊天中重试':'消息已保存 · 暂无回复';
+        }else if(confirmedUser){
           stateEl.textContent='本轮部分消息已保存，请在聊天中确认';
         }else{
           stateEl.textContent='发送未确认，请检查聊天记录后重试';
