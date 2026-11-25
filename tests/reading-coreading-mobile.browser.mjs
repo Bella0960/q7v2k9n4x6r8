@@ -98,10 +98,13 @@ try{
   await page.waitForFunction(()=>{const e=document.getElementById('readerView');return getComputedStyle(e).visibility==='visible'&&Number(getComputedStyle(e).opacity)===1;});
   const top=await assertHeader();
   const scrollGesture=async(dx,dy)=>{
+   await page.locator('#sheetBackdrop').waitFor({state:'hidden'});
+   await page.locator('#readSettings').waitFor({state:'hidden'});
    const box=await page.locator('#readerBody').boundingBox();
    const cdp=await context.newCDPSession(page);
    const x=Math.round(box.x+box.width/2),y=Math.round(box.y+box.height/2);
    const stepX=dx? -28:0,stepY=dy? -28:0;
+   phase=width+2;
    try {
     await cdp.send('Input.dispatchTouchEvent',{type:'touchStart',touchPoints:[{x,y}]});
     for(let i=1;i<=4;i++){
@@ -109,14 +112,19 @@ try{
      await page.waitForTimeout(35);
     }
     await cdp.send('Input.dispatchTouchEvent',{type:'touchEnd',touchPoints:[]});
+    await page.locator('#readerTitle').waitFor({state:'hidden',timeout:8000});
+    await page.waitForTimeout(700);
+    assert.equal(await page.locator('#readerTitle').isVisible(),false);
+    phase=width+3;
+    const current=await page.locator('#readerBody').boundingBox();
+    const tx=Math.round(current.x+14),ty=Math.round(current.y+45);
+    assert.ok(await page.evaluate(({x,y})=>document.getElementById('readerBody').contains(document.elementFromPoint(x,y)),{x:tx,y:ty}));
+    await cdp.send('Input.dispatchTouchEvent',{type:'touchStart',touchPoints:[{x:tx,y:ty}]});
+    await page.waitForTimeout(70);
+    await cdp.send('Input.dispatchTouchEvent',{type:'touchEnd',touchPoints:[]});
+    await page.locator('#readerTitle').waitFor({state:'visible',timeout:8000});
+    assert.ok(Math.abs(await assertHeader()-top)<2);
    }finally{await cdp.detach();}
-   await page.locator('#readerTitle').waitFor({state:'hidden'});
-   await page.waitForTimeout(400);
-   assert.equal(await page.locator('#readerTitle').isVisible(),false);
-   const current=await page.locator('#readerBody').boundingBox();
-   await page.touchscreen.tap(current.x+30,current.y+30);
-   await page.locator('#readerTitle').waitFor({state:'visible'});
-   assert.ok(Math.abs(await assertHeader()-top)<2);
   };
   await scrollGesture(0,320);
   await page.locator('#readerBody').evaluate(e=>{e.scrollTop=0;});
