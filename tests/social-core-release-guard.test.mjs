@@ -5,7 +5,7 @@ import vm from 'node:vm';
 
 const source = readFileSync(new URL('../scripts/qa-direct-release.mjs', import.meta.url), 'utf8');
 const start = source.indexOf('function verifiedCoreAccountState(');
-const end = source.indexOf('\nasync function cloudflarePreflight()', start);
+const end = source.indexOf('\nasync function cloudflarePreflight(', start);
 assert.ok(start >= 0 && end > start);
 const helpers = source.slice(start,end);
 function mount(row = [3,7,1], written = 0) {
@@ -57,4 +57,28 @@ test('delegated social release requires live isolated core, all migrations/table
   await assert.rejects(bad.fn.verifySocialCoreReadiness(bad.core,bad.binding,false));
   assert.equal(bad.calls.length,0);
   assert.match(source,/MAO_DELEGATED_SOCIAL_ENABLED === 'true'\) \{\s*await verifySocialCoreReadiness\(core, binding, coreInitialized\)/);
+});
+
+test('core maintenance refuses active app forwarding or a production binding to the QA namespace', async () => {
+  const from = source.indexOf('async function verifyCoreMaintenanceIsolation()');
+  const to = source.indexOf('async function maintainQaIdentityCore()', from);
+  assert.ok(from >= 0 && to > from);
+  const app = {bindings: [{name:'MAO_APP_CUTOVER_ENABLED', text:'false'}, {service:'qa'}]};
+  const production = {bindings: []};
+  const verify = vm.runInNewContext(source.slice(from, to) + '\nverifyCoreMaintenanceIsolation', {
+    assert, CORE:'core', QA:'qa', CORE_DB:'core-db', QA_DB:'qa-db',
+    cloudflare: async path => {
+      if (path.endsWith('/domains')) return [
+        {hostname:'app.mao520.com', service:'curly-dream-324c'},
+        {hostname:'preview.mao520.com', service:'qa'}
+      ];
+      return path.includes('curly-dream') ? app : production;
+    }
+  });
+  await verify();
+  app.bindings[0].text = 'true';
+  await assert.rejects(verify(), /App forwarding must be disabled/);
+  app.bindings[0].text = 'false';
+  production.bindings.push({namespace_id:'core-db'});
+  await assert.rejects(verify(), /Public Worker depends on QA storage/);
 });
