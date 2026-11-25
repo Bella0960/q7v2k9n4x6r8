@@ -637,7 +637,9 @@ body{font-family:"Source Han Sans SC","Noto Sans SC","PingFang SC",system-ui,san
       if(!persist('已移出群聊'))return;
       renderMembers();renderOwner();renderRelationships();
     });
-    renderSettings();renderMembers();renderOwner();renderSelfTitle();renderRelationships();
+    if(activeView==='behavior'||activeView==='memory')renderSettings();
+    if(activeView==='roles'){renderMembers();renderOwner();renderSelfTitle();}
+    if(activeView==='relations')renderRelationships();
     var titles={menu:['群组管理','GROUP MANAGEMENT'],roles:['身份与头衔','ROLES / TITLES'],behavior:['群聊机制','BEHAVIOR'],relations:['成员关系','RELATIONSHIPS'],memory:['记忆空间','MEMORY']};
     var heading=document.querySelector('.top h1');
     heading.textContent=titles[activeView][0];
