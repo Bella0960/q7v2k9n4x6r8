@@ -5,7 +5,7 @@ import {createGomokuBoardView} from './gomoku-board-view.js';
 import {createGomokuDiscussion} from './gomoku-discussion.js';
 
 // Production-mountable controller; no account bypass or new route.
-export function createGomokuPageHost(root,{win=root?.ownerDocument?.defaultView,labelForSeat=()=>'',onStatus=()=>{},onFinished=()=>{},onView=()=>{},onDecision=()=>{},decideRole=null,pace=()=>{},discussion={}}={}){
+export function createGomokuPageHost(root,{win=root?.ownerDocument?.defaultView,labelForSeat=()=>'',onStatus=()=>{},onFinished=()=>{},onView=()=>{},onDecision=()=>{},decideRole=null,decideBot=null,pace=()=>{},discussion={}}={}){
   const fail=code=>{throw Error(code);};
   if(!root?.ownerDocument||!win?.document||![labelForSeat,onStatus,onView,onDecision,pace].every(f=>typeof f==='function')||(decideRole!==null&&typeof decideRole!=='function'))fail('GOMOKU_INVALID_HOST');
   let entry=null,epoch=0,busy=false,destroyed=false;
@@ -47,19 +47,19 @@ export function createGomokuPageHost(root,{win=root?.ownerDocument?.defaultView,
     if(destroyed||busy||entry)fail('GOMOKU_PAGE_BUSY');
     const ids=[...opponents,...observers];
     if(typeof roomId!=='string'||!roomId.trim()||!Array.isArray(opponents)||!Array.isArray(observers)||
-      typeof watch!=='boolean'||typeof blackFirst!=='boolean'||opponents.length!==(watch?2:1)||observers.length>(watch?5:6)||new Set(ids).size!==ids.length||
+      typeof watch!=='boolean'||typeof blackFirst!=='boolean'||(watch?opponents.length!==2:opponents.length>1)||observers.length>(watch?5:6)||new Set(ids).size!==ids.length||
       !ids.every(id=>typeof id==='string'&&id.length&&id.length<=256&&id.trim()===id)||!['easy','normal','hard'].includes(difficulty))fail('GOMOKU_INVALID_SETUP');
     busy=true;const stamp=++epoch;let e;
     try{
       const session=createBrowserRoomSession({win,spec:{roomId,gameId:'gomoku'},rules:createGomokuRules(),expectedIdentity});
       e={roomId,session,board:null,revision:-1,driver:null,discussion:null,difficulty,runStamp:stamp};
-      e.driver=createGomokuTurnDriver({session,decide:decideRole,difficulty,maxActions:watch?8:1,pace,onView:v=>publish(e,v,e.runStamp),onDecision:d=>{if(entry===e&&e.board&&!destroyed)onDecision(d);}});
+      e.driver=createGomokuTurnDriver({session,decide:decideRole,decideBot,difficulty,maxActions:watch?8:1,pace,onView:v=>publish(e,v,e.runStamp),onDecision:d=>{if(entry===e&&e.board&&!destroyed)onDecision(d);}});
       entry=e;report('opening');await session.refresh();check(e,stamp);
       async function send(action){const commit=await session.prepareUserAction();check(e,stamp);const v=await commit(action);check(e,stamp);return v;}
-      await send({type:'invite',roleId:opponents[0]});
+      if(opponents.length)await send({type:'invite',roleId:opponents[0]});else await send({type:'fillBots',playerCount:2});
       if(watch){await send({type:'invite',roleId:opponents[1],mode:'observer'});await send({type:'swapSeats',playerSeatId:'user',observerSeatId:'role:'+opponents[1]});}
       for(const id of observers)await send({type:'invite',roleId:id,mode:'observer'});
-      if(!watch&&!blackFirst)await send({type:'reorder',seatIds:['role:'+opponents[0],'user',...observers.map(id=>'role:'+id)]});
+      if(!watch&&!blackFirst)await send({type:'reorder',seatIds:[opponents.length?'role:'+opponents[0]:'bot:1','user',...observers.map(id=>'role:'+id)]});
       const v=await send({type:'start'});e.discussion=createGomokuDiscussion({...discussion,session,view:v,onChange:m=>{if(entry===e&&e.board&&!destroyed)discussion.onChange?.(m);}});publish(e,v,stamp);
       report(v.turnSeatId==='user'?'ready':'yield');
       return v;
@@ -86,7 +86,7 @@ export function createGomokuPageHost(root,{win=root?.ownerDocument?.defaultView,
       const session=createBrowserRoomSession({win,spec:{roomId:copy.board.roomId,gameId:'gomoku'},rules:createGomokuRules(),checkpoint:copy.board,expectedIdentity});
       e={roomId:copy.board.roomId,session,board:null,revision:-1,driver:null,discussion:null,difficulty:copy.difficulty,runStamp:stamp};
       const watch=copy.board.seats?.find(s=>s.seatId==='user')?.mode==='observer';
-      e.driver=createGomokuTurnDriver({session,decide:decideRole,difficulty:e.difficulty,maxActions:watch?8:1,pace,onView:v=>publish(e,v,e.runStamp),onDecision:d=>{if(entry===e&&e.board&&!destroyed)onDecision(d);}});
+      e.driver=createGomokuTurnDriver({session,decide:decideRole,decideBot,difficulty:e.difficulty,maxActions:watch?8:1,pace,onView:v=>publish(e,v,e.runStamp),onDecision:d=>{if(entry===e&&e.board&&!destroyed)onDecision(d);}});
       entry=e;report('opening');const v=await session.viewUser();check(e,stamp);
       e.discussion=createGomokuDiscussion({...discussion,session,view:v,checkpoint:copy.chat,onChange:m=>{if(entry===e&&e.board&&!destroyed)discussion.onChange?.(m);}});
       publish(e,v,stamp);report(v.phase==='finished'?'finished':v.turnSeatId==='user'?'ready':'yield');return v;

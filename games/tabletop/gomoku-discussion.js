@@ -29,7 +29,7 @@ export function gomokuDiscussionEvent(v){
 // Shared semantic validation of trusted persisted discussion data.
 export function validateGomokuChatCheckpoint(view,checkpoint){
   if(view?.gameId!=='gomoku'||!['playing','finished'].includes(view.phase)||view.selfSeatId!=='user'||!Array.isArray(view.seats))fail('GOMOKU_CHAT_CHECKPOINT');
-  const roomId=view.roomId,seats=view.seats,audience=seats.map(s=>s.seatId),roles=seats.filter(s=>s.kind==='role'),log=createRoomChatLog({roomId,seats,maxTextLength:2000});
+  const roomId=view.roomId,seats=view.seats,audience=seats.map(s=>s.seatId),roles=seats.filter(s=>['role','bot'].includes(s.kind)),log=createRoomChatLog({roomId,seats,maxTextLength:2000});
   let sequence=0;const eventRevisions=new Set();
   let restoredJobIds=[];
   if(checkpoint!==null){
@@ -54,12 +54,13 @@ export function validateGomokuChatCheckpoint(view,checkpoint){
   }
   return {log,sequence,restoredJobIds,eventRevisions};
 }
-export function createGomokuDiscussion({session,view,generateRole=null,allowOutput=null,onChange=()=>{},timeoutMs=30000,now=Date.now,checkpoint=null}={}){
+export function createGomokuDiscussion({session,view,generateRole=null,generateBot=null,allowOutput=null,onChange=()=>{},timeoutMs=30000,now=Date.now,checkpoint=null}={}){
   const fail=code=>{throw Error(code);};
   if(!session||!['viewUser','viewRole','discussionSignal','discussionCurrent'].every(k=>typeof session[k]==='function')||
     view?.gameId!=='gomoku'||!['playing','finished'].includes(view.phase)||view.selfSeatId!=='user'||!Array.isArray(view.seats)||
-    (generateRole!==null&&(typeof generateRole!=='function'||typeof allowOutput!=='function'))||typeof onChange!=='function')fail('GOMOKU_CHAT_INVALID');
-  const roomId=view.roomId,seats=view.seats.map(s=>({...s})),audience=seats.map(s=>s.seatId),roles=seats.filter(s=>s.kind==='role');
+    (![generateRole,generateBot].every(f=>f===null||typeof f==='function')||((generateRole||generateBot)&&typeof allowOutput!=='function'))||typeof onChange!=='function')fail('GOMOKU_CHAT_INVALID');
+  const roomId=view.roomId,seats=view.seats.map(s=>({...s})),audience=seats.map(s=>s.seatId),roles=seats.filter(s=>['role','bot'].includes(s.kind));
+  const generator=s=>s.kind==='bot'?generateBot:generateRole;
   const {log,restoredJobIds,eventRevisions,sequence:restoredSequence}=validateGomokuChatCheckpoint(view,checkpoint);
   let epoch=0,closed=false,pending=0,sequence=restoredSequence,tail=Promise.resolve(),roundSignal=null;
   let automatic=null,roundEvent=null,lastObserved=view.revision,lastEvent=Math.max(-Infinity,...eventRevisions);
@@ -74,16 +75,16 @@ export function createGomokuDiscussion({session,view,generateRole=null,allowOutp
   const runner=createRoomSpeechRunner({chatLog:log,roleSeatIds:roles.map(s=>s.seatId),maxPerRound:2,maxPerRoom:128,timeoutMs,now,restoredJobIds,
     async prepare(ticket){
       const signal=roundSignal,role=roles.find(s=>s.seatId===ticket.seatId);await current(signal);
-      const v=verified(await session.viewRole(role.roleId));
+      const v=verified(await (role.kind==='bot'?session.viewBot(role.seatId):session.viewRole(role.roleId)));
       if(v.selfSeatId!==role.seatId||ticket.signal.aborted||!session.discussionCurrent(signal))fail('GOMOKU_CHAT_SCOPE');
       if(roundEvent&&(v.revision<roundEvent.revision||v.revision-roundEvent.revision>4))fail('GOMOKU_CHAT_STALE_EVENT');
       const context=buildRoomSpeechContext({roleSeatId:role.seatId,view:v,chatLog:log});if(roundEvent)context.trigger=JSON.parse(JSON.stringify(roundEvent));
       return {request:context,audienceSeatIds:audience};
     },
-    generate(context,{signal}){return generateRole(context,{signal});},
+    generate(context,{signal}){const g=generator(roles.find(s=>s.seatId===context.selfSeatId));if(!g)fail('GOMOKU_CHAT_MODEL_UNAVAILABLE');return g(context,{signal});},
     async authorize(ticket,{text}){
       const signal=roundSignal;
-      if(text.length>2000||await allowOutput({seatId:ticket.seatId,kind:'role',text},{signal:ticket.signal})!==true)fail('GOMOKU_CHAT_OUTPUT_DENIED');
+      if(text.length>2000||await allowOutput({seatId:ticket.seatId,kind:roles.find(s=>s.seatId===ticket.seatId).kind,text},{signal:ticket.signal})!==true)fail('GOMOKU_CHAT_OUTPUT_DENIED');
       const v=await current(signal);if(ticket.signal.aborted||!session.discussionCurrent(signal)||roundEvent&&v.revision-roundEvent.revision>4)fail('GOMOKU_CHAT_SCOPE');return audience;
     },
     validateCommit(){return !closed&&roundSignal!==null&&session.discussionCurrent(roundSignal);}
@@ -100,8 +101,9 @@ export function createGomokuDiscussion({session,view,generateRole=null,allowOutp
       const appended=log.append({senderSeatId:'user',messageId:'user:'+messageId,audienceSeatIds:audience,time:now()},text.trim());
       if(appended.duplicate)return {duplicate:true,committed:0};
       notify(signal);
-      if(!generateRole)return {duplicate:false,committed:0,reason:'MODEL_UNAVAILABLE'};
-      const pool=target?[target]:[...roles.slice(sequence%roles.length),...roles.slice(0,sequence%roles.length)].slice(0,2);
+      const available=(target?[target]:roles).filter(s=>generator(s));
+      if(!available.length)return {duplicate:false,committed:0,reason:'MODEL_UNAVAILABLE'};
+      const pool=target?available:[...available.slice(sequence%available.length),...available.slice(0,sequence%available.length)].slice(0,2);
       if(runner.status().remaining<pool.length)return {duplicate:false,committed:0,reason:'SPEECH_LIMIT'};
       sequence++;roundSignal=signal;
       try{return {duplicate:false,...await runner.runRound(pool.map(s=>({seatId:s.seatId,jobId:'reply:'+sequence+':'+s.seatId})),{signal})};}
@@ -115,8 +117,8 @@ export function createGomokuDiscussion({session,view,generateRole=null,allowOutp
     const revision=eventView.revision,event=gomokuDiscussionEvent(eventView);
     if(!Number.isSafeInteger(revision)||revision<=lastObserved)return Promise.resolve({committed:0,reason:'STALE_EVENT'});
     lastObserved=revision;
-    if(!event||!generateRole||pending||eventRevisions.size>=12||revision-lastEvent<4||runner.status().remaining<1)return Promise.resolve({committed:0,reason:'QUIET'});
-    const speaker=roles.find(s=>s.mode==='player'&&s.seatId!==event.actorSeatId)||roles.find(s=>s.seatId!==event.actorSeatId)||roles[0];
+    if(!event||!(generateRole||generateBot)||pending||eventRevisions.size>=12||revision-lastEvent<4||runner.status().remaining<1)return Promise.resolve({committed:0,reason:'QUIET'});
+    const available=roles.filter(s=>generator(s));const speaker=available.find(s=>s.mode==='player'&&s.seatId!==event.actorSeatId)||available.find(s=>s.seatId!==event.actorSeatId)||available[0];
     if(!speaker)return Promise.resolve({committed:0,reason:'QUIET'});
     const stamp=epoch,job={cancelled:false,running:false};automatic=job;pending++;
     const task=tail.then(async()=>{

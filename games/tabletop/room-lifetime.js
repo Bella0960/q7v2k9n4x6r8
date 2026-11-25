@@ -63,14 +63,14 @@ export function createRoomLifetime({getContext,createDispatcher,spec,rules,check
   function viewBot(seatId) {
     if(!botId(seatId)) fail('INVALID_BOT_SEAT');
     const v=current().view(seatId);
-    if(!['ludo','werewolf'].includes(v.gameId)||!['playing','finished'].includes(v.phase)||
+    if(!['ludo','gomoku','werewolf'].includes(v.gameId)||!['playing','finished'].includes(v.phase)||
       !v.seats.some(s=>s.seatId===seatId&&s.kind==='bot'&&s.mode==='player')) fail('BOT_CANNOT_VIEW');
     return v;
   }
   function prepareBotTurn(seatId) {
     if(!botId(seatId)) fail('INVALID_BOT_SEAT');
     const v=current().view(seatId);
-    if(!['ludo','werewolf'].includes(v.gameId)||v.phase!=='playing'||(v.gameId==='ludo'?v.turnSeatId!==seatId:!v.game?.legalKinds?.length)||
+    if(!['ludo','gomoku','werewolf'].includes(v.gameId)||v.phase!=='playing'||(v.gameId!=='werewolf'?v.turnSeatId!==seatId:!v.game?.legalKinds?.length)||
       !v.seats.some(s=>s.seatId===seatId&&s.kind==='bot'&&s.mode==='player')) fail('BOT_CANNOT_MOVE');
     return Object.freeze({view:v,commit:prepare(seatId,null)});
   }

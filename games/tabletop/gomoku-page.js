@@ -1,7 +1,7 @@
 import {createBrowserRoomVerifier} from './account-room-context.js';
 import {createGomokuPageHost} from './gomoku-page-host.js';
 
-export function mountGomokuPage(root,{win=root?.ownerDocument?.defaultView,makeRoomId=()=>win.crypto.randomUUID(),decideRole=null,pace=null,discussion={},onFinished=()=>{}}={}){
+export function mountGomokuPage(root,{win=root?.ownerDocument?.defaultView,makeRoomId=()=>win.crypto.randomUUID(),decideRole=null,decideBot=null,pace=null,discussion={},onFinished=()=>{}}={}){
   if(!root?.ownerDocument||!win?.document||typeof makeRoomId!=='function')throw Error('GOMOKU_INVALID_PAGE');
   const doc=root.ownerDocument,verify=createBrowserRoomVerifier(win,{includeRoleLabels:true});
   const el=(tag,cls,text)=>{const n=doc.createElement(tag);if(cls)n.className=cls;if(text!==undefined)n.textContent=text;return n;};
@@ -32,17 +32,18 @@ export function mountGomokuPage(root,{win=root?.ownerDocument?.defaultView,makeR
   let msgSeq=0;
   function clearChat(){messages.replaceChildren();target.replaceChildren();input.value='';chatNote.textContent='';chat.open=false;chat.hidden=true;}
   function renderMessages(items){if(!active||chat.hidden||disposed)return;messages.replaceChildren(...items.map(m=>{const n=el('div','mao-gomoku__message');n.append(el('small','',label(m.sender.seatId)),el('p','',m.text));return n;}));messages.scrollTop=messages.scrollHeight;}
-  function showChat(v){chat.hidden=false;target.replaceChildren();const o=el('option','','所有棋友');o.value='';target.append(o);target.value='';for(const s of v.seats.filter(s=>s.kind==='role')){const o=el('option','',label(s.seatId));o.value=s.seatId;target.append(o);}input.disabled=send.disabled=v.phase==='finished';chatNote.textContent=discussion.generateRole?'':'当前未接入聊天模型。';}
+  function showChat(v){chat.hidden=false;target.replaceChildren();const o=el('option','','所有棋友');o.value='';target.append(o);target.value='';for(const s of v.seats.filter(s=>['role','bot'].includes(s.kind))){const o=el('option','',label(s.seatId));o.value=s.seatId;target.append(o);}input.disabled=send.disabled=v.phase==='finished';chatNote.textContent=discussion.generateRole||discussion.generateBot?'':'当前未接入聊天模型。';}
   async function submit(){if(disposed||!active||chat.hidden||input.disabled||!input.value.trim())return;const stamp=epoch,text=input.value,replyToSeatId=target.value||null;input.value='';try{const result=await host.sendChat({messageId:nextMessageId(),text,replyToSeatId});if(!disposed&&active&&stamp===epoch)chatNote.textContent=result.reason==='MODEL_UNAVAILABLE'?'已发送，当前没有可用模型。':result.reason==='SPEECH_LIMIT'?'已达到本局生成次数上限。':'';}catch{if(!disposed&&active&&stamp===epoch)chatNote.textContent='发言未完成，请查看记录。';}}
   input.addEventListener('keydown',e=>{if(e.key==='Enter'&&!e.isComposing){e.preventDefault();void submit();}});
   next.hidden=true;footer.append(rules,autoButton,next,pause,end);game.append(board,meta,chat,footer);wrap.append(setup,game,note);root.replaceChildren(wrap);
-  const label=id=>id==='user'?'我':active?.labels.get(id)??'棋友';
+  const label=id=>id==='user'?'我':id==='bot:1'?'普通棋友':active?.labels.get(id)??'棋友';
   const selectedObservers=new Set(),boxes=new Map();
   function clearPicker(){picker=null;selectedObservers.clear();boxes.clear();for(const s of [a,b]){const o=el('option','','选择棋友');o.value='';s.replaceChildren(o);s.value='';}observerList.replaceChildren();start.disabled=true;}
   function invalidate(){epoch++;checking?.abort();checking=null;clearPicker();}
   function sync(){
     const watch=mode.value==='watch';b.hidden=!watch;color.hidden=watch;
-    const needed=watch?2:1,ids=[a.value,...(watch?[b.value]:[])],valid=picker&&ids.length===needed&&ids.every(id=>picker.roleIds.includes(id))&&new Set(ids).size===ids.length;
+    a.children[0].textContent=watch?'选择棋友':'普通棋友（自动补位）';
+    const needed=watch?2:1,ids=[a.value,...(watch?[b.value]:[])],valid=picker&&ids.length===needed&&ids.every(id=>!watch&&id===''||picker.roleIds.includes(id))&&new Set(ids).size===ids.length;
     for(const id of ids)selectedObservers.delete(id);
     const max=watch?5:6;while(selectedObservers.size>max)selectedObservers.delete([...selectedObservers].at(-1));
     for(const [id,box] of boxes){box.checked=selectedObservers.has(id);box.disabled=starting||ids.includes(id)||(!box.checked&&selectedObservers.size>=max);}
@@ -57,7 +58,7 @@ export function mountGomokuPage(root,{win=root?.ownerDocument?.defaultView,makeR
     }
     sync();
   }
-  const host=createGomokuPageHost(board,{win,labelForSeat:label,decideRole,onFinished,pace:gamePace,discussion:{...discussion,onChange:renderMessages},onView:v=>{
+  const host=createGomokuPageHost(board,{win,labelForSeat:label,decideRole,decideBot,onFinished,pace:gamePace,discussion:{...discussion,onChange:renderMessages},onView:v=>{
     if(!active)return;
     active.view=v;if(v.phase==='finished')input.disabled=send.disabled=true;
     meta.textContent=(active.watch?'观战':'对弈')+' · '+(active.difficulty==='hard'?'困难':active.difficulty==='easy'?'简单':'普通')+' · '+v.seats.filter(s=>s.mode==='observer').length+'位旁观';
@@ -70,13 +71,13 @@ export function mountGomokuPage(root,{win=root?.ownerDocument?.defaultView,makeR
   async function reload(){
     if(disposed||active||starting)return;
     invalidate();const stamp=epoch,ac=new AbortController();checking=ac;refresh.disabled=true;note.textContent='读取角色…';
-    try{if(win.document.hidden||win.navigator?.onLine===false)throw Error('inactive');const c=await verify({signal:ac.signal});if(!disposed&&epoch===stamp&&!ac.signal.aborted){showRoster(c);note.textContent=c.roleIds.length?'':'暂无可邀请角色。';}}
+    try{if(win.document.hidden||win.navigator?.onLine===false)throw Error('inactive');const c=await verify({signal:ac.signal});if(!disposed&&epoch===stamp&&!ac.signal.aborted){showRoster(c);note.textContent=c.roleIds.length?'':'暂无自定义角色，可以和普通棋友对弈。';}}
     catch{if(!disposed&&epoch===stamp)note.textContent='账号或角色名单验证失败。';}
     finally{if(checking===ac){checking=null;refresh.disabled=false;}}
   }
   async function begin(){
     if(disposed||starting||!picker||start.disabled)return;
-    const c=picker,stamp=epoch,watch=mode.value==='watch',opponents=[a.value,...(watch?[b.value]:[])],obs=[...selectedObservers],level=difficulty.value;
+    const c=picker,stamp=epoch,watch=mode.value==='watch',opponents=[a.value,...(watch?[b.value]:[])].filter(Boolean),obs=[...selectedObservers],level=difficulty.value;
     starting=true;start.disabled=refresh.disabled=true;
     active={watch,difficulty:level,labels:new Map(c.roleLabels.map(r=>['role:'+r.id,r.name]))};stopped=false;
     try{const v=await host.start({roomId:makeRoomId(),opponents,observers:obs,watch,blackFirst:color.value==='black',difficulty:level,expectedIdentity:{accountId:c.accountId,sessionId:c.sessionId}});

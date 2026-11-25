@@ -391,7 +391,7 @@ function reduceRoom(room,ctx,actorSeatId,token,action) {
     }
     case 'fillBots': {
       lobby();checkRoster(room,ctx);
-      if(!['ludo','werewolf'].includes(room.gameId)) fail('BOTS_UNSUPPORTED');
+      if(!['ludo','gomoku','werewolf'].includes(room.gameId)) fail('BOTS_UNSUPPORTED');
       const count=action.playerCount, real=participants(room).filter(s=>s.kind!=='bot').length;
       if(!Number.isInteger(count)||count<room.minSeats||count>room.maxSeats||count<real||(p?.exact&&!p.exact.includes(count))) fail('INVALID_PLAYER_COUNT');
       next.seats=next.seats.filter(s=>s.kind!=='bot');
@@ -410,7 +410,7 @@ function reduceRoom(room,ctx,actorSeatId,token,action) {
     case 'swapSeats': {
       lobby();checkRoster(room,ctx);if(!room.observerLimit) fail('OBSERVERS_UNSUPPORTED');
       const a=getSeat(action.playerSeatId), b=getSeat(action.observerSeatId);
-      if(mode(a)!=='player'||mode(b)!=='observer') fail('INVALID_SWAP');
+      if(a.kind==='bot'||b.kind==='bot'||mode(a)!=='player'||mode(b)!=='observer') fail('INVALID_SWAP');
       a.mode='observer';b.mode='player';break;
     }
     case 'setModerator': {
@@ -582,7 +582,7 @@ function createRoomDispatcher({getContext, spec, rules, checkpoint=null}) {
       if(!seat||!(seat.mode==='player'||gomoku&&seat.mode==='observer'||turtle&&seat.mode==='moderator')||!validId(seat.seatId)||ids.has(seat.seatId))fail('INVALID_CHECKPOINT_SEAT');
       if(seat.kind==='user'&&seat.seatId==='user'&&exact(seat,['seatId','kind','mode'])){}
       else if(seat.kind==='role'&&validId(seat.roleId)&&seat.seatId==='role:'+seat.roleId&&exact(seat,['seatId','kind','mode','roleId'])&&ctx.roleIds.includes(seat.roleId)){}
-      else if(!gomoku&&!turtle&&seat.kind==='bot'&&(wolf?/^bot:(?:[1-9]|1[01])$/:/^bot:[1-3]$/).test(seat.seatId)&&exact(seat,['seatId','kind','mode'])){}
+      else if(!turtle&&seat.kind==='bot'&&seat.mode==='player'&&(wolf?/^bot:(?:[1-9]|1[01])$/:gomoku?/^bot:1$/:/^bot:[1-3]$/).test(seat.seatId)&&exact(seat,['seatId','kind','mode'])){}
       else fail('INVALID_CHECKPOINT_SEAT');
       seats.push(clone(seat));ids.add(seat.seatId);
     }
@@ -679,14 +679,14 @@ function createRoomLifetime({getContext,createDispatcher,spec,rules,checkpoint=n
   function viewBot(seatId) {
     if(!botId(seatId)) fail('INVALID_BOT_SEAT');
     const v=current().view(seatId);
-    if(!['ludo','werewolf'].includes(v.gameId)||!['playing','finished'].includes(v.phase)||
+    if(!['ludo','gomoku','werewolf'].includes(v.gameId)||!['playing','finished'].includes(v.phase)||
       !v.seats.some(s=>s.seatId===seatId&&s.kind==='bot'&&s.mode==='player')) fail('BOT_CANNOT_VIEW');
     return v;
   }
   function prepareBotTurn(seatId) {
     if(!botId(seatId)) fail('INVALID_BOT_SEAT');
     const v=current().view(seatId);
-    if(!['ludo','werewolf'].includes(v.gameId)||v.phase!=='playing'||(v.gameId==='ludo'?v.turnSeatId!==seatId:!v.game?.legalKinds?.length)||
+    if(!['ludo','gomoku','werewolf'].includes(v.gameId)||v.phase!=='playing'||(v.gameId!=='werewolf'?v.turnSeatId!==seatId:!v.game?.legalKinds?.length)||
       !v.seats.some(s=>s.seatId===seatId&&s.kind==='bot'&&s.mode==='player')) fail('BOT_CANNOT_MOVE');
     return Object.freeze({view:v,commit:prepare(seatId,null)});
   }
@@ -923,7 +923,7 @@ function buildRoomSpeechContext({roleSeatId,view,chatLog,historyLimit=24,history
     seen.add(s.seatId);
     if(s.kind==='user'&&s.seatId==='user') return {seatId:'user',kind:'user',mode:s.mode};
     if(s.kind==='role'&&id(s.roleId)&&s.seatId==='role:'+s.roleId) return {seatId:s.seatId,kind:'role',roleId:s.roleId,mode:s.mode};
-    if(view.gameId==='ludo'&&s.kind==='bot'&&/^bot:[1-3]$/.test(s.seatId)&&s.roleId===undefined&&s.mode==='player') return {seatId:s.seatId,kind:'bot',mode:'player'};
+    if(['ludo','gomoku'].includes(view.gameId)&&s.kind==='bot'&&/^bot:[1-3]$/.test(s.seatId)&&s.roleId===undefined&&s.mode==='player') return {seatId:s.seatId,kind:'bot',mode:'player'};
     fail('INVALID_SPEECH_VIEW');
   });
   if(!seen.has('user')||!seen.has(roleSeatId)|| (view.turnSeatId!==null&&!seen.has(view.turnSeatId))) fail('INVALID_SPEECH_VIEW');

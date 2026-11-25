@@ -19,7 +19,7 @@ export function buildRoomSpeechContext({roleSeatId,view,chatLog,historyLimit=24,
     seen.add(s.seatId);
     if(s.kind==='user'&&s.seatId==='user') return {seatId:'user',kind:'user',mode:s.mode};
     if(s.kind==='role'&&id(s.roleId)&&s.seatId==='role:'+s.roleId) return {seatId:s.seatId,kind:'role',roleId:s.roleId,mode:s.mode};
-    if(view.gameId==='ludo'&&s.kind==='bot'&&/^bot:[1-3]$/.test(s.seatId)&&s.roleId===undefined&&s.mode==='player') return {seatId:s.seatId,kind:'bot',mode:'player'};
+    if(['ludo','gomoku'].includes(view.gameId)&&s.kind==='bot'&&/^bot:[1-3]$/.test(s.seatId)&&s.roleId===undefined&&s.mode==='player') return {seatId:s.seatId,kind:'bot',mode:'player'};
     fail('INVALID_SPEECH_VIEW');
   });
   if(!seen.has('user')||!seen.has(roleSeatId)|| (view.turnSeatId!==null&&!seen.has(view.turnSeatId))) fail('INVALID_SPEECH_VIEW');

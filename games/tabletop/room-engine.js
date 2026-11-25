@@ -72,7 +72,7 @@ export function reduceRoom(room,ctx,actorSeatId,token,action) {
     }
     case 'fillBots': {
       lobby();checkRoster(room,ctx);
-      if(!['ludo','werewolf'].includes(room.gameId)) fail('BOTS_UNSUPPORTED');
+      if(!['ludo','gomoku','werewolf'].includes(room.gameId)) fail('BOTS_UNSUPPORTED');
       const count=action.playerCount, real=participants(room).filter(s=>s.kind!=='bot').length;
       if(!Number.isInteger(count)||count<room.minSeats||count>room.maxSeats||count<real||(p?.exact&&!p.exact.includes(count))) fail('INVALID_PLAYER_COUNT');
       next.seats=next.seats.filter(s=>s.kind!=='bot');
@@ -91,7 +91,7 @@ export function reduceRoom(room,ctx,actorSeatId,token,action) {
     case 'swapSeats': {
       lobby();checkRoster(room,ctx);if(!room.observerLimit) fail('OBSERVERS_UNSUPPORTED');
       const a=getSeat(action.playerSeatId), b=getSeat(action.observerSeatId);
-      if(mode(a)!=='player'||mode(b)!=='observer') fail('INVALID_SWAP');
+      if(a.kind==='bot'||b.kind==='bot'||mode(a)!=='player'||mode(b)!=='observer') fail('INVALID_SWAP');
       a.mode='observer';b.mode='player';break;
     }
     case 'setModerator': {
