@@ -4,7 +4,7 @@ import {createWerewolfRules,createWerewolfRulesFromMode,WEREWOLF_LINEUPS} from '
 import {createWerewolfTurnDriver} from './werewolf-turn-driver.js';
 
 // Internal mount; canonical account and provider integration required before route activation.
-export function mountWerewolfPage(root,{win=root?.ownerDocument?.defaultView,makeRoomId=()=>win.crypto.randomUUID(),randomIndex,decideRole=null,allowSpeech=null,pace=()=>{}}={}){
+export function mountWerewolfPage(root,{win=root?.ownerDocument?.defaultView,makeRoomId=()=>win.crypto.randomUUID(),randomIndex,decideRole=null,decideBot=null,allowSpeech=null,pace=()=>{}}={}){
  const fail=code=>{throw Error(code);};
  if(!root?.ownerDocument||!win?.document||typeof makeRoomId!=='function')fail('WOLF_PAGE_INVALID');
  const doc=root.ownerDocument,verify=createBrowserRoomVerifier(win,{includeRoleLabels:true});
@@ -17,9 +17,10 @@ export function mountWerewolfPage(root,{win=root?.ownerDocument?.defaultView,mak
  const selected=new Set(),boxes=new Map(),listeners=[];
  const wrap=el('main','mao-wolf'),setup=el('section','mao-wolf__setup'),game=el('section','mao-wolf__game'),note=el('p','mao-wolf__note');note.setAttribute('role','status');game.hidden=true;
  const size=el('select','mao-wolf__size');size.setAttribute('aria-label','游戏人数');size.append(...[6,9,12].map(n=>option(String(n),n+'人局')));size.value='6';
+ const fill=el('input','mao-wolf__fill');fill.type='checkbox';fill.checked=false;const fillLabel=el('label','mao-wolf__pick');fillLabel.append(fill,el('span','','普通棋友补位'));
  const lineup=el('p','mao-wolf__lineup'),roster=el('div','mao-wolf__roster'),counter=el('p','mao-wolf__counter');
  const refresh=button('读取角色','mao-wolf__refresh',()=>void reload()),start=button('开始游戏','mao-wolf__start',()=>void begin());start.disabled=true;
- setup.append(el('h1','mao-wolf__heading','狼人杀'),size,lineup,roster,counter,refresh,start);
+ setup.append(el('h1','mao-wolf__heading','狼人杀'),size,lineup,roster,fillLabel,counter,refresh,start);
  const turn=el('p','mao-wolf__turn'),players=el('div','mao-wolf__players');
  const identity=el('details','mao-wolf__identity'),role=el('p','mao-wolf__role'),privateInfo=el('p','mao-wolf__private');
  identity.append(el('summary','','我的身份'),role,privateInfo);
@@ -31,7 +32,7 @@ export function mountWerewolfPage(root,{win=root?.ownerDocument?.defaultView,mak
  const controls=el('div','mao-wolf__controls'),pass=button('跳过','mao-wolf__pass',()=>void act({kind:'pass'}));controls.append(ballot,speech,pass);
  const footer=el('footer','mao-wolf__footer'),resume=button('继续游戏','mao-wolf__resume',()=>void advance()),pause=button('暂停','mao-wolf__pause',()=>suspend()),end=button('结束本局','mao-wolf__end',()=>finish());footer.append(resume,pause,end);
  game.append(turn,identity,players,history,controls,footer);wrap.append(setup,game,note);root.replaceChildren(wrap);
- const label=id=>id===null?'弃票':id==='user'?'我':active?.labels.get(id)??'角色';
+ const label=id=>id===null?'弃票':id==='user'?'我':active?.labels.get(id)??(/^bot:(?:[1-9]|1[01])$/.test(id)?'棋友 '+id.slice(4):'角色');
  function check(e,stamp){if(disposed||active!==e||epoch!==stamp||paused)fail('WOLF_PAGE_STALE');}
  function wipe(){view=null;turn.textContent=role.textContent=privateInfo.textContent='';identity.open=false;players.replaceChildren();history.replaceChildren();target.replaceChildren();input.value='';controls.hidden=true;}
  function clearPicker(){picker=null;selected.clear();boxes.clear();roster.replaceChildren();start.disabled=true;counter.textContent='';}
@@ -42,9 +43,9 @@ export function mountWerewolfPage(root,{win=root?.ownerDocument?.defaultView,mak
    lineup.textContent=Object.keys(names).map(k=>names[k]+' '+deck.filter(r=>r===k).length).join(' · ');
    while(selected.size>max)selected.delete([...selected].at(-1));
    for(const [id,box] of boxes){box.checked=selected.has(id);box.disabled=busy||(!box.checked&&selected.size>=max);}
-   counter.textContent='已选 '+selected.size+'/'+max+' 位角色';start.disabled=busy||!picker||selected.size!==max;
+   counter.textContent='已选 '+selected.size+'/'+max+' 位角色'+(fill.checked?' · '+(max-selected.size)+'位普通棋友':'');start.disabled=busy||!picker||(!fill.checked&&selected.size!==max);
  }
- size.addEventListener('change',sync);
+ size.addEventListener('change',sync);fill.addEventListener('change',sync);
  async function reload(){
    if(disposed||active||busy)return;invalidate();const stamp=epoch,ac=new AbortController();checking=ac;refresh.disabled=true;note.textContent='读取角色…';
    try{if(doc.hidden||win.navigator?.onLine===false)fail('PAGE_INACTIVE');const c=await verify({signal:ac.signal});if(disposed||stamp!==epoch||ac.signal.aborted)return;picker=c;
@@ -81,13 +82,14 @@ export function mountWerewolfPage(root,{win=root?.ownerDocument?.defaultView,mak
    if(disposed||busy||active||!picker||start.disabled)return;
    const ids=[...selected],c=picker,stamp=++epoch,count=Number(size.value);busy=true;start.disabled=true;let e;
    try{
-     if(!WEREWOLF_LINEUPS[count]||ids.length!==count-1)fail('WOLF_PAGE_SETUP');
+     if(!WEREWOLF_LINEUPS[count]||ids.length>count-1||!fill.checked&&ids.length!==count-1)fail('WOLF_PAGE_SETUP');
      const roomId=makeRoomId(),session=createBrowserRoomSession({win,spec:{roomId,gameId:'werewolf'},rules:createWerewolfRules({randomIndex}),expectedIdentity:{accountId:c.accountId,sessionId:c.sessionId}});
      e={roomId,session,driver:null,stamp,labels:new Map(c.roleLabels.filter(r=>ids.includes(r.id)).map(r=>['role:'+r.id,r.name]))};active=e;paused=false;
-     e.driver=createWerewolfTurnDriver({session,decideRole,allowSpeech,pace,onView:v=>render(e,v,e.stamp)});
+     e.driver=createWerewolfTurnDriver({session,decideRole,decideBot,allowSpeech,pace,onView:v=>render(e,v,e.stamp)});
      await session.refresh();check(e,stamp);
      async function send(a){const commit=await session.prepareUserAction();check(e,stamp);const v=await commit(a);check(e,stamp);return v;}
      for(const id of ids)await send({type:'invite',roleId:id});
+     if(ids.length<count-1)await send({type:'fillBots',playerCount:count});
      const v=await send({type:'start'});clearPicker();setup.hidden=true;game.hidden=false;render(e,v,stamp);note.textContent='';
      if(!v.game.legalKinds.length)await run(e,stamp);
    }catch{if(!disposed&&active===e&&stamp===epoch){if(game.hidden)finish();else resume.hidden=false;note.textContent='本局暂时无法继续，请重试。';}}
@@ -126,7 +128,7 @@ export function mountWerewolfPage(root,{win=root?.ownerDocument?.defaultView,mak
    try{
      const session=createBrowserRoomSession({win,spec:{roomId:copy.roomId,gameId:'werewolf'},rules:createWerewolfRulesFromMode(copy.mode),checkpoint:copy,expectedIdentity:{accountId:c.accountId,sessionId:c.sessionId}});
      e={roomId:copy.roomId,session,driver:null,stamp,labels:new Map(c.roleLabels.map(r=>['role:'+r.id,r.name]))};active=e;paused=false;
-     e.driver=createWerewolfTurnDriver({session,decideRole,allowSpeech,pace,onView:v=>render(e,v,e.stamp)});
+     e.driver=createWerewolfTurnDriver({session,decideRole,decideBot,allowSpeech,pace,onView:v=>render(e,v,e.stamp)});
      const v=await session.viewUser();check(e,stamp);clearPicker();setup.hidden=true;game.hidden=false;render(e,v,stamp);note.textContent='';return v;
    }catch(error){if(active===e)finish();throw error;}finally{busy=false;}
  }

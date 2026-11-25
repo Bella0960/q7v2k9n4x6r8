@@ -134,7 +134,7 @@ export function createRoomDispatcher({getContext, spec, rules, checkpoint=null})
       if(!seat||!(seat.mode==='player'||gomoku&&seat.mode==='observer'||turtle&&seat.mode==='moderator')||!validId(seat.seatId)||ids.has(seat.seatId))fail('INVALID_CHECKPOINT_SEAT');
       if(seat.kind==='user'&&seat.seatId==='user'&&exact(seat,['seatId','kind','mode'])){}
       else if(seat.kind==='role'&&validId(seat.roleId)&&seat.seatId==='role:'+seat.roleId&&exact(seat,['seatId','kind','mode','roleId'])&&ctx.roleIds.includes(seat.roleId)){}
-      else if(!gomoku&&!turtle&&!wolf&&seat.kind==='bot'&&/^bot:[1-3]$/.test(seat.seatId)&&exact(seat,['seatId','kind','mode'])){}
+      else if(!gomoku&&!turtle&&seat.kind==='bot'&&(wolf?/^bot:(?:[1-9]|1[01])$/:/^bot:[1-3]$/).test(seat.seatId)&&exact(seat,['seatId','kind','mode'])){}
       else fail('INVALID_CHECKPOINT_SEAT');
       seats.push(clone(seat));ids.add(seat.seatId);
     }

@@ -59,17 +59,18 @@ export function createRoomLifetime({getContext,createDispatcher,spec,rules,check
     if (['ludo','gomoku'].includes(v.gameId) && v.turnSeatId!==actor) fail('NOT_YOUR_TURN');
     return Object.freeze({view:v,commit:prepare(actor,roleId)});
   }
+  function botId(seatId){return typeof seatId==='string'&&/^bot:(?:[1-9]|1[01])$/.test(seatId);}
   function viewBot(seatId) {
-    if(typeof seatId!=='string'||!/^bot:[1-3]$/.test(seatId)) fail('INVALID_BOT_SEAT');
+    if(!botId(seatId)) fail('INVALID_BOT_SEAT');
     const v=current().view(seatId);
-    if(v.gameId!=='ludo'||!['playing','finished'].includes(v.phase)||
+    if(!['ludo','werewolf'].includes(v.gameId)||!['playing','finished'].includes(v.phase)||
       !v.seats.some(s=>s.seatId===seatId&&s.kind==='bot'&&s.mode==='player')) fail('BOT_CANNOT_VIEW');
     return v;
   }
   function prepareBotTurn(seatId) {
-    if(typeof seatId!=='string'||!/^bot:[1-3]$/.test(seatId)) fail('INVALID_BOT_SEAT');
+    if(!botId(seatId)) fail('INVALID_BOT_SEAT');
     const v=current().view(seatId);
-    if(v.gameId!=='ludo'||v.phase!=='playing'||v.turnSeatId!==seatId||
+    if(!['ludo','werewolf'].includes(v.gameId)||v.phase!=='playing'||(v.gameId==='ludo'?v.turnSeatId!==seatId:!v.game?.legalKinds?.length)||
       !v.seats.some(s=>s.seatId===seatId&&s.kind==='bot'&&s.mode==='player')) fail('BOT_CANNOT_MOVE');
     return Object.freeze({view:v,commit:prepare(seatId,null)});
   }
