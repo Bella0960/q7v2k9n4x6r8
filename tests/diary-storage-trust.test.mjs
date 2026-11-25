@@ -251,6 +251,7 @@ test('diary request contains full canonical persona and tone, not another role c
  assert.ok(request);
  assert.ok(request.system.includes(role.persona));
  assert.match(request.system,/ROLE_A_TONE/);
+ assert.match(request.system,/ROLE_A_LORE/);
  assert.match(request.system,/ROLE_A_MEMORY/);
  assert.doesNotMatch(request.system,/ROLE_B_PRIVATE|PENDING_MEMORY/);
  assert.equal(sb.entries[0].author,'roleA');
