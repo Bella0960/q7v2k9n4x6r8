@@ -68,12 +68,12 @@ test('duplicate retry taps share one in-flight attempt; model sees projected use
   resolveNow();await tick();
 });
 
-test('old persisted failed marker is cleared only inside verified reply save, and rolls back if write fails',()=>{
+test('old persisted failed marker is cleared only inside verified reply save, and rolls back if write fails',async()=>{
   const a=page.indexOf('                        // The retry marker is resolved only together with a truly');
   const b=page.indexOf('                        if (replySaved && streamResult.ok && inspectPromptPacket',a);
   assert.ok(a>0 && b>a,'reply commit barrier not found');
   const section=page.slice(a,b);
-  const run=new Function('historyList','retryTarget','streamResult','replyMessages',
+  const run=new (async function(){}).constructor('historyList','retryTarget','streamResult','replyMessages',
     'aiStickerMessages','aiRoleGalleryMessages','_locateRetryMessage','saveMessages',
     'chatMessages','parsedMem','isGroupChat','saveUserMemories',
     'parsedRoleFamilyCard','applyRoleFamilyCardChanges',section+'\nreturn {replySaved,retryResolved};');
@@ -82,7 +82,7 @@ test('old persisted failed marker is cleared only inside verified reply save, an
     const history=[failedMessage(),{role:'assistant',mid:'generated',text:'回复已经生成'}];
     let markerRemoved=false,written=null;
     const row={querySelector:()=>({remove(){markerRemoved=true;}})};
-    const result=run(history,{mid:'m1',time:1234},{ok:true},
+    const result=await run(history,{mid:'m1',time:1234},{ok:true},
       [history[1]],[],[],locate,
       list=>{written=list.map(m=>({...m}));return success;},
       {querySelector:()=>row},{memories:[]},false,()=>{}, {changes:[]},()=>false);
@@ -95,15 +95,15 @@ test('old persisted failed marker is cleared only inside verified reply save, an
   }
 });
 
-test('partial API results preserve retry affordance and never resolve failed input',()=>{
+test('partial API results preserve retry affordance and never resolve failed input',async()=>{
   const pageStart=page.indexOf('                        // The retry marker is resolved only together with a truly');
   const pageEnd=page.indexOf('                        if (replySaved && streamResult.ok && inspectPromptPacket',pageStart);
-  const commit=new Function('historyList','retryTarget','streamResult','replyMessages',
+  const commit=new (async function(){}).constructor('historyList','retryTarget','streamResult','replyMessages',
     'aiStickerMessages','aiRoleGalleryMessages','_locateRetryMessage','saveMessages',
     'chatMessages','parsedMem','isGroupChat','saveUserMemories',
     'parsedRoleFamilyCard','applyRoleFamilyCardChanges',page.slice(pageStart,pageEnd)+'\nreturn {replySaved,retryResolved};');
   const history=[failedMessage(),{role:'assistant',text:'服务器中途断开，只收到半句'}];
-  const result=commit(history,{mid:'m1',time:1234},{ok:false},[history[1]],[],[],
+  const result=await commit(history,{mid:'m1',time:1234},{ok:false},[history[1]],[],[],
     locate,()=>true,{querySelector:()=>null},{memories:[]},false,()=>{},{changes:[]},()=>false);
   assert.equal(result.retryResolved,null);
   assert.equal(history[0].sendFailed,true);

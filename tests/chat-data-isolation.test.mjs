@@ -407,6 +407,7 @@ function loadHistoryFunctions(storageSlots, contactId = 'roleA', sharedStorage) 
     localStorage,
     currentCharacter: { id: contactId },
     storageKey: 'chat_history_' + contactId,
+    isGroupChat: false,
     removeLegacyStickerCaptions: (list, raw) => sandbox._rememberChatBaseline(list, raw),
     getInitialMessages: () => [],
     _resetWarnCooldown() {},

@@ -66,7 +66,12 @@ test('group member uses group book mounts plus OWN bound local lore, not other m
   const chosen=policy.selectWorldbooksForGroupSpeaker(books,['group-bound'],speaker);
   assert.deepEqual(Array.from(chosen.map(x=>x.id)),['group-bound','speaker-local']);
   assert.deepEqual(Array.from(policy.selectWorldbooksForGroupSpeaker(books,[],null).map(x=>x.id)),[]);
-  assert.match(detail,/selectWorldbooksForGroupSpeaker\(/);
+  assert.match(detail, /const speakerSelection = bindingBridge\.read\(speakerId, speakerRole\)/);
+  assert.match(detail, /const groupSelection = bindingBridge\.read\(aliasRoleId\)/);
+  assert.match(detail, /if \(!speakerSelection\.ok \|\| !groupSelection\.ok\) \{[\s\S]*?throw new Error\('group role-worldbook binding read failed'\)/);
+  assert.match(detail, /const allowed = new Set\(speakerSelection\.ids\.concat\(groupSelection\.ids\)\.map\(String\)\)/);
+  assert.match(detail, /wbList = wbList\.filter\(book=>book&&allowed\.has\(String\(book\.id\)\)\)/);
+  assert.match(detail, /groupLoreCurrent\(\)/);
   assert.match(detail,/groupReplyPick && getRoleById\(groupReplyPick\.id\)/);
 });
 

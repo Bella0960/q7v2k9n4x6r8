@@ -20,11 +20,11 @@ const makeTab = (id,options={}) => {
     stringify(v) { return JSON.stringify(v); }
   };
   const compiled = new Function('localStorage','storageKey','currentCharacter','_storage','showToast',
-    'getInitialMessages','console','JSON',source+'\nreturn {loadMessages,saveMessages,_inheritChatBaseline,_rememberChatBaseline};');
+    'getInitialMessages','console','JSON','isGroupChat',source+'\nreturn {loadMessages,saveMessages,_inheritChatBaseline,_rememberChatBaseline};');
   const db = options.storage || sharedStorage;
   const api = compiled(db,'chat_history_'+id,{id},null,x=>messages.push(x),
     ()=>[{role:'received',mid:'initial',text:'Welcome',time:1}],
-    {warn() {}, error() {}},instrumentedJSON);
+    {warn() {}, error() {}},instrumentedJSON,false);
   return {...api,messages,stats};
 };
 const make=(mid,text)=>({mid,role:'user',text,time:Date.now()});

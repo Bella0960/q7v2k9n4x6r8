@@ -12,8 +12,8 @@ test('group messages resolve the actual member portrait; never substitute group 
   assert.match(detail, /function groupSpeakerAvatarForMessage\(message, speaker\)/);
   assert.match(detail, /return ''; \/\/ No verified speaker: neutral fallback, not group cover/);
   assert.match(detail, /groupSender = groupSpeakerForMessage\(msg\)/);
-  assert.match(detail, /fillAvatar\(avatar, groupSpeakerAvatarForMessage\(msg, groupSender\), USER_SVG\)/);
-  assert.match(detail, /fillAvatar\(extraAv, groupSpeakerAvatarForMessage\(msg\), USER_SVG\)/);
+  assert.match(detail, /fillGroupPortrait\(avatar,groupSpeakerAvatarForMessage\(msg,groupSender\),groupSender&&String\(groupSender\.id\)\)/);
+  assert.match(detail, /fillGroupPortrait\(extraAv,groupSpeakerAvatarForMessage\(msg,extraSpeaker\),extraSpeaker&&String\(extraSpeaker\.id\)\)/);
   assert.doesNotMatch(detail, /\(groupRole && \(groupRole\.avatar \|\| groupRole\.avatarUrl\)\) \|\| currentCharacter\.avatar/);
 });
 

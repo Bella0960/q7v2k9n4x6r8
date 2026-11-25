@@ -19,10 +19,10 @@ function makeStorage(initial) {
   };
   const log=[];
   const instance=new Function('localStorage','storageKey','currentCharacter','_storage',
-    '_chatHistoryUnreadable','showToast','_shouldWarnAgain','_resetWarnCooldown','console',
+    '_chatHistoryUnreadable','showToast','_shouldWarnAgain','_resetWarnCooldown','console','isGroupChat',
     liveCode+'\nreturn {saveMessages,_readBackHistory,_rememberChatBaseline,_inheritChatBaseline};')(
     data,'chat_history_role1',{id:'role1'},null,false,text=>log.push(text),
-    ()=>true,()=>{},{warn(){}}
+    ()=>true,()=>{},{warn(){}},false
   );
   const load=()=>instance._readBackHistory();
   return {db,load,log,...instance};

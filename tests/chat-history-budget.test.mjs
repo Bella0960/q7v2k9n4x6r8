@@ -58,6 +58,8 @@ test('final chat integration applies model-only budget before vision hydration a
   assert.ok(start < chatSource.indexOf('ChatImageVision.prepareHistory',start));
   assert.ok(start < chatSource.indexOf('PhoneStream.chat({',start));
   assert.match(chatSource.slice(start,start+520),/historyBudget\.tooLong/);
-  assert.match(chatSource,/chat-context-policy\.js\?v=20261118historybudget1/);
+  const revision = chatSource.match(/chat-context-policy\.js\?v=([a-z0-9]+)/i)?.[1];
+  assert.ok(revision, 'history budget module must be versioned');
+  assert.match(chatSource,/budgetRecentHistory\(recentHistory, 9000\)/);
   assert.match(chatSource,/validateFinalApiMessages\(/);
 });
