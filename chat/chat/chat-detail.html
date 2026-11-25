@@ -13,7 +13,7 @@
     <script src="../../shared/js/phone/phone_storage.js"></script>
     <script src="../../shared/js/phone/storage/repository.js"></script>
     <script src="../../shared/js/phone/storage/media-repository.js?v=20261107v2"></script>
-    <script src="../../shared/js/phone/group-portraits.js?v=20261125g2"></script>
+    <script src="../../shared/js/phone/group-portraits.js?v=20261125g3"></script>
     <script src="../../shared/js/phone/group-admin-policy.js?v=20261125g1"></script>
     <script src="../../shared/js/phone/group-write-guard.js?v=20261125g1"></script>
     <script src="../../shared/js/phone/role-avatar-library.js?v=20261113v1"></script>
@@ -8372,6 +8372,7 @@
                 }else if(action==='移除'){
                     if(!existing||fresh.members.length<=1)return '';
                     fresh.members=fresh.members.filter(function(m){return String(m.id)!==target;});
+                    if(window.MAOGroupPortraits)window.MAOGroupPortraits.forgetMember(fresh,target);
                     actionMessage='已将「'+groupMemberDisplayName(existing)+'」移出群聊';
                 }
                 if(!actionMessage)return '';
