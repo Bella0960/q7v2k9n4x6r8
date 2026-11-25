@@ -132,6 +132,20 @@ body{font-family:"Source Han Sans SC","Noto Sans SC","PingFang SC",system-ui,san
 .setting{border-bottom:0}
 #memberManagement{scroll-margin-top:86px}
 @media(min-width:431px){.phone{box-shadow:none}}
+/* Directory-first navigation: keep every original control and handler mounted. */
+[hidden]{display:none!important}
+.management-directory{display:flex;flex-direction:column;margin-top:20px}
+.management-directory a,.directory-link{display:flex;align-items:center;justify-content:space-between;min-height:64px;padding:12px 2px;text-decoration:none;color:#111;font-size:14px;gap:12px}
+.management-directory a>span:first-child{display:flex;flex-direction:column;gap:5px}
+.management-directory small,.directory-link small{font:400 9px/1.4 "Source Han Serif SC","Noto Serif SC",Georgia,serif;color:#767676;letter-spacing:.12em}
+.directory-detail{font-size:11px;color:#777;text-align:right}
+.management-directory a:focus-visible,.directory-link:focus-visible{outline:2px solid #555;outline-offset:3px}
+.management-view{padding-top:2px}
+.management-view>.section:first-child{margin-top:8px}
+.hero .hero-label,.hero p{display:none}
+.hero h2{font-size:25px;margin-top:4px}
+.hero .meta{margin-top:9px}
+@media(max-width:360px){.directory-detail{font-size:10px}}
 </style>
 </head>
 <body>
@@ -149,6 +163,14 @@ body{font-family:"Source Han Sans SC","Noto Sans SC","PingFang SC",system-ui,san
       <p>给群成员安排身份、作息与行动边界，让每一场群聊更像一群真实的人在相处。</p>
       <div class="meta"><span class="meta-dot"></span><span id="memberCount">读取群成员中</span><span>·</span><span>自动保存</span></div>
     </div>
+    <nav id="managementDirectory" class="management-directory" aria-label="群组管理分类">
+      <a data-management-route="members"><span>成员管理<small>MEMBERS</small></span><span class="directory-detail">邀请 · 移除</span></a>
+      <a data-management-route="roles"><span>身份与头衔<small>ROLES / TITLES</small></span><span class="directory-detail">群主 · 管理员</span></a>
+      <a data-management-route="behavior"><span>群聊机制<small>BEHAVIOR</small></span><span class="directory-detail">发言 · 作息</span></a>
+      <a data-management-route="relations"><span>成员关系<small>RELATIONSHIPS</small></span><span class="directory-detail">关系 · 共同经历</span></a>
+      <a data-management-route="memory"><span>记忆空间<small>MEMORY</small></span><span class="directory-detail">记忆同步 · 上下文</span></a>
+    </nav>
+    <section class="management-view" data-management-view="roles" hidden>
     <div class="section" id="memberManagement"><h3>群主与权限</h3><span>OWNER / ADMIN</span></div>
     <div class="member" id="ownerPanel">
       <div class="member-head">
@@ -169,15 +191,13 @@ body{font-family:"Source Han Sans SC","Noto Sans SC","PingFang SC",system-ui,san
     <div id="membersList" class="members"></div>
     <p class="hint">群昵称和专属头衔只影响群聊显示，不会修改角色库原始资料。禁言与作息只影响该角色能否被选中发言。</p>
 
+    </section>
+    <section class="management-view" data-management-view="behavior" hidden>
     <div class="section"><h3>群聊机制</h3><span>BEHAVIOR</span></div>
     <div class="settings" id="settingsList">
       <label class="setting">
         <span class="setting-copy"><span class="setting-title">作息感知</span><span class="setting-desc">开启后，休息时段的成员不会被选为本轮发言者；每位成员可单独设置活跃时间。</span></span>
         <span class="switch"><input type="checkbox" data-setting="scheduleEnabled"><span class="track"></span></span>
-      </label>
-      <label class="setting">
-        <span class="setting-copy"><span class="setting-title">同步成员的单聊记忆</span><span class="setting-desc">开启后，群聊 AI 会参考成员在各自单聊中的长期记忆。关闭时不额外注入，节省上下文。</span></span>
-        <span class="switch"><input type="checkbox" data-setting="memorySharing"><span class="track"></span></span>
       </label>
       <label class="setting">
         <span class="setting-copy"><span class="setting-title">旁观模式</span><span class="setting-desc">把发送内容当作剧情走向提示；角色优先彼此互动，不把每句话都当成对用户说。</span></span>
@@ -220,9 +240,20 @@ body{font-family:"Source Han Sans SC","Noto Sans SC","PingFang SC",system-ui,san
       </div>
     </div>
 
+    </section>
+    <section class="management-view" data-management-view="relations" hidden>
     <div class="section"><h3>成员关系与熟悉度</h3><span>RELATIONSHIPS</span></div>
     <div id="relationshipsList" class="relationships"></div>
     <p class="hint">每个方向分别保存亲密度、信任度、关系类型与情绪倾向；角色的发言频率、话题兴趣和触发阈值单独设置。关系数值当前为静态配置，不会被普通聊天自动改写。</p>
+    </section>
+    <section class="management-view" data-management-view="memory" hidden>
+      <div class="section"><h3>记忆同步</h3><span>MEMORY</span></div>
+      <label class="setting">
+        <span class="setting-copy"><span class="setting-title">同步成员的单聊记忆</span><span class="setting-desc">开启后，群聊 AI 会参考成员在各自单聊中的长期记忆。关闭时不额外注入，节省上下文。</span></span>
+        <span class="switch"><input type="checkbox" data-setting="memorySharing"><span class="track"></span></span>
+      </label>
+      <a class="directory-link" id="groupContextLink">上下文条数 <small>CONTEXT</small></a>
+    </section>
   </main>
 </div>
 <div id="toast" class="toast" role="status" aria-live="polite"></div>
@@ -231,6 +262,11 @@ body{font-family:"Source Han Sans SC","Noto Sans SC","PingFang SC",system-ui,san
   'use strict';
   var params = new URLSearchParams(location.search);
   var groupId = params.get('id') || params.get('roleId') || '';
+  var allowedViews=['roles','behavior','relations','memory'];
+  var requestedView=params.get('section')||(location.hash==='#memberManagement'?'roles':'menu');
+  var activeView=allowedViews.indexOf(requestedView)!==-1?requestedView:'menu';
+  function groupSettingsUrl(view){return 'chat-settings.html?roleId='+encodeURIComponent(groupId)+(view?'&view='+encodeURIComponent(view):'');}
+  function managementUrl(view){return 'group-play.html?id='+encodeURIComponent(groupId)+(view&&view!=='menu'?'&section='+encodeURIComponent(view):'');}
   var toastTimer = 0;
   function escapeHtml(value){
     return String(value == null ? '' : value).replace(/[&<>"']/g,function(ch){
@@ -575,9 +611,19 @@ body{font-family:"Source Han Sans SC","Noto Sans SC","PingFang SC",system-ui,san
       persist('已移出群聊');renderMembers();renderOwner();renderRelationships();
     });
     renderSettings();renderMembers();renderOwner();renderRelationships();
+    var titles={menu:['群组管理','GROUP MANAGEMENT'],roles:['身份与头衔','ROLES / TITLES'],behavior:['群聊机制','BEHAVIOR'],relations:['成员关系','RELATIONSHIPS'],memory:['记忆空间','MEMORY']};
+    var heading=document.querySelector('.top h1');
+    heading.textContent=titles[activeView][0];
+    document.querySelector('.kicker').textContent=titles[activeView][1];
+    document.title=titles[activeView][0]+' · 小手机';
+    document.getElementById('managementDirectory').hidden=activeView!=='menu';
+    document.querySelector('.hero').hidden=activeView!=='menu';
+    document.querySelectorAll('[data-management-view]').forEach(function(view){view.hidden=view.getAttribute('data-management-view')!==activeView;});
+    document.querySelectorAll('[data-management-route]').forEach(function(link){var view=link.getAttribute('data-management-route');link.href=view==='members'?groupSettingsUrl('members'):managementUrl(view);});
+    document.getElementById('groupContextLink').href=groupSettingsUrl('memory');
   }
   document.getElementById('backBtn').addEventListener('click',function(){
-    location.href='chat-settings.html?roleId='+encodeURIComponent(groupId);
+    location.href=group&&activeView!=='menu'?managementUrl('menu'):groupSettingsUrl('');
   });
 })();
 </script>
