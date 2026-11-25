@@ -83,6 +83,35 @@ const studioState = page => page.evaluate(k => {
   return raw ? JSON.parse(raw) : null;
 }, STUDIO_KEY);
 
+// Full localStorage snapshot excluding the workbench's own key (which the
+// apply/disable flow is allowed to rewrite). Used to prove unrelated stored
+// data — characters, history, beauty overrides, legacy preset — survives.
+const storageSnapshot = page => page.evaluate(k => {
+  const out = {};
+  for (const key of Object.keys(localStorage)) if (key !== k) out[key] = localStorage.getItem(key);
+  return out;
+}, STUDIO_KEY);
+
+// Render a tiny solid-color PNG on the page canvas and return it as a Node buffer.
+async function syntheticPngBuffer(page, fill, w = 16, h = 12) {
+  const dataUrl = await page.evaluate(([fill, w, h]) => {
+    const c = document.createElement('canvas'); c.width = w; c.height = h;
+    const x = c.getContext('2d'); x.fillStyle = fill; x.fillRect(0, 0, w, h);
+    return c.toDataURL('image/png');
+  }, [fill, w, h]);
+  return Buffer.from(dataUrl.slice(dataUrl.indexOf(',') + 1), 'base64');
+}
+
+// Decode a blob URL through a real Image element; returns dimensions + payload.
+async function decodeBlobUrl(page, url) {
+  return page.evaluate(async src => {
+    const r = await fetch(src); const b = await r.blob();
+    const img = new Image();
+    await new Promise((res, rej) => { img.onload = res; img.onerror = rej; img.src = src; });
+    return { size: b.size, type: b.type, w: img.naturalWidth, h: img.naturalHeight };
+  }, url);
+}
+
 const beautyKeys = page => page.evaluate(() =>
   Object.keys(localStorage).filter(k => k.indexOf('beauty_chat') === 0 && k !== 'beauty_chat_migrated_v1'));
 
@@ -122,6 +151,8 @@ async function readList(page) {
       nameColor: cs(q('.chat-name'))?.color || null,
       previewColor: cs(q('.chat-last-msg'))?.color || null,
       timeColor: cs(q('.chat-time'))?.color || null,
+      coverImage: cs(document.querySelector('#coverBox'))?.backgroundImage || null,
+      paperImage: cs(document.querySelector('.white-profile-stage'))?.backgroundImage || null,
       overflow: { sw: document.documentElement.scrollWidth, cw: document.documentElement.clientWidth },
       dockRect: dock ? dock.getBoundingClientRect().toJSON() : null
     };
@@ -190,14 +221,26 @@ try {
     });
 
     // Block any non-local network; synthetic data only, no real account/API.
+    // Allow by exact protocol + origin: http/https to 127.0.0.1/localhost, plus
+    // data:/blob: payloads; every other origin/protocol is aborted.
     await context.route('**', route => {
-      const u = route.request().url();
-      if (/127\.0\.0\.1|localhost|data:|blob:/.test(u)) return route.continue();
+      let u;
+      try { u = new URL(route.request().url()); } catch { return route.abort(); }
+      if (u.protocol === 'data:' || u.protocol === 'blob:') return route.continue();
+      const local = ['127.0.0.1', 'localhost'].includes(u.hostname);
+      if ((u.protocol === 'http:' || u.protocol === 'https:') && local) return route.continue();
       return route.abort();
     });
 
-    // Synthetic roles + history injected before every page load.
-    await context.addInitScript(() => {
+    const page = await context.newPage();
+    const pageErrors = [];
+    page.on('pageerror', e => pageErrors.push(e.message));
+
+    // Synthetic roles + history seeded once on the first load, then persisted in
+    // localStorage; later reloads/navigation do not rewrite them (so data loss
+    // during apply/disable can actually be detected by snapshot comparison).
+    await page.goto(origin + '/index.html', { waitUntil: 'domcontentloaded' });
+    await page.evaluate(() => {
       localStorage.setItem('ai_custom_characters', JSON.stringify([
         { id: 'role-a', name: '角色 A' }, { id: 'role-b', name: '角色 B' }
       ]));
@@ -210,10 +253,6 @@ try {
       }
     });
 
-    const page = await context.newPage();
-    const pageErrors = [];
-    page.on('pageerror', e => pageErrors.push(e.message));
-
     // 1. Apply the list theme through the workbench UI.
     await gotoWorkbench(page);
     await page.click('[data-tab="list"]');
@@ -225,6 +264,15 @@ try {
     await setField(page, 'textColor', '#222222');
     await setField(page, 'previewColor', '#333333');
     await setField(page, 'timeColor', '#444444');
+    // Upload the two list image slots: cover (#coverBox) and card paper (.white-profile-stage).
+    const coverBuf = await syntheticPngBuffer(page, '#505050');
+    await page.locator('#imageSlots .image-slot').nth(0).locator('button').first().click();
+    await page.locator('#imageFile').setInputFiles({ name: 'synthetic-cover.png', mimeType: 'image/png', buffer: coverBuf });
+    await page.waitForFunction(() => /^as_[A-Z2-7]{32}$/.test((window.MAOMAOThemeStudio._draftSnapshot().list || {}).coverImage || ''), { timeout: 13000 });
+    const paperBuf = await syntheticPngBuffer(page, '#6a6a6a');
+    await page.locator('#imageSlots .image-slot').nth(1).locator('button').first().click();
+    await page.locator('#imageFile').setInputFiles({ name: 'synthetic-paper.png', mimeType: 'image/png', buffer: paperBuf });
+    await page.waitForFunction(() => /^as_[A-Z2-7]{32}$/.test((window.MAOMAOThemeStudio._draftSnapshot().list || {}).listImage || ''), { timeout: 13000 });
     await page.click('#applyButton');
     await delay(200);
 
@@ -245,6 +293,22 @@ try {
     assert.equal(list.nameColor, hexToRgb('#222222'), width + 'px name color applies');
     assert.equal(list.previewColor, hexToRgb('#333333'), width + 'px preview color applies');
     assert.equal(list.timeColor, hexToRgb('#444444'), width + 'px time color applies');
+    // Both list slots resolve to blob URLs that decode through a genuine Image element.
+    const listDecoded = await page.evaluate(async () => {
+      const out = {};
+      for (const [key, sel] of [['cover', '#coverBox'], ['paper', '.white-profile-stage']]) {
+        const bg = getComputedStyle(document.querySelector(sel)).backgroundImage;
+        const m = bg.match(/url\("?(blob:[^")]+)"?\)/);
+        if (!m) { out[key] = { ok: false, bg }; continue; }
+        const r = await fetch(m[1]); const b = await r.blob();
+        const img = new Image();
+        await new Promise((res, rej) => { img.onload = res; img.onerror = rej; img.src = m[1]; });
+        out[key] = { ok: img.naturalWidth > 0 && img.naturalHeight > 0, w: img.naturalWidth, h: img.naturalHeight, size: b.size, type: b.type };
+      }
+      return out;
+    });
+    assert.ok(listDecoded.cover.ok, width + 'px list cover blob decodes to a real image: ' + JSON.stringify(listDecoded.cover));
+    assert.ok(listDecoded.paper.ok, width + 'px list paper blob decodes to a real image: ' + JSON.stringify(listDecoded.paper));
     assert.ok(list.overflow.sw <= list.overflow.cw + 1, width + 'px list has no horizontal overflow');
 
     // Reload: list theme persists.
@@ -308,12 +372,7 @@ try {
     await gotoWorkbench(page);
     await page.click('[data-tab="detail"]');
     await delay(120);
-    const imageData = await page.evaluate(() => {
-      const c = document.createElement('canvas'); c.width = 16; c.height = 12;
-      const x = c.getContext('2d'); x.fillStyle = '#6b6b6b'; x.fillRect(0, 0, 16, 12);
-      return c.toDataURL('image/png');
-    });
-    const imageBuffer = Buffer.from(imageData.slice(imageData.indexOf(',') + 1), 'base64');
+    const imageBuffer = await syntheticPngBuffer(page, '#6b6b6b');
     await page.locator('#imageSlots .image-slot').first().locator('button').first().click();
     await page.locator('#imageFile').setInputFiles({ name: 'synthetic-bg.png', mimeType: 'image/png', buffer: imageBuffer });
     await page.waitForFunction(() => /^as_[A-Z2-7]{32}$/.test((window.MAOMAOThemeStudio._draftSnapshot().detail || {}).chatImage || ''), { timeout: 13000 });
@@ -328,15 +387,13 @@ try {
     await delay(300);
     detail = await readDetail(page);
     assert.equal(detail.imageFlag, '1', width + 'px detail image flag set on real stage');
-    const decoded = await page.evaluate(async () => {
-      const bg = getComputedStyle(document.querySelector('.chat-stage')).backgroundImage;
-      const m = bg.match(/url\("?(blob:[^")]+)"?\)/);
-      if (!m) return { bg, ok: false };
-      const r = await fetch(m[1]); const b = await r.blob();
-      return { bg, ok: b.size > 0 && b.type.startsWith('image/'), size: b.size, type: b.type };
-    });
-    assert.ok(decoded.ok, width + 'px stage background blob decodes to a non-empty image: ' + decoded.bg);
+    const stageBg = await page.evaluate(() => getComputedStyle(document.querySelector('.chat-stage')).backgroundImage);
+    const stageBlob = (stageBg.match(/url\("?(blob:[^")]+)"?\)/) || [])[1];
+    assert.ok(stageBlob, width + 'px stage carries a blob background image: ' + stageBg);
+    const decoded = await decodeBlobUrl(page, stageBlob);
+    assert.ok(decoded.w > 0 && decoded.h > 0 && decoded.size > 0, width + 'px stage background decodes to a real image: ' + JSON.stringify(decoded));
 
+    const snapshotBefore = await storageSnapshot(page);
     const historyBefore = await page.evaluate(() =>
       JSON.parse(localStorage.getItem('chat_history_role-a') || '[]').map(m => [m.role, m.text]));
     const beautyBefore = await beautyKeys(page);
@@ -350,12 +407,18 @@ try {
     await delay(300);
     detail = await readDetail(page);
     assert.equal(detail.imageFlag, null, width + 'px detail image flag dropped after disable');
+    // The previously released lease blob must no longer be referenced by the stage.
+    const stageBgAfter = await page.evaluate(() => getComputedStyle(document.querySelector('.chat-stage')).backgroundImage);
+    assert.ok(!stageBgAfter.includes(stageBlob), width + 'px released stage blob URL is no longer referenced');
     const assetKept = await page.evaluate(id => window.MAOMAOThemeStudioAssets.resolve(id).then(a => !!(a && a.url)), bgAssetId);
     assert.equal(assetKept, true, width + 'px underlying background asset survives workbench disable');
     const historyAfter = await page.evaluate(() =>
       JSON.parse(localStorage.getItem('chat_history_role-a') || '[]').map(m => [m.role, m.text]));
     assert.deepEqual(historyAfter, historyBefore, width + 'px chat history preserved through disable');
     assert.deepEqual(await beautyKeys(page), beautyBefore, width + 'px beauty store preserved through disable');
+    // Every non-workbench stored entry (characters, history, beauty, legacy preset)
+    // is byte-for-byte preserved; only the studio key itself may change.
+    assert.deepEqual(await storageSnapshot(page), snapshotBefore, width + 'px full non-studio storage snapshot preserved through disable');
 
     // Re-enable detail so later preset/bubble assertions run against an applied shell.
     await gotoWorkbench(page);
@@ -433,6 +496,36 @@ try {
     const dAcleared = await readDetail(page);
     assertColor(dAcleared.myBg, '#222222', width + 'px cleared role-a sent bubble restores global background');
 
+    // Clear the remaining global override too: resolve returns the light defaults,
+    // the beauty marker drops on the real page, and no saved bubble override remains.
+    await gotoWorkbench(page);
+    await page.click('[data-tab="bubble"]');
+    await delay(120);
+    await page.selectOption('#bubbleScope', 'global');
+    await delay(100);
+    await page.click('#disableButton');
+    await delay(200);
+    const bareA = await resolveBubble(page, 'role-a');
+    assert.equal(bareA.myBubbleBg, '#18181A', width + 'px cleared global falls back to light default my bubble');
+    assert.equal(bareA.partnerBubbleBg, '#E5E5EA', width + 'px cleared global falls back to light default partner bubble');
+
+    await page.goto(origin + '/chat/chat/chat-detail.html?id=role-a', { waitUntil: 'domcontentloaded' });
+    await page.waitForSelector('.msg-bubble', { timeout: 15000 });
+    await delay(300);
+    const dBare = await readDetail(page);
+    assert.equal(dBare.beauty, null, width + 'px beauty marker drops when no bubble override remains');
+
+    // Re-apply the global customization so later preset / same-shell checks keep a saved beauty layer.
+    await gotoWorkbench(page);
+    await page.click('[data-tab="bubble"]');
+    await delay(120);
+    await page.selectOption('#bubbleScope', 'global');
+    await delay(100);
+    await setField(page, 'partnerBubbleBg', '#333333');
+    await setField(page, 'myBubbleBg', '#222222');
+    await page.click('#applyButton');
+    await delay(200);
+
     // Quick scope switch: an unsaved draft stays scoped to its own role and must
     // not leak onto another role's baseline when switching back and forth.
     await gotoWorkbench(page);
@@ -462,19 +555,27 @@ try {
     state = await studioState(page);
     assert.equal(state.detail.headerText, '#222222', width + 'px unapplied detail draft does not overwrite stored value');
 
-    // 6. Rejected (quota) write must not fake success or mutate the store.
+    // 6. Rejected (quota) write must not fake success or mutate the store. The
+    //    failure is injected on the Storage prototype (not an instance shadow) so
+    //    every write path hits it reliably; the failure notice must surface.
     const beforeQuota = await studioState(page);
     await page.evaluate(() => {
-      const original = localStorage.setItem.bind(localStorage);
-      localStorage.setItem = function () { throw new Error('QuotaExceededError'); };
-      localStorage.setItem._original = original;
+      const proto = Object.getPrototypeOf(localStorage);
+      proto.__origSetItem = proto.setItem;
+      proto.setItem = function () { throw new Error('QuotaExceededError'); };
     });
     await setField(page, 'headerText', '#888888');
     await page.click('#applyButton');
     await delay(120);
     const afterQuota = await studioState(page);
     assert.deepEqual(afterQuota, beforeQuota, width + 'px quota failure keeps store unchanged');
-    await page.evaluate(() => { localStorage.setItem = localStorage.setItem._original; });
+    const quotaNotice = await page.$eval('#notice', el => el.textContent.trim()).catch(() => '');
+    assert.match(quotaNotice, /失败|存储空间/, width + 'px quota failure surfaces an error notice: ' + quotaNotice);
+    await page.evaluate(() => {
+      const proto = Object.getPrototypeOf(localStorage);
+      proto.setItem = proto.__origSetItem;
+      delete proto.__origSetItem;
+    });
 
     // 7. Built-in native / WeChat preset bridge on a real detail page.
     await page.goto(origin + '/chat/chat/chat-detail.html?id=role-a', { waitUntil: 'domcontentloaded' });
