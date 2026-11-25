@@ -612,7 +612,7 @@ async function refreshFeed(){
  :baseUser;
  try{
   toast('正在等社区成员发帖…');
-  const result=await PhoneAPI.completeJSON({system:system,user:user,temperature:0.92,timeoutMs:32000});
+  const result=await PhoneAPI.completeJSON({system:system,user:user,temperature:0.92,timeoutMs:32000,guardWriteScope:true});
   if(!result||!result.ok||!result.data||!Array.isArray(result.data.posts))throw new Error('AI 没有返回有效帖子');
   const data=result.data,now=Date.now(),existingTitles=new Set(posts.map(p=>String(p.title||'').trim()).filter(Boolean));
   const fresh=[];
@@ -782,7 +782,7 @@ function generateRolePosts(targets){
     '\n话题必须从以下列表中选择：'+JSON.stringify(allowedTopics)+
     '\n返回结构：{"posts":[{"roleId":"必须原样对应角色 ID","title":"标题","body":"正文","topic":"必须使用上面列表中的一个话题","imagePrompt":"与正文场景一致的无文字图片描述，不适合配图时留空"}]}'+
     '\n每条标题 4-22 个汉字，正文 35-120 个汉字。内容像真实论坛用户发帖，有具体事件、观察或问题；遵循角色人设和论坛世界书。不要编造现实人物未经证实的负面事实。imagePrompt 应为 20-100 字的具体画面描述，适合生成一张无文字、无水印、1:1 的生活摄影或氛围插画；不要出现现实可识别人物、受版权保护角色或品牌标识；确实没有合适画面时填写空字符串。';
-  PhoneAPI.completeJSON({system:systemPrompt,user:userPrompt,temperature:0.88,timeoutMs:26000}).then(function(result){
+  PhoneAPI.completeJSON({system:systemPrompt,user:userPrompt,temperature:0.88,timeoutMs:26000,guardWriteScope:true}).then(function(result){
     if(!result||!result.ok||!result.data||!Array.isArray(result.data.posts))return;
     let changed=false;
     result.data.posts.forEach(function(item){
@@ -791,7 +791,7 @@ function generateRolePosts(targets){
       if(!requested.some(r=>r.roleId===roleId))return;
       const request=requested.find(r=>r.roleId===roleId);
       const post=request&&posts.find(p=>String(p.id)===request.postId&&p.themeId===theme.id);
-      if(!post)return;
+      if(!post||String(post.roleId||'')!==roleId||post.owner!=='role')return;
       const title=String(item.title||'').trim().slice(0,80);
       const body=String(item.body||'').trim().slice(0,400);
       if(!title&&!body)return;

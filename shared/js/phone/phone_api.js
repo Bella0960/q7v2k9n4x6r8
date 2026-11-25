@@ -25,6 +25,44 @@
     NS.supportsAbortSignal = true;
 
     var DEFAULT_TIMEOUT = 15000;
+    // Write-sensitive callers use the existing account namespace and session.
+    NS.captureWriteScope = function () {
+        var scope = global.__MAO_ACCOUNT_SCOPE__;
+        var host = global.location && global.location.hostname;
+        if (scope && scope.ready === true && /^MAO-[A-Z0-9]{12,24}$/.test(String(scope.accountId))) {
+            return Object.freeze({ accountId: String(scope.accountId), role: String(scope.role || ''), scope: scope });
+        }
+        if (!scope && (!host || /^(localhost|127\.0\.0\.1|\[::1\])$/.test(host))) return Object.freeze({ local: true });
+        return null;
+    };
+    NS.isWriteScopeCurrent = function (ticket) {
+        if (!ticket) return false;
+        if (ticket.local) return !global.__MAO_ACCOUNT_SCOPE__ && !!NS.captureWriteScope()?.local;
+        var scope = global.__MAO_ACCOUNT_SCOPE__;
+        return scope === ticket.scope && scope.ready === true &&
+            String(scope.accountId) === ticket.accountId && String(scope.role || '') === ticket.role;
+    };
+    NS.verifyWriteScope = async function (ticket) {
+        if (!NS.isWriteScopeCurrent(ticket)) return false;
+        if (ticket.local) return true;
+        var controller = new AbortController();
+        var timer = setTimeout(function () { controller.abort(); }, 8000);
+        try {
+            var response = await fetch('/api/accounts/me', {
+                method: 'GET', credentials: 'same-origin', cache: 'no-store',
+                headers: { 'accept': 'application/json', 'x-mao-account-context': ticket.accountId },
+                signal: controller.signal
+            });
+            if (!response.ok) return false;
+            var payload = await response.json(), account = payload && payload.account;
+            return NS.isWriteScopeCurrent(ticket) && !!account && account.id === ticket.accountId &&
+                account.role === ticket.role && account.status === 'active';
+        } catch (e) { return false; }
+        finally { clearTimeout(timer); }
+    };
+    NS.requireWriteScope = async function (ticket) {
+        if (!await NS.verifyWriteScope(ticket)) throw new Error('账号会话已变化或无法核实，本次结果未保存');
+    };
 
     function observeRequest(url, messages) {
         try {
@@ -287,7 +325,11 @@
     }
 
     NS.completeJSON = function (opts) {
-        return NS.complete(opts).then(function (raw) {
+        var guarded = opts && opts.guardWriteScope === true;
+        var ticket = guarded ? NS.captureWriteScope() : null;
+        var start = guarded ? NS.requireWriteScope(ticket).then(function () { return NS.complete(opts); }) : NS.complete(opts);
+        return start.then(async function (raw) {
+            if (guarded) await NS.requireWriteScope(ticket);
             var parsed = cleanJSON(raw);
             if (opts.onDiagnostic) reportDiagnostic(opts, { stage: 'parse', ok: parsed.ok });
             return parsed;

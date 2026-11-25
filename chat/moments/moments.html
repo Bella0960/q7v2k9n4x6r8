@@ -1082,6 +1082,11 @@ a:active, button:active, [role="button"]:active { transform: scale(0.97); }</sty
             if (!userComment && postActor.type !== 'USER_SELF') return;
             if (userComment && (postActor.type !== 'AI_ROLE' || postActor.id !== String(role.id))) return;
             if (!momentVisibleToRole(post, role.id)) return;
+            var api = window.PhoneAPI;
+            if (!api || typeof api.captureWriteScope !== 'function') return;
+            var accountTicket = api.captureWriteScope();
+            if (!api.isWriteScopeCurrent(accountTicket)) return;
+            var roleSnapshot = JSON.stringify([role.id,role.name,role.persona,role.prompt,role.description,role.tone]);
             var config = getApiConfig();
             var apiKey = String(config.apiKey || '').trim();
             if (!apiKey) return;
@@ -1116,7 +1121,7 @@ a:active, button:active, [role="button"]:active { transform: scale(0.97); }</sty
             var startedAt = Date.now();
             var controller = new AbortController();
             var timeoutId = setTimeout(function () { controller.abort(); }, 20000);
-            fetch(baseUrl + '/chat/completions', {
+            api.requireWriteScope(accountTicket).then(function () { return fetch(baseUrl + '/chat/completions', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + apiKey },
                 signal: controller.signal,
@@ -1129,7 +1134,7 @@ a:active, button:active, [role="button"]:active { transform: scale(0.97); }</sty
                     temperature: config.temperature != null ? config.temperature : 0.8,
                     stream: false
                 })
-            }).then(function (response) {
+            }); }).then(function (response) {
                 if (!response.ok) {
                     return response.text().then(function (body) {
                         var detail = body;
@@ -1138,13 +1143,17 @@ a:active, button:active, [role="button"]:active { transform: scale(0.97); }</sty
                     });
                 }
                 return response.json();
-            }).then(function (data) {
+            }).then(async function (data) {
+                await api.requireWriteScope(accountTicket);
+                var liveRole = getCharacterList().find(function (r) { return String(r.id) === String(role.id); });
+                if (!liveRole || JSON.stringify([liveRole.id,liveRole.name,liveRole.persona,liveRole.prompt,liveRole.description,liveRole.tone]) !== roleSnapshot) return;
                 var reply = (((data || {}).choices || [])[0] || {}).message
                     ? data.choices[0].message.content : '';
                 reply = String(reply || '').replace(/^[“”"「」]+|[“”"「」]+$/g, '').replace(/^评论[:：]\s*/, '').trim();
                 if (!reply) throw new Error('角色没有返回评论');
                 reply = reply.slice(0, 160);
 
+                if (!api.isWriteScopeCurrent(accountTicket)) return;
                 var saved = loadMoments();
                 var target = findPost(saved, post.id);
                 if (!target || !sameMomentActor(momentActor(target, false), postActor) || !momentVisibleToRole(target, role.id) || !getCharacterList().some(function (r) { return String(r.id) === String(role.id); })) return;
@@ -1221,6 +1230,9 @@ a:active, button:active, [role="button"]:active { transform: scale(0.97); }</sty
             var action = window.MomentsChatAction;
             if (!action || !window.PhoneAPI) { showToast('发布模块暂不可用'); return; }
             var role = action.resolveRole(getCharacterList(), selectedId);
+            var api = window.PhoneAPI;
+            var accountTicket = api.captureWriteScope();
+            if (!api.isWriteScopeCurrent(accountTicket)) return;
             if (!role) { showToast('请先选择要发动态的角色'); return; }
             var config = getApiConfig();
             if (!String(config.apiKey || '').trim()) { showToast('请先到设置页配置 API Key'); return; }
@@ -1235,20 +1247,28 @@ a:active, button:active, [role="button"]:active { transform: scale(0.97); }</sty
             }
             var requestId = (window.crypto && typeof window.crypto.randomUUID === 'function')
                 ? window.crypto.randomUUID() : Date.now() + '_' + Math.random().toString(36).slice(2);
+            var roleSnapshot = JSON.stringify([role.id,role.name,role.persona,role.prompt,role.tone]);
+            function canPublish() {
+                var live = action.resolveRole(getCharacterList(), selectedId);
+                return api.isWriteScopeCurrent(accountTicket) && !!live && JSON.stringify([live.id,live.name,live.persona,live.prompt,live.tone]) === roleSnapshot;
+            }
             aiBtn.disabled = true;
             showToast((role.name || 'TA') + ' 正在构思…');
-            Promise.resolve().then(function () {
+            api.requireWriteScope(accountTicket).then(function () {
+                if (!canPublish()) throw new Error('角色上下文已变化');
                 return window.PhoneAPI.complete({
                     system: systemPrompt,
                     user: '以你自己的身份发布此刻的日常动态。',
                     timeoutMs: 30000
                 });
             }).then(async function (result) {
+                await api.requireWriteScope(accountTicket);
+                if (!canPublish()) throw new Error('角色上下文已变化');
                 var content = action.parsePost(result);
                 if (!content) throw new Error('模型没有返回可发布正文');
                 var post = await action.publishLocked({
                     roleId: selectedId, requestId: requestId, content: content,
-                    source: 'menu', storage: localStorage, getCharacters: getCharacterList
+                    source: 'menu', storage: localStorage, getCharacters: getCharacterList, canPublish: canPublish
                 });
                 renderMoments();
                 showToast((post.author || 'TA') + ' 发布了新动态');

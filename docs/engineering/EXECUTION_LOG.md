@@ -723,3 +723,7 @@ Previous candidate eba01f58 passed real public verify 45546043225 (no deployment
 
 ### SOCIAL-IDENTITY-001 third patch | 2026-11-25
 Previous candidate 42330588 passed public verify 45547443279, not deployed. Removes legacy alias matching from voice samples, rejects failed/private content and conflicting group-user emotion signals, adds stable actor IDs to long-range recall and keeps identical text from different speakers distinct; group quotes require original mid in supplied history and omit unverified/private snapshot from AI context (stored/UI quote preserved); cross-app context distinguishes received/assistant from sent/user and filters mismatched memory sourceRoleId in existing role bucket. No UI or data migration. New tests added. Full public QA and account-switch/remaining apps not verified.
+
+
+### SOCIAL-IDENTITY-001 fourth patch | account request fence
+Previous candidate 89a93c8f passed public QA 45548703261; not deployed. Added opt-in PhoneAPI session guard to forum JSON AI, Moments raw comments/menu publication capture original account and role profile, verify session before and after model calls, recheck local scope and role before write/lock. Forum gossip/manual reply rejects replaced post; role post validates role ID and ownership. No authentication core, namespace or data migration changes. Syntax checks passed; new account-fence tests added; full Node/Chromium not yet verified. Remaining: chat streaming, media uploads, other continuation paths and apps, physical account-switch test.
