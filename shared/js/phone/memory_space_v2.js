@@ -2,7 +2,7 @@
 (function () {
   'use strict';
   var $ = function (selector, root) { return (root || document).querySelector(selector); };
-  var roleId = '', pageSize = 40, query = '', fullHistory = [];
+  var roleId = '', pageSize = 40, query = '', fullHistory = [], searchTimer = null;
 
   function esc(value) {
     return String(value == null ? '' : value).replace(/[&<>"']/g, function (c) {
@@ -48,7 +48,14 @@
     if (!m || m.isError || m.role === 'system_error') return '';
     return clean(m.text || m.content || m.desc || '');
   }
-  function msgRole(m) { return ['sent','user'].indexOf(m && m.role) >= 0 ? '你' : '角色'; }
+  function msgRole(m) {
+    if (['sent','user'].indexOf(m && m.role) >= 0) return '用户';
+    if (['received','assistant'].indexOf(m && m.role) >= 0) return '角色消息';
+    return '未识别发言者';
+  }
+  function sourceFingerprint(m) {
+    return JSON.stringify(m || null);
+  }
 
   function addStyles() {
     if ($('#memory-archive-v2-style')) return;
@@ -94,9 +101,8 @@
     panel.className = 'memory-overview';
     panel.id = 'memory-overview';
     panel.innerHTML =
-      '<div class="memory-overview-kicker">MEMORY / CONTINUITY</div>' +
-      '<div class="memory-overview-title">不是一段摘要。<br><em>是你们真正经历过的时间。</em></div>' +
-      '<p class="memory-overview-note">原始对话完整保留。重要的事情单独强化，旧话题需要时再查找。不必每次把所有历史发给模型。</p>' +
+      '<div class="memory-overview-title">档案概览</div>' +
+      '<p class="memory-overview-note">历史记录与长期记忆分开保存。仅显示当前会话的数据。</p>' +
       '<div class="memory-metrics">' +
         '<div><span>真实消息</span><strong id="memory-stat-messages">0</strong></div>' +
         '<div><span>长期记忆</span><strong id="memory-stat-long">0</strong></div>' +
@@ -129,7 +135,9 @@
     more.textContent = '加载更早的记录';
     list.insertAdjacentElement('afterend', more);
     $('#memory-archive-search', tools).addEventListener('input', function () {
-      query = String(this.value || '').trim().toLowerCase(); pageSize = 40; renderTimeline();
+      query = String(this.value || '').trim().toLowerCase(); pageSize = 40;
+      clearTimeout(searchTimer);
+      searchTimer = setTimeout(renderTimeline, 180);
     });
     more.addEventListener('click', function () { pageSize += 40; renderTimeline(); });
     $('#memory-open-archive').addEventListener('click', function () {
@@ -137,10 +145,11 @@
       if (open) open.click();
     });
   }
-  function updateDashboard() {
+  function updateDashboard(history, memories) {
     var active = getActive();
-    roleId = active ? active.id : '';
-    var history = readHistory(roleId), memories = readMemories(roleId);
+    var id = active ? active.id : '';
+    history = Array.isArray(history) ? history : readHistory(id);
+    memories = Array.isArray(memories) ? memories : readMemories(id);
     var texts = history.filter(function (m) { return !!msgText(m); });
     var set = function (id, value) { var el = $('#' + id); if (el) el.textContent = String(value); };
     set('memory-stat-messages', texts.length.toLocaleString('zh-CN'));
@@ -171,21 +180,20 @@
     var active = getActive();
     roleId = active ? active.id : '';
     fullHistory = readHistory(roleId);
-    var records = [];
-    fullHistory.forEach(function (m,index) {
-      var text = msgText(m);
-      if (text) records.push({ index:index, message:m, text:text });
-    });
-    var filtered = query ? records.filter(function (entry) {
-      return (entry.text + ' ' + msgRole(entry.message)).toLowerCase().indexOf(query) >= 0;
-    }) : records;
-    filtered.reverse();
-    var shown = filtered.slice(0,pageSize);
+    var shown = [], total = 0, matched = 0;
+    var memories = readMemories(roleId);
+    for (var i = fullHistory.length - 1; i >= 0; i--) {
+      var message = fullHistory[i], text = msgText(message);
+      if (!text) continue;
+      total++;
+      if (query && (text + ' ' + msgRole(message)).toLowerCase().indexOf(query) < 0) continue;
+      matched++;
+      if (shown.length < pageSize) shown.push({index:i, message:message, text:text});
+    }
     if (!roleId) list.innerHTML = '<div class="memory-archive-empty">先选择一个角色，查看属于你们的完整对话。</div>';
-    else if (!records.length) list.innerHTML = '<div class="memory-archive-empty">这个角色还没有可回看的文字记录。</div>';
+    else if (!total) list.innerHTML = '<div class="memory-archive-empty">这个角色还没有可回看的文字记录。</div>';
     else if (!shown.length) list.innerHTML = '<div class="memory-archive-empty">没有找到匹配内容。试试更短的关键词。</div>';
     else {
-      var memories = readMemories(roleId);
       list.innerHTML = shown.map(function (entry) {
         var m = entry.message, original = entry.text, content = original.length > 260 ? original.slice(0,260) + '…' : original;
         var sourceExcerpt = original.slice(0, 600);
@@ -202,18 +210,43 @@
       }).join('');
     }
     if (more) {
-      more.hidden = filtered.length <= pageSize;
+      more.hidden = matched <= pageSize;
       if (!more.hidden) more.textContent = '加载更早的 40 条';
     }
-    updateDashboard();
+    updateDashboard(fullHistory, memories);
   }
   function onRememberClick(event) {
     var button = event.target.closest('.memory-save-as-longterm');
     if (!button || button.disabled) return;
     var index = Number(button.getAttribute('data-index')), m = fullHistory[index], text = msgText(m);
-    if (!roleId || !text || !window.MemoryRecall) return;
-    var result = window.MemoryRecall.upsertMemory(roleId, {
-      content:text, category:'detail', importance:3, status:'confirmed',
+    var active = getActive();
+    var boundRoleId = roleId;
+    if (!boundRoleId || !active || active.id !== boundRoleId || !text || !window.MemoryRecall) return;
+    var fresh = readHistory(boundRoleId)[index];
+    if (!fresh || sourceFingerprint(fresh) !== sourceFingerprint(m)) {
+      renderTimeline();
+      return;
+    }
+    // Unknown senders and group messages cannot be promoted into a private factual memory.
+    // Group IDs use the existing g-prefix conversation contract.
+    if (boundRoleId.charAt(0) === 'g' || msgRole(m) === '未识别发言者') {
+      button.textContent = boundRoleId.charAt(0) === 'g' ? '群聊记录暂不支持直接转入记忆' : '发言身份不明，未加入记忆';
+      button.disabled = true;
+      return;
+    }
+    var existing = readMemories(boundRoleId);
+    var key = window.MemoryRecall.normalize(text.slice(0,600));
+    if (existing.some(function(item) { return item && window.MemoryRecall.normalize(item.content || item.text || '') === key; })) {
+      button.textContent = '相同内容已在记忆库，请核对来源';
+      button.disabled = true;
+      return;
+    }
+    if (existing.length >= 300) {
+      button.textContent = '记忆库已满，原文仍保留';
+      return;
+    }
+    var result = window.MemoryRecall.upsertMemory(boundRoleId, {
+      content:text, category:'detail', importance:3, status:msgRole(m) === '用户' ? 'confirmed' : 'pending',
       source:'chat-archive', sourceMessageTime:Number(m.time || m.timestamp) || Date.now(),
       sourceMessageIndex:index
     });
@@ -229,11 +262,12 @@
     if (list) list.addEventListener('click', onRememberClick);
     var picker = $('#charPicker');
     if (picker) picker.addEventListener('click', function () {
+      clearTimeout(searchTimer);
       query = ''; pageSize = 40;
       var input = $('#memory-archive-search'); if (input) input.value = '';
       renderTimeline();
     });
-    renderTimeline(); updateDashboard();
+    renderTimeline();
     $('#memory-open-archive')?.addEventListener('click', function () {
       var open = $('.mem-preview-open'); if (open) open.click();
     });
