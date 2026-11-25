@@ -45,8 +45,13 @@
       if (global.PhoneStorage && global.PhoneStorage.saveMemories) {
         return !!global.PhoneStorage.saveMemories(roleId, list || []);
       }
-      global.localStorage.setItem('chat_memories_' + roleId, JSON.stringify(list || []));
-      return true;
+      var storageKey = 'chat_memories_' + roleId;
+      var prior = global.localStorage.getItem(storageKey);
+      if (prior != null && !Array.isArray(JSON.parse(prior))) return false;
+      if (!Array.isArray(list)) return false;
+      var serialized = JSON.stringify(list);
+      global.localStorage.setItem(storageKey, serialized);
+      return global.localStorage.getItem(storageKey) === serialized;
     } catch (e) { return false; }
   }
   function memoryValue(item) {
@@ -66,16 +71,22 @@
     var content = cleanText(input.content || input.text || '');
     if (!roleId || !content) return { ok: false, reason: 'empty' };
     content = content.slice(0, 600);
-    var key = normalize(content), list = getMemories(roleId).filter(Boolean), now = Date.now();
-    var existing = list.find(function (item) { return normalize(item && (item.content || item.text || '')) === key; });
+    if (input.sourceRoleId != null && String(input.sourceRoleId) !== String(roleId)) return { ok: false, reason: 'scope-mismatch' };
+    var key = normalize(content), list = getMemories(roleId), now = Date.now();
+    if (!Array.isArray(list) || list.some(function(item) { return !item || typeof item !== 'object' || Array.isArray(item); })) return { ok: false, reason: 'invalid-existing-data' };
+    var existing = list.find(function (item) {
+      return item.sourceRoleId != null && String(item.sourceRoleId) === String(roleId) &&
+        (item.source || 'manual') === (input.source || 'manual') &&
+        ['sourceMessageTime','sourceMessageIndex','sourceStartIndex','sourceEndIndex'].every(function(field) {
+          return (item[field] == null && input[field] == null) || item[field] === input[field];
+        }) && key && normalize(item.content || item.text || '') === key;
+    });
     if (existing) {
       existing.reinforcementCount = Math.max(1, Number(existing.reinforcementCount) || 1) + 1;
       existing.lastReinforcedAt = now; existing.updatedAt = now;
       existing.importance = Math.max(1, Math.min(5, Math.max(Number(existing.importance) || 3, Number(input.importance) || 3)));
       if (existing.status !== 'fixed' && input.status === 'fixed') existing.status = 'fixed';
-      ['source','sourceMessageTime','sourceMessageIndex','sourceStartIndex','sourceEndIndex'].forEach(function (key) {
-        if (input[key] != null) existing[key] = input[key];
-      });
+      // Never replace original provenance with a later source.
       return saveMemories(roleId, list) ? { ok: true, duplicate: true, memory: existing } : { ok: false, reason: 'save-failed' };
     }
     var category = ['key','plot','detail','anniversary','preference'].indexOf(input.category) >= 0 ? input.category : 'detail';
@@ -91,15 +102,10 @@
     ['sourceMessageTime','sourceMessageIndex','sourceStartIndex','sourceEndIndex'].forEach(function (key) {
       if (input[key] != null) memory[key] = input[key];
     });
+    // Keep the legacy storage guard until a verified IndexedDB migration exists.
+    // Reject new entries at capacity; never evict previously stored memories.
+    if (list.length >= 300) return { ok: false, reason: 'capacity' };
     list.push(memory);
-    if (list.length > 300) {
-      var pinned = list.filter(function (item) { return item.status === 'fixed'; });
-      var rest = list.filter(function (item) { return item.status !== 'fixed'; })
-        .map(function (item) { return { item: item, score: memoryValue(item) }; })
-        .sort(function (a,b) { return b.score - a.score; })
-        .slice(0, Math.max(0, 300 - pinned.length)).map(function (entry) { return entry.item; });
-      list = pinned.concat(rest);
-    }
     return saveMemories(roleId, list) ? { ok: true, duplicate: false, memory: memory } : { ok: false, reason: 'save-failed' };
   }
   function searchHistoryMessages(history, query, options) {
