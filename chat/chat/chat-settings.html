@@ -6,7 +6,7 @@
 <title>对话设置 · 小手机</title>
 <script src="../../shared/js/font-loader.js?v=20261022v1"></script>
 <script src="../../shared/js/native-feel.js"></script>
-<script src="../../shared/js/wallpaper-store.js?v=20261026v2"></script>
+<script src="../../shared/js/wallpaper-store.js?v=20261125g1"></script>
 <script src="../../shared/js/phone/phone_storage.js"></script>
 <script src="../../shared/js/phone/storage/media-repository.js?v=20261107v2"></script>
 <script src="../../shared/js/phone/group-portraits.js?v=20261125g4"></script>
@@ -2833,8 +2833,25 @@
   var bgFileInput = document.getElementById('bgFileInput');
   var bgSub = document.getElementById('bgSub');
   var wallpaperStore = window.MAOMAOWallpaperStore;
+  var groupBackgroundSelection=null;
+  function groupBackgroundScope(){
+    var group=isGroupSetting&&loadCurrentGroup();
+    return group?groupReadSnapshots.get(group):null;
+  }
+  function groupBackgroundCheck(scope){
+    return !!scope&&window.MAOGroupWriteGuard.matches(scope);
+  }
 
   function readBackgroundImage() {
+    if(isGroupSetting){
+      var scope=groupBackgroundScope();
+      if(!scope)return Promise.resolve('');
+      var check=function(){return groupBackgroundCheck(scope);};
+      if(!wallpaperStore||typeof wallpaperStore.snapshotGroupBackground!=='function')return Promise.resolve('');
+      return wallpaperStore.snapshotGroupBackground(BG_KEY,check).then(function(s){return check()?s.image||s.legacy||'':'';}).catch(function(){
+        try{return check()?localStorage.getItem(BG_KEY)||'':'';}catch(error){return '';}
+      });
+    }
     if (wallpaperStore && typeof wallpaperStore.getByKey === 'function') {
       return wallpaperStore.getByKey(BG_KEY);
     }
@@ -2923,7 +2940,14 @@
     });
   }
 
-  function saveBackgroundImage(dataUrl) {
+  function saveBackgroundImage(dataUrl,selection) {
+    if(isGroupSetting){
+      if(!selection||!groupBackgroundCheck(selection.scope))return Promise.reject(new Error('群资料已变化，请重新选择'));
+      return selection.snapshot.then(function(snapshot){
+        if(!snapshot)throw new Error('群背景存储不可用，请重新选择');
+        return wallpaperStore.saveGroupBackground(snapshot,dataUrl,function(){return groupBackgroundCheck(selection.scope);});
+      });
+    }
     if (wallpaperStore && typeof wallpaperStore.saveByKey === 'function') {
       return wallpaperStore.saveByKey(BG_KEY, dataUrl);
     }
@@ -2937,18 +2961,26 @@
 
   if (actionBackground && bgFileInput) {
     actionBackground.addEventListener('click', function () {
+      if(isGroupSetting){
+        var scope=groupBackgroundScope();
+        if(!scope||!wallpaperStore||typeof wallpaperStore.snapshotGroupBackground!=='function'||typeof wallpaperStore.saveGroupBackground!=='function'){showToast('群背景暂不可用，请重新进入');return;}
+        groupBackgroundSelection={scope:scope,snapshot:wallpaperStore.snapshotGroupBackground(BG_KEY,function(){return groupBackgroundCheck(scope);}).catch(function(){return null;})};
+      }
       bgFileInput.click();
     });
 
     bgFileInput.addEventListener('change', function () {
       var file = bgFileInput.files && bgFileInput.files[0];
       if (!file) return;
+      var selection=groupBackgroundSelection;groupBackgroundSelection=null;
+      if(isGroupSetting&&(!selection||!groupBackgroundCheck(selection.scope))){showToast('群资料已变化，请重新选择');bgFileInput.value='';return;}
       showToast('正在处理壁纸…');
       bgFileInput.disabled = true;
 
       compressImageFile(file).then(function (dataUrl) {
-        return saveBackgroundImage(dataUrl);
-      }).then(function () {
+        return saveBackgroundImage(dataUrl,selection);
+      }).then(function (saved) {
+        if(isGroupSetting&&(saved!==true||!groupBackgroundCheck(selection.scope)))throw new Error('群背景保存结果待确认，请重新进入');
         refreshBgSub();
         showToast('聊天壁纸已更新');
       }).catch(function (error) {
