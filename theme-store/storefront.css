@@ -36,37 +36,6 @@
 }
 
 
-/* The original project-owned theme cards now sit on the new two-column shop shelf.
- * Original images, preset IDs, independent theme apply and list-theme actions remain untouched. */
-.store-app .product-grid{
- display:grid;grid-template-columns:repeat(2,minmax(0,1fr));
- gap:17px 11px;padding:0 0 12px;overflow:visible;
- scroll-snap-type:none;scroll-behavior:auto;touch-action:auto;
- cursor:default;user-select:auto;-webkit-user-select:auto;
-}
-.store-app .product-grid .product-card{
- min-width:0;width:100%;min-height:0;flex:none;will-change:auto;
- padding:10px;gap:9px;border-radius:15px;
-}
-.store-app .product-grid .product-art{height:117px;min-height:117px;border-radius:10px}
-.store-app .product-grid .product-title{font-size:12px;line-height:1.4}
-.store-app .product-grid .product-desc{font-size:9px;line-height:1.6}
-.store-app .product-grid .product-foot{
- display:grid;grid-template-columns:repeat(2,minmax(0,1fr));
- gap:6px;margin-top:auto;
-}
-.store-app .product-grid .product-price{grid-column:1 / -1}
-.store-app .product-grid .action-btn{
- padding:4px 3px;min-height:37px;width:100%;font-size:9px;
- white-space:normal;line-height:1.3;border-radius:12px;
-}
-@media(max-width:360px){
- .store-app .product-grid{gap:12px 8px}
- .store-app .product-grid .product-card{padding:8px;gap:7px}
- .store-app .product-grid .product-art{height:105px;min-height:105px}
-}
-
-
 /* Market polish 2026-11-13: product hierarchy, tactile detail and compact mobile flow.
    Preset-specific theme artwork remains controlled by the original project. */
 .store-app .sf-section-line{margin:16px 0 15px}
@@ -112,28 +81,6 @@
 .store-app .sf-product-meta small{font-size:9px;line-height:1.5;max-width:150px}
 .store-app .sf-favorite{min-height:40px;min-width:40px;margin-top:-4px}
 .store-app .sf-favorite svg{width:18px;height:18px;stroke-width:1.4}
-.store-app .sf-native-section{margin:10px 0 17px}
-.store-app .sf-native-section h3,.store-app .sf-list-theme-section h3{
- font:400 19px/1.2 Georgia,'Songti SC',serif;letter-spacing:-.02em;
-}
-.store-app .sf-native-section p,.store-app .sf-list-theme-section p{font-size:9px}
-.store-app .product-grid{gap:15px 11px}
-.store-app .product-grid .product-card{
- padding:10px;background:#fafafa;
- border:1px solid #f0f0f0;border-radius:15px;
- gap:8px;box-shadow:none;
-}
-.store-app .product-grid .product-art{height:144px;min-height:144px;border-radius:11px}
-.store-app .product-grid .product-meta{display:flex;flex-direction:column;min-width:0}
-.store-app .product-grid .product-eyebrow{font-size:8px;letter-spacing:.08em}
-.store-app .product-grid .product-title{font-size:13px;font-weight:500;line-height:1.35}
-.store-app .product-grid .product-desc{
- display:-webkit-box;-webkit-box-orient:vertical;-webkit-line-clamp:2;
- overflow:hidden;font-size:9px;line-height:1.6;min-height:28px;
-}
-.store-app .product-grid .product-foot{grid-template-columns:repeat(2,minmax(0,1fr));gap:6px}
-.store-app .product-grid .action-btn{min-height:39px;border-radius:11px;font-size:10px}
-.store-app .sf-list-theme-section{margin:27px 0 12px}
 .store-app .market-theme-feature{margin-top:28px}
 .store-app .sf-category{margin:21px 0 24px}
 .store-app .sf-category h3{margin:0 0 11px;font:400 19px/1.25 Georgia,'Songti SC',serif}
@@ -159,9 +106,6 @@
  .store-app .sf-feature h2{font-size:23px}
  .store-app .sf-feature p{-webkit-line-clamp:2;font-size:9px}
  .store-app .sf-native-cover .product-art{height:194px;min-height:194px;max-height:194px}
- .store-app .product-grid .product-art{height:113px;min-height:113px}
- .store-app .product-grid .product-card{padding:8px}
- .store-app .product-grid .action-btn{font-size:9px}
 }
 @media(prefers-reduced-motion:reduce){
  .store-app .sf-native-cover .product-art,.store-app .sf-category-row{transition:none}
@@ -173,7 +117,6 @@
  padding-bottom:calc(23px + env(safe-area-inset-bottom,0px));
 }
 .store-app .category-tab{min-height:49px;gap:6px}
-.store-app .product-grid .action-btn{min-height:43px}
 .store-app .sf-favorite{min-width:44px;min-height:44px}
 .sf-dialog{overscroll-behavior:contain}
 .sf-dialog footer .sf-button{min-height:44px}

@@ -5,7 +5,7 @@ import {fileURLToPath,pathToFileURL} from 'node:url';
 import assert from 'node:assert/strict';
 const root=resolve(dirname(fileURLToPath(import.meta.url)),'..');
 const pw=await import(process.env.PLAYWRIGHT_MODULE||'playwright');
-const server=createServer((req,res)=>{try{const p=resolve(root,'.'+decodeURIComponent(req.url.split('?')[0]));if(!p.startsWith(root+'/'))throw Error();res.setHeader('Content-Type',({'.html':'text/html','.js':'text/javascript','.css':'text/css','.webp':'image/webp'})[extname(p)]||'application/octet-stream');res.end(readFileSync(p));}catch{res.statusCode=404;res.end();}});
+const server=createServer((req,res)=>{try{const p=resolve(root,'.'+decodeURIComponent(req.url.split('?')[0]));const norm=s=>s.replace(/\\/g,'/');if(!norm(p).startsWith(norm(root)+'/'))throw Error();res.setHeader('Content-Type',({'.html':'text/html','.js':'text/javascript','.css':'text/css','.webp':'image/webp'})[extname(p)]||'application/octet-stream');res.end(readFileSync(p));}catch{res.statusCode=404;res.end();}});
 await new Promise(r=>server.listen(0,'127.0.0.1',r));
 const base='http://127.0.0.1:'+server.address().port;
 const browser=await pw.chromium.launch({headless:true,...(process.env.CHROMIUM_PATH?{executablePath:process.env.CHROMIUM_PATH,args:['--no-sandbox','--disable-dev-shm-usage']}: {})});
@@ -124,7 +124,7 @@ for(const width of [320,375,390,430,1280]){
  await page.waitForFunction(async()=>(await MAOMAOWallpaperStore.get()).startsWith('data:image/webp;'));
  assert.ok((await page.evaluate(()=>MAOMAOWallpaperStore.get())).startsWith('data:image/webp;'),'created wallpaper applied via verified indexed store');
  assert.ok(!(await page.evaluate(()=>localStorage.getItem('maomao_market_collection_v1'))).includes('base64'));
- await page.locator('[data-category="categories"]').click();assert.equal(await page.locator('.sf-category-row').count(),9);
+ await page.locator('[data-category="categories"]').click();assert.equal(await page.locator('.sf-category-row').count(),10);
  await page.locator('[data-sf="category"][data-id="bubbles"]').click();await page.waitForSelector('.bubble-list');
  assert.deepEqual(errors,[]);count++;console.log('PASS width '+width+': prioritized native themes, preview isolation, accessible favorites, safe outfit scopes, six theme setters and persistence');await ctx.close();
 }

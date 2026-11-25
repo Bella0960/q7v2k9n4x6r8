@@ -119,8 +119,8 @@ test('expanded theme tab renders native original catalogue instead of replacing 
  assert.match(storefrontSource,/gallery\(api\.themes\)/,'all original theme options remain in actual storefront');
  assert.match(storefrontSource,/nativeArt\(t\)/);
  assert.match(storefrontSource,/function themes\(\)/);
- assert.match(html,/nativeThemes:renderThemes,\s*nativeArt:themeArt/);
- assert.match(html,/function renderThemes\(\)/);
+ assert.match(html,/nativeArt:themeArt,\s*listCard:renderChatListCard/);
+ assert.doesNotMatch(html,/nativeThemes|renderThemes/);
  assert.match(html,/function themeArt\(theme\)/);
  for(const id of ['wechat','qq','silver-butterfly','atmosphere']){
   assert.ok(html.includes("id:'"+id+"'"),'original preset '+id+' is still in native catalogue');
@@ -129,8 +129,8 @@ test('expanded theme tab renders native original catalogue instead of replacing 
   assert.ok(html.includes("theme.id==='"+id+"'"),'special original cover '+id+' is retained');
  }
  assert.match(html,/theme-art-'\+theme\.id/); // QQ/default/iMessage use the original built-in bubble artwork
- assert.ok(html.includes('data-action="theme-apply"'),'original theme-apply control exists');
  assert.ok(html.includes('data-action="chat-list-theme-toggle"'),'original chat-list-theme-toggle control exists');
+ assert.doesNotMatch(html,/data-action="theme-apply"/);
 });
 test('native legacy product details do not pretend to be a live six-screen theme',()=>{
  const start=storefrontSource.indexOf("function detail(id)");
@@ -154,25 +154,27 @@ test('named outfit preview uses original theme artwork only when theme scope is 
  assert.doesNotMatch(preview,/host\.innerHTML=scene\(/);
 });
 
-test('completed theme cards occupy a real two-column shelf, not the old swipe rail',()=>{
- assert.match(storefrontCSS,/\.store-app \.product-grid\s*\{[\s\S]*?display:grid/);
- assert.match(storefrontCSS,/grid-template-columns:repeat\(2,minmax\(0,1fr\)\)/);
- assert.match(html,/getComputedStyle\(rail\)\.display==='grid'/);
+test('completed theme cards render on the new vertical shelf, not the old swipe rail',()=>{
+ assert.match(storefrontSource,/function gallery\(items\)/);
+ assert.match(storefrontSource,/sf-theme-collection/);
+ assert.match(storefrontSource,/sf-theme-item/);
+ assert.doesNotMatch(html,/class="product-grid"/);
+ assert.doesNotMatch(storefrontSource,/enableProductDrag/);
 });
 
 
-test('completed native themes show first and retain the independent list theme and featured product',()=>{
- const first=html.indexOf('function renderThemes(){');
- const end=html.indexOf('function renderBubbles()',first);
- assert.ok(first>0&&end>first);
- const render=html.slice(first,end);
- const grid=render.indexOf('<div class="product-grid">');
- const list=render.indexOf('renderChatListCard()');
- const feature=render.indexOf('market.renderThemeFeature()');
- assert.ok(grid>0&&list>grid&&feature>list,'existing theme grid precedes secondary merchandising');
- assert.match(render,/themeArt\(item\)/);
- assert.match(render,/data-action="theme-apply"/);
- assert.match(render,/data-sf="detail"/);
+test('themes section renders full themes first, then the independent list theme card',()=>{
+ const start=storefrontSource.indexOf('function themes()');
+ const end=storefrontSource.indexOf('function discover()',start);
+ assert.ok(start>0&&end>start);
+ const render=storefrontSource.slice(start,end);
+ const galleryPos=render.indexOf('gallery(api.themes)');
+ const listPos=render.indexOf('api.listCard()');
+ assert.ok(galleryPos>0&&listPos>galleryPos,'full theme gallery precedes the secondary list card');
+ assert.match(render,/sf-theme-list-only/);
+ assert.match(storefrontSource,/'apply-theme'/);
+ assert.match(storefrontSource,/data-sf="detail"/);
+ assert.match(html,/data-action="chat-list-theme-toggle"/);
 });
 test('save current outfit defaults to theme only, never silently capturing icons or wallpaper',()=>{
  assert.match(storefrontSource,/checkboxes\(Object\.keys\(model\.scopes\),\['theme'\]\)/);
@@ -195,7 +197,7 @@ test('existing spotlight shares the storefront preview and confirmation, with no
 });
 test('native shelves, category rows and dialog controls stay usable at narrow phone widths',()=>{
  assert.match(storefrontCSS,/@media\(max-width:360px\)/);
- assert.match(storefrontCSS,/\.store-app \.product-grid \.action-btn/);
+ assert.match(storefrontCSS,/\.store-app \.sf-theme-collection \.sf-button/);
  assert.match(storefrontCSS,/\.store-app \.sf-category-row/);
  assert.match(storefrontCSS,/\.store-app \.sf-favorite/);
 });
@@ -208,7 +210,6 @@ test('native theme artwork avoids the gray-orb thumbnail and every narrow CTA st
  assert.ok(art.includes('class="at-mini-symbol"'));
  assert.ok(!art.includes('class="at-mini-avatar"'));
  assert.match(art,/stroke-width="1\.15"/);
- const render=html.slice(html.indexOf('function renderThemes()'),html.indexOf('function renderBubbles()'));
- assert.match(render,/isOwned\?'应用主题':'免费应用'/);
- assert.doesNotMatch(render,/isOwned\?'应用主题':'免费获取并应用'/);
+ assert.match(storefrontSource,/应用这套主题/);
+ assert.doesNotMatch(html,/免费应用'/);
 });

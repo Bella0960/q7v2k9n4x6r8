@@ -339,7 +339,7 @@ test('legacy owned-theme corruption is not replaced and silent storage failure i
 test('independent Messages list-theme entry avoids off-screen legacy gallery rendering',()=>{
  const html=readFileSync(new URL('../theme-store/theme-store.html',import.meta.url),'utf8');
  const a=html.indexOf('    function renderChatListCard(){');
- const b=html.indexOf('    function renderThemes(){',a);
+ const b=html.indexOf('    function renderBubbles(){',a);
  assert.ok(a>=0&&b>a);
  assert.match(html,/listCard:renderChatListCard/,'standalone adapter used');
  assert.doesNotMatch(html,/listCard:function\(\)\{var box=/,'do not construct six hidden cards');

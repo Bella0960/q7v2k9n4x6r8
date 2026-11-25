@@ -11,8 +11,6 @@
 .store-app .category-tab small{font-size:8px;}
 .store-app .main-content{padding:4px 21px calc(34px + env(safe-area-inset-bottom));}
 .store-app .store-foot{padding:4px 21px max(15px,env(safe-area-inset-bottom));}
-.store-app .product-grid .product-card{flex-basis:min(72vw,273px);min-height:316px;}
-.store-app .product-grid .product-art{height:122px;}
 .market-discover,.market-catalog{display:flex;flex-direction:column;gap:15px;padding:0 0 12px;}
 .market-feature{padding:20px 18px 18px;border:1px solid #dadada;border-radius:15px;
  background:linear-gradient(135deg,#fdfdfc 5%,#e9e9e8 100%);

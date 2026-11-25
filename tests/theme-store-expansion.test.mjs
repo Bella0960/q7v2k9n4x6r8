@@ -47,7 +47,7 @@ test('storefront keeps a four-tab top level; secondary surfaces live under the c
  assert.match(store,/ChatBeauty\.save\(scope,payload\)/);
  assert.match(themeEngine,/NS\.setThemePreset = function \(theme\)/);
  assert.match(store,/theme-art-atmosphere/);
- assert.match(store,/market\.renderThemeFeature\(\)/);
+ assert.match(extension,/renderThemeFeature:renderThemeFeature/);
 });
 test('the featured preview names all five actual supported surfaces and is explicitly sample content',()=>{
  const e=environment(),catalog=e.catalog;

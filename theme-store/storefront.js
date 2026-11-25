@@ -66,7 +66,7 @@ function discover(){
 }
 const categories=[
  ['整套主题',[['themes','完整主题','聊天外观与适配范围']]],
- ['聊天美化',[['bubbles','聊天气泡','全局与角色独立设置'],['beauty','聊天场景','背景、透明度与自定义样式'],['list','聊天首页','留白 Messages 独立布局']]],
+ ['聊天美化',[['bubbles','聊天气泡','全局与角色独立设置'],['beauty','聊天场景','背景、透明度与自定义样式'],['studio','高级主题工作台','气泡与细节的精细编辑'],['list','聊天首页','留白 Messages 独立布局']]],
  ['桌面美化',[['appearance','桌面美化','桌面外观与照片上传'],['wallpapers','壁纸','原创壁纸与自己的图片'],['widgets','小组件','时钟、照片墙、待办等 12 项'],['icons','图标','单个图标与整套图标预设']]],
  ['文字与字体',[['fonts','字体','系统、文件及链接字体']]]
 ];
@@ -216,7 +216,7 @@ async function handle(action,id){
    return;
  }
  if(action==='confirm-apply-theme'){if(!api.applyTheme(id))throw Error('主题未能保存，请检查存储空间');close();return;}
- if(action==='category'){if(['beauty','appearance','icons'].includes(id))return api.market.route(id);api.navigate(id==='list'?'themes':id);if(id==='list')document.querySelector('.chat-list-theme-grid')?.scrollIntoView();return;}
+ if(action==='category'){if(['beauty','appearance','icons','studio'].includes(id))return api.market.route(id);api.navigate(id==='list'?'themes':id);if(id==='list')document.querySelector('.chat-list-theme-grid')?.scrollIntoView();return;}
  if(action==='mine-tab'){mineTab=id;api.render();return;}
  if(action==='save-outfit'){modal('保存当前搭配','<label class="sf-field">搭配名称<input id="sfName" maxlength="40" placeholder="例如：周末的留白"></label>'+checkboxes(Object.keys(model.scopes),['theme'])+'<p class="sf-caption">默认只保存当前聊天主题。其他范围按需勾选；气泡使用当前所选角色；图标引用「桌面图标」内已保存的套装.背景、头像、名片不随搭配复制。</p>'+button('保存搭配','confirm-save','','sf-button primary'));return;}
  if(action==='confirm-save'){await model.saveOutfit(overlay.querySelector('#sfName').value,selected(),api.scope());close();api.render();api.toast('搭配已保存');return;}

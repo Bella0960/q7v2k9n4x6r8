@@ -111,7 +111,8 @@
   'widget-manager':'../desktop/widgets.html','appearance':'../settings/appearance.html',
   'icons':'../settings/icon-settings.html','beauty':'../beauty/beauty.html',
   'fonts':'../settings/font-settings.html','desktop':'../index.html',
-  'profile':'../profile/profile.html','chat':'../chat/chat/chat.html'
+  'profile':'../profile/profile.html','chat':'../chat/chat/chat.html',
+  'studio':'../theme-studio/theme-studio.html'
  };
  function renderHub(compact){
   var items=[
