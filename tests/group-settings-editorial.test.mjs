@@ -406,3 +406,26 @@ test('group wallpaper page preserves existing key and uses selection-time snapsh
   assert.ok(html.includes('return saveBackgroundImage(dataUrl,selection)'));
   assert.ok(html.includes('saved!==true||!groupBackgroundCheck(selection.scope)'));
 });
+
+
+test('shared group settings validate values and preserve neighboring group and private keys',()=>{
+  function setup(){
+    const state={account:'001',writes:0,data:new Map([['phone_groups',JSON.stringify([{id:'g1'},{id:'g2'}])]])};
+    const ctx={document:{querySelector:()=>({content:state.account})},location:{hostname:'preview.mao520.com'},localStorage:{getItem:k=>state.data.get(k)??null,setItem(k,v){state.writes++;if(state.fail)throw Error('quota');if(!state.ignore)state.data.set(k,v)}}};ctx.window=ctx;
+    vm.runInNewContext(read('shared/js/phone/group-write-guard.js'),ctx);
+    return {api:ctx.MAOGroupWriteGuard,state,group:ctx.MAOGroupWriteGuard.read('g1')};
+  }
+  const cases=[['pin','chat_pin_','true','false','1'],['memory','chat_memory_limit_','50','20','100'],['time','chat_time_config_',JSON.stringify({mode:'virtual',virtualTimeStr:'2026-12-01'}),JSON.stringify({mode:'real',virtualTimeStr:''}),JSON.stringify({mode:'virtual',virtualTimeStr:' '})],['sound','sound_char_','default','bell','']];
+  for(const [kind,prefix,value,newer,bad] of cases){
+    {const {api,state,group}=setup();state.data.set(prefix+'g2',newer);state.data.set(prefix+'r1',newer);assert.equal(api.writePreference(api.readPreference(group,kind),value).ok,true);assert.equal(state.data.get(prefix+'g1'),value);assert.equal(state.data.get(prefix+'g2'),newer);assert.equal(state.data.get(prefix+'r1'),newer);}
+    {const {api,state,group}=setup();const snap=api.readPreference(group,kind);state.data.set(prefix+'g1',newer);assert.equal(api.writePreference(snap,value).reason,'stale');assert.equal(state.data.get(prefix+'g1'),newer);assert.equal(state.writes,0);}
+    {const {api,state,group}=setup();assert.equal(api.writePreference(api.readPreference(group,kind),bad).reason,'invalid');assert.equal(state.writes,0);}
+    {const {api,state,group}=setup();const snap=api.readPreference(group,kind);state.account='002';assert.equal(api.writePreference(snap,value).ok,false);assert.equal(state.writes,0);}
+    {const {api,state,group}=setup();const snap=api.readPreference(group,kind);state.fail=true;assert.equal(api.writePreference(snap,value).reason,'storage');state.fail=false;state.ignore=true;assert.equal(api.writePreference(snap,value).reason,'unconfirmed');assert.equal(state.data.has(prefix+'g1'),false);}
+  }
+});
+test('group shared settings route to scoped saves, keeping original private keys',()=>{
+  for(const kind of ['pin','memory','time','sound'])assert.ok(html.includes("scopedSetting('"+kind+"')"));
+  for(const expression of ['saveScopedSetting(pinSnapshot,next)','saveScopedSetting(memorySnapshot,n)','saveScopedSetting(timeSnapshot,JSON.stringify(data))','saveScopedSetting(soundSnapshot,value)'])assert.ok(html.includes(expression));
+  assert.ok(html.includes("if(!saveSound(key)){renderSub();renderList();return;}"));
+});
