@@ -1382,6 +1382,12 @@
         };
         return dragGeometry;
       }
+      // Keep the current slot until the pointer leaves a small hysteresis band.
+      // This suppresses oscillation when the grid reflows beneath a moving finger.
+      function isPointInDragSlot(slot, cx, cy, margin) {
+        return !!slot && cx >= slot.left - margin && cx <= slot.right + margin &&
+          cy >= slot.top - margin && cy <= slot.bottom + margin;
+      }
       function placeDragPlaceholder(container, sibling) {
         if (placeholder.parentNode === container && nextPlaceableSibling(placeholder) === sibling) return false;
         container.insertBefore(placeholder, sibling);
@@ -1528,12 +1534,15 @@
             return;
           }
 
-          var dockItems = getDragGeometry(dockBar).entries;
+          var dockGeometry = getDragGeometry(dockBar);
+          var dockItems = dockGeometry.entries;
 
           // 限制 Dock 最多容纳 5 个应用
           if (dockItems.length >= 5 && placeholder.parentNode !== dockBar) {
             return;
           }
+
+          if (isPointInDragSlot(dockGeometry.slot, cx, cy, 5)) return;
 
           // 寻找插入位置（水平排列让位）
           var targetDockSibling = null;
@@ -1572,10 +1581,7 @@
 
           // A finger over its existing slot must not oscillate between
           // neighbours as the grid reflows.
-          if (geometry.slot) {
-            var slot = geometry.slot;
-            if (cx >= slot.left && cx <= slot.right && cy >= slot.top && cy <= slot.bottom) return;
-          }
+          if (isPointInDragSlot(geometry.slot, cx, cy, 5)) return;
           // 寻找最佳插入网格槽位并进行动态插队让位
           var directHit = false;
           var hitSibling = null;

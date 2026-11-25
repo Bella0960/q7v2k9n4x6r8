@@ -171,6 +171,68 @@ try{
     }
     assert.ok(stableReads<12,'stable slot should not trigger a full tile scan on every touch: '+stableReads);
     console.log('DESKTOP_DRAG_METRIC width='+width+' stable_tile_rect_reads='+stableReads);
+    // Measure frame callback cadence during real same-page touch motion.
+    // rAF is not a physical display FPS measurement. CI metrics are recorded
+    // separately from the functional gate and must be compared on equal hardware.
+    const targets=await page.evaluate(()=>{
+      const grid=document.querySelector('.home-page[data-page="1"] .desktop-grid');
+      const screen=document.getElementById('homeScreen').getBoundingClientRect();
+      const visible=Array.from(grid.querySelectorAll('.app-tile[data-drag]'))
+        .filter(el=>!el.classList.contains('is-dragging-source'))
+        .map(el=>{const r=el.getBoundingClientRect();return {x:r.left+r.width*.55,y:r.top+r.height*.5};})
+        .filter(p=>p.x>screen.left+48&&p.x<screen.right-48&&p.y>screen.top+24&&p.y<screen.bottom-48);
+      return visible.slice(0,6);
+    });
+    assert.ok(targets.length>=3,'not enough visible same-page drag targets');
+    const initialSlotOrder=await page.evaluate(()=>{
+      const ph=document.querySelector('.drag-placeholder');
+      return Array.from(ph.parentElement.children).filter(el=>!el.classList.contains('is-dragging-source')).indexOf(ph);
+    });
+    await page.evaluate(()=>{
+      const samples=[], longTasks=[];
+      let last=null, frame=null, observer=null, placementChanges=0;
+      const start=performance.now();
+      const tick=t=>{if(last!==null)samples.push(t-last);last=t;frame=requestAnimationFrame(tick);};
+      frame=requestAnimationFrame(tick);
+      const grid=document.querySelector('.home-page[data-page="1"] .desktop-grid');
+      const mutations=new MutationObserver(records=>{
+        for(const r of records) if(Array.from(r.addedNodes).some(n=>n.nodeType===1&&n.classList.contains('drag-placeholder')))placementChanges++;
+      });
+      mutations.observe(grid,{childList:true});
+      if(window.PerformanceObserver?.supportedEntryTypes?.includes('longtask')){
+        observer=new PerformanceObserver(list=>longTasks.push(...list.getEntries().map(e=>e.duration)));
+        observer.observe({entryTypes:['longtask']});
+      }
+      window.__stopDragFrameProbe=()=>{
+        cancelAnimationFrame(frame);
+        mutations.disconnect();
+        if(observer){longTasks.push(...observer.takeRecords().map(e=>e.duration));observer.disconnect();}
+        const sorted=samples.slice().sort((a,b)=>a-b);
+        const quantile=p=>sorted[Math.max(0,Math.ceil(sorted.length*p)-1)]??null;
+        const sum=samples.reduce((a,b)=>a+b,0);
+        delete window.__stopDragFrameProbe;
+        return {samples:samples.length,durationMs:performance.now()-start,
+          rafHz:sum?samples.length*1000/sum:null,p50Ms:quantile(.5),p95Ms:quantile(.95),p99Ms:quantile(.99),
+          over25Ms:samples.filter(x=>x>25).length,over50Ms:samples.filter(x=>x>50).length,
+          longestMs:quantile(1),longTasks:observer?longTasks:null,placementChanges};
+      };
+    });
+    let dragFrames;
+    try {
+      let from={x:slotX,y:slotY};
+      for(const to of [...targets,...targets.slice().reverse(),...targets]){
+        for(let n=1;n<=4;n++){
+          await touch('touchMove',from.x+(to.x-from.x)*n/4,from.y+(to.y-from.y)*n/4);
+          await pause(16);
+        }
+        from=to;
+      }
+      await pause(80);
+    }finally{dragFrames=await page.evaluate(()=>window.__stopDragFrameProbe());}
+    assert.ok(dragFrames.samples>=20,'drag frame probe produced too few samples');
+    assert.ok(dragFrames.placementChanges>=1,'probe did not exercise real grid reordering');
+    assert.ok(Number.isFinite(dragFrames.rafHz)&&dragFrames.p95Ms>0,'invalid frame metrics');
+    console.log('DESKTOP_DRAG_FRAMES '+JSON.stringify({width,dpr:3,initialSlotOrder,...dragFrames}));
     await touch('touchCancel');
     await page.waitForFunction(()=>!document.body.classList.contains('home-dragging')&&!document.querySelector('.drag-avatar'));
     assert.deepEqual(await readLayout(page),baseline,'touch cancellation saved a partial drag');

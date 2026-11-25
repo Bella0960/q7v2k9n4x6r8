@@ -445,3 +445,19 @@ test('drag geometry cache reuses stable measurements and invalidates on real pla
   assert.match(index,/document\.removeEventListener\('scroll', invalidateDragGeometry, true\)/);
   assert.match(index,/finally \{ setDragAvatarPosition\(cx, cy\); \}/);
 });
+
+
+test('desktop and Dock drag slot hysteresis prevents boundary jitter without locking adjacent slots', () => {
+  const start = index.indexOf('      function isPointInDragSlot(');
+  const end = index.indexOf('      function placeDragPlaceholder(', start);
+  assert.ok(start >= 0 && end > start);
+  const ctx = {};
+  runInNewContext(index.slice(start,end),ctx);
+  const inside = ctx.isPointInDragSlot;
+  const slot = { left: 20, right: 80, top: 30, bottom: 90 };
+  assert.equal(inside(null,40,40,5),false);
+  for (const [x,y] of [[15,60],[85,60],[50,25],[50,95],[50,50]]) assert.equal(inside(slot,x,y,5),true);
+  for (const [x,y] of [[14,60],[86,60],[50,24],[50,96]]) assert.equal(inside(slot,x,y,5),false);
+  assert.match(index,/isPointInDragSlot\(dockGeometry\.slot, cx, cy, 5\)/);
+  assert.match(index,/isPointInDragSlot\(geometry\.slot, cx, cy, 5\)/);
+});

@@ -656,3 +656,5 @@ On the next turn/session, read this file and the current `AGENTS.md` first. Cont
 - 新增实际缓存函数 VM 行为断言；Node/Vite/Chromium/真机均尚未运行，不可当作通过。原 #496 与当前 main/已发布候选存在分叉，必须选择性整合到最新 QA 基线并完成 375/390/430 DPR3 拖拽、跨页、Dock、取消、掉帧检测后再发布。禁止直接合并旧分支。
 
 - 独立 Node 22 mock harness（复制新缓存函数，不是完整仓库测试）2/2 通过：100 次稳定查询无额外 rect 读取、占位移动失效、滚动/resize/observer 失效与清理。已补真实 Chromium 375/390/430 DPR3 稳定槽位高频触摸 rect 读取计数；尚未执行。
+
+- 2026-11-25 第二轮：参考原生 Launcher 的稳定目标/手势渲染分离原则（尚未在线核查第三方最新源码，不引入外部代码或依赖），桌面与 Dock 采用 5 CSS px 槽位迟滞；补 VM 边界断言以及原生 CDP 触摸往返测量 rAF P50/P95/P99、>25/50ms 帧间隔、Long Task、占位真实变化。指标须在同硬件比较；rAF 不是屏幕实际 FPS。当前尚未执行完整 Chromium、真机或性能阈值验收。保持原 #496 隔离整合要求。
