@@ -167,7 +167,7 @@
       : ['number',field.default,field.min,field.max];
     if (type === 'color' && !/^#[a-f0-9]{6}$/i.test(definition[1])) return false;
     if (type === 'number' && (!Number.isFinite(definition[1]) ||
-        !Number.isFinite(definition[2]) || !Number.isFinite(definition[3])) ||
+        !Number.isFinite(definition[2]) || !Number.isFinite(definition[3]) ||
         definition[2] > definition[1] || definition[1] > definition[3])) return false;
     SPECS[group][key] = definition;
     EXTENSION_FIELDS[group].push([key,String(field.label||key).slice(0,40),
