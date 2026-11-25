@@ -25,3 +25,25 @@ test('capacity never evicts',()=>{const f=fixture(Array.from({length:300},(_,i)=
 test('malformed chain fails closed',()=>{const f=fixture([{...original,status:'superseded-fixed'}]);assert.equal(revise(f).reason,'revision-conflict');assert.equal(f.writes(),0);});
 test('new revision after undo retains withdrawn child',()=>{const f=fixture(),a=revise(f);assert.equal(undo(f,a.memory).ok,true);assert.equal(revise(f).ok,true);assert.equal(f.records()[1].status,'withdrawn');assert.equal(f.records().length,3);});
 test('foreign original cannot be revised',()=>{const foreign={...original,sourceRoleId:'B'},f=fixture([foreign]);assert.equal(revise(f,foreign).reason,'stale-memory');assert.equal(f.writes(),0);});
+
+const recallSource=readFileSync(new URL('../shared/js/phone/memory_recall.js',import.meta.url),'utf8');
+test('review API fails closed when dedicated storage method is missing',()=>{
+ const window={PhoneStorage:{saveMemories:()=>{throw Error('must not call ordinary save');}}};
+ new Function('window',recallSource)(window);
+ assert.equal(window.MemoryRecall.confirmMemoryCorrection('A',original,'新记录',{}).reason,'storage-unavailable');
+});
+test('review API delegates cleaned input to dedicated storage method',()=>{
+ const f=fixture();new Function('window',recallSource)(f.window);
+ const r=f.window.MemoryRecall.confirmMemoryCorrection('A',original,'  门票周日领取  ',f.opts);
+ assert.equal(r.ok,true);assert.equal(r.memory.content,'门票周日领取');assert.equal(f.writes(),1);
+});
+test('review API rejects overlong input without storage writes',()=>{
+ const f=fixture();new Function('window',recallSource)(f.window);
+ assert.equal(f.window.MemoryRecall.confirmMemoryCorrection('A',original,'甲'.repeat(601),f.opts).reason,'invalid-content');assert.equal(f.writes(),0);
+});
+test('review API can undo through the dedicated write path',()=>{
+ const f=fixture();new Function('window',recallSource)(f.window);
+ const r=f.window.MemoryRecall.confirmMemoryCorrection('A',original,'门票周日领取',f.opts);
+ assert.equal(f.window.MemoryRecall.undoMemoryCorrection('A',r.memory,f.opts).ok,true);
+ assert.deepEqual(f.records()[0],original);
+});
