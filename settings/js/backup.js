@@ -1655,6 +1655,115 @@
             }).finally(function(){db.close();});
         });
     }
+    // Conservative recovery for empty affected stores. Never clear, overwrite,
+    // upgrade or create a business database. The original point stays intact.
+    function recoverEmptyMediaDatabase(target, saved, isCurrent) {
+        var names=Object.keys(saved.stores);
+        var defs=new Map(target.stores.map(function(d){return [d.store,d];}));
+        if (!saved.existed || !names.length) return Promise.resolve({state:'skipped',written:0});
+        if (target.db==='maomao-assets' && target.stores.some(function(d){return !names.includes(d.store);}))
+            return Promise.resolve({state:'incomplete',written:0});
+        var batches=names.map(function(name){
+            var def=defs.get(name);
+            if(!def) throw new Error('unregistered-store');
+            return {name:name,def:def,rows:saved.stores[name].map(function(row){
+                var value=def.keyPath?row:row.__value, key=def.keyPath?row[def.keyPath]:row.__key;
+                if ((def.blobFields||[]).length) {
+                    value=Object.assign(Object.create(null),value);
+                    def.blobFields.forEach(function(field){
+                        var mk='__blobMime_'+field, mime=value[mk];
+                        if(typeof mime!=='string') throw new Error('missing-mime');
+                        var blob=base64ToBlob(value[field],mime);
+                        value[field]=mime===''?new Blob([blob],{type:''}):blob;
+                        delete value[mk];
+                    });
+                }
+                return {value:value,key:key};
+            })};
+        });
+        if(!isCurrent()) return Promise.reject(new Error('account-changed'));
+        return new Promise(function(resolve,reject){
+            var req,stopped=false;
+            try{req=indexedDB.open(target.db);}catch(e){reject(e);return;}
+            req.onupgradeneeded=function(){stopped=true;req.transaction.abort();resolve({state:'missing-db',written:0});};
+            req.onblocked=function(){stopped=true;reject(new Error('database-blocked'));};
+            req.onerror=function(){if(!stopped)reject(new Error('database-unreadable'));};
+            req.onsuccess=function(){
+                var db=req.result;
+                if(stopped){db.close();return;}
+                if(!isCurrent()||db.version!==saved.version||
+                    names.some(function(n){return !db.objectStoreNames.contains(n);})){
+                    db.close();resolve({state:'changed',written:0});return;
+                }
+                var tx,reason='failed',written=0;
+                function abort(why){reason=why;try{tx.abort();}catch(e){db.close();reject(e);}}
+                try{
+                    tx=db.transaction(names,'readwrite');
+                    tx.onabort=function(){db.close();resolve({state:reason,written:0});};
+                    tx.oncomplete=function(){db.close();resolve({state:'recovered',written:written});};
+                    var left=batches.length;
+                    batches.forEach(function(batch){
+                        var store=tx.objectStore(batch.name);
+                        if(store.keyPath!==(batch.def.keyPath||null)){abort('changed');return;}
+                        var count=store.count();
+                        count.onsuccess=function(){
+                            try {
+                                if(!isCurrent()){abort('changed');return;}
+                                if(count.result!==0){abort('occupied');return;}
+                                if(--left!==0)return;
+                                // All counts and adds run in the same transaction.
+                                // add (not put) also rejects a duplicate key.
+                                for(var part of batches){
+                                    var dest=tx.objectStore(part.name);
+                                    for(var row of part.rows){
+                                        if(part.def.keyPath)dest.add(row.value);
+                                        else dest.add(row.value,row.key);
+                                        written++;
+                                    }
+                                }
+                            }catch(_){abort('failed');}
+                        };
+                    });
+                }catch(e){if(tx){abort('failed');}else{db.close();reject(e);}}
+            };
+        });
+    }
+    async function recoverMissingMedia(record,isCurrent){
+        var archive=makeRecoveryArchive(record);
+        if(!archive.media) return {state:'no-media',written:0,skipped:0};
+        var targets=new Map(backupTargets().map(function(t){return [t.db,t];}));
+        var payload=Object.create(null),skipped=0;
+        for(var name of Object.keys(archive.media)){
+            var item=archive.media[name],target=targets.get(name);
+            if(!item.existed || !Object.values(item.stores).some(function(rows){return rows.length;}) ||
+                (name==='maomao-assets' && target.stores.some(function(d){return !Object.hasOwn(item.stores,d.store);}))){
+                skipped++;continue;
+            }
+            payload[name]=item.stores;
+        }
+        var names=Object.keys(payload);
+        if(!names.length)return {state:'no-media',written:0,skipped:skipped};
+        var obj={__backup:{schema:2},data:{},indexedDB:payload};
+        if(validateRestorePayload(obj,'') || await verifyBackupAssetHashes(obj))
+            return {state:'invalid-media',written:0,skipped:skipped};
+        if(!isCurrent())throw new Error('account-changed');
+        if(!confirm('只补回空数据表中的原始媒体，不覆盖已有记录、不恢复文字数据。存在新记录的数据库会跳过，恢复点会保留。确定继续？'))
+            return {state:'cancelled'};
+        var fresh=await rpReadSnapshot(RP_ROLE_PRE);
+        if(!isCurrent()||!sameRecoveryPoint(record,fresh))return {state:'changed'};
+        var written=0,failed=0;
+        for(var name of names){
+            if(!isCurrent()){failed++;break;}
+            try{
+                var result=await recoverEmptyMediaDatabase(targets.get(name),archive.media[name],isCurrent);
+                written+=result.written;
+                if(result.state==='failed'){failed++;break;}
+                if(result.state!=='recovered')skipped++;
+            }catch(_){failed++;break;}
+        }
+        return {state:'media-recovery-result',written:written,skipped:skipped,failed:failed};
+    }
+
     // Export requests do not prove the browser wrote a file. Releasing the
     // point requires re-reading the selected archive and a fresh exact match.
     async function manageRecoveryPoint(action,verified) {
@@ -1674,6 +1783,7 @@
                 downloadRecoveryArchive(archive);
                 return {state:'export-requested'};
             }
+            if (action==='recover-media') return recoverMissingMedia(rec,isCurrent);
             if (action==='release') {
                 if (!verified || verified.account !== recoveryScope().account ||
                     typeof verified.text !== 'string') return {state:'export-required'};
@@ -1683,7 +1793,7 @@
                 return {state:await deleteExactRecoveryPoint(rec,isCurrent)?'released':'changed'};
             }
             throw new Error('unknown-recovery-action');
-        },action==='release');
+        },action==='release'||action==='recover-media');
     }
 
     function handleImportFile(file) {
@@ -1976,7 +2086,7 @@
     // inspect private text or media in the DOM.
     var recoveryStatus=$('recoveryPointStatus'), recoveryView=$('rowViewRecoveryPoint'),
         recoveryExport=$('rowExportRecoveryPoint'), recoveryRelease=$('rowReleaseRecoveryPoint'),
-        recoveryFile=$('recoveryPointFileInput');
+        recoveryFile=$('recoveryPointFileInput'), recoveryMedia=$('rowRecoverMissingMedia');
     var recoveryBusy=false;
     async function runRecoveryAction(action,verified) {
         if (recoveryBusy || !recoveryStatus) return;
@@ -1991,7 +2101,10 @@
             else if (result.state==='export-required') {recoveryStatus.textContent='请先导出并选择当前恢复点档案';}
             else if (result.state==='archive-mismatch') {recoveryStatus.textContent='档案与当前恢复点不一致，原恢复点仍保留';}
             else if (result.state==='released') {recoveryStatus.textContent='已释放恢复点，可重新导入；本机业务数据未被恢复';}
-            else if (result.state==='changed') {recoveryStatus.textContent='恢复点已变化或未能删除，请重新查看';}
+            else if (result.state==='changed') {recoveryStatus.textContent='恢复点已变化或未能处理，请重新查看';}
+            else if (result.state==='no-media') {recoveryStatus.textContent='没有可安全补回的媒体，恢复点保留';}
+            else if (result.state==='invalid-media') {recoveryStatus.textContent='媒体副本未通过校验，未恢复任何记录';}
+            else if (result.state==='media-recovery-result') {recoveryStatus.textContent='已补回 '+result.written+' 条媒体记录；跳过 '+result.skipped+' 个库'+(result.failed?'；发生失败，已停止':'')+'。原恢复点保留，未恢复文字。';}
         } catch(e) {
             recoveryStatus.textContent=e && e.message==='shared-lock-unavailable'?
                 '此浏览器无法安全释放恢复点，请更新浏览器。原恢复点仍保留。':
@@ -2000,6 +2113,7 @@
     }
     if(recoveryView) recoveryView.addEventListener('click',function(){runRecoveryAction('view');});
     if(recoveryExport) recoveryExport.addEventListener('click',function(){runRecoveryAction('export');});
+    if(recoveryMedia) recoveryMedia.addEventListener('click',function(){runRecoveryAction('recover-media');});
     if(recoveryRelease && recoveryFile) {
         recoveryRelease.addEventListener('click',function(){if(!recoveryBusy)recoveryFile.click();});
         recoveryFile.addEventListener('change',async function(){
