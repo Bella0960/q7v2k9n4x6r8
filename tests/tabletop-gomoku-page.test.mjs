@@ -1,5 +1,6 @@
 import {test} from 'node:test';
 import assert from 'node:assert/strict';
+import {createGomokuPageHost} from '../games/tabletop/gomoku-page-host.js';
 import {mountGomokuPage} from '../games/tabletop/gomoku-page.js';
 const accountId='MAO-AAAAAAAAAAAA';
 function target(o={}){const events=new Map();return Object.assign(o,{addEventListener(k,f){if(!events.has(k))events.set(k,new Set());events.get(k).add(f);},removeEventListener(k,f){events.get(k)?.delete(f);},fire(k,e={}){for(const f of [...(events.get(k)||[])])f(e);}});}
@@ -12,11 +13,11 @@ class El{
 }
 const all=(e,cls)=>[...(e.className?.split(' ').includes(cls)?[e]:[]),...e.children.flatMap(c=>all(c,cls))];
 const wait=async()=>{for(let i=0;i<5000;i++)await Promise.resolve();};
-function fixture({ready=true,decideRole=null,discussion={}}={}){
+function fixture({ready=true,decideRole=null,discussion={},pace=null}={}){
   let sessionId='s1',reads=0;
   const doc=target({hidden:false,createElement:tag=>new El(doc,tag),querySelector:s=>({content:s.includes('mao-account-role')?'user':accountId})});
   const win=target({document:doc,navigator:{onLine:true},__MAO_ACCOUNT_SCOPE__:{ready,accountId,role:'user'},PhoneStorage:{result:{getCharacters(){reads++;return {ok:true,meta:{source:'ai_custom_characters'},value:[{id:'r1',name:'棋友一'},{id:'r2',name:'棋友二'},{id:'r3',name:'棋友三'}]};}}},fetch:async path=>({ok:true,json:async()=>path.endsWith('/me')?{account:{id:accountId,role:'user',status:'active'}}:{currentSessionId:sessionId}})});
-  const root=new El(doc,'div'),page=mountGomokuPage(root,{win,makeRoomId:()=> 'room',decideRole,discussion});
+  const root=new El(doc,'div'),page=mountGomokuPage(root,{win,makeRoomId:()=> 'room',decideRole,discussion,pace});
   const one=c=>all(root,c)[0],choose=(c,value)=>{one(c).value=value;one(c).fire('change');};
   return {win,root,page,one,choose,session:x=>{sessionId=x;},reads:()=>reads};
 }
@@ -69,4 +70,35 @@ test('folded public game chat addresses selected role, never invents reply witho
   assert.equal(calls[0].selfSeatId,'role:r2');assert.equal(calls[0].game.legalMoves.length,0);assert.equal(all(g.root,'mao-gomoku__message').length,2);
   g.win.navigator.onLine=false;g.win.fire('offline');assert.equal(all(g.root,'mao-gomoku__message').length,0);
   g.win.navigator.onLine=true;g.one('mao-gomoku__next').click();await wait();assert.equal(all(g.root,'mao-gomoku__message').length,2);g.page.destroy();
+});
+
+test('verified combined host checkpoint restores board, difficulty, chat and deduplication on fresh login',async()=>{
+  const f=fixture();await wait();f.page.destroy();
+  const root=new El(f.win.document,'div'),calls=[];
+  const discussion={generateRole:c=>{calls.push(c);return '继续。';},allowOutput:()=>true};
+  const host=createGomokuPageHost(root,{win:f.win,discussion});
+  await host.start({roomId:'saved',opponents:['r1'],observers:['r2'],blackFirst:false,difficulty:'hard'});
+  await host.resume();await host.sendChat({messageId:'first',text:'你好',replyToSeatId:'role:r2'});
+  const before=await host.readChat(),saved=await host.saveMatch();host.destroy();f.session('s2');
+  const other=createGomokuPageHost(root,{win:f.win,discussion});
+  const restored=await other.restoreMatch(saved);
+  assert.equal(restored.game.count,1);assert.equal(saved.difficulty,'hard');
+  assert.deepEqual(await other.readChat(),before);
+  assert.equal((await other.sendChat({messageId:'first',text:'你好',replyToSeatId:'role:r2'})).duplicate,true);
+  assert.equal(calls.length,1);await other.sendChat({messageId:'second',text:'继续',replyToSeatId:'role:r1'});assert.equal(calls.length,2);
+  assert.equal((await other.readChat()).length,4);
+  other.destroy();
+  const bad=createGomokuPageHost(root,{win:f.win,discussion});
+  await assert.rejects(bad.restoreMatch({...saved,chat:{...saved.chat,revision:99}}),/GOMOKU_INVALID_MATCH/);
+  const forged=JSON.parse(JSON.stringify(saved));forged.chat.messages[1].senderSeatId='role:r1';
+  await assert.rejects(bad.restoreMatch(forged),/GOMOKU_CHAT_CHECKPOINT/);assert.equal(root.children.length,0);bad.destroy();
+});
+test('continuous watch is opt-in and stops before another batch after cancellation',async()=>{
+  const f=fixture({pace:()=>{}});await wait();f.choose('mao-gomoku__mode','watch');f.choose('mao-gomoku__first','r1');f.choose('mao-gomoku__second','r2');
+  f.one('mao-gomoku__start').click();await wait();
+  const count=()=>all(f.root,'mao-gomoku-board__cell').filter(c=>/is-black|is-white/.test(c.className)).length;
+  assert.equal(count(),8);f.one('mao-gomoku__auto').click();assert.equal(f.one('mao-gomoku__auto').textContent,'停止连播');
+  await new Promise(r=>setTimeout(r,400));await wait();assert.ok(count()>8);
+  f.one('mao-gomoku__auto').click();const saved=count();
+  await new Promise(r=>setTimeout(r,400));await wait();assert.equal(count(),saved);assert.equal(f.one('mao-gomoku__auto').textContent,'连续观战');f.page.destroy();
 });
