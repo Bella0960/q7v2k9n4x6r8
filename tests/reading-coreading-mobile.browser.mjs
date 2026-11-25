@@ -99,8 +99,17 @@ try{
   const top=await assertHeader();
   const scrollGesture=async(dx,dy)=>{
    const box=await page.locator('#readerBody').boundingBox();
-   await page.mouse.move(box.x+box.width/2,box.y+box.height/2);
-   await page.mouse.wheel(dx,dy);
+   const cdp=await context.newCDPSession(page);
+   const x=Math.round(box.x+box.width/2),y=Math.round(box.y+box.height/2);
+   const stepX=dx? -28:0,stepY=dy? -28:0;
+   try {
+    await cdp.send('Input.dispatchTouchEvent',{type:'touchStart',touchPoints:[{x,y}]});
+    for(let i=1;i<=4;i++){
+     await cdp.send('Input.dispatchTouchEvent',{type:'touchMove',touchPoints:[{x:x+stepX*i,y:y+stepY*i}]});
+     await page.waitForTimeout(35);
+    }
+    await cdp.send('Input.dispatchTouchEvent',{type:'touchEnd',touchPoints:[]});
+   }finally{await cdp.detach();}
    await page.locator('#readerTitle').waitFor({state:'hidden'});
    await page.waitForTimeout(400);
    assert.equal(await page.locator('#readerTitle').isVisible(),false);
