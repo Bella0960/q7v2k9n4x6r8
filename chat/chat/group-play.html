@@ -6,8 +6,8 @@
 <title>群聊玩法 · 小手机</title>
 <script src="../../shared/js/font-loader.js?v=20261022v1"></script>
 <script src="../../shared/js/native-feel.js"></script>
-<script src="../../shared/js/phone/group-admin-policy.js?v=20261125g1"></script>
-<script src="../../shared/js/phone/group-write-guard.js?v=20261125g1"></script>
+<script src="../../shared/js/phone/group-admin-policy.js?v=20261125g2"></script>
+<script src="../../shared/js/phone/group-write-guard.js?v=20261125g2"></script>
 <script src="../../shared/js/phone/group-portraits.js?v=20261125g4"></script>
 <style>
 *{box-sizing:border-box;margin:0;padding:0;-webkit-tap-highlight-color:transparent}
@@ -373,10 +373,10 @@ body{font-family:"Source Han Sans SC","Noto Sans SC","PingFang SC",system-ui,san
     document.querySelectorAll('[data-setting]').forEach(function(input){
       input.addEventListener('change',function(){
         group.settings[input.getAttribute('data-setting')]=!!input.checked;
+        if(!persist('设置已保存'))return;
         if(input.getAttribute('data-setting')==='followUpEnabled'&&!input.checked){
-          try{localStorage.removeItem('chat_followup_state_group_'+groupId);}catch(e){}
+          try{localStorage.removeItem('chat_followup_state_group_'+groupId);}catch(e){notify('设置已保存，旧追问状态清理失败');}
         }
-        persist('设置已保存');
       });
     });
     document.getElementById('groupChatMode').addEventListener('change',function(){
