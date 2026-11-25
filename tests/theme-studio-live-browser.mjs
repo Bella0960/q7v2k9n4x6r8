@@ -316,7 +316,7 @@ try {
     await page.reload({ waitUntil: 'domcontentloaded' });
     await page.waitForSelector('.chat-slim-card', { timeout: 15000 });
     await delay(300);
-    list = readList(page);
+    list = await readList(page);
     assert.equal(list.flag, '1', width + 'px list flag survives reload');
     assert.equal(list.cardRadius, '22px', width + 'px card radius survives reload');
     assert.equal(list.headerBg, hexToRgb('#111111'), width + 'px header bg survives reload');
