@@ -216,8 +216,8 @@ test('transplants only the PR delta onto a diverged QA baseline and preserves bo
   assert.ok(message.includes('QA-Source-SHA: ' + qaBaseline));
 });
 
-test('skips an already-deployed PR head but records its provenance in a mixed batch', t => {
-  const cwd = mkdtempSync(join(tmpdir(), 'maomao-qa-batch-already-deployed-'));
+test('uses single-parent QA provenance to skip an already deployed task after later QA edits', t => {
+  const cwd = mkdtempSync(join(tmpdir(), 'maomao-qa-batch-provenance-'));
   t.after(() => rmSync(cwd, { recursive: true, force: true }));
   const run = (bin, args) => execFileSync(bin, args, { cwd, encoding: 'utf8', stdio: 'pipe' }).trim();
   const git = (...args) => run('git', args);
@@ -225,41 +225,31 @@ test('skips an already-deployed PR head but records its provenance in a mixed ba
   git('init', '-q', '-b', 'main');
   git('config', 'user.name', 'QA Test');
   git('config', 'user.email', 'qa@example.invalid');
-  write('base.txt', 'common base');
-  git('add', 'base.txt');
+  write('shared.txt', Array.from({ length: 12 }, (_, i) => 'line-' + (i + 1)).join('\n') + '\n');
+  git('add', 'shared.txt');
   git('commit', '-qm', 'Common ancestor');
   const common = git('rev-parse', 'HEAD');
 
   git('switch', '-qc', 'task-one', common);
-  write('one.txt', 'already deployed task');
-  git('add', 'one.txt');
+  write('shared.txt', ['task-one', ...Array.from({ length: 11 }, (_, i) => 'line-' + (i + 2))].join('\n') + '\n');
+  git('add', 'shared.txt');
   git('commit', '-qm', 'Task one');
   const taskOneHead = git('rev-parse', 'HEAD');
 
-  git('switch', '-qc', 'qa-deployed', taskOneHead);
+  git('switch', '-qc', 'qa-deployed', common);
   write('deployed.txt', 'existing QA content');
   git('add', 'deployed.txt');
   git('commit', '-qm', 'Deployed QA baseline');
   const qaBaseline = git('rev-parse', 'HEAD');
 
-  git('switch', '-qc', 'task-two', common);
-  write('two.txt', 'new task');
-  git('add', 'two.txt');
-  git('commit', '-qm', 'Task two');
-  const taskTwoHead = git('rev-parse', 'HEAD');
-
   mkdirSync(join(cwd, 'records'));
   write('records/one.json', JSON.stringify({
     id: 'TASK-01', status: 'ready', prMergeBase: common,
-    head: taskOneHead, paths: ['one.txt'], dependsOn: []
-  }));
-  write('records/two.json', JSON.stringify({
-    id: 'TASK-02', status: 'ready', prMergeBase: common,
-    head: taskTwoHead, paths: ['two.txt'], dependsOn: []
+    head: taskOneHead, paths: ['shared.txt'], dependsOn: []
   }));
   git('switch', '-q', 'main');
 
-  const qaSourceReceipt = {
+  const firstQaReceipt = {
     repository: 'Bella0960/web-runtime-lab',
     workflow: '.github/workflows/reusable-qa-request.yml',
     runId: 45785677703,
@@ -268,23 +258,146 @@ test('skips an already-deployed PR head but records its provenance in a mixed ba
     sourceSha: qaBaseline,
     releasedAt: '2026-11-26T09:02:40Z'
   };
-  const result = spawnSync(process.execPath, [
-    script, 'records', qaBaseline, 'integration/already-deployed-task', JSON.stringify(qaSourceReceipt)
+  const first = spawnSync(process.execPath, [
+    script, 'records', qaBaseline, 'integration/first-deploy', JSON.stringify(firstQaReceipt)
   ], { cwd, encoding: 'utf8' });
+  assert.equal(first.status, 0, first.stderr);
+  const firstCandidate = JSON.parse(first.stdout).candidate;
+  assert.equal(git('rev-parse', firstCandidate + '^'), qaBaseline);
+  assert.equal(spawnSync('git', ['merge-base', '--is-ancestor', taskOneHead, firstCandidate], { cwd }).status, 1);
 
-  assert.equal(result.status, 0, result.stderr);
-  const receipt = JSON.parse(result.stdout);
-  const candidate = receipt.candidate;
-  assert.equal(git('rev-parse', candidate + '^^'), qaBaseline);
-  assert.equal(git('show', candidate + ':one.txt'), 'already deployed task');
+  // A later QA release edits the same file after the single-parent candidate.
+  // Re-applying the original PR patch would now conflict.
+  git('switch', '-q', 'integration/first-deploy');
+  write('shared.txt', ['task-one', 'qa-later', ...Array.from({ length: 10 }, (_, i) => 'line-' + (i + 3))].join('\n') + '\n');
+  git('add', 'shared.txt');
+  git('commit', '-qm', 'Later QA edit to the same file');
+  const laterQaBaseline = git('rev-parse', 'HEAD');
+
+  git('switch', '-q', 'main');
+  git('switch', '-qc', 'task-two', common);
+  write('two.txt', 'new task');
+  git('add', 'two.txt');
+  git('commit', '-qm', 'Task two');
+  const taskTwoHead = git('rev-parse', 'HEAD');
+  git('switch', '-q', 'main');
+  write('records/two.json', JSON.stringify({
+    id: 'TASK-02', status: 'ready', prMergeBase: common,
+    head: taskTwoHead, paths: ['two.txt'], dependsOn: []
+  }));
+
+  const secondQaReceipt = {
+    ...firstQaReceipt,
+    runId: 45785677704,
+    runNumber: 92,
+    runHeadSha: '8'.repeat(40),
+    sourceSha: laterQaBaseline,
+    releasedAt: '2026-11-27T00:00:00Z'
+  };
+  const second = spawnSync(process.execPath, [
+    script, 'records', laterQaBaseline, 'integration/second-deploy', JSON.stringify(secondQaReceipt)
+  ], { cwd, encoding: 'utf8' });
+  assert.equal(second.status, 0, second.stderr);
+  const candidate = JSON.parse(second.stdout).candidate;
+  assert.equal(git('rev-parse', candidate + '^^'), laterQaBaseline);
+  assert.equal(git('show', candidate + ':shared.txt'),
+    ['task-one', 'qa-later', ...Array.from({ length: 10 }, (_, i) => 'line-' + (i + 3))].join('\n'));
   assert.equal(git('show', candidate + ':two.txt'), 'new task');
   assert.equal(git('show', candidate + ':deployed.txt'), 'existing QA content');
-  const history = git('log', '--format=%B', qaBaseline + '..' + candidate);
+  const history = git('log', '--format=%B', laterQaBaseline + '..' + candidate);
   assert.ok(history.includes('Task-ID: TASK-01'));
   assert.ok(history.includes('Task-PR-Head-SHA: ' + taskOneHead));
   assert.ok(history.includes('Task-ID: TASK-02'));
   assert.ok(history.includes('Task-PR-Head-SHA: ' + taskTwoHead));
-  assert.equal(git('rev-list', '--parents', '-n', '1', candidate).trim().split(/\s+/).length, 2);
+});
+
+test('applies only commits added after a previously deployed PR head', t => {
+  const cwd = mkdtempSync(join(tmpdir(), 'maomao-qa-batch-incremental-'));
+  t.after(() => rmSync(cwd, { recursive: true, force: true }));
+  const run = (bin, args) => execFileSync(bin, args, { cwd, encoding: 'utf8', stdio: 'pipe' }).trim();
+  const git = (...args) => run('git', args);
+  const write = (path, contents) => writeFileSync(join(cwd, path), contents);
+  git('init', '-q', '-b', 'main');
+  git('config', 'user.name', 'QA Test');
+  git('config', 'user.email', 'qa@example.invalid');
+  write('shared.txt', Array.from({ length: 12 }, (_, i) => 'line-' + (i + 1)).join('\n') + '\n');
+  git('add', 'shared.txt');
+  git('commit', '-qm', 'Common ancestor');
+  const common = git('rev-parse', 'HEAD');
+
+  git('switch', '-qc', 'task-one', common);
+  write('shared.txt', ['task-one', ...Array.from({ length: 11 }, (_, i) => 'line-' + (i + 2))].join('\n') + '\n');
+  git('add', 'shared.txt');
+  git('commit', '-qm', 'Task one');
+  const firstTaskHead = git('rev-parse', 'HEAD');
+
+  git('switch', '-qc', 'qa-deployed', common);
+  write('deployed.txt', 'existing QA content');
+  git('add', 'deployed.txt');
+  git('commit', '-qm', 'Deployed QA baseline');
+  const qaBaseline = git('rev-parse', 'HEAD');
+  mkdirSync(join(cwd, 'records'));
+  write('records/task.json', JSON.stringify({
+    id: 'TASK-01', status: 'ready', prMergeBase: common,
+    head: firstTaskHead, paths: ['shared.txt'], dependsOn: []
+  }));
+  git('switch', '-q', 'main');
+
+  const qaReceipt = {
+    repository: 'Bella0960/web-runtime-lab',
+    workflow: '.github/workflows/reusable-qa-request.yml',
+    runId: 45785677705,
+    runNumber: 93,
+    runHeadSha: '7'.repeat(40),
+    sourceSha: qaBaseline,
+    releasedAt: '2026-11-26T09:02:40Z'
+  };
+  const first = spawnSync(process.execPath, [
+    script, 'records', qaBaseline, 'integration/incremental-first', JSON.stringify(qaReceipt)
+  ], { cwd, encoding: 'utf8' });
+  assert.equal(first.status, 0, first.stderr);
+  const firstCandidate = JSON.parse(first.stdout).candidate;
+
+  // QA later changes a nearby line in the already deployed file.
+  git('switch', '-q', 'integration/incremental-first');
+  write('shared.txt', ['task-one', 'qa-later', ...Array.from({ length: 10 }, (_, i) => 'line-' + (i + 3))].join('\n') + '\n');
+  git('add', 'shared.txt');
+  git('commit', '-qm', 'Later QA edit');
+  const laterQaBaseline = git('rev-parse', 'HEAD');
+
+  // The open PR advances from its deployed head with one new file.
+  git('switch', '-q', 'task-one');
+  write('incremental.txt', 'only the later PR commit');
+  git('add', 'incremental.txt');
+  git('commit', '-qm', 'Task one follow-up');
+  const updatedTaskHead = git('rev-parse', 'HEAD');
+  git('switch', '-q', 'main');
+  write('records/task.json', JSON.stringify({
+    id: 'TASK-01', status: 'ready', prMergeBase: common,
+    head: updatedTaskHead, paths: ['incremental.txt', 'shared.txt'], dependsOn: []
+  }));
+
+  const nextReceipt = {
+    ...qaReceipt,
+    runId: 45785677706,
+    runNumber: 94,
+    runHeadSha: '6'.repeat(40),
+    sourceSha: laterQaBaseline,
+    releasedAt: '2026-11-27T00:01:00Z'
+  };
+  const second = spawnSync(process.execPath, [
+    script, 'records', laterQaBaseline, 'integration/incremental-second', JSON.stringify(nextReceipt)
+  ], { cwd, encoding: 'utf8' });
+  assert.equal(second.status, 0, second.stderr);
+  const candidate = JSON.parse(second.stdout).candidate;
+  assert.equal(git('rev-parse', candidate + '^'), laterQaBaseline);
+  assert.equal(git('show', candidate + ':shared.txt'),
+    ['task-one', 'qa-later', ...Array.from({ length: 10 }, (_, i) => 'line-' + (i + 3))].join('\n'));
+  assert.equal(git('show', candidate + ':incremental.txt'), 'only the later PR commit');
+  const message = git('show', '-s', '--format=%B', candidate);
+  assert.ok(message.includes('Task-PR-Merge-Base-SHA: ' + common));
+  assert.ok(message.includes('Task-PR-Head-SHA: ' + updatedTaskHead));
+  assert.notEqual(firstCandidate, candidate);
 });
 
 test('blocks a conflicting PR delta against deployed QA without creating a candidate ref', t => {
