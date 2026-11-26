@@ -765,3 +765,5 @@ On the next turn/session, read this file and the current `AGENTS.md` first. Cont
 - **修复：** 非微信主题隐藏朋友圈专属顶栏；微信主题继续显示原 88px 顶栏；基础 CSS 与 SVG 固有属性分别固定返回图标 20×20px、发表图标 21×21px。未改底部 Home Indicator、底部导航、存储键或用户数据。
 - **回归：** 扩展 tests/wechat-theme-browser.mjs，375/390/430px 下检查微信主题顶栏尺寸、封面紧贴顶栏，以及切回默认主题后顶栏隐藏。
 - **状态：** 源码静态契约检查 7/7 通过；QA verify 待执行，尚未发布。
+
+- **QA 验证结果：** run 45792397059 未通过，停止于 gate-27-of-51-browser；按候选测试清单映射为 tests/travel-storage.browser.mjs（旅行模块），不属于本次朋友圈改动。当前没有足够证据判断该失败是否为 QA 基线既有问题，因此未跳过门禁、未发布。
