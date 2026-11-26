@@ -285,3 +285,14 @@ On the next turn/session, read this file and the current `AGENTS.md` first. Cont
 - **测试：** 新增 `tests/games-storage-trust.test.mjs`（9 项，VM 跑真实 `saveRaw/saveJSON/saveCaseProgress/selectRole/saveStat`），9/9 通过；7 段内联脚本全部 `vm.Script` 解析通过。
 - **登记未做（需产品决策）：** 游戏大厅只读角色卡 + 记忆无关；不产出世界事件（依赖 `ECO-LINK-002`）；侦探案件生成为付费调用，无次数限制或失败重试预算控制。
 - **未验证：** Vite 全站构建、Chromium 375/390/430、真机、真实配额场景。
+
+
+## 2026-11-26 · ROLE-MIND-001 · 心声历史与发言者隔离
+
+- **分支：** `ROLE-MIND-001/heart-history-isolation-20261126` · 从当前 main `7f666f1d53c593d341b390442e0e4ff1d0a8f39d` 建立。
+- **源码发现：** 原实现只写 `latest_heart_<conversationId>`，群聊所有成员共用群 ID，头像点击也只读取同一个键；存储异常被静默忽略。旧群键无法可靠判断心声属于谁。
+- **本轮实现：** 新增 `ChatHeartPolicy`；心声按 conversationId + speakerId 隔离，最多保留 24 条、单条最多 200 字；直接聊天兼容读取旧键且不删除；不迁移旧群键；写入读回验证；仅在可见 AI 回复保存成功后写心声；群头像按 memberId 读取，旧消息只允许唯一成员名称匹配；心声提示改为可选且遵循已加载人设。
+- **文件：** `shared/js/phone/chat-heart-policy.js`、`chat/chat/chat-detail.html`、`sw.js`、`tests/chat-heart-policy.test.mjs`、`package.json`、PWA 版本断言、聊天架构契约、聊天回归基线、本文件。
+- **测试：** 新增专项单元与源码契约测试；待实际运行。PWA 缓存版本计划从 v205 升至 v206。
+- **数据安全：** 不改聊天消息 schema、角色/群 ID、旧存储键；不删除旧心声或历史；群旧键保持原样且不再展示给成员。
+- **状态：** 未合并、未部署；浏览器、PWA、真机和真实账号验收 NOT VERIFIED。
