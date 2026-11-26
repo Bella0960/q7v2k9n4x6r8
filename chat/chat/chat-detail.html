@@ -6951,7 +6951,7 @@
                     } else if (roleFamilyCardChanged) {
                         renderAllMessages();
                     }
-                    if (streamResult.ok && replySaved && parsedHeart.hearts.length) {
+                    if (streamResult.ok && replySaved && fullText && parsedHeart.hearts.length) {
                         insertHeartCards(historyList, parsedHeart.hearts,
                             isGroupChat && groupReplyPick ? groupReplyPick.id : aliasRoleId);
                     }
