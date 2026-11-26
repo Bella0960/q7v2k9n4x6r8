@@ -1,9 +1,9 @@
 #!/usr/bin/env node
 // Shared PR-backed task registry and create-only QA batch handoff.
 import { spawnSync } from 'node:child_process';
-import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, renameSync, rmSync, unlinkSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
-import { join, resolve } from 'node:path';
+import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import { runConflictAudit } from './engineering-pr-conflicts.mjs';
 
@@ -540,10 +540,63 @@ async function collectReadyTasks(repository, baseline, pullRequests) {
   return { ready: [...active], blocked };
 }
 
-function remoteBranchExists(branch) {
-  const result = git(['ls-remote', '--heads', 'origin', 'refs/heads/' + branch], 'Remote candidate preflight');
-  return Boolean(result.stdout.trim());
+function candidateReceiptPath(baseline) {
+  const gitPath = gitText(['rev-parse', '--git-path', 'maomao-qa-batch-receipts'], 'Locate candidate receipt directory');
+  return join(resolve(gitPath), 'qa-batch-' + baseline + '.json');
 }
+
+function readCandidateReceipt(repository, baseline, branch) {
+  const path = candidateReceiptPath(baseline);
+  if (!existsSync(path)) return null;
+  let receipt;
+  try {
+    receipt = JSON.parse(readFileSync(path, 'utf8'));
+  } catch {
+    fail('Stored candidate receipt is unreadable; refusing to rebuild or overwrite this batch.');
+  }
+  const tasks = receipt?.tasks;
+  const taskIds = receipt?.taskIds;
+  const qa = receipt?.qaSourceReceipt;
+  if (!receipt || receipt.version !== 1 || receipt.repository !== repository ||
+      receipt.baseline !== baseline || receipt.branch !== branch || !SHA.test(receipt.candidate ?? '') ||
+      !Array.isArray(tasks) || !tasks.length || !Array.isArray(taskIds) ||
+      taskIds.length !== tasks.length ||
+      tasks.some(task => !TASK_ID.test(task?.id ?? '') || !SHA.test(task?.base ?? '') ||
+        !SHA.test(task?.head ?? '') || !Array.isArray(task?.paths) ||
+        task.paths.some(path => typeof path !== 'string' || !path || path.startsWith('/') ||
+          path.split('/').some(part => !part || part === '.' || part === '..')) ||
+        !Number.isSafeInteger(task?.prNumber) || task.prNumber < 1 ||
+        !Array.isArray(task?.dependsOn) || task.dependsOn.some(id => !TASK_ID.test(id))) ||
+      new Set(taskIds).size !== taskIds.length ||
+      JSON.stringify(taskIds) !== JSON.stringify(tasks.map(task => task.id)) ||
+      !qa || qa.repository !== QA_REPOSITORY || qa.workflow !== QA_WORKFLOW_PATH ||
+      !Number.isSafeInteger(qa.runId) || qa.runId < 1 ||
+      !Number.isSafeInteger(qa.runNumber) || qa.runNumber < 1 ||
+      !SHA.test(qa.runHeadSha ?? '') || qa.sourceSha !== baseline ||
+      !Number.isFinite(Date.parse(qa.releasedAt ?? '')) ||
+      !Number.isFinite(Date.parse(receipt.createdAt ?? ''))) {
+    fail('Stored candidate receipt failed validation; refusing to rebuild or overwrite this batch.');
+  }
+  return { path, receipt };
+}
+
+function writeCandidateReceipt(receipt) {
+  const path = candidateReceiptPath(receipt.baseline);
+  mkdirSync(dirname(path), { recursive: true });
+  const temporary = path + '.' + process.pid + '.' + Date.now() + '.tmp';
+  writeFileSync(temporary, JSON.stringify(receipt, null, 2) + '\n', { flag: 'wx' });
+  renameSync(temporary, path);
+  return path;
+}
+
+function localBranchSha(ref) {
+  const result = git(['rev-parse', '--verify', ref], 'Local candidate preflight', true);
+  if (!result.ok) return null;
+  const sha = result.stdout.trim();
+  if (!SHA.test(sha)) fail('Local candidate ref did not resolve to a commit SHA.');
+  return sha;
+}
+
 function assertPushTarget(repository) {
   const url = gitText(['remote', 'get-url', 'origin'], 'Read origin remote');
   const normalized = url.replace(/\.git$/i, '')
@@ -553,22 +606,132 @@ function assertPushTarget(repository) {
     fail('origin must point to https://github.com/' + repository + ' before candidate push.');
   }
 }
+
+function remoteBranchSha(branch) {
+  const ref = 'refs/heads/' + branch;
+  const output = gitText(['ls-remote', '--heads', 'origin', ref], 'Remote candidate preflight');
+  if (!output) return null;
+  const rows = output.split(/\r?\n/).filter(Boolean);
+  if (rows.length !== 1) fail('Remote candidate lookup returned an ambiguous ref: ' + branch);
+  const [sha, remoteRef] = rows[0].trim().split(/\s+/);
+  if (remoteRef !== ref || !SHA.test(sha ?? '')) fail('Remote candidate lookup returned an invalid SHA for ' + branch);
+  return sha;
+}
+
 function pushCandidate(repository, branch, candidate) {
   assertPushTarget(repository);
-  if (remoteBranchExists(branch)) fail('Remote candidate branch already exists; refusing to overwrite it: ' + branch);
-  git(['push', '--force-with-lease=refs/heads/' + branch + ':', 'origin', candidate + ':refs/heads/' + branch], 'Create-only candidate push');
-  const pushed = gitText(['ls-remote', '--heads', 'origin', 'refs/heads/' + branch], 'Verify pushed candidate');
-  const [sha] = pushed.split(/\s+/);
-  if (sha !== candidate) fail('Remote candidate receipt does not match the assembled SHA.');
+  const existing = remoteBranchSha(branch);
+  if (existing === candidate) return { remoteSha: existing, alreadyPresent: true };
+  if (existing) {
+    fail('Remote candidate branch already exists at a different SHA (' + existing +
+      '); refusing to overwrite it: ' + branch);
+  }
+  // Empty expected ref is a create-only lease: a concurrent branch creation makes the push fail.
+  git(['push', '--force-with-lease=refs/heads/' + branch + ':', 'origin',
+    candidate + ':refs/heads/' + branch], 'Create-only candidate push');
+  const pushed = remoteBranchSha(branch);
+  if (pushed !== candidate) fail('Remote candidate receipt does not match the assembled SHA.');
+  return { remoteSha: pushed, alreadyPresent: false };
+}
+
+async function resumeCandidate(repository, baseline, branch, stored, { push = false } = {}) {
+  const { receipt } = stored;
+  const ref = 'refs/heads/' + branch;
+  assertPushTarget(repository);
+  const localSha = localBranchSha(ref);
+  const remoteSha = remoteBranchSha(branch);
+  if (localSha && localSha !== receipt.candidate) {
+    fail('Local candidate ref differs from its saved receipt; refusing to replace either SHA.');
+  }
+  if (remoteSha && remoteSha !== receipt.candidate) {
+    fail('Remote candidate branch exists at a different SHA (' + remoteSha +
+      '); refusing to overwrite another window’s candidate.');
+  }
+  if (!localSha && remoteSha !== receipt.candidate) {
+    fail('Saved receipt exists but its candidate commit is not available locally and the remote ref is empty. Restore the saved candidate bundle; do not reassemble automatically.');
+  }
+  if (localSha) {
+    git(['cat-file', '-e', receipt.candidate + '^{commit}'], 'Saved candidate object verification');
+    isAncestor(baseline, receipt.candidate, 'Saved candidate QA baseline');
+    for (const task of receipt.tasks) {
+      isAncestor(task.head, receipt.candidate, task.id + ' saved candidate ancestry');
+    }
+  }
+
+  let pushStatus = remoteSha === receipt.candidate ? 'already-present' : 'not-requested';
+  let finalQaSourceReceipt = await requireCurrentQaBaseline(baseline);
+  if (push && !remoteSha) {
+    const conflicts = await runConflictAudit({
+      repo: repository,
+      base: baseline,
+      head: receipt.candidate,
+      ignorePullRequestNumbers: receipt.tasks.map(task => task.prNumber)
+    });
+    if (conflicts.exactOverlapCount || conflicts.sharedHotspotCount) {
+      fail('Saved candidate now has an ownership conflict; it remains intact and was not pushed.');
+    }
+    finalQaSourceReceipt = await requireCurrentQaBaseline(baseline);
+    const result = pushCandidate(repository, branch, receipt.candidate);
+    pushStatus = result.alreadyPresent ? 'already-present' : 'created';
+  }
+  const status = remoteBranchSha(branch) === receipt.candidate ? 'pushed' : 'assembled-local';
+  return {
+    status,
+    resumed: true,
+    pushStatus,
+    candidateReceiptPath: stored.path,
+    qaSourceReceipt: finalQaSourceReceipt,
+    repository,
+    baseline,
+    branch,
+    candidate: receipt.candidate,
+    candidateUrl: 'https://github.com/' + repository + '/tree/' + branch,
+    includedTasks: receipt.tasks.map(task => ({
+      id: task.id, base: task.base, head: task.head, paths: task.paths,
+      dependsOn: task.dependsOn, pr: task.prNumber
+    })),
+    ownershipWarnings: receipt.ownershipWarnings ?? [],
+    blocked: receipt.blocked ?? []
+  };
+}
+
+function invalidateCandidate(repository, baseline, candidate) {
+  if (!SHA.test(baseline ?? '') || !SHA.test(candidate ?? '')) {
+    fail('Usage: node scripts/engineering-qa-queue.mjs invalidate <qa-baseline-sha> --confirm-candidate=<candidate-sha>');
+  }
+  const branch = 'integration/qa-batch-' + baseline.slice(0, 12);
+  const stored = readCandidateReceipt(repository, baseline, branch);
+  if (!stored) fail('No saved candidate receipt exists for this QA baseline.');
+  if (stored.receipt.candidate !== candidate) {
+    fail('Confirmation SHA does not match the saved candidate; nothing was invalidated.');
+  }
+  assertPushTarget(repository);
+  const remoteSha = remoteBranchSha(branch);
+  if (remoteSha) {
+    fail('Remote candidate ref exists (' + remoteSha + '); local invalidation will not delete or replace a remote candidate.');
+  }
+  const ref = 'refs/heads/' + branch;
+  const localSha = localBranchSha(ref);
+  if (localSha && localSha !== candidate) {
+    fail('Local candidate ref differs from the saved candidate; nothing was invalidated.');
+  }
+  if (localSha) git(['update-ref', '-d', ref, candidate], 'Invalidate explicitly confirmed local candidate');
+  unlinkSync(stored.path);
+  return { status: 'invalidated-local-candidate', baseline, branch, candidate, remoteRefDeleted: false };
 }
 
 async function assembleReadyBatch(repository, baseline, { push = false } = {}) {
   const qaSourceReceipt = await requireCurrentQaBaseline(baseline);
   const branch = 'integration/qa-batch-' + baseline.slice(0, 12);
   const ref = 'refs/heads/' + branch;
-  const localExists = git(['show-ref', '--verify', '--quiet', ref], 'Local candidate preflight', true).ok;
-  if (localExists || remoteBranchExists(branch)) {
-    fail('A batch candidate already exists for this QA baseline. It is immutable; finish that release before starting another batch.');
+  const stored = readCandidateReceipt(repository, baseline, branch);
+  if (stored) return resumeCandidate(repository, baseline, branch, stored, { push });
+
+  assertPushTarget(repository);
+  const localSha = localBranchSha(ref);
+  const remoteSha = remoteBranchSha(branch);
+  if (localSha || remoteSha) {
+    fail('A candidate ref already exists for this QA baseline but has no saved receipt. Refusing to overwrite or reconstruct it; inspect the existing candidate and resolve it explicitly.');
   }
   const pullRequests = await getOpenPrs(repository);
   const { ready, blocked } = await collectReadyTasks(repository, baseline, pullRequests);
@@ -635,23 +798,59 @@ async function assembleReadyBatch(repository, baseline, { push = false } = {}) {
       candidate = null;
       throw error;
     }
-    if (push) pushCandidate(repository, branch, candidate);
+    const includedTasks = receipt.tasks.map(task => ({
+      id: task.id,
+      base: task.base,
+      head: task.head,
+      paths: task.paths,
+      dependsOn: task.dependsOn,
+      pr: ready.find(item => item.id === task.id)?.pr ?? null
+    }));
+    const candidateReceipt = {
+      version: 1,
+      repository,
+      baseline,
+      branch,
+      candidate,
+      taskIds: receipt.tasks.map(task => task.id),
+      tasks: receipt.tasks.map(task => ({
+        id: task.id,
+        base: task.base,
+        head: task.head,
+        paths: task.paths,
+        dependsOn: task.dependsOn ?? [],
+        prNumber: ready.find(item => item.id === task.id)?.pr?.number ?? null
+      })),
+      qaSourceReceipt: finalQaSourceReceipt,
+      ownershipWarnings: conflicts.findings,
+      blocked,
+      createdAt: new Date().toISOString()
+    };
+    let savedReceiptPath;
+    try {
+      savedReceiptPath = writeCandidateReceipt(candidateReceipt);
+    } catch (error) {
+      git(['update-ref', '-d', ref, candidate], 'Remove candidate because its receipt could not be saved');
+      candidate = null;
+      throw error;
+    }
+    let pushStatus = 'not-requested';
+    if (push) {
+      const pushed = pushCandidate(repository, branch, candidate);
+      pushStatus = pushed.alreadyPresent ? 'already-present' : 'created';
+    }
     return {
       status: push ? 'pushed' : 'assembled-local',
+      resumed: false,
+      pushStatus,
+      candidateReceiptPath: savedReceiptPath,
       qaSourceReceipt: finalQaSourceReceipt,
       repository,
       baseline,
       branch,
       candidate,
       candidateUrl: 'https://github.com/' + repository + '/tree/' + branch,
-      includedTasks: receipt.tasks.map(task => ({
-        id: task.id,
-        base: task.base,
-        head: task.head,
-        paths: task.paths,
-        dependsOn: task.dependsOn,
-        pr: ready.find(item => item.id === task.id)?.pr ?? null
-      })),
+      includedTasks,
       ownershipWarnings: conflicts.findings,
       blocked
     };
@@ -678,7 +877,16 @@ async function main() {
     if (receipt.status === 'blocked') process.exitCode = 2;
     return;
   }
-  fail('Usage: node scripts/engineering-qa-queue.mjs register ... | validate-baseline <qa-source-sha> | assemble <qa-baseline-sha> [--push]');
+  if (command === 'invalidate') {
+    const [baseline, confirmation, ...extra] = args;
+    const match = /^--confirm-candidate=([0-9a-f]{40})$/.exec(confirmation ?? '');
+    if (extra.length || !match) {
+      fail('Usage: node scripts/engineering-qa-queue.mjs invalidate <qa-baseline-sha> --confirm-candidate=<candidate-sha>');
+    }
+    console.log(JSON.stringify(invalidateCandidate(repository, baseline, match[1]), null, 2));
+    return;
+  }
+  fail('Usage: npm run eng:register -- <PR-number> <TASK-ID> <QA-baseline-SHA> <F1|F2|F3|F4> "exact test check name" [...] [--depends-on=TASK-ID,TASK-ID] | validate-baseline <qa-source-sha> | assemble <qa-baseline-sha> [--push] | invalidate <qa-baseline-sha> --confirm-candidate=<candidate-sha>');
 }
 
 if (process.argv[1] && import.meta.url === pathToFileURL(resolve(process.argv[1])).href) {
