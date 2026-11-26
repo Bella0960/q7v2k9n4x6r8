@@ -10,7 +10,8 @@ import {
   renderTaskManifest,
   replaceTaskManifest,
   pathSetFromPrFiles,
-  evaluateTaskEvidence
+  evaluateTaskEvidence,
+  createReadyTaskRecord
 } from '../scripts/engineering-qa-queue.mjs';
 
 const queueScript = fileURLToPath(new URL('../scripts/engineering-qa-queue.mjs', import.meta.url));
@@ -42,6 +43,17 @@ const checkRuns = [
   { name: 'Vite Build', head_sha: sha(2), status: 'completed', conclusion: 'success', completed_at: '2026-11-26T10:00:00Z' }
 ];
 const status = { state: 'success', statuses: [] };
+
+test('ready collection preserves declared task dependencies for the assembler', () => {
+  const record = createReadyTaskRecord({
+    manifest: manifest({ id: 'CHAT-002', dependsOn: ['CHAT-001'] }),
+    paths: ['chat/detail.html'],
+    pr: { number: 12, title: 'Dependent task' }
+  });
+  assert.deepEqual(record.dependsOn, ['CHAT-001']);
+  assert.deepEqual(record.paths, ['chat/detail.html']);
+  assert.equal(record.status, 'ready');
+});
 
 test('parses one valid machine-readable task manifest', () => {
   const body = 'Description\n\n' + renderTaskManifest(manifest());
