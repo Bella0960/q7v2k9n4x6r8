@@ -20,6 +20,6 @@
 
 After the final commit is pushed, register or refresh this PR's machine-readable task record:
 
-    npm run eng:register -- <PR-number> <TASK-ID> <QA-baseline-SHA> <F1|F2|F3|F4> "<exact test check name>" ["<another exact check name>"]
+    npm run eng:register -- <PR-number> <TASK-ID> <QA-baseline-SHA> <F1|F2|F3|F4> "<exact test check name>" ["<another exact check name>"] [--depends-on=TASK-ID,TASK-ID]
 
 Run the command again after any new commit so the recorded head SHA stays current. The batch coordinator only includes an open, non-draft PR with an approval on its exact current head, all named GitHub checks successful, a complete changed-file match, and a base that is already contained in the deployed QA baseline. Registration does not approve, merge, or deploy anything.

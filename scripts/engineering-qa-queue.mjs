@@ -29,13 +29,19 @@ function validateManifest(value) {
       !SHA.test(value.base ?? '') || !SHA.test(value.head ?? '') ||
       !RISK.test(value.risk ?? '') ||
       !Array.isArray(value.requiredChecks) || value.requiredChecks.length < 1 ||
-      value.requiredChecks.length > 20) {
+      value.requiredChecks.length > 20 ||
+      (value.dependsOn != null && !Array.isArray(value.dependsOn))) {
     fail('Invalid MAOMAO task manifest. Expected version 1, task ID, submitted status, full base/head SHAs, F1-F4 risk, and required check names.');
   }
   const checks = [...new Set(value.requiredChecks.map(x => clean(x, 120)))];
   if (checks.length !== value.requiredChecks.length ||
       checks.some(x => !x || !CHECK_NAME.test(x))) {
     fail('Every required check must be a unique, exact GitHub test/build/verify/browser check name.');
+  }
+  const dependencies = value.dependsOn ?? [];
+  if (dependencies.length > 30 || dependencies.some(id => !TASK_ID.test(id) || id === value.id) ||
+      new Set(dependencies).size !== dependencies.length) {
+    fail('Task dependencies must be unique, valid Task IDs and cannot include the task itself.');
   }
   return {
     version: 1,
@@ -44,7 +50,8 @@ function validateManifest(value) {
     base: value.base,
     head: value.head,
     risk: value.risk,
-    requiredChecks: checks
+    requiredChecks: checks,
+    dependsOn: [...new Set(value.dependsOn ?? [])]
   };
 }
 
@@ -118,13 +125,18 @@ export function evaluateTaskEvidence({ pr, manifest, reviews = [], checkRuns = [
   const reasons = [];
   if (pr?.state !== 'open') reasons.push('PR is not open');
   if (pr?.draft) reasons.push('PR is still draft');
-  if (pr?.base?.ref !== 'main' && !/^(integration|qa)\\//.test(pr?.base?.ref ?? '')) reasons.push('PR base must be main or an approved integration/qa branch');
+  if (pr?.base?.ref !== 'main' && !/^(integration|qa)\//.test(pr?.base?.ref ?? '')) reasons.push('PR base must be main or an approved integration/qa branch');
   if (pr?.head?.repo?.full_name !== repository || pr?.base?.repo?.full_name !== repository) {
     reasons.push('PR head/base must both belong to the source repository');
   }
   if (pr?.head?.sha !== manifest?.head) reasons.push('registered head SHA is stale');
   if (!manifest || !['submitted', 'ready'].includes(manifest.status)) reasons.push('task is not submitted');
-  if (status?.state !== 'success') reasons.push('combined commit status is ' + clean(status?.state ?? 'missing'));
+  const statusContexts = Array.isArray(status?.statuses) ? status.statuses : [];
+  if (statusContexts.length && status?.state !== 'success') {
+    reasons.push('combined commit status is ' + clean(status?.state ?? 'missing'));
+  } else if (!statusContexts.length && !['pending', 'success'].includes(status?.state)) {
+    reasons.push('combined commit status is ' + clean(status?.state ?? 'missing'));
+  }
 
   const currentReviews = latestReviews(reviews).filter(review =>
     review.commit_id === pr?.head?.sha && review.user?.login !== pr?.user?.login);
@@ -278,7 +290,7 @@ async function registerTask(repository, args) {
     version: 1, id, status: 'submitted', base,
     head: '0'.repeat(40), risk, requiredChecks
   });
-  const pr = await api('/repos/' + repository + '/pulls/' + number);
+  const pr = existingPr;
   if (pr.state !== 'open' || pr.head?.repo?.full_name !== repository || pr.base?.repo?.full_name !== repository) {
     fail('Registration requires an open PR whose head and base both belong to ' + repository + '.');
   }
@@ -302,7 +314,8 @@ async function registerTask(repository, args) {
     baseline: base,
     head: manifest.head,
     risk,
-    requiredChecks,
+    requiredChecks: checks,
+    dependsOn: manifest.dependsOn,
     changedFiles: pathSetFromPrFiles(files)
   }, null, 2));
 }
@@ -392,7 +405,7 @@ function assertPushTarget(repository) {
 function pushCandidate(repository, branch, candidate) {
   assertPushTarget(repository);
   if (remoteBranchExists(branch)) fail('Remote candidate branch already exists; refusing to overwrite it: ' + branch);
-  git(['push', 'origin', candidate + ':refs/heads/' + branch], 'Create-only candidate push');
+  git(['push', '--force-with-lease=refs/heads/' + branch + ':', 'origin', candidate + ':refs/heads/' + branch], 'Create-only candidate push');
   const pushed = gitText(['ls-remote', '--heads', 'origin', 'refs/heads/' + branch], 'Verify pushed candidate');
   const [sha] = pushed.split(/\s+/);
   if (sha !== candidate) fail('Remote candidate receipt does not match the assembled SHA.');
@@ -417,7 +430,7 @@ async function assembleReadyBatch(repository, baseline, { push = false } = {}) {
   try {
     for (let index = 0; index < ready.length; index++) {
       const task = ready[index];
-      const record = { id: task.id, status: 'ready', base: task.base, head: task.head, paths: task.paths };
+      const record = { id: task.id, status: 'ready', base: task.base, head: task.head, paths: task.paths, dependsOn: task.dependsOn };
       writeFileSync(join(temp, String(index + 1).padStart(3, '0') + '.json'), JSON.stringify(record));
     }
     const result = spawnSync(process.execPath, [fileURLToPath(BATCH_SCRIPT), temp, baseline, branch], {
@@ -475,6 +488,7 @@ async function assembleReadyBatch(repository, baseline, { push = false } = {}) {
         base: task.base,
         head: task.head,
         paths: task.paths,
+        dependsOn: task.dependsOn,
         pr: ready.find(item => item.id === task.id)?.pr ?? null
       })),
       ownershipWarnings: conflicts.findings,

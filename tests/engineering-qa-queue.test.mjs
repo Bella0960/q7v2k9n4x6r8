@@ -17,6 +17,7 @@ const manifest = (overrides = {}) => ({
   head: sha(2),
   risk: 'F2',
   requiredChecks: ['Node Tests', 'Vite Build'],
+  dependsOn: [],
   ...overrides
 });
 const pr = (overrides = {}) => ({
@@ -68,7 +69,7 @@ test('stale approvals, draft PRs, pending statuses, and failed checks block inte
   const cases = [
     { pr: pr({ draft: true }), reviews, checkRuns, status },
     { pr: pr(), reviews: [{ ...reviews[0], commit_id: sha(3) }], checkRuns, status },
-    { pr: pr(), reviews, checkRuns, status: { state: 'pending', statuses: [] } },
+    { pr: pr(), reviews, checkRuns, status: { state: 'pending', statuses: [{ context: 'Pending test', state: 'pending' }] } },
     { pr: pr(), reviews, checkRuns: [{ ...checkRuns[0], conclusion: 'failure' }, checkRuns[1]], status },
     { pr: pr(), reviews, checkRuns: [checkRuns[0]], status }
   ];
@@ -99,4 +100,20 @@ test('only required check contexts that actually passed count as evidence', () =
     status: { state: 'success', statuses: [{ context: 'Node Tests', state: 'success' }, { context: 'Vite Build', state: 'success' }] }
   });
   assert.equal(result.ready, true);
+});
+
+
+test('allows successful named check-runs when the legacy commit-status API has no contexts', () => {
+  const result = evaluateTaskEvidence({
+    pr: pr({ base: { ref: 'integration/qa-stack', repo: { full_name: 'Bella0960/q7v2k9n4x6r8' } } }),
+    manifest: manifest(),
+    reviews,
+    checkRuns,
+    status: { state: 'pending', total_count: 0, statuses: [] }
+  });
+  assert.equal(result.ready, true);
+});
+test('rejects a task dependency list containing duplicates or the task itself', () => {
+  assert.throws(() => renderTaskManifest(manifest({ dependsOn: ['CHAT-FIX-001'] })), /dependencies/);
+  assert.throws(() => renderTaskManifest(manifest({ dependsOn: ['OTHER-001', 'OTHER-001'] })), /dependencies/);
 });

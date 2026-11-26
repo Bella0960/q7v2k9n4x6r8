@@ -35,6 +35,33 @@ function changedPaths(base, head) {
     .split('\0').filter(Boolean).sort();
 }
 
+export function orderReadyTasks(tasks) {
+  const byId = new Map(tasks.map(task => [task.id, task]));
+  const ordered = [];
+  const visiting = new Set();
+  const visited = new Set();
+  function visit(task) {
+    if (visited.has(task.id)) return;
+    if (visiting.has(task.id)) throw new Error('Task dependency cycle includes ' + task.id + '.');
+    visiting.add(task.id);
+    const dependencies = task.dependsOn ?? [];
+    if (!Array.isArray(dependencies) || dependencies.some(id => !taskPattern.test(id) || id === task.id) ||
+        new Set(dependencies).size !== dependencies.length) {
+      throw new Error(task.id + ' has an invalid dependency list.');
+    }
+    for (const dependency of dependencies) {
+      const parent = byId.get(dependency);
+      if (!parent) throw new Error(task.id + ' depends on ' + dependency + ', which is not ready in this batch.');
+      visit(parent);
+    }
+    visiting.delete(task.id);
+    visited.add(task.id);
+    ordered.push(task);
+  }
+  for (const task of [...tasks].sort((a, b) => a.id.localeCompare(b.id, 'en'))) visit(task);
+  return ordered;
+}
+
 function readReadyTasks(directory) {
   const records = readdirSync(directory, { withFileTypes: true })
     .filter(entry => entry.isFile() && entry.name.endsWith('.json'))
@@ -47,7 +74,7 @@ function readReadyTasks(directory) {
     }
     ids.add(task.id);
   }
-  return records.filter(task => task.status === 'ready').sort((a, b) => a.id.localeCompare(b.id, 'en'));
+  return orderReadyTasks(records.filter(task => task.status === 'ready'));
 }
 
 function assemble(directory, qaSha, branch) {

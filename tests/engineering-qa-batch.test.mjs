@@ -5,6 +5,7 @@ import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { orderReadyTasks } from '../scripts/engineering-qa-batch.mjs';
 
 const script = fileURLToPath(new URL('../scripts/engineering-qa-batch.mjs', import.meta.url));
 
@@ -108,4 +109,21 @@ test('reports file-directory merge conflicts and preserves all refs', t => {
   assert.match(result.stderr, /collision/);
   assert.equal(git('branch', '--list', 'integration/conflict'), '');
   assert.equal(git('rev-parse', 'HEAD'), baseline);
+});
+
+
+test('orders dependent tasks before their dependants regardless of Task ID', () => {
+  const tasks = [
+    { id: 'TASK-02', dependsOn: ['TASK-10'] },
+    { id: 'TASK-10', dependsOn: [] },
+    { id: 'TASK-03', dependsOn: ['TASK-02'] }
+  ];
+  assert.deepEqual(orderReadyTasks(tasks).map(task => task.id), ['TASK-10', 'TASK-02', 'TASK-03']);
+});
+test('rejects missing dependencies and dependency cycles before candidate creation', () => {
+  assert.throws(() => orderReadyTasks([{ id: 'TASK-01', dependsOn: ['TASK-02'] }]), /not ready/);
+  assert.throws(() => orderReadyTasks([
+    { id: 'TASK-01', dependsOn: ['TASK-02'] },
+    { id: 'TASK-02', dependsOn: ['TASK-01'] }
+  ]), /cycle/);
 });
