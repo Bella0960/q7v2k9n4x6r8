@@ -98,6 +98,7 @@ test('five independent modules exceed the bounded fast lane and use standard che
 
 test('CSS changes that can alter hit testing, visibility, stacking or motion use standard checks', () => {
   const properties = [
+    ['all', 'unset', 'initial'],
     ['pointer-events', 'auto', 'none'],
     ['touch-action', 'pan-y', 'none'],
     ['user-select', 'text', 'none'],
@@ -106,6 +107,7 @@ test('CSS changes that can alter hit testing, visibility, stacking or motion use
     ['position', 'static', 'fixed'],
     ['z-index', '1', '9999'],
     ['overflow', 'visible', 'hidden'],
+    ['scrollbar-width', 'auto', 'none'],
     ['transform', 'none', 'translateX(40px)'],
     ['content', 'none', '"隐藏按钮"'],
     ['opacity', '1', '0'],
