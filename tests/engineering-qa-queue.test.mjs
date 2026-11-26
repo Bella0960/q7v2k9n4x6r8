@@ -1,9 +1,9 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { spawnSync } from 'node:child_process';
-import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { chmodSync, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
-import { join } from 'node:path';
+import { delimiter, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import {
   parseTaskManifest,
@@ -275,6 +275,50 @@ function runQueueAssembleCli(t, specs, options = {}) {
   const remoteInit = spawnSync('git', ['init', '--bare', '-q', remotePath], { encoding: 'utf8' });
   assert.equal(remoteInit.status, 0, remoteInit.stderr || remoteInit.stdout);
   git('remote', 'add', 'origin', remotePath);
+  const candidateBranch = 'integration/qa-batch-' + originalBaseline.slice(0, 12);
+  const binDir = join(stubDir, 'bin');
+  mkdirSync(binDir, { recursive: true });
+  const realGit = process.env.PATH.split(delimiter)
+    .map(directory => join(directory, process.platform === 'win32' ? 'git.exe' : 'git'))
+    .find(candidate => existsSync(candidate));
+  assert.ok(realGit, 'git executable must be available for the test wrapper');
+  const gitWrapper = join(binDir, process.platform === 'win32' ? 'git.cmd' : 'git');
+  const wrapperScript = [
+    '#!/bin/sh',
+    'if [ "$1" = "remote" ] && [ "$2" = "get-url" ] && [ "$3" = "origin" ]; then',
+    '  printf "%s\\\\n" "https://github.com/"' + repository + '"',
+    '  exit 0',
+    'fi',
+    'if [ "$1" = "ls-remote" ] && [ "$2" = "--heads" ] && [ "$3" = "origin" ]; then',
+    '  shift 3',
+    '  exec "$MAOMAO_TEST_REAL_GIT" ls-remote --heads "$MAOMAO_TEST_REMOTE_PATH" "$@"',
+    'fi',
+    'if [ "$1" = "push" ]; then',
+    '  shift',
+    '  lease="$1"',
+    '  shift',
+    '  if [ "$1" = "origin" ]; then shift; fi',
+    '  exec "$MAOMAO_TEST_REAL_GIT" push "$lease" "$MAOMAO_TEST_REMOTE_PATH" "$@"',
+    'fi',
+    'exec "$MAOMAO_TEST_REAL_GIT" "$@"'
+  ].join('\n');
+  writeFileSync(gitWrapper, wrapperScript);
+  if (process.platform !== 'win32') chmodSync(gitWrapper, 0o755);
+  if (options.failFirstPush) {
+    const marker = join(stubDir, 'first-push-rejected');
+    const hook = join(remotePath, 'hooks', 'pre-receive');
+    writeFileSync(hook, [
+      '#!/bin/sh',
+      'if [ ! -f "' + marker + '" ]; then',
+      '  touch "' + marker + '"',
+      '  echo "simulated first push failure" >&2',
+      '  exit 1',
+      'fi',
+      'exit 0',
+      ''
+    ].join('\n'));
+    chmodSync(hook, 0o755);
+  }
 
   let latestQaSha = originalBaseline;
   let baseline = originalBaseline;
@@ -426,29 +470,48 @@ function runQueueAssembleCli(t, specs, options = {}) {
   writeFileSync(stubPath, stub);
 
   const command = options.command ?? 'assemble';
-  const result = spawnSync(process.execPath, ['--import', stubPath, queueScript, command, baseline], {
+  const candidateRef = 'refs/heads/integration/qa-batch-' + baseline.slice(0, 12);
+  const receiptPath = join(cwd, '.git', 'maomao-qa-batch-receipts', 'qa-batch-' + baseline + '.json');
+  const runQueue = args => spawnSync(process.execPath, ['--import', stubPath, queueScript, ...args], {
     cwd,
     encoding: 'utf8',
     env: {
       ...process.env,
+      PATH: binDir + delimiter + process.env.PATH,
+      MAOMAO_TEST_REAL_GIT: realGit,
+      MAOMAO_TEST_REMOTE_PATH: remotePath,
       GH_TOKEN: 'test-token',
       GITHUB_TOKEN: 'test-token',
       GITHUB_REPOSITORY: repository
     }
   });
+  const initialArgs = [command, baseline, ...(options.push ? ['--push'] : [])];
+  const result = runQueue(initialArgs);
+  const remoteSha = () => {
+    const remote = spawnSync('git', ['ls-remote', '--heads', remotePath, candidateRef], { cwd, encoding: 'utf8' });
+    assert.equal(remote.status, 0, remote.stderr || remote.stdout);
+    return remote.stdout.trim().split(/\s+/)[0] || null;
+  };
   let receipt = null;
   if (result.stdout.trim()) {
     try { receipt = JSON.parse(result.stdout); }
     catch { throw new Error('Queue CLI did not return JSON. stdout=' + result.stdout + '\nstderr=' + result.stderr); }
   }
-  const candidateRef = 'refs/heads/integration/qa-batch-' + baseline.slice(0, 12);
   const candidateExists = spawnSync('git', ['show-ref', '--verify', '--quiet', candidateRef], { cwd }).status === 0;
   let candidateDeployedFile = null;
   if (receipt?.candidate) {
     const deployed = spawnSync('git', ['show', receipt.candidate + ':deployed.txt'], { cwd, encoding: 'utf8' });
     if (deployed.status === 0) candidateDeployedFile = deployed.stdout.trim();
   }
-  return { result, receipt, baseline, originalBaseline, latestQaSha, candidateExists, candidateDeployedFile };
+  const gitCommand = (...args) => {
+    const commandResult = spawnSync('git', args, { cwd, encoding: 'utf8' });
+    assert.equal(commandResult.status, 0, commandResult.stderr || commandResult.stdout);
+    return commandResult.stdout.trim();
+  };
+  return {
+    result, receipt, baseline, originalBaseline, latestQaSha, candidateExists,
+    candidateDeployedFile, candidateRef, receiptPath, remotePath, remoteSha, runQueue, git: gitCommand
+  };
 }
 
 test('CLI assemble blocks a dependent task when its prerequisite is not ready and keeps independent work', t => {
