@@ -733,7 +733,7 @@ test('CLI assemble only invalidates a local candidate after exact coordinator co
     'invalidate', fixture.baseline, '--confirm-candidate=' + saved.candidate
   ]);
   assert.equal(invalidated.status, 0, invalidated.stderr);
-  assert.equal(JSON.parse(invalidated.stdout).status, 'invalidated-local-candidate');
+  assert.equal(JSON.parse(invalidated.stdout).status, 'invalidated-candidate');
   assert.equal(existsSync(fixture.receiptPath), false);
   assert.equal(spawnSync('git', ['show-ref', '--verify', '--quiet', fixture.candidateRef], { cwd: fixture.cwd }).status, 1);
 
