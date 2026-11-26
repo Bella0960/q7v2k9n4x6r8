@@ -121,8 +121,18 @@
     var shell = global.document.querySelector('.phone-mockup');
     if (!shell) return;
     var state = read(), flag = 'data-ts-' + group;
+    function clearGroupVars() {
+      // Only this group's own scalar --ts-* variables are removed. The other
+      // group's variables, per-role beauty variables and any plugin-owned
+      // custom properties are outside this adapter's ownership and stay intact.
+      Object.keys(SPECS[group]).forEach(function (key) {
+        if (SPECS[group][key][0] === 'asset') return;
+        shell.style.removeProperty('--ts-' + group + '-' + cssKey(key));
+      });
+    }
     if (!state.enabled[group]) {
       shell.removeAttribute(flag);
+      clearGroupVars();
       if (global.MAOMAOThemeStudioAssets) global.MAOMAOThemeStudioAssets.apply(shell,group,{});
       return;
     }

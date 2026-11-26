@@ -6,10 +6,11 @@
 <title>聊天 · 小手机</title>
 <script src="../../shared/js/font-loader.js?v=20261022v1"></script>
 <script src="../../shared/js/native-feel.js"></script>
-<script src="../../shared/js/chat-beauty.js?v=20261102v3"></script>
+<script src="../../shared/js/chat-beauty.js?v=20261124qa158"></script>
 <script src="../../shared/js/phone/phone_storage.js"></script>
 <script src="../../shared/js/phone/storage/media-repository.js?v=20261121theme2"></script>
 <script src="../../shared/js/group-governance.js?v=20261121group1"></script>
+<script src="../../shared/js/social-chat-list.js?v=20261124restore1"></script>
 <style>
   * {
     box-sizing: border-box;
@@ -774,6 +775,11 @@
     <link rel="stylesheet" href="../../shared/css/theme-studio-runtime.css?v=20261121b">
     <script src="../../shared/js/theme-studio-assets.js?v=20261121b"></script>
     <script defer src="../../shared/js/theme-studio-runtime.js?v=20261121b"></script>
+<link rel="stylesheet" href="../../shared/css/atmosphere-theme.css?v=20261124qa158">
+<link rel="stylesheet" href="../../shared/css/atmosphere-pages.css?v=20261124qa158">
+<script defer src="../../shared/js/atmosphere-icons.js?v=20261124qa158"></script>
+<script defer src="../../shared/js/atmosphere-theme.js?v=20261124qa158"></script>
+<script defer src="../../shared/js/atmosphere-pages.js?v=20261124qa158"></script>
 </head>
 <body class="chat-light-list">
 
@@ -794,6 +800,8 @@
           <span class="menu-icon">◐</span>
           <span class="menu-text">切换背景</span>
         </div>
+        <div class="menu-item" id="menuRealFriends" style="display:none;" role="button" tabindex="0"><span class="menu-text">添加好友</span></div>
+        <div class="menu-item" id="menuRealScan" style="display:none;" role="button" tabindex="0"><span class="menu-text">扫一扫</span></div>
         <div class="menu-item" id="menuGroup">
           <span class="menu-icon">＋</span>
           <span class="menu-text">添加群聊</span>
@@ -1113,6 +1121,15 @@
         menu.style.display = 'none';
       });
 
+      ['menuRealFriends','menuRealScan'].forEach(function(id) {
+        var el = document.getElementById(id);
+        function go() {
+          if (!window.MAOMAORealChatList || !window.MAOMAORealChatList.owner()) return;
+          window.location.href = id === 'menuRealFriends' ? '../contacts/real-friends.html' : '../contacts/scan-friend.html';
+        }
+        el.addEventListener('click',go);
+        el.addEventListener('keydown',function(e){if(e.key==='Enter'||e.key===' '){e.preventDefault();go();}});
+      });
       // 菜单选项：添加群聊
       document.getElementById('menuGroup').addEventListener('click', function () {
         menu.style.display = 'none';
@@ -1401,7 +1418,10 @@
       });
 
       var groupInvites = window.GroupGovernance ? window.GroupGovernance.pendingInvitations() : [];
-      if (roles.length === 0 && groups.length === 0 && groupInvites.length === 0) {
+      var realChats = window.MAOMAORealChatList ? window.MAOMAORealChatList.getRows() : [];
+      var realReady = !!(window.MAOMAORealChatList && window.MAOMAORealChatList.owner());
+      ['menuRealFriends','menuRealScan'].forEach(function(id){var item=document.getElementById(id);if(item)item.style.display=realReady?'':'none';});
+      if (roles.length === 0 && groups.length === 0 && groupInvites.length === 0 && realChats.length === 0) {
         container.innerHTML = '<div class="empty-tip">暂无聊天消息</div>';
         return;
       }
@@ -1477,7 +1497,32 @@
           '<button type="button" class="group-invite-accept" style="border:0;border-radius:9px;padding:8px 10px;background:#111;color:white">加入</button>' +
         '</div>';
       }).join('');
-      container.innerHTML = inviteHTML + groupsHTML + rolesHTML;
+      var realHTML = realChats.map(function (conversation) {
+        var name = String(conversation.displayName || conversation.id);
+        var hasMessages = conversation.lastMessageAt !== null;
+        return '' +
+          '<div class="chat-slim-card chat-real-card" data-real-peer="' + escapeHtml(conversation.id) + '">' +
+            '<div class="chat-avatar">' + escapeHtml(Array.from(name)[0] || '?') + '</div>' +
+            '<div class="chat-meta">' +
+              '<div class="chat-title-row">' +
+                '<span class="chat-name">' + escapeHtml(name) + '</span>' +
+                '<span class="chat-time">' + escapeHtml(formatConversationTime(conversation.lastMessageAt)) + '</span>' +
+              '</div>' +
+              '<div class="chat-last-msg">' + (hasMessages ? '真人 · 加密聊天' : '真人 · 开始聊天') + '</div>' +
+            '</div>' +
+          '</div>';
+      }).join('');
+
+      container.innerHTML = inviteHTML + realHTML + groupsHTML + rolesHTML;
+      container.querySelectorAll('.chat-real-card').forEach(function (item) {
+        item.addEventListener('click', function () {
+          var peer = item.getAttribute('data-real-peer');
+          if (/^MAO-[A-Z0-9]{12,24}$/.test(peer || '')) {
+            window.location.href = '../contacts/real-chat.html?peer=' + encodeURIComponent(peer);
+          }
+        });
+      });
+
       container.querySelectorAll('.group-invitation-card').forEach(function (card) {
         card.addEventListener('click', function (event) {
           var accept = event.target.closest('.group-invite-accept');
@@ -1503,7 +1548,7 @@
       });
 
       /* 原有跳转逻辑：带 roleId 进入聊天详情页 */
-      container.querySelectorAll('.chat-slim-card:not(.chat-group-card)').forEach(function (item) {
+      container.querySelectorAll('.chat-slim-card:not(.chat-group-card):not(.chat-real-card)').forEach(function (item) {
         item.addEventListener('click', function () {
           var roleId = item.getAttribute('data-id');
           if (roleId) {
@@ -1517,11 +1562,18 @@
     renderProfile();
     applyMusicState(musicState);
     renderChatList();
+    if(window.MAOMAORealChatList){
+      window.MAOMAORealChatList.subscribe(renderChatList);
+      window.MAOMAORealChatList.refresh();
+      window.addEventListener('pagehide',function(){window.MAOMAORealChatList.clear();});
+      document.addEventListener('visibilitychange',function(){if(document.visibilityState === 'visible')window.MAOMAORealChatList.refresh();});
+    }
     
     // 页面重新显示时（从设置页返回），重新渲染列表，置顶生效
     window.addEventListener('pageshow', function() {
       renderProfile();
       renderChatList();
+      if(window.MAOMAORealChatList)window.MAOMAORealChatList.refresh();
     });
     window.addEventListener('storage', function(event) {
       if (event.key === PROFILE_KEY) renderProfile();
@@ -1611,6 +1663,11 @@
         entry.addEventListener('click', function(e) {
           e.stopPropagation();
           var menu = document.getElementById('wechatMenu');
+          if (e.isTrusted && window.MAOMAORealChatList && window.MAOMAORealChatList.owner()) {
+            // Silver theme already toggled the shared menu in its first handler.
+            if(id === 'groupEntryBtn' && menu) menu.style.display = menu.style.display === 'none' ? 'block' : 'none';
+            return;
+          }
           if (menu) menu.style.display = 'none';
           openModal();
         });

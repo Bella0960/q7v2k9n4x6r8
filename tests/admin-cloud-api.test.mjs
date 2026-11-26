@@ -235,6 +235,28 @@ test('health: schema drift (pending or unknown migrations) is "degraded"', async
   assert.ok(!JSON.stringify(s).includes('9999_from_a_newer_build'), 'unknown DB-supplied version names are not echoed');
 });
 
+test('health distinguishes optional retained social schema from missing required and unknown migrations', async () => {
+  const { h, admin } = await setup();
+  h.exec("INSERT INTO schema_migrations (version, applied_at) VALUES ('0017_mao_social', 1)");
+  let s = (await h.admin(BASE + '/health', admin)).json.section;
+  let c = checkOf(s, 'schema_migrations');
+  assert.equal(c.state, 'ok');
+  assert.equal(c.facts.retainedOptional, 1);
+  assert.equal(c.facts.unknownApplied, 0);
+  assert.deepEqual(c.facts.pending, []);
+  const enabled = await setup({ env: fullEnv({ MAO_SOCIAL_ENABLED: 'true' }) });
+  s = (await enabled.h.admin(BASE + '/health', enabled.admin)).json.section;
+  c = checkOf(s, 'schema_migrations');
+  assert.equal(c.state, 'ok');
+  assert.equal(c.facts.retainedOptional, 0);
+  assert.equal(c.facts.applied, c.facts.expected);
+  enabled.h.exec("DELETE FROM schema_migrations WHERE version = '0019_mao_social_e2ee_media'");
+  s = (await enabled.h.admin(BASE + '/health', enabled.admin)).json.section;
+  c = checkOf(s, 'schema_migrations');
+  assert.equal(c.state, 'degraded');
+  assert.deepEqual(c.facts.pending, ['0019_mao_social_e2ee_media']);
+});
+
 test('health: a failing storage probe is reported as "error" without leaking the exception message, and other sections still answer', async () => {
   const { h, admin } = await setup();
   const realExec = h.store.exec;

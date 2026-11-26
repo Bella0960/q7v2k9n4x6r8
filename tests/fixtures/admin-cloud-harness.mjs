@@ -9,7 +9,7 @@
  * they never appear in any administrator response.
  */
 import { DatabaseSync } from 'node:sqlite';
-import { applyMigrations } from '../../worker/lib/migrations.js';
+import { applyMigrations, runtimeMigrations } from '../../worker/lib/migrations.js';
 import { createStore } from '../../worker/lib/store.js';
 import { createApp } from '../../worker/lib/app.js';
 
@@ -55,7 +55,7 @@ export function createHarness({ env = fullEnv(), start = T0 } = {}) {
   const exec = (sql, ...params) => db.prepare(sql).all(...params).map(row => ({ ...row }));
   const clock = { t: start };
   const now = () => clock.t;
-  applyMigrations(exec, now());
+  applyMigrations(exec, now(), null, runtimeMigrations(env));
   const store = createStore(exec);
   const handleApi = createApp({ store, env, now });
 

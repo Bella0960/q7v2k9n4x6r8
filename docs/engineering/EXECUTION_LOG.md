@@ -1,5 +1,54 @@
 # MAOMAO Execution Log
 
+## 2026-11-25｜APP-DIARY-001｜个人备注与自然生活日记
+
+- **负责人确认范围：** 保持原首页写作入口与对应人物可阅读备注，其他人物/记录类型不得串读。不增产品入口，不改变已确认布局。继续反向检查，发现重复记录 ID 和数组/对象型作者可导致身份不明确；已统一严格 ID 检查，重复记录禁止 AI 读取、共享备注、保存备注或进入创作历史；无效角色 ID、未确认作者及损坏的记忆主档均拒绝请求。空白 persona/tone 不再遮盖有效旧 prompt/speechStyle，保留已保存资料。补充 Node 用例；实际内联语法、重复记录拒绝、畸形作者拒绝、损坏记忆零请求、旧人设/语气回读、对应人物读取、跨人物与跨类型隔离、重复读取九项隔离执行通过。完整 Node/Vite/Chromium 与真实模型体验仍未确认，不将上一轮候选回执当作新版本验收结果。
+
+
+- **真机反馈修正（负责人 11:42）：** 撤回未经要求的写作入口迁移。首页左下角笔恢复直接打开原编辑器，原记录类型选择日记/备忘录；日记空间删除本人写日记、写备忘录两项，仅保留人物记录新增入口与原管理项。备注的新保存语义：角色本人日记按稳定 author ID 仅共享给该角色；用户日记仅随明确邀请的手动留言共享；旧版标记私密的备注不自动发送，重新保存确认共享。未知/已删除作者不外发。人物日记写作只读本人最近五条明确共享备注（独立参考，不将备忘录/其他角色/旧留言混入）。详情折叠菜单提供显式「请人物阅读备注」，确认后才发一次 API；角色回复独立保存在备注 readReceipt 内，不允许其他角色给角色日记留言；回包核对账号、身份、人设、正文、备注版本，保存失败回滚；同一版本重复读取零请求。备份保持新共享标记和合法回执，不变更原记录类型/存储 key。实际内联语法及隔离执行：原写作入口、同名角色备注范围、记录类型隔离、旧隐私、显式阅读回执、重复请求拦截、异步编辑废弃旧回复均通过；新增 Node 和真实浏览器测试，待固定 QA 门禁验证；未调用用户真实 API。
+
+
+- 反向故障审查：修正阅读翻页绕过当前筛选（备忘录串入日记）、翻页未加载下一篇照片、异常作者字段导入后误认用户、已删除记录编辑时误建新记录、角色记录被改换类型、冷却标记写失败后重新自动付费、保存成功后渲染抛错误报未保存等路径。生成锁内重新确认日期，固定请求日期入库；人物失效明确提示。新用例覆盖畸形作者、列表范围、冷却键缺失但已存记录拦截、渲染异常仍正确返回已保存；实际内联语法和上述四类隔离执行通过。旧版候选 bca73dd0 的 verify-only Run #45538419929 不能作为本轮候选验收证明。未启动新部署；待本次 verify 结束后用当前固定入口验收最新候选，不盲目重复执行。
+
+
+- 负责人确认「日记空间 → 人物记录 → 屏幕中央白色圆角卡片 → 人物名称与记录类型下拉选择 → 生成」方案。两个下拉列表隐藏滚动条；选择阶段不调用 API；生成时关闭弹窗返回对应日记/备忘列表显示真实请求状态，成功保存后显示实际记录，失败明确提示、不插入伪记录。首页未新增固定按钮，原写作快捷键打开收起菜单；另有本人写日记/写备忘入口。角色生成和自动写作共用同一安全函数，明确传入角色 ID 和记录类型，手动确认不依赖原自动写作开关，不更改聊天联系人；同一角色写作共用跨页面请求锁，不自动重试。备忘录仅取该角色新版备忘录历史，日记仅取新版日记历史；其他角色、备注、留言不作为写作历史。新增 Node 与三档 Chromium 测试源码。实际内联 JS 和隔离执行通过（指定同名人物的备忘录、记录类型、历史隔离、无效人物零请求、手动/自动竞争锁）；完整真实浏览器仍未验证，手机样式及真实模型生成质量待验收。前一轮 Run #45536920481 已失败（sanitized browser timeout phase=397），未部署。新候选只验收，不自动发布。
+
+
+- **负责人要求先深审、暂缓新发布。** 追加失效/重复角色 ID 拒绝、无明确当前角色时不从多人列表随意选取；API 发出前及回包后重查当前账号、归档版本、日记正文与人设/绑定世界书/记忆快照，避免角色身份或记录类型漂移。角色历史创作上下文只取新写作契约 diaryWritingVersion=2 的同角色日记，旧模板正文保留但不作为新写作素材。旧数据结构不迁移。
+- 新增浏览器 Web Locks 同角色同操作锁，覆盖生成和保存；不支持锁时拒绝付费请求，不静默降级。旧页面尚未刷新时不能保证服从新锁；本次未验证实际 iOS/Android 浏览器锁兼容。归档快照不一致拒绝写入，提示刷新，避免已检测到的旧页覆盖；不是跨全部旧版本的数据库事务。备份导入先暂存，首次文字写失败时完整回滚，照片只处理本批新增条目。
+- 实际内联语法及隔离执行验证通过：旧模板排除、人设改变后回包丢弃、备注隔离、导入写入失败回滚、共享模拟锁的两页面只发一次且保存一篇。补充 Node 用例；全套 Node/Vite/Chromium 和真实模型语气仍未运行/未确认。本次不提交新 release，前一轮不可变 QA release 已启动，不能将其回执当成本轮深审结果。
+
+
+- 基于已发布、通过 origin-check 的 `0bb4a757562c3f143f6ab6efade48f09c9ef204b`（公共 Run #45534440760）。阅读器及其他应用不变。
+- 阅读菜单收藏改为纯文字；日记独立“我的备注”区域与折叠入口，允许添加/编辑/清空一条最多 2000 字的备注；沿用日记记录和备份，新增可选 personalRemark 字段，不建新 key。备注不进入正文、角色留言、备忘录、日记写作上下文或 AI 请求，不改变作者；失败回滚。已有备注/留言时禁止记录类型转换，延迟留言重查作者、角色、账号、记录类型。备忘录保留原有独立批注行为。
+- 替换固定 200–400 字作文式生成要求；按真实角色档案、语气、绑定世界书、确认记忆及同一角色最近三篇日记正文摘录创作设定世界里的日常，不强加晨午晚流程、总结、咖啡/工作等生活假设。此前日记保留原样；不读取其他角色日记、用户日记、备注或留言作为历史素材；旧最低保存长度、重复请求保护及身份检查不变。
+- 已同步核查关联旧测试/保存/备份和阅读菜单；实际内联 JS 语法、共享人设适配和写作函数、备注写入/配额回滚/记录类型隔离、生成及手动留言请求隐私的隔离验证通过。新增 Node 契约、三档 Chromium 备注保存/刷新测试源码；待真实公共 QA。模型实际生成风格仍需用户使用当前配置验收，不声称已保证每篇自然。备注私有仅指应用内不作为 AI 输入；正常备份包含其内容。
+- 不覆盖生产，不重开旧阅读分支。新候选独立验收，完成前不得宣称发布。
+
+## 2026-11-25｜APP-DIARY-001｜日记作者及角色留言权限隔离
+
+- Run #45533043075 在 gate 49/51 Node 回归 tests/diary-storage-trust.test.mjs:257 失败。实际成功用例模拟响应仅 19 字，触发既有产品 20 字最低保存限制；修正成功 fixture 并等待真实 Promise，增加 19 字拒绝保存且不写冷却的反向测试。实际生成函数 19 字拒绝、合法长文本入库的隔离验证均通过；未修改产品代码或放宽门禁。待固定 QA 重新验收。
+
+- 自动写日记增加同一页面 in-flight 防重入；实际函数隔离模拟两次触发仅 1 次 API 请求、1 条保存，新增回归测试。旧页面未刷新或多标签间的旧代码并行不在本次验证范围。确认固定 QA workflow 对发布共享串行组且 cancel-in-progress=false，push 请求按触发 SHA 读取不可变 JSON，允许在无其他排队请求时登记下一候选。
+
+- 人设补强：已确认角色编辑器保存 canonical `persona` 与 `tone`，旧日记仅取其他字段且截断 2400 字。新增日记专用只读上下文适配，读取完整 persona/tone，复用现有世界书绑定和上下文激活策略，按角色 ID 读取该角色确认记忆；缺失人设不自动发付费写作请求，超限/绑定损坏不发送；留言保留空白档案的保守兼容模式。日记不套用聊天格式协议，避免污染输出格式。身份漂移结果不保存。实际共享模块+4000 字人设函数验证通过，涵盖表达方式、已绑定世界书、确认记忆、禁用绑定及空白人设；更新旧 Node harness 和双同名角色移动浏览器最终请求断言。上一候选 c5d83812 的验收单独运行，不覆盖它的不可变请求；新增人设候选待其结束后再走固定通道。
+
+- 基线：已发布且完成 owner-origin 校验的 QA 源码 `e9d50446abc31797b3f39a8ae0914d15d58115f3`（Run #45530273752）。
+- 根因：自动偷看候选未过滤作者，手动留言也无作者校验，备份导入丢失 author/authorName/charWritten；选择角色用列表下标可能串角色。
+- 修复：统一 diaryAuthorKind 兼容旧用户记录与 d_char_ 角色记录；仅用户日记允许自动/手动角色留言，入 API 前拒绝角色及身份不明日记，回包重查作者、真实角色 ID 和账号作用域。用户新记录明确 author=me；角色生成原作者标记保留。备份导入保留作者字段，历史错误留言保留并标为旧版历史留言，不删除用户数据；不改存储键、照片库、阅读器或其他模块。
+- 测试：同步更新旧 diary-storage-trust harness，新增角色/同名 ID、作者、旧备份、延迟账号/角色切换回归，以及 375/390/430px Chromium 测试（合成 API，无真实付费）。已执行内联 JS 语法和实际自动/手动留言函数隔离模拟，确认角色日记 0 请求、用户日记正常留言；完整 Node/Vite/Chromium 待公共 QA。
+- 待验收：精确候选、保护既有已发布阅读功能、仅 QA 发布；正式生产与现存日记不变。
+
+## 2026-11-25｜READING-COMMENT-UI-002｜最近阅读、全部书籍管理、沉浸顶栏
+
+- 公共 Run #45529363385：第 47/51 门禁阅读 Chromium 测试超时（375px，phase 377）；未部署。具体操作点日志未公开。针对原生滚动吞掉合成 click 的情况增加独立静止 touchend 恢复，排除长按和交互控件，测试等待弹层退场、同一 CDP 会话滑动和点击；实际事件处理函数的隔离模拟通过，新增 Node 回归，真实浏览器仍待复验。
+
+
+- 基线：已成功发布且通过 owner-origin 校验的 QA 源码 `ee6fb2f1ebba37a546dc036a39407d7522bf3017`（公共 Run #45527610467）。
+- 用户确认：上下滚动和平滑翻页的滑动手势隐藏顶栏，点击正文恢复；最近阅读按时间排序（最多三本），默认/导入书籍皆可访问详情目录。书架仍直接进入正文，长按可选书籍详情。
+- 内置书籍的换封面/移除使用现有 books IDB 的账号限定覆盖记录，原始内置内容和既有段评保留；导入书籍沿用已有保存/删除保护，不扩大旧 fallback 数据迁移。旧阅读进度兼容，无新增数据库/存储键。
+- 同步更新旧推荐排序和固定顶栏断言，增补真 Chromium 触屏手势、详情、默认书籍封面/移除及刷新、最近排序与账号隔离测试。已在隔离 V8 执行 JS 解析、实际排序和内置覆盖函数验证；本候选未执行真实 Node/Vite/Chromium，不宣称通过。下一步：固定公共 QA 通道，精确候选、既有线上基线验证、完整相关安全验收；仅 QA 发布，正式生产不变。
+
 ## 2026-11-23｜API-UI-002｜API 设置页黑白灰编辑式重构
 
 - **独立分支：** `API-UI-002/editorial-settings-20261123`，起点 v120 QA 源码 `74433602f3be43a18e962e76dda437008c180ae5`；未修改 v120 发布候选、`main` 或任何现有 Cloudflare Worker。
@@ -647,3 +696,63 @@ On the next turn/session, read this file and the current `AGENTS.md` first. Cont
 - ecf05ba270afe7b323c6dd6172e8029a308cf219 的三套群设置 Chromium 回归在 #44843160164 通过。完整发布仍须以 QA-only 门禁和同源 SHA 回执为准。
 
 - 第二轮定位记忆清理回归仍走旧入口，旧档案的角色副本与群共享 ID 时还会遮蔽群记录。明确从群选项入口进入时优先按群 ID 读取，单聊入口沿用原规则。Vite 和四套 Chromium 专项（含 375、390、430、1100px 的记忆清理）在 #44843984791 通过。
+
+
+## 2026-11-24 | MCP-001 restore on v161
+
+- Restore original connection center, scoped client/permissions/AI adapter and existing tests from #202 / 6db64c36; add settings link and adapter scripts without any changes to the live chat request loop. No old workflows, SW, package or API credentials copied.
+- Fix token read ordering, pending connection cancellation, stale responses, corrupt saved metadata, checked writes and bounded disconnect. No automatic tool invocation, no real endpoint used. Synthetic QA and phone verification pending. This independent branch does not include the blocked social schema candidate.
+
+
+## 2026-11-25 | MCP-001 restore QA failure repair
+
+- Actual public release run 45415570102 failed at gate 49/51: mcp-client.test.mjs:553, mcp-role-permissions.test.mjs:114 and :126. Corrected invalid catalog fixture (40 x 5 x 1200 Chinese characters did not exceed 768 KiB; 45 does, with explicit per-schema/response budget checks), synchronous listForRole error assertion, and exact grant-cap error assertion. Added post-cap retained permission and denied-new-tool checks. No runtime security limits weakened. Carried the same already-submitted narrow Moments browser navigation race fix from #513 into this independently based v161 candidate to avoid known shared test failure. Wait for serialized #513 verification, then test current exact MCP candidate or its updated integration on the actually deployed baseline. No deployment or live data changes.
+
+
+## 2026-11-25 | DESKTOP-DRAG-PERF-001 | isolated QA integration
+- Base c95ddd91ef1deb526027bd2655abbef4b66f1029: fixed QA release run 45542381041 completed upload and origin-check. This is a historical verified deployment receipt, not a direct live URL read; verify mode must re-read live baseline and reject stale candidates.
+- Source PR #496 head 9bc5d349f40d77a14ac77cb186e5a58401306a59: applied 24 exact-context hunks to four desktop files, preserving unrelated newer QA content. No schema, production or identity changes. Branch integration/desktop-drag-perf-20261125 is verify-only, not approval to merge the old PR.
+- Chromium probe adds 4x CPU slowdown at 390px/DPR3, native-runner frame samples at all three sizes, actual placeholder/animation counts, and cross-page release timing upper bound. Browser cadence is not physical display FPS; CPU emulation is not real hardware; no 120Hz or device claims. Verify with existing fixed QA channel, retain real output and fix actual failures.
+
+
+## 2026-11-25 | DESKTOP-DRAG-PERF-001 | combined heavy profile
+- Follow-up QA branch from active candidate f68d75fd51d1a7e414d25024a973b6d5cf5e3ade; leave the in-flight fixed verify request untouched. Only adds a browser stress profile and this record, no product behavior changes. Real desktop at 390px/DPR3 with synthetic 1440x2560 textured wallpaper, restored widget photos, clear liquid-glass, a locally installed DejaVu Sans TTF loaded through the actual IndexedDB font preset path, normal and 4x CPU runs; logs P50/P95/P99, long tasks and actual placeholder moves; checks cancel, cleanup, item inventory, committed layout after reload. Font fixture covers Latin glyphs, not a large Chinese font. Metrics not yet measured. No physical 90/120Hz or Android/iPhone claim. Existing current QA run 45558641225 must finish before next immutable request; confirm latest live baseline first.
+
+- 2026-11-25 acceptance follow-up: heavy profile now has an explicit reference-runner budget rather than merely printing performance metrics. Normal P95 <=25 ms and no two consecutive frame gaps >50 ms; CPU4x stress P95 <=50 ms and no two consecutive gaps >100 ms (provisional stress budget, not a true device-FPS claim). A missed budget fails the gate, not an automatic product diagnosis. Verify exact intended page/Dock order at commit, not just item membership. No product changes. Existing fixed verify run 45558641225 remains in progress at last check; its logs were unavailable (BlobNotFound). New candidate remains unexecuted.
+
+- 2026-11-25 run 45559793041 (candidate 80264518) failed at gate 33/51, mapped to tests/desktop-personalization.browser.mjs. Public logs hide the exact assertion and metrics; root cause not yet established. Preserve budgets. Fix three identifiable fixture races: foreground the active Chromium page, await asynchronous widget photo restoration, and verify the last ghost coordinates have been consumed before exact order comparison. Require the initial target to be a real hit. Add existing allowlisted SEALED_BROWSER_FAILURE codes 391–397 to distinguish fixture, restored assets, normal/CPU functional and budget phases, reload; no changes to QA workflow or product. New candidate must be tested, not described as a confirmed product fix.
+
+- 2026-11-25 third verify 45560291681 on 95d61dec failed gate 33/51, sanitized phase 395/assertion, checkpoint 394. Normal combined HD/glass/font/photo stress passed its functional and normal performance budget before entering CPU4x. CPU4x failed a functional assertion before phase 396 budget; exact assertion not exposed. Split CPU4x into allowlisted phases 430–437 (source/targets/frame samples/actual reorders/final input and cleanup/inventory/page order/Dock order); same inputs, same thresholds and exact order checks, no runtime change. This is diagnostic narrowing, not a claimed root-cause repair. Cloudflare read-only current QA deployment 03:58:45Z active 100% d2dd21ad-9048-446c-9403-6e75c484626e matches release run 45542381041 of c95ddd91; candidate compare ahead 4, behind 0 before this diagnostic patch. Direct current origin HTTP not independently re-read. Keep fixed verify-only path; do not publish before CPU4x and actual release guard pass.
+
+- 2026-11-25 verify 45560712607 failed at 435/assertion (committed drag inventory). Source audit of exact candidate found 51 unique HTML IDs vs 50 default stored IDs, sole extra app_admin_center. Non-super-admin bootstrap removed this ID from storage but left hidden tile in DOM; restoreLayout then indexed it as a remaining app, and persistCurrentDOM wrote it back at drop. Narrow fix: detach unauthorized tile before restore, leave super-admin path and server auth unchanged; do not alter saved positions or feature appearance. New Node role-path regression and real browser initial DOM/storage inventory check (no synthetic admin) complement existing exact drop/inventory checks. No thresholds changed. Diagnosis supported by source; root-cause resolution still needs actual browser rerun. Prior current QA control-plane baseline c95ddd91 was verified against release receipt; no release in this step.
+
+- 2026-11-25 priority closure: 44440ca0 verify run 45561226159 passed gates 33–37 (combined desktop normal/CPU4x, exact persisted order/inventory, reload, navigation/recovery, icon geometry), later gate47 reading phase382/timeout. #521 head cb92d556 unchanged after handoff; exact failing selector withheld. Cloudflare read-only active QA version d2dd21ad-9048-446c-9403-6e75c484626e remains matched to published c95ddd91 receipt. QA-only follow-up changes only the reading browser fixture: wait for the existing real stationary long-press menu while pointer stays down (550ms product timer vs prior 650ms fixed host delay), verify exact hit/title, release in finally, settle scroll and hash/async restoration before assertions, add fixed allowlisted checkpoints 391–394/500/600/700 for the final shelf group. All real book detail/cover/delete/reload/recent assertions retained; no reading runtime, desktop runtime, or thresholds changed. This fixes identifiable test races, not a proven explanation for the original timeout; full QA must prove success. Do not deploy before fixed candidate passes. #521 receives a handoff with exact diff.
+
+- 2026-11-25 DESKTOP-DRAG-PERF-002: physical phone video rejected the published QA candidate 91da83d despite the previous browser callback budgets. Baseline active Worker version a890601d matches QA-only release 45564982042. New QA branch from that exact release. Inspection found edit-mode wiggle still animates the entire glass grid between drags, Dock/music live backdrop persists during motion, a cloned icon matches the optical runtime selector, and vendor tier/tone jobs can execute while dragging; these are concrete costs, not proven sole causes of the video stall. Scoped edit-time static optical appearance (badges and existing FLIP displacement retained), opt-in vendor tone/tier defer retaining pending scope, skip transient hidden-source zero-size remeasure, exclude ghost from registration, restore normal idle optics. No wallpaper compression/layout schema change. Vendor host option defaults to null for other consumers. Tests added for deferral and real browser active/idle optics/instance count. Script syntax and mocked deferred branch checks only until fixed QA runs; hardware GPU remains unverified.
+
+
+- 2026-11-25 | DESKTOP-DRAG-PERF-003 / QA-001 | Owner reports only Liquid Glass icons cannot move; classic works. Upstream IshiakiZ/liquid-glass-web README documents CSS-only frost and 1.3.0; installed 1.2.0 MIT. Reviewed koirodev/liquid-web (MIT, vanilla support) and Mael-667/Liquid-Glass-CSS (GPL-3.0, React-first); no external implementation imported. Retain the existing vendor, disable SVG live refraction on primary coarse-pointer devices (idle frost/rim retained), static single lens during edit/paging/drag, preserve icon settings and wallpaper; scoped glass edit touch-action and immediate threshold-based start before the existing 40ms timer. Classic paths unchanged. Add actual handler timing regression and mobile touch browser scenario; retain previous budget. Branch from exact 96822eb9; current QA control-plane changed to bcee3bc1, direct origin receipt not independently verified. No production or schema changes; browser and real hardware still required.
+
+- 2026-11-25 DESKTOP-DRAG-PERF-003 follow-up: fixed QA verify #45572800153 failed gate33/51 at phase394/timeout, checkpoint394. The prior heavy normal budget assertion precedes the newly added quick-touch case; precise timed-out wait is withheld. Source review: original fast-move startup was in a passive listener, active nonpassive listener was installed during that first move, too late to claim it. Install the same active listener as soon as an editable glass tile is touched; claim threshold move synchronously, remove listener on tap, interruption, cancellation, or end, retain classic and ordinary scroll. Preserve existing timer for stationary holds. Browser case sends actual rapid increments beyond touch slop before ghost wait, distinguishes phases430-433 (start/move/coordinate/cleanup), keeps all original budgets. No third-party import or data mutation. Exact fast-path mock run before commit; real QA must rerun. Current deployed QA bcee3bc1 confirmed prior release #45570680051 passed for 96822eb9. No new release yet.
+
+- 2026-11-25 REAL-FRIEND-001 / QA-001: re-integrated original #513 af0f85a7 on live QA 41658042 (e9230574). Compared both against v161 2e60e5e8; 12 overlapping source/test blobs are byte-identical, execution log alone differs and is retained from current QA. Carried 40 nonoverlapping friend/identity files as exact source blobs. No desktop, SW, MCP, chat-detail, or Moments override. This candidate contains planned social/identity config and is VERIFY-ONLY, prohibited from deploying to QA or real core until separate authority and migration readiness/restore proof. Previous verify #45579248897 failed initial-safety qa-baseline-mismatch, not SQL. New candidate requires full synthetic verification; no live mutation or migration performed.
+
+- 2026-11-26 REAL-FRIEND-001: continued Draft #527 from the verified mobile QA receipt 416580422f37cca7e975f2d4c2f670790a92f5ab. Prior candidate 3f5f534d passed public verify run 45579987048. Chat and friend list now clear account-owned UI on authority revocation and discard late responses. Restoring chat through browser history requires fresh authentication. Repaired the local Worker harness with a disposable config and database, and added logout and independent pre-migration SQLite backup recovery assertions. 51 focused assertions and 32 local Wrangler runtime checks passed. Live authority readiness, live recovery proof and physical phone acceptance remain pending. No live migration or deployment was performed.
+
+- 2026-11-26 REAL-FRIEND-001: restored chat recovery when first opening offline, bounded API waits, and resumed synchronization on reconnect or foreground. Reuses existing cursor and retry message IDs. Live QA remains on 41658042. Live isolated core still requires an explicitly authorized migration and recovery checkpoint before feature activation.
+
+- 2026-11-26 REAL-FRIEND-001: verified live public domain mappings and Worker service/namespace bindings. The app domain has a dormant QA forwarding binding; the deployed source gates all forwarding on MAO_APP_CUTOVER_ENABLED and the live value is false. Added a separate core-only maintenance entry that checks this isolation, pinned deployment versions and an independent recovery receipt before deploying only the core. Existing qa-only phone deployment remains separate. The encrypted restored snapshot was retained privately. Independent durable custody of its recovery credential and scoped maintenance credentials remain pending. No online changes.
+
+- 2026-11-26 REAL-FRIEND-001: received encrypted images and voice now offer a scoped retry for transient network failures. Retrying after a session or friendship change is ignored, and permission or integrity failures do not offer retry. Focused chat tests passed 12/12. No rerun of migration rehearsal and no online changes.
+
+### 2026-11-26 · ADMIN-CORE-001 · 管理中心会话恢复
+
+- 手机 QA 回执对应 v311，源码 d042e0d7fabf2b68ac9a4cd3faffcc7ba1da5b30。候选基于此提交，沿用已有管理员工作台、云端诊断和 #480 已整合的上下文恢复。
+- 账号服务返回缺失字段时留在原页重试。身份核验期间页面账号上下文变化时中止管理数据读取。未变更 Worker 鉴权、创始管理员、账号或存储。
+- 账号、管理员、云端诊断与 Worker 页面门禁 Node 回归 224/224，本地 Vite 构建通过。真实账号登录和 QA 发布待验证。回滚仅需还原本变更。
+
+- 同一候选链追加总览优化：使用已验证的账号目录总数，压缩首页快捷区，并接入原有真人好友审批和账号安全页面。保留现有服务端权限与审计。Node 224/224，Vite 通过，合成账号 Chromium 375/390/430px 三档通过。真机登录仍待验证。
+
+- ADMIN-CORE-001 真机反馈：管理目录同时返回账号上下文错误。QA 转发使用已验证的创始账号标识传递作用域至现有独立身份服务。回归模拟身份服务作用域门禁，覆盖目录读取和写入。回滚可还原本提交。
+
+- AUTONOMY-M2 QA single-message smoke: based on the live bc7d062f release, reused existing consent controls, activity queue, SQLite completion/outbox, Cron maintenance, dispatcher, Service Worker and chat recovery. New QA-only manual route queues one fixed message per account per five minutes. Turning global autonomy off cancels pending mock jobs atomically, and role/device status is checked again at execution. No schema changes, model requests or chat context upload. Nine focused SQLite and push integration checks passed.

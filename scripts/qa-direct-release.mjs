@@ -484,7 +484,50 @@ async function verifyWorkerPublicRoutes() {
     'The isolated identity core is unexpectedly public through preview URLs');
 }
 
-async function cloudflarePreflight() {
+
+function verifiedCoreAccountState({ total, matches, admins }, setupState) {
+  assert.ok(total === 0 || (matches === 1 && admins === 1),
+    'The isolated identity core contains conflicting accounts');
+  assert.equal(setupState, total === 0 ? QA_SETUP_OPEN : QA_SETUP_CLOSED,
+    'QA bootstrap lifecycle mismatch: close setup after the founder is initialized');
+  return total > 0;
+}
+
+// The gateway may never enable delegated social before its isolated authority
+// is actually migrated. A code verification or planned config is not live proof.
+// All SQL here is SELECT-only; no records, account IDs or secrets are emitted.
+async function verifySocialCoreReadiness(core, binding, initialized) {
+  assert.ok(initialized, 'Social identity core must be initialized');
+  for (const [key, expected] of [
+    ['MAO_IDENTITY_MODE', 'local'],
+    ['MAO_QA_ISOLATED_IDENTITY_CORE', 'true'],
+    ['MAO_SOCIAL_ENABLED', 'true'],
+    ['MAO_SOCIAL_E2EE_ENABLED', 'true'],
+    ['MAO_SOCIAL_CHAT_ENABLED', 'false'],
+    ['MAO_QA_ENROLLMENT_ENABLED', 'true']
+  ]) {
+    const value = binding(core, key);
+    assert.ok(value?.type === 'plain_text' && value.text === expected,
+      'Social identity core runtime not ready: ' + key);
+  }
+  const result = await cloudflare(
+    '/workers/durable_objects/namespaces/' + CORE_DB + '/query/v2',
+    { durable_object_id: CORE_DO, queries: [{
+      sql: 'SELECT (SELECT COUNT(*) FROM schema_migrations WHERE version IN (?, ?, ?)), (SELECT COUNT(*) FROM sqlite_master WHERE type = ? AND name IN (?, ?, ?, ?, ?, ?, ?)), (SELECT COUNT(*) FROM mao_accounts WHERE role = ?)',
+      params: ['0017_mao_social', '0018_mao_social_e2ee', '0019_mao_social_e2ee_media',
+        'table', 'mao_social_codes', 'mao_social_requests', 'mao_social_friends',
+        'mao_social_blocks', 'mao_social_messages', 'mao_social_e2ee_keys', 'mao_social_e2ee_media',
+        'super_admin']
+    }] });
+  const item = result?.results?.[0];
+  assert.equal(item?.meta?.rows_written, 0, 'Cannot prove social core readiness query was read-only');
+  const row = item?.rows?.[0];
+  assert.ok(Array.isArray(row) && row.length === 3 &&
+    row[0] === 3 && row[1] === 7 && row[2] === 1,
+    'Social identity core migrations or sole administrator not verified');
+}
+
+async function cloudflarePreflight({ requireSocialReady = true } = {}) {
   await verifyWorkerPublicRoutes();
   const [qa, core] = await Promise.all([
     cloudflare('/workers/scripts/' + QA + '/settings'),
@@ -523,25 +566,93 @@ async function cloudflarePreflight() {
       assert.ok(total >= 1 && matches === 1 && admins === 1,
         'The original QA founder/admin no longer matches');
     } else {
-      assert.ok(total <= 1 && (total === 0 || (matches === 1 && admins === 1)),
-        'The isolated identity core contains conflicting accounts');
-      // Once the QA founder exists, subsequent deployments must close the
-      // one-time setup switch instead of silently re-opening that route.
-      assert.equal(qaSetupState, total === 0 ? QA_SETUP_OPEN : QA_SETUP_CLOSED,
-        'QA bootstrap lifecycle mismatch: close setup after the founder is initialized');
-      coreInitialized = total === 1;
+      // A legitimate second ordinary user must not prevent future QA upgrades.
+      // The founder and sole active administrator still have to match exactly.
+      coreInitialized = verifiedCoreAccountState({ total, matches, admins }, qaSetupState);
     }
     console.log('Read-only verified ' + name + ': accounts=' + total +
       ', founder matches=' + matches + ', active admins=' + admins);
   }
   assert.equal(typeof coreInitialized, 'boolean', 'Cannot verify QA identity core state');
+  if (requireSocialReady && JSON.parse(readFileSync('wrangler.qa.jsonc', 'utf8')).vars?.MAO_DELEGATED_SOCIAL_ENABLED === 'true') {
+    await verifySocialCoreReadiness(core, binding, coreInitialized);
+  }
   verifyQaRuntimeVars(qa.bindings,
     JSON.parse(readFileSync('wrangler.qa.jsonc', 'utf8')).vars,
     { allowClosingSetup: coreInitialized });
   return { coreInitialized, originalQaSecrets, originalCoreSecrets };
 }
 
+async function verifyCoreMaintenanceIsolation() {
+  const domains = await cloudflare('/workers/domains');
+  assert.ok(Array.isArray(domains), 'Cannot verify Worker domain inventory');
+  const app = domains.find(domain => domain.hostname === 'app.mao520.com');
+  assert.equal(app?.service, 'curly-dream-324c', 'App route changed; recheck production isolation');
+  assert.ok(!domains.some(domain => domain.service === CORE ||
+    (domain.service === QA && domain.hostname !== 'preview.mao520.com')),
+  'QA identity or gateway is reachable on an unexpected custom domain');
+  const names = ['curly-dream-324c', 'mao-auth-preview', 'mao'];
+  const settings = await Promise.all(names.map(name => cloudflare('/workers/scripts/' + name + '/settings')));
+  for (const [i, configuration] of settings.entries()) {
+    assert.ok(Array.isArray(configuration.bindings), 'Cannot verify bindings for ' + names[i]);
+    assert.ok(!configuration.bindings.some(binding => binding.namespace_id === CORE_DB ||
+      binding.namespace_id === QA_DB || binding.service === CORE ||
+      (names[i] !== 'curly-dream-324c' && binding.service === QA)),
+    'Public Worker depends on QA storage or authority: ' + names[i]);
+  }
+  assert.equal(settings[0].bindings.find(binding => binding.name === 'MAO_APP_CUTOVER_ENABLED')?.text,
+    'false', 'App forwarding must be disabled for independent QA core maintenance');
+}
+
+async function maintainQaIdentityCore() {
+  assert.ok(adaptive, 'Run maintenance from an approved integration/ or qa/ branch');
+  assert.equal(process.env.MAOMAO_QA_CORE_CONFIRM, CORE, 'Confirm the exact QA identity core name');
+  preflightCheckout();
+  const receiptPath = process.env.MAOMAO_QA_CORE_RECOVERY_RECEIPT;
+  assert.ok(receiptPath, 'Supply the independent recovery receipt path');
+  const receipt = JSON.parse(readFileSync(receiptPath, 'utf8'));
+  const currentCommit = run('git', ['rev-parse', 'HEAD'], true);
+  assert.equal(receipt.candidate, currentCommit);
+  assert.equal(receipt.worker, CORE);
+  assert.match(receipt.archiveSha256 || '', /^[0-9a-f]{64}$/);
+  assert.ok(typeof receipt.archiveLocation === 'string' && receipt.archiveLocation &&
+    typeof receipt.keyLocation === 'string' && receipt.keyLocation &&
+    receipt.archiveLocation !== receipt.keyLocation && receipt.restoreVerified === true,
+  'Record the verified archive and separately controlled recovery credential locations');
+  const [coreBefore, qaBefore] = await Promise.all([liveWorkerVersion(CORE), liveWorkerVersion(QA)]);
+  assert.equal(receipt.coreVersion, coreBefore.versionId, 'Recovery receipt does not match the live core version');
+  await verifyCoreMaintenanceIsolation();
+  const proof = await cloudflarePreflight({ requireSocialReady: false });
+  assert.equal(proof.coreInitialized, true, 'Existing QA administrator must be initialized');
+  const liveSource = await readCurrentQaSource();
+  run('git', ['merge-base', '--is-ancestor', liveSource, currentCommit]);
+  const before = await Promise.all([liveWorkerVersion(CORE), liveWorkerVersion(QA)]);
+  assert.equal(before[0].versionId, coreBefore.versionId, 'Identity core changed during preflight');
+  assert.equal(before[1].versionId, qaBefore.versionId, 'QA gateway changed during preflight');
+  run('npx', ['--yes', 'wrangler@4.161.0', 'deploy', '--config', 'wrangler.qa-identity-core.jsonc']);
+  const [coreAfter, qaAfter, core] = await Promise.all([
+    liveWorkerVersion(CORE), liveWorkerVersion(QA), cloudflare('/workers/scripts/' + CORE + '/settings')
+  ]);
+  assert.notEqual(coreAfter.versionId, coreBefore.versionId);
+  assert.equal(qaAfter.versionId, qaBefore.versionId, 'QA gateway changed during core maintenance');
+  assert.deepEqual(secretNames(core), proof.originalCoreSecrets);
+  const binding = (configuration, name) => configuration.bindings.find(item => item.name === name);
+  assert.equal(binding(core, 'CLOUD_DB')?.namespace_id, CORE_DB);
+  await verifyWorkerPublicRoutes();
+  const probe = await readOnlyFetch('https://preview.mao520.com/api/admin/bootstrap/status', {
+    headers: { 'cache-control': 'no-cache' }
+  }, async response => ({ ok: response.ok, payload: await response.json() }));
+  assert.equal(probe.ok && probe.payload?.ok && probe.payload?.initialized, true,
+    'Existing preview identity status did not confirm core startup');
+  await verifySocialCoreReadiness(core, binding, true);
+  console.log('QA identity core upgraded and verified: ' + coreAfter.versionId);
+}
+
 async function main() {
+  if (process.argv.length === 3 && process.argv[2] === '--qa-core-only') {
+    await maintainQaIdentityCore();
+    return;
+  }
   const qaOnly = process.argv.includes('--qa-only');
   const deploy = qaOnly || process.argv.includes('--deploy');
   const flags = process.argv.slice(2);

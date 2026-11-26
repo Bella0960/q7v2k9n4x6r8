@@ -1562,7 +1562,7 @@
             </span>
             <span class="action-body">
               <span class="action-title">自动发动态</span>
-              <span class="action-sub" id="autoMomentSub">开启后，TA 会主动发布空间动态</span>
+              <span class="action-sub" id="autoMomentSub">开启后，在线聊天时角色可主动发动态</span>
             </span>
             <span class="ios-switch">
               <input type="checkbox" id="autoMomentToggle" aria-label="自动发动态">
@@ -3176,7 +3176,7 @@
   }
   function refreshAutoMomentUI(enabled) {
     autoMomentToggle.checked = enabled;
-    autoMomentSub.textContent = enabled ? '已开启，TA 会主动发布空间动态' : '开启后，TA 会主动发布空间动态';
+    autoMomentSub.textContent = enabled ? '已开启 · 在线聊天时按语境发布（每天最多一次）' : '开启后，在线聊天时角色可主动发动态';
   }
 
   if (actionAutoMoment) {

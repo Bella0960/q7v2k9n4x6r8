@@ -13,6 +13,12 @@
     window.location.hostname === 'maomao-aw-qa-20261114.miamor520000.workers.dev';
   let delegatedIdentity = isKnownQaHost;
   let delegatedSignInReady = !isKnownQaHost;
+  let qaEnrollmentReady = false;
+  function showQaEnrollment(ready) {
+    qaEnrollmentReady = ready === true;
+    document.querySelectorAll('[data-qa-enrollment]').forEach(node => { node.hidden = !qaEnrollmentReady; });
+    if (delegatedIdentity) document.querySelectorAll('[data-show="registerPanel"]').forEach(node => { node.hidden = !qaEnrollmentReady; });
+  }
   let qaIdentityCheckInFlight = false;
   let qaIdentityRetryTimer = null;
   let qaIdentityRetryFailures = 0;
@@ -151,7 +157,7 @@
         throw error;
       }
       if (payload.ok !== true) throw new Error('服务返回异常，请稍后再试。');
-      if (['/api/accounts/register', '/api/accounts/login', '/api/accounts/me', '/api/accounts/invites/redeem'].includes(path) &&
+      if (['/api/accounts/register', '/api/accounts/login', '/api/accounts/me', '/api/accounts/invites/redeem', '/api/accounts/enrollment/register', '/api/accounts/enrollment/activate'].includes(path) &&
           (!/^MAO-[A-Z0-9]{12,24}$/.test(String(payload.account?.id || '')) ||
            !['pending_invite', 'active', 'disabled', 'revoked'].includes(payload.account?.status))) {
         throw new Error('账号结果未能确认，请重新登录后继续。');
@@ -179,7 +185,7 @@
       return;
     }
     if (account.status === 'pending_invite') {
-      if (delegatedIdentity) {
+      if (delegatedIdentity && !qaEnrollmentReady) {
         showPanel('loginPanel');
         setError('loginError', '当前测试版沿用统一账号，不需要邀请码；请使用已获授权的原账号登录。');
         return;
@@ -220,7 +226,7 @@
       setError('registerError');
       setError('loginError');
       setError('inviteError');
-      if (delegatedIdentity && (button.dataset.show === 'registerPanel' || button.dataset.show === 'invitePanel')) {
+      if (delegatedIdentity && !qaEnrollmentReady && (button.dataset.show === 'registerPanel' || button.dataset.show === 'invitePanel')) {
         showPanel('loginPanel');
         return;
       }
@@ -265,7 +271,7 @@
     event.preventDefault();
     // This guard is intentional even when the registration entry is hidden.
     // A stale tab or script may still submit the form directly.
-    if (isKnownQaHost || delegatedIdentity) {
+    if ((isKnownQaHost || delegatedIdentity) && !qaEnrollmentReady) {
       setError('registerError',
         'QA 测试版不允许重复注册。请使用原管理员账号完成独立 QA 初始化或登录。');
       return;
@@ -301,11 +307,16 @@
     const button = event.currentTarget.querySelector('button[type="submit"]');
     button.disabled = true;
     try {
-      const created = await api('/api/accounts/register', 'POST', body);
+      const created = await api(qaEnrollmentReady ? '/api/accounts/enrollment/register' : '/api/accounts/register', 'POST', body);
       const accountId = created.account.id;
       submittedForm.reset();
       const loginIdentifier = byId('loginForm').querySelector('[name="identifier"]');
       if (loginIdentifier) loginIdentifier.value = body.username;
+      if (qaEnrollmentReady) {
+        byId('qaEnrollmentIdentifier').value = body.username;
+        presentAccount(created.account);
+        return;
+      }
 
       let signedIn;
       try {
@@ -382,6 +393,22 @@
     const button = event.currentTarget.querySelector('button[type="submit"]');
     button.disabled = true;
     try {
+      if (qaEnrollmentReady) {
+        const identifier = String(form.get('qaIdentifier') || '').trim();
+        const password = String(form.get('qaPassword') || '');
+        byId('qaEnrollmentPassword').value = '';
+        if (!identifier || !password) throw new Error('请输入待授权账号和密码。');
+        const result = await api('/api/accounts/enrollment/activate','POST',{
+          identifier,password,inviteCode:String(form.get('inviteCode') || '').trim()
+        });
+        if (result.account.status !== 'active' || result.loginRequired !== true) throw new Error('授权结果未确认，请重新登录核对。');
+        byId('qaEnrollmentPassword').value = '';
+        currentAccount = null;
+        byId('loginForm').querySelector('[name="identifier"]').value = result.account.username;
+        showPanel('loginPanel');
+        setError('loginError','授权完成，请使用你的测试账号和密码登录。');
+        return;
+      }
       const result = await api('/api/accounts/invites/redeem', 'POST', {
         inviteCode: String(form.get('inviteCode') || '').trim()
       });
@@ -421,6 +448,7 @@
       if (isKnownQaHost && !reportedDelegated) {
         delegatedIdentity = true;
         delegatedSignInReady = false;
+        showQaEnrollment(false);
         link.hidden = true;
         syncLoginAvailability();
         document.querySelectorAll('[data-show="registerPanel"]').forEach(button => {
@@ -446,7 +474,7 @@
       link.hidden = !(canQaSetup || canLocalSetup);
       link.textContent = canQaSetup ? '设置 QA 独立账号密码' : '创作者首次初始化';
       if (delegatedIdentity) {
-        document.querySelectorAll('[data-show="registerPanel"]').forEach(button => { button.hidden = true; });
+        showQaEnrollment(status.qaIdentityCore === true && status.qaEnrollmentReady === true && status.signInReady === true);
         const subtitle = byId('loginPanel')?.querySelector('.lead');
         if (subtitle) {
           subtitle.textContent = status.qaIdentityCore === true
@@ -480,6 +508,7 @@
       if (isKnownQaHost) {
         delegatedIdentity = true;
         delegatedSignInReady = false;
+        showQaEnrollment(false);
         syncLoginAvailability();
         document.querySelectorAll('[data-show="registerPanel"]').forEach(button => {
           button.hidden = true;

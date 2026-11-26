@@ -7,7 +7,7 @@ import vm from 'node:vm';
 // accessing live credentials, or performing Cloudflare writes.
 const source = readFileSync(new URL('../scripts/qa-direct-release.mjs', import.meta.url), 'utf8');
 const start = source.indexOf('async function liveWorkerVersion(name) {');
-const end = source.indexOf('\n\nasync function cloudflarePreflight()', start);
+const end = source.indexOf('\n\nasync function cloudflarePreflight(', start);
 assert.ok(start >= 0 && end > start, 'live Worker version gate must exist');
 const helper = source.slice(start, end);
 
@@ -78,7 +78,7 @@ test('direct QA release must compare pre/post versions of BOTH existing Workers'
 
 
 const smokeStart = source.indexOf('async function qaHttpSmoke(coreInitialized) {');
-const smokeEnd = source.indexOf('\n\nasync function cloudflarePreflight()', smokeStart);
+const smokeEnd = source.indexOf('\n\nasync function cloudflarePreflight(', smokeStart);
 assert.ok(smokeStart >= 0 && smokeEnd > smokeStart,
   'original QA URL HTTP smoke guard must exist');
 const retryStart = source.indexOf('async function readOnlyFetch(');
@@ -312,7 +312,7 @@ test('release retains the full core and QA secret sets and critical bindings', (
 
 
 const auditStart = source.indexOf('function verifiedAccountCounts(item, name) {');
-const auditEnd = source.indexOf('\n\nasync function cloudflarePreflight()', auditStart);
+const auditEnd = source.indexOf('\n\nasync function cloudflarePreflight(', auditStart);
 assert.ok(auditStart >= 0 && auditEnd > auditStart,
   'SQL founder evidence validation helper must exist');
 const auditCounts = vm.runInNewContext(
@@ -407,7 +407,7 @@ test('QA founder setup may only change open to disabled after founder exists', (
 
 
 const routeGuardStart = source.indexOf('async function verifyWorkerPublicRoutes() {');
-const routeGuardEnd = source.indexOf('\n\nasync function cloudflarePreflight()', routeGuardStart);
+const routeGuardEnd = source.indexOf('\n\nasync function cloudflarePreflight(', routeGuardStart);
 assert.ok(routeGuardStart >= 0 && routeGuardEnd > routeGuardStart,
   'Worker public-route safety check must exist');
 
@@ -454,7 +454,7 @@ test('Wrangler configs preserve original QA route and hide isolated core routes'
   assert.equal(core.name, 'maomao-identity-core');
   assert.equal(core.workers_dev, false);
   assert.equal(core.preview_urls, false);
-  assert.equal((source.match(/await verifyWorkerPublicRoutes\(\);/g) || []).length, 3,
+  assert.equal((source.match(/await verifyWorkerPublicRoutes\(\);/g) || []).length, 4,
     'public route gate must run before release and after each Worker upload');
 });
 

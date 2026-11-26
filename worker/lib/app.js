@@ -1,4 +1,5 @@
 import { createAccountAuth } from './account-auth.js';
+import { createMaoSocial } from './mao-social.js';
 import {
   ApiError, fail, ok, readJsonBody
 } from './http.js';
@@ -482,6 +483,7 @@ export async function dispatchPendingOutboundPushes({
 
 export function createApp({ store, env = {}, now = () => Date.now(), fetchImpl = fetch }) {
   const accountAuth = createAccountAuth({ store, env, now });
+  const maoSocial = createMaoSocial({ store, accountAuth, env, now });
   const adminCloud = createAdminCloud({ store, env, now, requireAdmin: createAdminGuard(accountAuth) });
 
   async function authenticate(request) {
@@ -2015,6 +2017,8 @@ export function createApp({ store, env = {}, now = () => Date.now(), fetchImpl =
     const pageAccountId = String(request.headers.get('x-mao-account-context') || '').trim();
     const contextOptionalPaths = new Set([
       '/api/accounts/register',
+      '/api/accounts/enrollment/register',
+      '/api/accounts/enrollment/activate',
       '/api/accounts/login',
       '/api/accounts/logout',
       '/api/accounts/me',
@@ -2059,6 +2063,8 @@ export function createApp({ store, env = {}, now = () => Date.now(), fetchImpl =
       if (adminCloudResponse) return adminCloudResponse;
       const accountResponse = await accountAuth.handle(request, path, method);
       if (accountResponse) return accountResponse;
+      const socialResponse = await maoSocial.handle(request, path, method);
+      if (socialResponse) return socialResponse;
 
       if (path === '/api/health' && method === 'GET') {
         const counts = await store.counts();
@@ -2139,6 +2145,23 @@ export function createApp({ store, env = {}, now = () => Date.now(), fetchImpl =
           readCharacterId(outboundReadMatch[1]),
           outboundReadMatch[2]
         );
+      }
+
+      const mockContact = /^\/api\/autonomy\/characters\/([^/]+)\/mock-contact$/.exec(path);
+      if (mockContact && method === 'POST' && readCharacterId(mockContact[1]) &&
+          env.MAOMAO_QA_MOCK_CONTACT === 'true') {
+        const device = await authenticate(request);
+        const userId = device.user_id;
+        if (!userId || userId === OWNER_USER_ID) {
+          throw new ApiError(401, 'ACCOUNT_SESSION_REQUIRED', '请先登录 MAO 账号');
+        }
+        const status = store.queueQaMockContact({
+          id: randomToken(16), userId, deviceId: device.id,
+          characterId: readCharacterId(mockContact[1]), now: now()
+        });
+        if (status === 'disabled') throw new ApiError(403, 'AUTONOMY_NOT_AUTHORIZED', '请先开启主动联系并授权此角色');
+        if (status === 'limited') throw new ApiError(429, 'ACTIVITY_QUEUE_FULL', '已有测试待执行，或距离上次测试不足五分钟');
+        return ok({ queued: true });
       }
 
       const autonomyActivityMatch = /^\/api\/autonomy\/characters\/([^/]+)\/activities$/.exec(path);

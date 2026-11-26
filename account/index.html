@@ -141,6 +141,7 @@
         <p class="form-error" id="loginError" role="alert" aria-live="polite"></p>
       </form>
       <button class="text-button" type="button" data-show="registerPanel">还没有账号？创建账号</button>
+      <button class="text-button" type="button" data-show="invitePanel" data-qa-enrollment hidden>已有待授权账号？验证邀请码</button>
     </section>
         <section class="panel form-panel view" id="invitePanel" hidden>
       <div class="eyebrow">INVITATION · 04</div>
@@ -152,6 +153,8 @@
         <button type="button" class="copy-button" id="copyAccountId">复制</button>
       </div>
       <form id="inviteForm" class="form" novalidate>
+        <label data-qa-enrollment hidden>待授权测试账号<input id="qaEnrollmentIdentifier" name="qaIdentifier" autocomplete="username" placeholder="用户名或 MAO 永久 ID"></label>
+        <label data-qa-enrollment hidden>测试账号密码<input id="qaEnrollmentPassword" name="qaPassword" type="password" autocomplete="current-password" placeholder="请输入测试账号密码"></label>
         <label>专属邀请码<input name="inviteCode" autocomplete="one-time-code" required maxlength="128" placeholder="输入管理员发放的随机邀请码"></label>
         <div class="notice-line">
           <span class="red-mark">!</span>

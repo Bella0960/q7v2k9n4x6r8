@@ -2132,6 +2132,19 @@ body.maomao-home .dock-bar {
 }
 
 
+body.maomao-home .drag-avatar .app-icon {
+  flex-shrink: 0 !important;
+  aspect-ratio: 1 / 1 !important;
+  scale: none !important;
+  backdrop-filter: none !important;
+  -webkit-backdrop-filter: none !important;
+}
+body.maomao-home .drag-avatar .app-icon::before {
+  backdrop-filter: none !important;
+  -webkit-backdrop-filter: none !important;
+}
+
+
 /* Keep square 2×2 widgets inside their actual grid allocation. On wide
    phones the width of two columns can exceed two icon rows plus the gap.
    Give those grids a width-aware row budget, with a square fit fallback

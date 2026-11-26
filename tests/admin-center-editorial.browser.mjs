@@ -135,6 +135,9 @@ try {
     assert.equal(details.accountCount, 2);
     assert.equal(details.navCount, 5);
     assert.equal(await page.locator('#overviewView').isVisible(), true);
+    assert.equal(await page.locator('#overviewTotalCount').innerText(), '2');
+    assert.equal(await page.locator('.overview-shortcuts a', { hasText: '真人好友审批' }).getAttribute('href'), '../chat/contacts/real-friends.html');
+    assert.equal(await page.locator('.overview-shortcuts a', { hasText: '我的账号与安全' }).getAttribute('href'), '../account/manage.html');
     assert.equal(await page.locator('#overviewPendingCount').innerText(), '1');
     assert.equal(await page.locator('#overviewInviteCount').innerText(), '0');
     assert.equal(await page.locator('#overviewAccountsStatus').getAttribute('data-state'), 'ok');

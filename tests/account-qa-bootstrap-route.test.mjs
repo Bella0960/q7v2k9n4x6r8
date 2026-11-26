@@ -155,10 +155,14 @@ test('QA login page uses QA-only password hint without changing legacy gateway U
   const finish = loginSource.indexOf('\n\n  function retryQaIdentityOnForeground()', begin);
   assert.ok(begin >= 0 && finish > begin, 'actual login readiness handler must exist');
   const actualHandler = loginSource.slice(begin, finish);
+  const enrollmentStart = loginSource.indexOf('  function showQaEnrollment(ready) {');
+  const enrollmentEnd = loginSource.indexOf('\n  let qaIdentityCheckInFlight', enrollmentStart);
+  assert.ok(enrollmentStart >= 0 && enrollmentEnd > enrollmentStart);
+  const enrollmentHandler = loginSource.slice(enrollmentStart,enrollmentEnd);
   const mount = vm.runInNewContext(
     '(async function (status) {\n' +
     '  let delegatedIdentity = false;\n' +
-    '  let delegatedSignInReady = true;\n' +
+    '  let delegatedSignInReady = true, qaEnrollmentReady = false;\n' +
     // The runtime handler now guards in-flight checks and schedules a retry;
     // this legacy test isolates its fail-closed and QA password-hint semantics.
     // End-to-end retry/timer behavior is exercised in qa-identity-reconnect.test.mjs.
@@ -181,9 +185,10 @@ test('QA login page uses QA-only password hint without changing legacy gateway U
     '  const document = { querySelectorAll: () => register };\n' +
     '  const api = async () => { if (status.__offline === true) throw Error("offline"); return status; };\n' +
     '  const setError = (id, message) => errors.push({ id, message });\n' +
+    enrollmentHandler + '\n' +
     actualHandler + '\n' +
     '  await checkCreatorBootstrapEntry();\n' +
-    '  return { link, subtitle, fields, register, errors, delegatedSignInReady };\n' +
+    '  return { link, subtitle, fields, register, errors, delegatedSignInReady, qaEnrollmentReady };\n' +
     '})'
   );
   const qa = await mount({
@@ -196,6 +201,16 @@ test('QA login page uses QA-only password hint without changing legacy gateway U
     'the isolated QA warning must opt into visible styling');
   assert.ok(qa.fields.every(field => field.disabled === false));
   assert.equal(qa.link.hidden, true);
+  assert.equal(qa.qaEnrollmentReady,false);
+  assert.ok(qa.register.every(button => button.hidden));
+  const enrolled = await mount({identityMode:'delegated',qaIdentityCore:true,initialized:true,bootstrapAllowed:false,signInReady:true,qaEnrollmentReady:true});
+  assert.equal(enrolled.qaEnrollmentReady,true);
+  assert.ok(enrolled.register.every(button => !button.hidden));
+  for (const flags of [{qaIdentityCore:false},{signInReady:false},{qaEnrollmentReady:false}]) {
+    const denied=await mount({identityMode:'delegated',qaIdentityCore:true,initialized:true,bootstrapAllowed:false,signInReady:true,qaEnrollmentReady:true,...flags});
+    assert.equal(denied.qaEnrollmentReady,false);
+    assert.ok(denied.register.every(button => button.hidden));
+  }
   const fresh = await mount({
     identityMode: 'delegated', qaIdentityCore: true, initialized: false,
     bootstrapAllowed: true, qaSetupAllowed: true,
@@ -332,7 +347,7 @@ test('QA stale signup form never sends password or invokes FormData', async () =
       '(async function () {\n' +
       '  let prevented = 0, formReads = 0, requests = 0, message = "";\n' +
       '  const isKnownQaHost = ' + knownQa + ', delegatedIdentity = ' + delegated + ';\n' +
-      '  const authBusy = false;\n' +
+      '  const authBusy = false, qaEnrollmentReady = false;\n' +
       '  const FormData = function () { formReads++; throw Error("should not read"); };\n' +
       '  const api = async () => { requests++; throw Error("must not network"); };\n' +
       '  const setError = (_, value) => { message = value; };\n' +

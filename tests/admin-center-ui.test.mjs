@@ -13,7 +13,7 @@ test('temporary session or API failures do not masquerade as a missing super-adm
   const init = adminScript.slice(start, end);
 
   assert.match(init, /if \(initializing\) return/);
-  assert.match(init, /if \(!me\.account \|\| me\.account\.role !== 'super_admin' \|\| me\.account\.status !== 'active'\)/,
+  assert.match(init, /if \(account\.role !== 'super_admin' \|\| account\.status !== 'active'\)/,
     'a confirmed non-admin account must still leave the creator-only page');
   assert.match(init, /isConfirmedSessionExpired\(error\)/,
     'only a confirmed missing session should redirect; QA admin API denial is not logout');

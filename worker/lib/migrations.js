@@ -13,6 +13,9 @@ import { SQL as MAO_ACCOUNT_RESTORE_STATE_SQL, VERSION as MAO_ACCOUNT_RESTORE_ST
 import { SQL as MAO_ADMIN_DIRECTORY_INDEXES_SQL, VERSION as MAO_ADMIN_DIRECTORY_INDEXES_VERSION } from '../migrations/0014_mao_admin_directory_indexes.js';
 import { SQL as MAO_ACCOUNT_AUDIT_CURSOR_SQL, VERSION as MAO_ACCOUNT_AUDIT_CURSOR_VERSION } from '../migrations/0015_mao_account_audit_cursor.js';
 import { SQL as MAO_GLOBAL_AUDIT_CURSOR_SQL, VERSION as MAO_GLOBAL_AUDIT_CURSOR_VERSION } from '../migrations/0016_mao_global_audit_cursor.js';
+import { SQL as MAO_SOCIAL_SQL, VERSION as MAO_SOCIAL_VERSION } from '../migrations/0017_mao_social.js';
+import { SQL as MAO_SOCIAL_E2EE_SQL, VERSION as MAO_SOCIAL_E2EE_VERSION } from '../migrations/0018_mao_social_e2ee.js';
+import { SQL as MAO_SOCIAL_MEDIA_SQL, VERSION as MAO_SOCIAL_MEDIA_VERSION } from '../migrations/0019_mao_social_e2ee_media.js';
 import { SQL as OUTBOUND_INBOX_SQL, VERSION as OUTBOUND_INBOX_VERSION } from '../migrations/0006_outbound_inbox_index.js';
 
 /**
@@ -35,7 +38,10 @@ export const MIGRATIONS = [
   { version: MAO_ACCOUNT_RESTORE_STATE_VERSION, sql: MAO_ACCOUNT_RESTORE_STATE_SQL },
   { version: MAO_ADMIN_DIRECTORY_INDEXES_VERSION, sql: MAO_ADMIN_DIRECTORY_INDEXES_SQL },
   { version: MAO_ACCOUNT_AUDIT_CURSOR_VERSION, sql: MAO_ACCOUNT_AUDIT_CURSOR_SQL },
-  { version: MAO_GLOBAL_AUDIT_CURSOR_VERSION, sql: MAO_GLOBAL_AUDIT_CURSOR_SQL }
+  { version: MAO_GLOBAL_AUDIT_CURSOR_VERSION, sql: MAO_GLOBAL_AUDIT_CURSOR_SQL },
+  { version: MAO_SOCIAL_VERSION, sql: MAO_SOCIAL_SQL },
+  { version: MAO_SOCIAL_E2EE_VERSION, sql: MAO_SOCIAL_E2EE_SQL },
+  { version: MAO_SOCIAL_MEDIA_VERSION, sql: MAO_SOCIAL_MEDIA_SQL }
 ];
 
 /** 以单引号感知的方式拆分多条语句，避免把字符串里的分号切坏。 */
@@ -58,7 +64,7 @@ export function splitSql(sql) {
   return statements;
 }
 
-export function applyMigrations(exec, now = Date.now(), transaction = null) {
+export function applyMigrations(exec, now = Date.now(), transaction = null, migrations = MIGRATIONS) {
   exec('CREATE TABLE IF NOT EXISTS schema_migrations (version TEXT PRIMARY KEY, applied_at INTEGER NOT NULL)');
   const rows = exec('SELECT version FROM schema_migrations');
   const applied = new Set(rows.map(row => String(row.version)));
@@ -77,15 +83,29 @@ export function applyMigrations(exec, now = Date.now(), transaction = null) {
         }
       };
 
-  for (const migration of MIGRATIONS) {
-    if (applied.has(migration.version)) continue;
-    // Use Durable Object transactionSync in production; the local SQLite test
-    // adapter uses explicit BEGIN/COMMIT. The DDL and version marker commit as one.
+  const pending = migrations.filter(migration => !applied.has(migration.version));
+  const isSocial = migration => /^001[789]_mao_social(?:_|$)/.test(migration.version);
+  for (let index = 0; index < pending.length;) {
+    const group = [pending[index++]];
+    // These three additive social migrations form one release unit. Do not
+    // leave a partially enabled schema if a later DDL or version write fails.
+    // Already applied versions remain untouched, including on old installations.
+    if (isSocial(group[0])) {
+      while (index < pending.length && isSocial(pending[index])) group.push(pending[index++]);
+    }
     runTransaction(() => {
-      for (const statement of splitSql(migration.sql)) exec(statement);
-      exec('INSERT INTO schema_migrations (version, applied_at) VALUES (?, ?)', migration.version, now);
+      for (const migration of group) {
+        for (const statement of splitSql(migration.sql)) exec(statement);
+        exec('INSERT INTO schema_migrations (version, applied_at) VALUES (?, ?)', migration.version, now);
+      }
     });
-    results.push(migration.version);
+    results.push(...group.map(migration => migration.version));
   }
   return results;
+}
+
+// Gateway and non-opt-in runtime must never initialize the social schema.
+export function runtimeMigrations(env = {}) {
+  const social = env.MAO_IDENTITY_MODE !== 'delegated_preview' && env.MAO_SOCIAL_ENABLED === 'true';
+  return social ? MIGRATIONS : MIGRATIONS.filter(m => !/^001[789]_mao_social/.test(m.version));
 }

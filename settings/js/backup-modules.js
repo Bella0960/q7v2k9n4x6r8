@@ -121,7 +121,7 @@
         keys: ['beauty_presets','beauty_active','beauty_visual_presets_v1',
           'beauty_visual_presets_deleted_v1','maomao_chat_theme_preset',
           'maomao_theme_store_owned_v1','maomao_market_collection_v1',
-          'maomao_chat_list_theme_preset_v1','active_font_preset_id',
+          'maomao_chat_list_theme_preset_v1','maomao_atmosphere_tone_v1','active_font_preset_id',
           'custom_font_url','custom_css','chat_list_cover_v1'],
         prefixes: ['beauty_', 'maomao_theme_', 'maomao_market_', 'market_',
           'home_icon_', 'wallpaper_', 'chat_bg_', 'theme_', 'custom_font_',
@@ -172,8 +172,8 @@
     register({
         id: 'moments', label: '朋友圈与动态',
         keys: ['moments','moments_notifications'],
-        prefixes: ['moments_', 'moment_', 'chat_auto_comment_', 'maomao_moments_'],
-        databases: ['maomao-assets']
+        prefixes: ['moments_', 'moment_', 'chat_auto_comment_', 'chat_auto_moment_', 'maomao_moments_'],
+        databases: ['maomao-assets', 'maomao-moments-cover']
     });
     register({
         id: 'games', label: '游戏与剧情进度',

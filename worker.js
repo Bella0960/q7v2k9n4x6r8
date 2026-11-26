@@ -13,7 +13,7 @@
 
 import { createApp, dispatchPendingOutboundPushes } from './worker/lib/app.js';
 import { createStore } from './worker/lib/store.js';
-import { applyMigrations } from './worker/lib/migrations.js';
+import { applyMigrations, runtimeMigrations } from './worker/lib/migrations.js';
 import { runTick } from './worker/lib/scheduler.js';
 import { createSchedulerGate } from './worker/lib/scheduler-gate.js';
 
@@ -210,7 +210,7 @@ export class CloudDatabase {
     this.store = store;
     this.handleApi = createApp({ store, env });
     ctx.blockConcurrencyWhile(async () => {
-      applyMigrations(this.exec, Date.now(), this.transaction);
+      applyMigrations(this.exec, Date.now(), this.transaction, runtimeMigrations(env));
     });
   }
 
@@ -219,6 +219,10 @@ export class CloudDatabase {
     if (url.pathname.startsWith('/api/')) return this.handleApi(request);
     if (url.pathname === '/internal/maintenance' && request.method === 'POST') {
       const timestamp = Date.now();
+      if (this.env.MAOMAO_QA_MOCK_CONTACT === 'true') {
+        try { this.store.runQaMockContacts(timestamp); }
+        catch { console.error('QA mock contact deferred'); }
+      }
       const removed = this.store.cleanupSubscriptions(timestamp);
       const pairingTokensRemoved = this.store.cleanupDevicePairingTokens(timestamp);
       const contextEventsRemoved = this.store.cleanupCharacterContextEvents(timestamp);

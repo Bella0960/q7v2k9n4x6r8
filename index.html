@@ -41,8 +41,8 @@
     <link rel="stylesheet" href="desktop/css/styles.css?v=20261124-motion1">
   <link rel="stylesheet" href="shared/css/mobile-fit.css?v=20261106-home-layout2">
     <link rel="stylesheet" href="shared/vendor/liquid-glass/liquid-glass.css?v=1.2.0">
-    <script>window.LiquidGlassConfig = { selector: '.maomao-liquid-glass-icon', preset: 'ios26', refraction: 'auto', maxRefractive: 2, maxRefractiveAreaRatio: 0.12, observe: true, debug: false };</script>
-    <script defer src="shared/vendor/liquid-glass/liquid-glass.js?v=1.2.0"></script>
+    <script>window.LiquidGlassConfig = { selector: '.maomao-liquid-glass-icon:not([data-home-drag-ghost])', deferDuring: 'body.maomao-home:is(.home-editing,.home-dragging,.home-paging):not(.lg-controls-open)', preset: 'ios26', refraction: window.matchMedia && window.matchMedia('(pointer: coarse)').matches ? 'off' : 'auto', maxRefractive: 2, maxRefractiveAreaRatio: 0.12, observe: true, debug: false };</script>
+    <script defer src="shared/vendor/liquid-glass/liquid-glass.js?v=1.2.0-mao-motion1"></script>
   <style>
     /* ===== 添加挂件：跳转独立挂件管理页（desktop/widgets.html） ===== */
     .edit-add-btn { margin-right: 8px; }
@@ -661,6 +661,12 @@
       var dragOriginPage = null;
       var dragFrame = null;
       var pendingDragPoint = null;
+      var latestDragPoint = null;
+      var dragBounds = null;
+      var dragGeometry = null;
+      var dragResizeObserver = null;
+      var dragMutationObserver = null;
+      var dragReorderAnimations = new Map();
       var edgeCooldownTimer = null;
 
       var activePageIndex = 0;
@@ -888,6 +894,11 @@
             currentLayout.pages[pageIndex].splice(settingsIndex >= 0 ? settingsIndex + 1 : currentLayout.pages[pageIndex].length, 0, id);
           }
         } else {
+          // A hidden but still indexed app would be re-added by restoreLayout's
+          // remaining-app pass and later persisted on an unrelated drag.
+          // Account switches reload the document; authorized owners get the
+          // original tile from HTML. This is desktop isolation, not auth.
+          tile.remove();
           currentLayout.pages = (currentLayout.pages || []).map(function (page) {
             return page.filter(function (item) { return item !== id; });
           });
@@ -1109,11 +1120,12 @@
         }
         // 如果当前正停留在被清掉的页，退回到最后一页
         var left = getPages().length;
-        if (activePageIndex >= left) {
+        var pageChanged = activePageIndex >= left;
+        if (pageChanged) {
           activePageIndex = left - 1;
           homeScreen.scrollTo({ left: activePageIndex * (homeScreen.clientWidth || 360) });
         }
-        updateDotsUI();
+        if (pageChanged || left !== pages.length) updateDotsUI();
       }
 
       // ===== 进入与退出编辑模式 =====
@@ -1132,7 +1144,7 @@
         document.body.classList.remove('home-editing');
         if (editModeIndicator) editModeIndicator.style.display = 'none';
 
-        if (isDragging) endDrag();
+        if (isDragging) { endDrag(); return; }
         cleanupEmptyTrailingPages();
         persistCurrentDOM();
       }
@@ -1264,8 +1276,17 @@
       // ===== 拖拽系统核心实现 =====
       function startDrag(targetItem, cx, cy) {
         if (!targetItem || isDragging) return;
+        stopDragReorderAnimations();
+        latestDragPoint = { x: cx, y: cy };
         if (!editing) enterEdit();
 
+        // Capture source geometry before hiding/reparenting it. Detached
+        // ghosts must not fall back to the classic icon or widget dimensions.
+        var sourceWidth = targetItem.offsetWidth;
+        var sourceHeight = targetItem.offsetHeight;
+        var sourceIcon = targetItem.querySelector('.app-icon');
+        var iconWidth = sourceIcon ? sourceIcon.offsetWidth : 0;
+        var iconHeight = sourceIcon ? sourceIcon.offsetHeight : 0;
         var dragCols = getDraggedGridSpan(targetItem, 'column');
         var dragRows = getDraggedGridSpan(targetItem, 'row');
         var originalPageElement = targetItem.closest('.home-page');
@@ -1273,6 +1294,7 @@
         isDragging = true;
         dragEl = targetItem;
         document.body.classList.add('home-dragging');
+        document.addEventListener('touchmove', handleActiveDragTouch, { passive: false });
         var firstGrid = document.getElementById('gridPage0');
         if (firstGrid) firstGrid.classList.remove('is-default-layout');
 
@@ -1304,12 +1326,146 @@
         var delIcon = dragClone.querySelector('.ds-del');
         if (delIcon) delIcon.remove();
 
+        dragClone.style.setProperty('width', sourceWidth + 'px', 'important');
+        dragClone.style.setProperty('height', sourceHeight + 'px', 'important');
+        // A visual clone must never become a second live glass-engine instance.
+        dragClone.querySelectorAll('.maomao-liquid-glass-icon').forEach(function (icon) {
+          icon.setAttribute('data-home-drag-ghost', '');
+        });
+        var ghostIcon = dragClone.querySelector('.app-icon');
+        if (ghostIcon && iconWidth && iconHeight) {
+          ghostIcon.style.setProperty('width', iconWidth + 'px', 'important');
+          ghostIcon.style.setProperty('height', iconHeight + 'px', 'important');
+          ghostIcon.style.setProperty('flex-shrink', '0', 'important');
+        }
         dragClone.style.left = '0px';
         dragClone.style.top = '0px';
         setDragAvatarPosition(cx, cy);
         document.body.appendChild(dragClone);
+        startDragGeometry();
 
         vibrate(18);
+      }
+
+      // A stable slot does not require measuring every tile on every frame.
+      // Invalidate after a real layout mutation, scrolling, resize or content size change.
+      function invalidateDragGeometry() {
+        dragBounds = null;
+        dragGeometry = null;
+      }
+      function startDragGeometry() {
+        invalidateDragGeometry();
+        document.addEventListener('scroll', invalidateDragGeometry, true);
+        window.addEventListener('resize', invalidateDragGeometry);
+        if (typeof ResizeObserver === 'function') {
+          dragResizeObserver = new ResizeObserver(invalidateDragGeometry);
+          [homeScreen, dockBar].concat(Array.from(homeScreen.querySelectorAll('.home-page, .desktop-grid, [data-drag]')),
+            Array.from(dockBar.children)).forEach(function (el) { dragResizeObserver.observe(el); });
+        }
+        if (typeof MutationObserver === 'function') {
+          dragMutationObserver = new MutationObserver(invalidateDragGeometry);
+          [homeScreen, dockBar].concat(Array.from(homeScreen.querySelectorAll('.desktop-grid')))
+            .forEach(function (el) { dragMutationObserver.observe(el, { childList: true }); });
+        }
+      }
+      function stopDragGeometry() {
+        document.removeEventListener('scroll', invalidateDragGeometry, true);
+        window.removeEventListener('resize', invalidateDragGeometry);
+        if (dragResizeObserver) dragResizeObserver.disconnect();
+        if (dragMutationObserver) dragMutationObserver.disconnect();
+        dragResizeObserver = null;
+        dragMutationObserver = null;
+        stopDragReorderAnimations();
+        invalidateDragGeometry();
+      }
+      function getDragBounds() {
+        if (!dragBounds) dragBounds = {
+          home: homeScreen.getBoundingClientRect(),
+          dock: dockBar.getBoundingClientRect()
+        };
+        return dragBounds;
+      }
+      function getDragGeometry(container) {
+        if (dragGeometry && dragGeometry.container === container) return dragGeometry;
+        var entries = Array.from(container.children).filter(function (child) {
+          return child !== placeholder && child !== dragEl;
+        }).map(function (el) { return { el: el, rect: getDragTileRect(el) }; });
+        dragGeometry = {
+          container: container,
+          entries: entries,
+          slot: placeholder.parentNode === container ? placeholder.getBoundingClientRect() : null
+        };
+        return dragGeometry;
+      }
+      // Keep the current slot until the pointer leaves a small hysteresis band.
+      // This suppresses oscillation when the grid reflows beneath a moving finger.
+      function isPointInDragSlot(slot, cx, cy, margin) {
+        return !!slot && cx >= slot.left - margin && cx <= slot.right + margin &&
+          cy >= slot.top - margin && cy <= slot.bottom + margin;
+      }
+      // Keep collision coordinates independent of the visual reorder animation.
+      // Individual translate leaves existing tile transforms and sizing intact.
+      function getDragTileRect(el) {
+        var rect = el.getBoundingClientRect();
+        if (!dragReorderAnimations.has(el)) return rect;
+        var translate = window.getComputedStyle(el).translate;
+        if (!translate || translate === 'none') return rect;
+        var parts = translate.split(/\s+/);
+        var x = parseFloat(parts[0]);
+        var y = parts.length > 1 ? parseFloat(parts[1]) : 0;
+        if (!Number.isFinite(x) || !Number.isFinite(y)) return rect;
+        // Also works in a scaled desktop phone shell.
+        x *= el.offsetWidth ? rect.width / el.offsetWidth : 1;
+        y *= el.offsetHeight ? rect.height / el.offsetHeight : 1;
+        return { left: rect.left - x, right: rect.right - x,
+          top: rect.top - y, bottom: rect.bottom - y, width: rect.width, height: rect.height };
+      }
+      function stopDragReorderAnimations() {
+        dragReorderAnimations.forEach(function (animation) { animation.cancel(); });
+        dragReorderAnimations.clear();
+      }
+      function canAnimateDragReorder() {
+        return typeof window !== 'undefined' && typeof CSS !== 'undefined' &&
+          CSS.supports('translate', '1px 1px') &&
+          !(window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches);
+      }
+      function placeDragPlaceholder(container, sibling) {
+        if (placeholder.parentNode === container && nextPlaceableSibling(placeholder) === sibling) return false;
+        var before = [];
+        if (placeholder.parentNode === container && canAnimateDragReorder()) {
+          before = Array.from(container.children).filter(function (el) {
+            return el !== placeholder && el !== dragEl && typeof el.animate === 'function';
+          }).map(function (el) { return { el: el, rect: el.getBoundingClientRect() }; });
+        }
+        // Sample the displayed positions before canceling prior motion, so a
+        // rapid reversal starts from the current visual position, not a jump.
+        stopDragReorderAnimations();
+        container.insertBefore(placeholder, sibling);
+        invalidateDragGeometry();
+        if (before.length) {
+          // Read all destination positions first; only then start animations.
+          var moves = before.map(function (entry) {
+            var rect = entry.el.getBoundingClientRect();
+            var sx = entry.el.offsetWidth ? rect.width / entry.el.offsetWidth : 1;
+            var sy = entry.el.offsetHeight ? rect.height / entry.el.offsetHeight : 1;
+            return { el: entry.el, dx: (entry.rect.left - rect.left) / (sx || 1),
+              dy: (entry.rect.top - rect.top) / (sy || 1) };
+          });
+          moves.forEach(function (move) {
+            if (Math.abs(move.dx) < 1 && Math.abs(move.dy) < 1) return;
+            try {
+              var animation = move.el.animate([
+                { translate: move.dx + 'px ' + move.dy + 'px' },
+                { translate: '0px 0px' }
+              ], { duration: 180, easing: 'cubic-bezier(0.2, 0.8, 0.2, 1)' });
+              dragReorderAnimations.set(move.el, animation);
+              animation.onfinish = animation.oncancel = function () {
+                if (dragReorderAnimations.get(move.el) === animation) dragReorderAnimations.delete(move.el);
+              };
+            } catch (_) { /* Unsupported animation: retain correct final layout. */ }
+          });
+        }
+        return true;
       }
 
       function setDragAvatarPosition(cx, cy) {
@@ -1322,7 +1478,7 @@
       // Keep the newest coordinate and do at most one layout/collision pass per frame.
       function queueDragMove(cx, cy) {
         if (!isDragging) return;
-        pendingDragPoint = { x: cx, y: cy };
+        latestDragPoint = pendingDragPoint = { x: cx, y: cy };
         if (dragFrame !== null) return;
         dragFrame = requestAnimationFrame(function () {
           dragFrame = null;
@@ -1340,11 +1496,15 @@
         if (dragFrame !== null) cancelAnimationFrame(dragFrame);
         dragFrame = null;
         pendingDragPoint = null;
+        latestDragPoint = null;
+        clearDragEdgeIntent();
         if (edgeCooldownTimer !== null) clearTimeout(edgeCooldownTimer);
         edgeCooldownTimer = null;
         lastEdgeSide = null;
         edgeCooldown = false;
         document.body.classList.remove('home-dragging');
+        document.removeEventListener('touchmove', handleActiveDragTouch);
+        stopDragGeometry();
       }
       function lockDragEdge() {
         edgeCooldown = true;
@@ -1358,83 +1518,62 @@
       function moveDrag(cx, cy) {
         if (!isDragging || !dragClone || !placeholder) return;
 
-        // Compositor transform, not left/top writes on every touch event.
-        setDragAvatarPosition(cx, cy);
+        // Read collision geometry before writing the compositor-only ghost transform.
+        try { updateDragTarget(cx, cy); }
+        finally { setDragAvatarPosition(cx, cy); }
+      }
 
-        // 2. 跨页边缘触发检测（拖拽至左右边缘停留时滑向上一页/下一页）
-        var cRect = homeScreen.getBoundingClientRect();
-        var edgeThreshold = 42;
+      function clearDragEdgeIntent() {
+        if (edgeTimer !== null) clearTimeout(edgeTimer);
+        edgeTimer = null;
+        lastEdgeSide = null;
+      }
+      function pointOverDragDock(rect, cx, cy) {
+        return rect.width > 0 && rect.height > 0 &&
+          cy >= rect.top - 16 && cy <= rect.bottom + 20 &&
+          cx >= rect.left - 10 && cx <= rect.right + 10;
+      }
+      function getDragEdgeSide(bounds, cx, cy, pageIndex, pageCount) {
+        if (pageIndex < 0 || pageIndex >= pageCount || pointOverDragDock(bounds.dock, cx, cy)) return null;
+        if (cy < bounds.home.top || cy > bounds.home.bottom) return null;
+        if (cx < bounds.home.left + 42) return pageIndex > 0 ? 'left' : null;
+        if (cx > bounds.home.right - 42) return pageIndex < MAX_PAGES - 1 ? 'right' : null;
+        return null;
+      }
+      function updateDragEdgeIntent(cx, cy) {
+        var side = getDragEdgeSide(getDragBounds(), cx, cy, activePageIndex, getPages().length);
+        if (!side) { clearDragEdgeIntent(); return; }
+        if (side !== lastEdgeSide) clearDragEdgeIntent();
+        if (edgeCooldown || lastEdgeSide === side) return;
+        lastEdgeSide = side;
+        edgeTimer = setTimeout(function () {
+          edgeTimer = null;
+          // Validate the most recent input even if its rAF has not executed.
+          if (!isDragging || !placeholder || !latestDragPoint) return;
+          var pages = getPages();
+          if (getDragEdgeSide(getDragBounds(), latestDragPoint.x, latestDragPoint.y,
+              activePageIndex, pages.length) !== side) {
+            clearDragEdgeIntent();
+            return;
+          }
+          var targetIdx = activePageIndex + (side === 'left' ? -1 : 1);
+          if (targetIdx === pages.length && pages.length < MAX_PAGES) {
+            createPageIfNeeded();
+            pages = getPages();
+          }
+          var target = pages[targetIdx];
+          var grid = target && target.querySelector('.desktop-grid');
+          if (!grid) { clearDragEdgeIntent(); return; }
+          goToPage(targetIdx);
+          placeDragPlaceholder(grid, null);
+          vibrate(15);
+          lockDragEdge();
+        }, 320);
+      }
+      function updateDragTarget(cx, cy) {
+        updateDragEdgeIntent(cx, cy);
         var pages = getPages();
-
-        if (cx < cRect.left + edgeThreshold) {
-          // 左边缘
-          if (activePageIndex > 0 && !edgeCooldown) {
-            if (lastEdgeSide !== 'left') {
-              lastEdgeSide = 'left';
-              clearTimeout(edgeTimer);
-              edgeTimer = setTimeout(function () {
-                if (!isDragging) return;
-                var targetIdx = activePageIndex - 1;
-                goToPage(targetIdx);
-                // 把占位符带到新页
-                var newGrid = pages[targetIdx] ? pages[targetIdx].querySelector('.desktop-grid') : null;
-                if (newGrid && placeholder.parentNode !== newGrid) {
-                  newGrid.appendChild(placeholder);
-                }
-                vibrate(15);
-                lockDragEdge();
-              }, 320);
-            }
-          }
-        } else if (cx > cRect.right - edgeThreshold) {
-          // 右边缘
-          if (!edgeCooldown) {
-            if (lastEdgeSide !== 'right') {
-              lastEdgeSide = 'right';
-              clearTimeout(edgeTimer);
-              edgeTimer = setTimeout(function () {
-                if (!isDragging) return;
-                var targetIdx = activePageIndex + 1;
-                if (targetIdx < pages.length) {
-                  goToPage(targetIdx);
-                  var newGrid = pages[targetIdx] ? pages[targetIdx].querySelector('.desktop-grid') : null;
-                  if (newGrid && placeholder.parentNode !== newGrid) {
-                    newGrid.appendChild(placeholder);
-                  }
-                  vibrate(15);
-                } else if (pages.length < MAX_PAGES) {
-                  // 在末尾拉出新页
-                  createPageIfNeeded();
-                  pages = getPages();
-                  targetIdx = pages.length - 1;
-                  goToPage(targetIdx);
-                  var freshGrid = pages[targetIdx] ? pages[targetIdx].querySelector('.desktop-grid') : null;
-                  if (freshGrid && placeholder.parentNode !== freshGrid) {
-                    freshGrid.appendChild(placeholder);
-                  }
-                  vibrate(15);
-                }
-                lockDragEdge();
-              }, 320);
-            }
-          }
-        } else {
-          // 离开了边缘区
-          lastEdgeSide = null;
-          if (edgeTimer) {
-            clearTimeout(edgeTimer);
-            edgeTimer = null;
-          }
-        }
-
-        // 3. 实时碰撞检测与自动让位
-        var dockRect = dockBar.getBoundingClientRect();
-        var isOverDock = (
-          cy >= dockRect.top - 16 &&
-          cy <= dockRect.bottom + 20 &&
-          cx >= dockRect.left - 10 &&
-          cx <= dockRect.right + 10
-        );
+        var isOverDock = pointOverDragDock(getDragBounds().dock, cx, cy);
 
         var isWidget = dragEl.classList.contains('ds-widget');
 
@@ -1445,29 +1584,28 @@
             return;
           }
 
-          var dockItems = Array.from(dockBar.children).filter(function (child) {
-            return child !== placeholder && child !== dragEl;
-          });
+          var dockGeometry = getDragGeometry(dockBar);
+          var dockItems = dockGeometry.entries;
 
           // 限制 Dock 最多容纳 5 个应用
           if (dockItems.length >= 5 && placeholder.parentNode !== dockBar) {
             return;
           }
 
+          if (isPointInDragSlot(dockGeometry.slot, cx, cy, 5)) return;
+
           // 寻找插入位置（水平排列让位）
           var targetDockSibling = null;
           for (var i = 0; i < dockItems.length; i++) {
-            var itemRect = dockItems[i].getBoundingClientRect();
+            var itemRect = dockItems[i].rect;
             var midX = itemRect.left + itemRect.width / 2;
             if (cx < midX) {
-              targetDockSibling = dockItems[i];
+              targetDockSibling = dockItems[i].el;
               break;
             }
           }
 
-          if (placeholder.parentNode !== dockBar || nextPlaceableSibling(placeholder) !== targetDockSibling) {
-            dockBar.insertBefore(placeholder, targetDockSibling);
-          }
+          placeDragPlaceholder(dockBar, targetDockSibling);
 
         } else {
           // 悬停在桌面网格区
@@ -1481,23 +1619,19 @@
           var curGrid = curPage.querySelector('.desktop-grid');
           if (!curGrid) return;
 
-          var gridItems = Array.from(curGrid.children).filter(function (child) {
-            return child !== placeholder && child !== dragEl;
-          });
+          var geometry = getDragGeometry(curGrid);
+          var gridItems = geometry.entries;
 
           if (gridItems.length === 0) {
             if (placeholder.parentNode !== curGrid) {
-              curGrid.appendChild(placeholder);
+              placeDragPlaceholder(curGrid, null);
             }
             return;
           }
 
           // A finger over its existing slot must not oscillate between
           // neighbours as the grid reflows.
-          if (placeholder.parentNode === curGrid) {
-            var slot = placeholder.getBoundingClientRect();
-            if (cx >= slot.left && cx <= slot.right && cy >= slot.top && cy <= slot.bottom) return;
-          }
+          if (isPointInDragSlot(geometry.slot, cx, cy, 5)) return;
           // 寻找最佳插入网格槽位并进行动态插队让位
           var directHit = false;
           var hitSibling = null;
@@ -1505,8 +1639,8 @@
           var minDistance = Infinity;
 
           for (var j = 0; j < gridItems.length; j++) {
-            var el = gridItems[j];
-            var r = el.getBoundingClientRect();
+            var el = gridItems[j].el;
+            var r = gridItems[j].rect;
             var itemCenterX = r.left + r.width / 2;
             var itemCenterY = r.top + r.height / 2;
 
@@ -1530,9 +1664,7 @@
           }
 
           var targetSibling = directHit ? hitSibling : closestSibling;
-          if (placeholder.parentNode !== curGrid || nextPlaceableSibling(placeholder) !== targetSibling) {
-            curGrid.insertBefore(placeholder, targetSibling);
-          }
+          placeDragPlaceholder(curGrid, targetSibling);
         }
       }
 
@@ -1577,8 +1709,20 @@
         dragOriginPage = null;
       }
 
-      function endDrag() {
+      function endDrag(finalPoint) {
         if (!isDragging) return;
+        // Release coordinates may be newer than the last move event. Settle
+        // a pending page flip before hit-testing the actual final position.
+        var pageWidth = homeScreen.clientWidth || 360;
+        if (Math.abs(homeScreen.scrollLeft - activePageIndex * pageWidth) > 4) {
+          homeScreen.scrollTo({ left: activePageIndex * pageWidth, behavior: 'instant' });
+          invalidateDragGeometry();
+          if (latestDragPoint) pendingDragPoint = latestDragPoint;
+        }
+        if (finalPoint && Number.isFinite(finalPoint.x) && Number.isFinite(finalPoint.y) &&
+            (!latestDragPoint || finalPoint.x !== latestDragPoint.x || finalPoint.y !== latestDragPoint.y)) {
+          latestDragPoint = pendingDragPoint = finalPoint;
+        }
         // The final touch may arrive before the scheduled paint.
         flushDragMove();
         resetDragMotion();
@@ -1638,7 +1782,18 @@
       }
 
       // 1. Touch Events
+      var pendingGlassTouchTarget = null;
+      function clearPendingGlassTouch() {
+        pendingGlassTouchTarget = null;
+        if (!isDragging) document.removeEventListener('touchmove', handleActiveDragTouch);
+      }
       document.addEventListener('touchstart', function (e) {
+        clearPendingGlassTouch();
+        if (e.touches.length !== 1) {
+          if (pressTimer) { clearTimeout(pressTimer); pressTimer = null; }
+          if (isDragging) cancelDrag();
+          return;
+        }
         var t = e.target.closest('[data-drag]');
         if (!t) return;
         if (e.target.classList.contains('ds-del')) return;
@@ -1650,9 +1805,16 @@
         hasMoved = false;
 
         if (editing) {
-          // 编辑模式下点按直接准备拖拽
+          // Preserve short taps; a fast move in glass edit mode must start, not cancel, the drag.
+          if (document.documentElement.getAttribute('data-theme') === 'liquid-glass' &&
+              t.matches('.app-tile, .dock-item')) {
+            pendingGlassTouchTarget = t;
+            // Install before the first move; a listener added during that event cannot claim it.
+            document.addEventListener('touchmove', handleActiveDragTouch, { passive: false });
+          }
           pressTimer = setTimeout(function () {
             pressTimer = null;
+            pendingGlassTouchTarget = null;
             startDrag(t, startX, startY);
           }, 40);
         } else {
@@ -1669,31 +1831,52 @@
         var touch = e.touches[0];
         var cx = touch.clientX, cy = touch.clientY;
 
-        if (pressTimer) {
+        if (pressTimer && !pendingGlassTouchTarget) {
           if (Math.hypot(cx - startX, cy - startY) > 9) {
-            // 手指滑动位移大于阈值，判定为普通页面滑动，取消长按
             clearTimeout(pressTimer);
             pressTimer = null;
           }
         }
 
-        if (isDragging) {
-          if (e.cancelable) e.preventDefault();
-          queueDragMove(cx, cy);
-        }
-      }, { passive: false });
+      }, { passive: true });
 
-      document.addEventListener('touchend', function () {
+      // Ordinary swipes remain passive. A glass edit tile claims its first
+      // moving touch synchronously, before the browser starts native scrolling.
+      function handleActiveDragTouch(e) {
+        if (!e.touches || e.touches.length !== 1) return;
+        var touch = e.touches[0];
+        if (!isDragging && pendingGlassTouchTarget) {
+          if (!editing || !pendingGlassTouchTarget.isConnected) {
+            if (pressTimer) { clearTimeout(pressTimer); pressTimer = null; }
+            clearPendingGlassTouch();
+            return;
+          }
+          if (Math.hypot(touch.clientX - startX, touch.clientY - startY) <= 9) return;
+          if (e.cancelable) e.preventDefault();
+          var target = pendingGlassTouchTarget;
+          pendingGlassTouchTarget = null;
+          if (pressTimer) { clearTimeout(pressTimer); pressTimer = null; }
+          startDrag(target, startX, startY);
+        }
+        if (!isDragging) return;
+        if (e.cancelable) e.preventDefault();
+        queueDragMove(touch.clientX, touch.clientY);
+      }
+
+      document.addEventListener('touchend', function (e) {
+        clearPendingGlassTouch();
         if (pressTimer) {
           clearTimeout(pressTimer);
           pressTimer = null;
         }
         if (isDragging) {
-          endDrag();
+          var touch = e.changedTouches && e.changedTouches[0];
+          endDrag(touch ? { x: touch.clientX, y: touch.clientY } : null);
         }
       });
 
       document.addEventListener('touchcancel', function () {
+        clearPendingGlassTouch();
         if (pressTimer) {
           clearTimeout(pressTimer);
           pressTimer = null;
@@ -1704,12 +1887,19 @@
       });
 
       // Interruption outside the page must not leave a hidden source or a ghost.
-      window.addEventListener('blur', function () {
+      function interruptHomeDrag() {
+        clearPendingGlassTouch();
         if (pressTimer) {
           clearTimeout(pressTimer);
           pressTimer = null;
         }
         if (isDragging) cancelDrag();
+        else stopDragReorderAnimations();
+      }
+      window.addEventListener('blur', interruptHomeDrag);
+      window.addEventListener('pagehide', interruptHomeDrag);
+      document.addEventListener('visibilitychange', function () {
+        if (document.hidden) interruptHomeDrag();
       });
 
       // 2. Mouse Events
@@ -1749,13 +1939,13 @@
         }
       });
 
-      document.addEventListener('mouseup', function () {
+      document.addEventListener('mouseup', function (e) {
         if (pressTimer) {
           clearTimeout(pressTimer);
           pressTimer = null;
         }
         if (isDragging) {
-          endDrag();
+          endDrag({ x: e.clientX, y: e.clientY });
         }
       });
 
@@ -2681,10 +2871,14 @@
       var MONTHS = ['JANUARY', 'FEBRUARY', 'MARCH', 'APRIL', 'MAY', 'JUNE',
         'JULY', 'AUGUST', 'SEPTEMBER', 'OCTOBER', 'NOVEMBER', 'DECEMBER'];
 
+      var renderedDay = '';
       function render() {
         var now = new Date();
         var y = now.getFullYear(), m = now.getMonth();
-        monthEl.textContent = MONTHS[m];
+        var dayKey = y + '-' + m + '-' + now.getDate();
+        if (renderedDay === dayKey) return;
+        renderedDay = dayKey;
+        if (monthEl.textContent !== MONTHS[m]) monthEl.textContent = MONTHS[m];
         var firstDay = new Date(y, m, 1).getDay();
         var days = new Date(y, m + 1, 0).getDate();
         gridEl.innerHTML = '';
@@ -2715,13 +2909,15 @@
       if (!daysEl) return;
 
       function refresh() {
-        eventEl.textContent = data.event;
-        dateEl.textContent = data.target;
+        // Minute tick must never overwrite text during an in-progress edit.
+        if (!eventEl.isContentEditable && eventEl.textContent !== data.event) eventEl.textContent = data.event;
+        if (dateEl.textContent !== data.target) dateEl.textContent = data.target;
         var now = new Date();
         now.setHours(0, 0, 0, 0);
         var t = new Date(data.target + 'T00:00:00');
         var diff = Math.round((t - now) / 86400000);
-        daysEl.textContent = Math.abs(diff);
+        var remaining = String(Math.abs(diff));
+        if (daysEl.textContent !== remaining) daysEl.textContent = remaining;
       }
 
       eventEl.addEventListener('click', function (e) {
@@ -3211,7 +3407,7 @@
 </script>
 
 <script src="shared/js/dock-control.js?v=20261023v1"></script>
-<script src="shared/js/liquid-glass-controls.js?v=20261023v11"></script>
+<script src="shared/js/liquid-glass-controls.js?v=20261125motion2"></script>
 <script src="shared/js/chat-notifier.js?v=20261119scheduled1"></script>
 </body>
 </html>

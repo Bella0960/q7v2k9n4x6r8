@@ -29,7 +29,7 @@ test('admin screen keeps account IDs real but never uses the project signature a
   assert.ok(html.includes('<h1>管理中心</h1>'));
   assert.ok(html.includes('CONTROL PANEL / 01'));
   assert.ok(html.includes('admin-center-editorial.css?v=20261123-v1'));
-  assert.ok(html.includes('admin-workspace.css?v=20261123-v1'));
+  assert.ok(html.includes('admin-workspace.css?v=20261126-v2'));
   assert.ok(!/background\s*:\s*[^;]*gradient\(/i.test(layout));
   for (const token of ['--ink:', '--muted:', '--paper:', '--wash:', '--editorial-serif:']) {
     assert.ok(layout.includes(token), 'Missing design token: ' + token);
@@ -70,5 +70,5 @@ test('admin documents and scripts are not intercepted or precached by the common
   assert.ok(!sw.includes("'./admin/admin-center-editorial.css?"));
   const cacheVersion = Number((sw.match(/const CACHE_NAME = 'phone-app-pwa-v(\d+)'/) || [])[1]);
   assert.ok(Number.isInteger(cacheVersion) && cacheVersion >= 307, 'latest desktop wallpaper PWA cache must not be rolled back');
-  assert.ok(html.includes('./admin-center.js?v=20261124-account-recovery1'));
+  assert.ok(html.includes('./admin-center.js?v=20261126-admin-overview1'));
 });

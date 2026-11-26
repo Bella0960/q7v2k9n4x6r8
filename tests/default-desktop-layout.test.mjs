@@ -168,7 +168,7 @@ function createWidgetManagerHarness(seed = {}) {
     getElementById(id) { return id === 'widgetList' ? list : null; },
     querySelector(selector) { return selector === '.page-note' ? note : null; },
     createElement() {
-      return { className: '', innerHTML: '', textContent: '',
+      return { className: '', innerHTML: '', textContent: '', dataset: {},
         appendChild() {}, addEventListener() {} };
     }
   };
@@ -265,7 +265,8 @@ test('touchcancel restores original element without persisting a partially moved
   runInNewContext(match[0] + '\ncancelDrag();', harness);
   assert.equal(harness.isDragging, false);
   assert.deepEqual(counts, { placeholder: 1, ghost: 1, cleanup: 1, refresh: 1, writes: 0 });
-  assert.match(index, /window\.addEventListener\('blur', function \(\) \{[\s\S]*?if \(isDragging\) cancelDrag\(\)/);
+  assert.match(index, /function interruptHomeDrag\(\) \{[\s\S]*?if \(isDragging\) cancelDrag\(\)/);
+  assert.match(index, /window\.addEventListener\('blur', interruptHomeDrag\)/);
 });
 
 test('cancelled cross-page gesture navigates back without storing a drop', () => {
@@ -367,7 +368,7 @@ test('drag input coalesces into a single frame and flushes the last point on dro
   const calls = [], frames = new Map();
   let serial = 0;
   const ctx = {
-    isDragging: true, pendingDragPoint: null, dragFrame: null,
+    isDragging: true, pendingDragPoint: null, latestDragPoint: null, dragFrame: null,
     requestAnimationFrame(fn) { frames.set(++serial, fn); return serial; },
     cancelAnimationFrame(id) { frames.delete(id); },
     moveDrag(x,y) { calls.push([x,y]); }
@@ -392,4 +393,267 @@ test('desktop icons cannot shrink into a rectangle; row height accounts for text
   assert.match(desktopCss,/flex:\s*0 0 auto !important;[\s\S]*?aspect-ratio:\s*1 \/ 1 !important/);
   assert.match(desktopCss,/--desktop-icon-row:\s*max\(72px,\s*calc\(var\(--desktop-icon-edge\) \+ 6px \+ \.86rem \+ 2px\)\)/);
   assert.match(mobileCss,/grid-auto-rows:\s*var\(--desktop-icon-row,\s*68px\) !important/);
+});
+
+test('normal touch movement remains passive; active drag alone installs and removes blocking listener',()=>{
+  assert.match(index,/document\.addEventListener\('touchmove', handleActiveDragTouch, \{ passive: false \}\)/);
+  assert.match(index,/document\.removeEventListener\('touchmove', handleActiveDragTouch\)/);
+  assert.match(index,/function handleActiveDragTouch\(e\)[\s\S]*?if \(e\.cancelable\) e\.preventDefault\(\)/);
+  assert.match(index,/document\.addEventListener\('touchmove', function \(e\) \{[\s\S]*?clearTimeout\(pressTimer\)[\s\S]*?\}, \{ passive: true \}\)/);
+});
+test('drag clones retain measured source dimensions; minute ticks avoid unnecessary widget updates',()=>{
+  assert.match(index,/var sourceWidth = targetItem\.offsetWidth/);
+  assert.match(index,/ghostIcon\.style\.setProperty\('height', iconHeight \+ 'px', 'important'\)/);
+  assert.match(index,/if \(renderedDay === dayKey\) return/);
+  assert.match(index,/if \(!eventEl\.isContentEditable && eventEl\.textContent !== data\.event\)/);
+});
+
+
+test('drag geometry cache reuses stable measurements and invalidates on real placement', () => {
+  const start = index.indexOf('      function invalidateDragGeometry() {');
+  const end = index.indexOf('      function setDragAvatarPosition(cx, cy) {', start);
+  assert.ok(start >= 0 && end > start);
+  let reads = 0, writes = 0;
+  const rect = () => { reads++; return { left: 0, right: 10, top: 0, bottom: 10, width: 10, height: 10 }; };
+  const tile = { getBoundingClientRect: rect };
+  const placeholder = { getBoundingClientRect: rect };
+  const dragEl = { getBoundingClientRect: () => { throw new Error('hidden source measured'); } };
+  const grid = { children: [placeholder, tile, dragEl], insertBefore(node, sibling) {
+    writes++; this.children = this.children.filter(x => x !== node);
+    this.children.splice(sibling ? this.children.indexOf(sibling) : this.children.length, 0, node);
+    node.parentNode = this;
+  } };
+  placeholder.parentNode = grid;
+  const ctx = { dragBounds: null, dragGeometry: null, dragReorderAnimations: new Map(), placeholder, dragEl,
+    homeScreen: { getBoundingClientRect: rect }, dockBar: { getBoundingClientRect: rect },
+    nextPlaceableSibling(el) { return grid.children.slice(grid.children.indexOf(el)+1).find(x => x !== dragEl && x !== placeholder) || null; } };
+  runInNewContext(index.slice(start,end) + '\nthis.api = { getDragBounds, getDragGeometry, invalidateDragGeometry, placeDragPlaceholder };', ctx);
+  const api = ctx.api;
+  api.getDragBounds(); api.getDragGeometry(grid);
+  assert.equal(reads,4);
+  for (let i=0;i<100;i++) { api.getDragBounds(); api.getDragGeometry(grid); }
+  assert.equal(reads,4, 'stable drag must not remeasure tiles');
+  assert.equal(api.placeDragPlaceholder(grid,tile),false);
+  assert.equal(writes,0);
+  assert.equal(api.placeDragPlaceholder(grid,null),true);
+  assert.equal(writes,1);
+  api.getDragBounds(); api.getDragGeometry(grid);
+  assert.equal(reads,8,'placement must invalidate cached geometry');
+  api.invalidateDragGeometry();
+  api.getDragGeometry(grid);
+  assert.equal(reads,10);
+  assert.match(index,/document\.addEventListener\('scroll', invalidateDragGeometry, true\)/);
+  assert.match(index,/document\.removeEventListener\('scroll', invalidateDragGeometry, true\)/);
+  assert.match(index,/finally \{ setDragAvatarPosition\(cx, cy\); \}/);
+});
+
+
+test('desktop and Dock drag slot hysteresis prevents boundary jitter without locking adjacent slots', () => {
+  const start = index.indexOf('      function isPointInDragSlot(');
+  const end = index.indexOf('      function placeDragPlaceholder(', start);
+  assert.ok(start >= 0 && end > start);
+  const ctx = {};
+  runInNewContext(index.slice(start,end),ctx);
+  const inside = ctx.isPointInDragSlot;
+  const slot = { left: 20, right: 80, top: 30, bottom: 90 };
+  assert.equal(inside(null,40,40,5),false);
+  for (const [x,y] of [[15,60],[85,60],[50,25],[50,95],[50,50]]) assert.equal(inside(slot,x,y,5),true);
+  for (const [x,y] of [[14,60],[86,60],[50,24],[50,96]]) assert.equal(inside(slot,x,y,5),false);
+  assert.match(index,/isPointInDragSlot\(dockGeometry\.slot, cx, cy, 5\)/);
+  assert.match(index,/isPointInDragSlot\(geometry\.slot, cx, cy, 5\)/);
+});
+
+
+test('reorder visual animation preserves final hit geometry and cancels without leaking', () => {
+  const start = index.indexOf('      function getDragTileRect(');
+  const end = index.indexOf('      function setDragAvatarPosition(', start);
+  assert.ok(start >= 0 && end > start);
+  const active = new Map(), calls = [];
+  let x = 0, visualOffset = 0;
+  const placeholder = {}, dragEl = {};
+  const tile = { offsetWidth: 40, offsetHeight: 40,
+    getBoundingClientRect() { return {left:x+visualOffset, right:x+visualOffset+40, top:10, bottom:50, width:40, height:40}; },
+    animate(frames,options) {
+      calls.push({frames,options});
+      visualOffset=parseFloat(frames[0].translate);
+      return {cancel(){visualOffset=0; if(this.oncancel)this.oncancel();}};
+    } };
+  const grid={children:[placeholder,tile],insertBefore(){this.children=[tile,placeholder];x=40;}};
+  placeholder.parentNode=grid;
+  const ctx={dragReorderAnimations:active,placeholder,dragEl,
+    window:{getComputedStyle(){return {translate:visualOffset+'px 0px'}},matchMedia(){return {matches:false}}},
+    CSS:{supports(){return true}},nextPlaceableSibling(){return tile},invalidateDragGeometry(){}};
+  runInNewContext(index.slice(start,end),ctx);
+  assert.equal(ctx.placeDragPlaceholder(grid,null),true);
+  assert.equal(calls.length,1);
+  assert.equal(calls[0].frames[0].translate,'-40px 0px');
+  assert.equal(calls[0].options.duration,180);
+  assert.equal(tile.getBoundingClientRect().left,0);
+  assert.equal(ctx.getDragTileRect(tile).left,40,'hit testing must use the final slot, not the animated visual');
+  ctx.stopDragReorderAnimations();
+  assert.equal(active.size,0);
+  assert.equal(visualOffset,0);
+  assert.equal(ctx.getDragTileRect(tile).left,40);
+  ctx.window.matchMedia=()=>({matches:true});
+  assert.equal(ctx.canAnimateDragReorder(),false);
+});
+
+
+test('cross-page edge intent is cancelled over Dock, invalid boundaries and newer unpainted input', () => {
+  const start=index.indexOf('      function clearDragEdgeIntent()');
+  const end=index.indexOf('      function updateDragTarget(',start);
+  assert.ok(start>=0&&end>start);
+  const bounds={home:{left:0,right:390,top:50,bottom:720},dock:{left:0,right:390,top:700,bottom:780,width:390,height:80}};
+  let flip=0;const timers=new Map();let seq=0;
+  const grid={};const pages=[{querySelector:()=>grid},{querySelector:()=>grid}];
+  const ctx={MAX_PAGES:4,activePageIndex:0,edgeTimer:null,lastEdgeSide:null,edgeCooldown:false,isDragging:true,placeholder:{},latestDragPoint:{x:380,y:300},getDragBounds:()=>bounds,getPages:()=>pages,setTimeout(fn){timers.set(++seq,fn);return seq;},clearTimeout(id){timers.delete(id);},goToPage(i){flip++;ctx.activePageIndex=i;},placeDragPlaceholder(){},vibrate(){},lockDragEdge(){ctx.edgeCooldown=true;}};
+  runInNewContext(index.slice(start,end),ctx);
+  assert.equal(ctx.getDragEdgeSide(bounds,10,300,0,2),null);
+  assert.equal(ctx.getDragEdgeSide(bounds,380,740,0,2),null);
+  assert.equal(ctx.getDragEdgeSide(bounds,380,300,3,4),null);
+  ctx.updateDragEdgeIntent(380,300);assert.equal(timers.size,1);
+  ctx.latestDragPoint={x:10,y:300};
+  let [id,fn]=[...timers.entries()][0];timers.delete(id);fn();
+  assert.equal(flip,0);assert.equal(ctx.lastEdgeSide,null);
+  ctx.latestDragPoint={x:380,y:300};ctx.updateDragEdgeIntent(380,300);
+  ctx.updateDragEdgeIntent(380,740);assert.equal(timers.size,0);
+  ctx.updateDragEdgeIntent(380,300);
+  [id,fn]=[...timers.entries()][0];timers.delete(id);fn();
+  assert.equal(flip,1);assert.equal(ctx.activePageIndex,1);
+});
+
+test('drop consumes final touch and mouse position and interruption is a cancellation', () => {
+  assert.match(index,/function endDrag\(finalPoint\)/);
+  assert.match(index,/latestDragPoint = pendingDragPoint = finalPoint;[\s\S]*?flushDragMove\(\)/);
+  assert.match(index,/endDrag\(touch \? \{ x: touch\.clientX, y: touch\.clientY \} : null\)/);
+  assert.match(index,/endDrag\(\{ x: e\.clientX, y: e\.clientY \}\)/);
+  assert.match(index,/window\.addEventListener\('pagehide', interruptHomeDrag\)/);
+  assert.match(index,/if \(document\.hidden\) interruptHomeDrag\(\)/);
+  assert.match(index,/if \(isDragging\) \{ endDrag\(\); return; \}/);
+});
+
+
+test('release settles a pending page flip, uses latest input and persists exactly once', () => {
+  const start=index.indexOf('      function endDrag(finalPoint)');
+  const end=index.indexOf('      // ===== 事件监听',start);
+  assert.ok(start>=0&&end>start);
+  const order=[], calls=[];
+  const parent={id:'gridPage1',insertBefore(){order.push('place');}};
+  const source={classList:{remove(){}},style:{}};
+  const ph={parentNode:parent,remove(){order.push('remove-slot');}};
+  const ctx={isDragging:true,dragEl:source,placeholder:ph,dragClone:{remove(){order.push('remove-ghost');}},
+    dragOriginPage:0,edgeTimer:null,activePageIndex:1,latestDragPoint:{x:100,y:200},pendingDragPoint:null,
+    homeScreen:{clientWidth:390,scrollLeft:210,scrollTo(options){this.scrollLeft=options.left;order.push('settle');}},
+    invalidateDragGeometry(){order.push('invalidate');},
+    flushDragMove(){calls.push([ctx.pendingDragPoint.x,ctx.pendingDragPoint.y]);order.push('flush');},
+    resetDragMotion(){order.push('reset');},setElementAsDock(){throw Error('wrong parent');},setElementAsDesktop(){},
+    vibrate(){},cleanupEmptyTrailingPages(){order.push('cleanup');},persistCurrentDOM(){order.push('save');},
+    document:{body:{classList:{add(){}}}},setTimeout(){},clearTimeout(){}};
+  runInNewContext(index.slice(start,end),ctx);
+  ctx.endDrag({x:110,y:210});ctx.endDrag({x:120,y:220});
+  assert.deepEqual(calls,[[110,210]]);
+  assert.deepEqual(order,['settle','invalidate','flush','reset','place','remove-slot','remove-ghost','cleanup','save']);
+  assert.equal(ctx.isDragging,false);
+  assert.equal(ctx.dragEl,null);
+});
+
+
+test('creator-only shortcut cannot reenter ordinary layout via remaining-app restoration', () => {
+  const code=index.match(/\(function configureCreatorAdminShortcut\(\) \{[\s\S]*?\n      \}\)\(\);/)?.[0];
+  assert.ok(code);
+  for(const role of [null,'member','super_admin']){
+    const id='app_admin_center';
+    const tile={hidden:true,removed:false,remove(){this.removed=true;}};
+    const layout={pages:[['app_settings','app_music'],['app_forum',id]],dock:['app_chat'],removed:['clock',id]};
+    let saved;
+    const doc={querySelector(selector){
+      if(selector==='meta[name="mao-account-role"]')return role?{content:role}:null;
+      if(selector==='[data-drag="'+id+'"]')return tile;
+      return null;
+    }};
+    runInNewContext(code,{document:doc,currentLayout:layout,saveLayout(x){saved=JSON.parse(JSON.stringify(x));}});
+    assert.ok(saved);
+    assert.deepEqual(saved.dock,['app_chat']);
+    assert.deepEqual(saved.pages[0],['app_settings','app_music']);
+    assert.deepEqual(saved.removed,['clock']);
+    if(role==='super_admin'){
+      assert.equal(tile.hidden,false);
+      assert.equal(tile.removed,false);
+      assert.equal(saved.pages.flat().filter(x=>x===id).length,1);
+    }else{
+      assert.equal(tile.removed,true);
+      assert.equal(saved.pages.flat().includes(id),false);
+      assert.equal(saved.dock.includes(id),false);
+      assert.equal(saved.removed.includes(id),false);
+    }
+  }
+});
+
+
+test('desktop glass pauses expensive optical work while editing and excludes visual ghosts', () => {
+  const vendor = readFileSync(new URL('../shared/vendor/liquid-glass/liquid-glass.js', import.meta.url), 'utf8');
+  const glassCss = readFileSync(new URL('../shared/css/liquid-glass-theme.css', import.meta.url), 'utf8');
+  const controls = readFileSync(new URL('../shared/js/liquid-glass-controls.js', import.meta.url), 'utf8');
+  for(const source of [index,controls]){
+    assert.ok(source.includes("selector: '.maomao-liquid-glass-icon:not([data-home-drag-ghost])'"));
+    assert.ok(source.includes("deferDuring: 'body.maomao-home:is(.home-editing,.home-dragging,.home-paging):not(.lg-controls-open)'"));
+  }
+  assert.match(index,/icon\.setAttribute\('data-home-drag-ghost', ''\)/);
+  assert.match(glassCss,/home-editing \.desktop-grid > \.app-tile,[\s\S]*?animation: none !important/);
+  assert.match(glassCss,/home-editing,\.home-paging,\.home-dragging\):not\(\.lg-controls-open\) \.dock-bar,[\s\S]*?backdrop-filter: none !important/);
+  const fn=vendor.match(/function hostMotionDeferred\(\) \{[\s\S]*?\n\}/)?.[0];
+  assert.ok(fn);
+  const ctx={HAS_DOM:true,config:{deferDuring:null},document:{body:{matches:s=>s==='busy'}}};
+  runInNewContext(fn+'\nthis.check=hostMotionDeferred;',ctx);
+  assert.equal(ctx.check(),false);
+  ctx.config.deferDuring='busy';assert.equal(ctx.check(),true);
+  ctx.config.deferDuring='idle';assert.equal(ctx.check(),false);
+  ctx.document.body=null;assert.equal(ctx.check(),false);
+  // Exercise actual deferred branches without running the third-party renderer.
+  const tier=vendor.slice(vendor.indexOf('function evaluateTiers()'),vendor.indexOf('  const max = config.maxRefractive',vendor.indexOf('function evaluateTiers()')))+'}';
+  const tone=vendor.slice(vendor.indexOf('function runToneSampling()'),vendor.indexOf('  const { all, scroll, entered } = toneState;',vendor.indexOf('function runToneSampling()')))+'}';
+  const timers=[];
+  const runtime={state:{initialized:true},document:{hidden:false},hostMotionDeferred:()=>true,
+    tiers:{timer:7},toneState:{timer:8,all:true,scroll:true,entered:new Set(['fixture'])},
+    clearTimeout(){},setTimeout(fn,delay){timers.push(delay);return 99;}};
+  runInNewContext(tier+'\n'+tone+'\nevaluateTiers();runToneSampling();',runtime);
+  assert.deepEqual(timers,[250,250]);
+  assert.equal(runtime.toneState.all,true);
+  assert.equal(runtime.toneState.scroll,true);
+  assert.equal(runtime.toneState.entered.has('fixture'),true);
+  assert.equal(runtime.tiers.timer,99);
+  assert.equal(runtime.toneState.timer,99);
+});
+
+
+test('glass edit quick touch starts drag instead of cancelling before the timer', () => {
+  const source = index.slice(index.indexOf('      // 1. Touch Events'),index.indexOf("      document.addEventListener('touchend', function (e) {",index.indexOf('      // 1. Touch Events')));
+  assert.ok(source.includes('pendingGlassTouchTarget'));
+  function probe(theme, editing, delta, at) {
+    const events={}, timers=new Map(), calls=[];let now=0,seq=0,prevented=0;
+    const target={isConnected:true,closest(){return this},matches(){return true},classList:{contains(){return false}}};
+    const ctx={editing,pressTimer:null,startX:0,startY:0,hasMoved:false,isDragging:false,
+      document:{documentElement:{getAttribute:()=>theme},addEventListener:(n,f)=>(events[n]??=new Set()).add(f),removeEventListener:(n,f)=>events[n]?.delete(f)},
+      isClockDragTarget:()=>false,cancelDrag(){},startDrag(t,x,y){calls.push(['start',x,y]);ctx.isDragging=true;},
+      queueDragMove(x,y){calls.push(['move',x,y]);},
+      setTimeout(f,ms){const id=++seq;timers.set(id,{f,t:now+ms});return id},clearTimeout(id){timers.delete(id)}};
+    runInNewContext(source,ctx);
+    const emit=(name,x)=>{for(const f of [...events[name]??[]])f({target,touches:[{clientX:x,clientY:100}],cancelable:true,preventDefault(){prevented++}})};
+    function advance(t){now=t;for(const [id,o] of timers)if(o.t<=now){timers.delete(id);o.f()}}
+    emit('touchstart',100);advance(at);emit('touchmove',100+delta);advance(400);
+    if(theme==='liquid-glass'&&editing&&delta>9&&at<40)assert.ok(prevented>0,'first move must be claimed before native scrolling');
+    return calls;
+  }
+  assert.deepEqual(probe('liquid-glass',true,12,16),[['start',100,100],['move',112,100]]);
+  assert.deepEqual(probe('liquid-glass',false,12,16),[]);
+  assert.deepEqual(probe('classic',true,12,16),[]);
+  assert.deepEqual(probe('liquid-glass',true,4,16),[['start',100,100]]);
+});
+
+test('mobile glass uses frosted optics and a static edit lens', () => {
+  const controls=readFileSync(new URL('../shared/js/liquid-glass-controls.js',import.meta.url),'utf8');
+  const css=readFileSync(new URL('../shared/css/liquid-glass-theme.css',import.meta.url),'utf8');
+  for(const source of [index,controls])assert.ok(source.includes("window.matchMedia('(pointer: coarse)').matches ? 'off' : 'auto'"));
+  assert.match(css,/\.home-editing:not\(\.lg-controls-open\) :is\(\.app-tile,\.dock-item\)\[data-drag\] \{\s*touch-action: none/);
+  assert.match(css,/\.drag-avatar\) \.app-icon\.maomao-liquid-glass-icon::after \{\s*display: none !important/);
 });
