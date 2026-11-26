@@ -51,6 +51,7 @@
     "test:chat:image-vision": "node --test tests/chat-image-vision.test.mjs",
     "postbuild": "node --test tests/production-assets-isolation.test.mjs",
     "eng:conflicts": "node scripts/engineering-pr-conflicts.mjs",
+    "eng:batch": "node scripts/engineering-qa-batch.mjs",
     "eng:register": "node scripts/engineering-qa-queue.mjs register",
     "eng:batch:auto": "node scripts/engineering-qa-queue.mjs assemble"
   },
