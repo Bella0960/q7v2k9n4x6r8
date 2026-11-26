@@ -13,11 +13,12 @@ Read these files first:
 1. docs/engineering/README.md — authoritative project baseline and document map.
 2. docs/engineering/PROJECT_ARCHITECTURE.md — current architecture and app inventory.
 3. docs/engineering/STORAGE_AND_MIGRATION.md — storage facts, target design, and migration safety rules.
-4. docs/engineering/DEVELOPMENT_GOVERNANCE.md — branches, workflows, testing, security, and collaboration rules.
-5. docs/engineering/REMEDIATION_BACKLOG.md — approved task IDs and acceptance criteria.
-6. docs/chat-architecture-contract.md and docs/chat-regression-baseline.md before touching chat.
-7. docs/MAOMAO_VISUAL_DESIGN_CONSTITUTION.md before touching UI or visual design.
-8. CLAUDE.md for additional repository-specific context. If it conflicts with the engineering documents, report the conflict and follow the newer, explicitly verified engineering baseline.
+4. docs/engineering/ENGINEERING_WORKFLOW.md — GOV-006 task registration, conflict scanning, automatic ready-task batching, candidate recovery, and coordinator-only QA handoff.
+5. docs/engineering/DEVELOPMENT_GOVERNANCE.md — branches, workflows, testing, security, and collaboration rules.
+6. docs/engineering/REMEDIATION_BACKLOG.md — approved task IDs and acceptance criteria.
+7. docs/chat-architecture-contract.md and docs/chat-regression-baseline.md before touching chat.
+8. docs/MAOMAO_VISUAL_DESIGN_CONSTITUTION.md before touching UI or visual design.
+9. CLAUDE.md for additional repository-specific context. If it conflicts with the engineering documents, report the conflict and follow the newer, explicitly verified engineering baseline.
 
 ## Non-negotiable project constraints
 
@@ -36,11 +37,19 @@ Read these files first:
 
 ## Task execution protocol
 
-- Claim one or more explicit Task IDs from docs/engineering/REMEDIATION_BACKLOG.md.
-- Before editing, inspect current main and the exact callers/consumers of every touched API, storage key, CSS selector, and route.
-- Use a dedicated branch named task-ID/short-description. Do not push unreviewed changes directly to main.
-- Do not let two agents edit the same files concurrently. Agree on file ownership first.
+- Only the integration coordinator may dispatch `.github/workflows/engineering-ready-batch.yml` and request QA publication through the fixed reusable QA entry. Individual development windows never dispatch separate QA releases.
+- Candidate assembly is not deployment. A QA release is complete only after the fixed workflow succeeds and the live QA source receipt confirms the exact candidate SHA and deployed version.
+- D0 documentation-only work does not enter the product QA batch. Risk lanes F1–F4 and their required checks are defined in `ENGINEERING_WORKFLOW.md` and the current release policy.
+
+
+- Choose an approved Task ID from `docs/engineering/REMEDIATION_BACKLOG.md` or the owner's explicit request. One implementation task uses one dedicated branch and one reviewable PR.
+- Before editing, read the current-main `docs/engineering/ENGINEERING_WORKFLOW.md`, inspect the exact callers/consumers of every touched API, storage key, CSS selector, and route, and identify the latest successful QA-only source SHA from the live receipt when the task will enter a QA batch.
+- Different modules or disjoint file sets may be developed in parallel. Two agents must never edit the same file or shared contract concurrently; assign one owner to overlapping/shared paths.
+- After a task branch has changes, run `npm run eng:conflicts` before opening/updating its PR. Incomplete scans and zero-change scans are not proof of conflict-free ownership.
+- After opening the PR, register its exact current head, QA baseline, risk lane, required GitHub check names, and optional Task ID dependencies with `npm run eng:register -- <PR> <TASK-ID> <QA-baseline-SHA> <F1|F2|F3|F4> "<exact GitHub check name>" ["<another exact check name>"] [--depends-on=TASK-ID,TASK-ID]`. Re-register after every new commit.
+- Do not invoke the retired `npm run eng:batch -- <task-directory> ...` workflow. The old coordinator-local task directory is not a shared registry.
 - Keep the patch narrow. Avoid formatting unrelated files or adding dependencies without approval.
+- **Mandatory pre-QA compatibility review (owner requirement, 2026-11-25):** Before implementing a behavior change, inventory affected existing test contracts and downstream modules, including cross-module assertions, browser selectors, fixtures, routes, persisted formats and shared interfaces. In the same feature patch, update genuinely obsolete expectations to the approved new behavior, preserve all valid safety and compatibility assertions, and fix actual regressions in product code. Add regression coverage for the changed behavior and run available targeted checks before requesting QA. Record affected contracts, rationale for changed expectations, exact checks and results, and any unverified items. Never delete, skip, weaken or fabricate passing tests to obtain a green release. This applies to every developer and AI agent; QA is not the first point of compatibility review.
 - Add/update tests for the behavior changed. Select the required checks using the current release policy; run the relevant test scripts and build when required. Remember: the current npm run lint command is a placeholder and is not a real linter.
 - For UI work, verify at the phone viewport (375–430px) and desktop shell. For chat/storage work, follow the manual acceptance lists in the chat contract and storage plan.
 - Report: task IDs, files changed, behavior preserved, tests run and exact results, migration/rollback behavior, known gaps, and commit/PR link.
@@ -59,6 +68,10 @@ When the owner gives a direct implementation request (“fix”, “finish”, �
 - A chat/session ending cannot be treated as background execution. Before stopping, write enough verified state, links, and next actions to `EXECUTION_LOG.md` so another session can resume without asking the owner to repeat the task.
 
 “Complete all” means complete all authorized subtasks within the requested scope. It does not authorize enabling deferred roadmap items or crossing the release/data-safety boundaries above.
+
+## Owner-approved module closeout (mandatory)
+
+When the owner explicitly accepts a module and declares its current version settled, record the accepted SHA, QA receipt and satisfaction score if supplied. Freeze the accepted behavior. Reconcile the verified implementation and its tests with main through one reviewed integration PR; retire superseded PRs and active runtime paths after checking replacements and dependencies. Remove demonstrably unused obsolete code, duplicate handlers, assets and cache generations only when no supported consumer remains. Do not merge obsolete candidates over the accepted implementation. Preserve Git history, rollback evidence, user data and required read/migration compatibility; remove legacy data only after verified safe migration and explicit authorization. Test the actual cleanup delta without repeating unchanged acceptance checks unnecessarily. This is mandatory for all modules, not only reading.
 
 ## Definition of done
 
