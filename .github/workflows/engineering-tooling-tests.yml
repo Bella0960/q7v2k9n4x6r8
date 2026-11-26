@@ -1,6 +1,13 @@
 name: Engineering tooling tests
 
 on:
+  push:
+    paths:
+      - 'scripts/engineering-*.mjs'
+      - 'tests/engineering-*.test.mjs'
+      - 'package.json'
+      - '.github/workflows/engineering-tooling-tests.yml'
+      - '.github/workflows/engineering-ready-batch.yml'
   pull_request:
     paths:
       - 'scripts/engineering-*.mjs'
