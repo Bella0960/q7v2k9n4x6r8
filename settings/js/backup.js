@@ -2058,7 +2058,7 @@
                     journalWithState(journalRecord,kind,name,state,written),journalAccountCurrent);
             }
             try{
-                var journal=await prepareRestoreJournal(current,incoming,scope,obj,stillCurrent);
+                var journal=await prepareRestoreJournal(current,incoming,scope,obj,journalAccountCurrent);
                 journalRecord=await checkpointRestoreJournal(journalRecord,journal,journalAccountCurrent);
                 await markJournal('local',null,'writing');
             }catch(_){toast('恢复状态记录无法保存，已停止导入，原恢复点保留');return;}
