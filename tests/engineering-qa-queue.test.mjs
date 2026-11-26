@@ -754,7 +754,7 @@ test('CLI invalidate refuses to delete a candidate that already exists remotely'
     'invalidate', fixture.baseline, '--confirm-candidate=' + saved.candidate
   ]);
   assert.notEqual(invalidated.status, 0);
-  assert.match(invalidated.stderr, /Remote candidate ref exists/);
+  assert.match(invalidated.stderr, /Remote candidate exists at the confirmed SHA/);
   assert.equal(fixture.remoteSha(), saved.candidate);
   assert.equal(fixture.git('rev-parse', fixture.candidateRef), saved.candidate);
   assert.ok(existsSync(fixture.receiptPath));
@@ -775,4 +775,46 @@ test('ready-batch workflow archives a candidate before pushing and restores it b
   assert.match(workflow, /git bundle create/);
   assert.match(workflow, /retention-days: 30/);
   assert.match(workflow, /cancel-in-progress: false/);
+});
+
+test('CLI invalidate deletes a remote candidate only with exact SHA and explicit remote-delete confirmation', async t => {
+  const fixture = runQueueAssembleCli(t, [{ id: 'TASK-10' }]);
+  assert.equal(fixture.result.status, 0, fixture.result.stderr);
+  const saved = JSON.parse(readFileSync(fixture.receiptPath, 'utf8'));
+  fixture.git('push', '--force-with-lease=refs/heads/' + saved.branch + ':',
+    fixture.remotePath, saved.candidate + ':refs/heads/' + saved.branch);
+
+  const invalidated = fixture.runQueue([
+    'invalidate', fixture.baseline, '--confirm-candidate=' + saved.candidate, '--delete-remote'
+  ]);
+  assert.equal(invalidated.status, 0, invalidated.stderr);
+  const result = JSON.parse(invalidated.stdout);
+  assert.equal(result.status, 'invalidated-candidate');
+  assert.equal(result.remoteRefDeleted, true);
+  assert.equal(fixture.remoteSha(), null);
+  assert.equal(existsSync(fixture.receiptPath), false);
+  assert.equal(spawnSync('git', ['show-ref', '--verify', '--quiet', fixture.candidateRef], { cwd: fixture.cwd }).status, 1);
+});
+
+test('CLI invalidate never deletes a different remote SHA even with explicit remote-delete confirmation', t => {
+  const fixture = runQueueAssembleCli(t, [{ id: 'TASK-10' }]);
+  assert.equal(fixture.result.status, 0, fixture.result.stderr);
+  const saved = JSON.parse(readFileSync(fixture.receiptPath, 'utf8'));
+  fixture.git('switch', '-qc', 'other-window', fixture.baseline);
+  writeFileSync(join(fixture.cwd, 'other-window.txt'), 'other window candidate');
+  fixture.git('add', 'other-window.txt');
+  fixture.git('commit', '-qm', 'Other window candidate');
+  const otherSha = fixture.git('rev-parse', 'HEAD');
+  fixture.git('push', '--force-with-lease=refs/heads/' + saved.branch + ':',
+    fixture.remotePath, otherSha + ':refs/heads/' + saved.branch);
+  fixture.git('switch', '-q', 'main');
+
+  const invalidated = fixture.runQueue([
+    'invalidate', fixture.baseline, '--confirm-candidate=' + saved.candidate, '--delete-remote'
+  ]);
+  assert.notEqual(invalidated.status, 0);
+  assert.match(invalidated.stderr, /Remote candidate ref is a different SHA/);
+  assert.equal(fixture.remoteSha(), otherSha);
+  assert.equal(fixture.git('rev-parse', fixture.candidateRef), saved.candidate);
+  assert.ok(existsSync(fixture.receiptPath));
 });
