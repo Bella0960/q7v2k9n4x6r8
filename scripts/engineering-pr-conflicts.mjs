@@ -20,10 +20,9 @@ const clean=(v,n=160)=>String(v??'').replace(/[\u0000-\u001f\u007f-\u009f]/g,' '
 
 export function normalizeRepoPath(value){
  if(typeof value!=='string')return null;
- const p=value.trim().replace(/\\/g,'/');
- if(!p||p.startsWith('/')||/^[a-zA-Z]:/.test(p)||/[\u0000-\u001f\u007f-\u009f]/.test(p))return null;
- const parts=p.split('/');
- return parts.some(x=>!x||x==='.'||x==='..')?null:parts.join('/');
+ if(!value||value.startsWith('/')||value.includes('\0'))return null;
+ const parts=value.split('/');
+ return parts.some(part=>!part||part==='.'||part==='..')?null:value;
 }
 export function hotspotKey(p){
  if(p.startsWith('shared/'))return 'shared';
@@ -53,8 +52,11 @@ export function buildConflictReport({repository='Bella0960/q7v2k9n4x6r8',current
  const own=pathSet(currentPaths),findings=[];
  for(const pr of pullRequests){
   if(pr?.state&&pr.state!=='open')continue;
-  const branch=clean(pr?.branch||pr?.head?.ref,120),sha=clean(pr?.headSha||pr?.head?.sha,40);
-  if((currentBranch&&branch===currentBranch)||(currentSha&&sha===currentSha))continue;
+  const branch=pr?.head?.ref??pr?.branch;
+  const headRepository=pr?.head?.repo?.full_name??pr?.headRepository;
+  const sha=pr?.head?.sha??pr?.headSha;
+  const sameRepository=headRepository?.toLowerCase()===repository.toLowerCase();
+  if(sameRepository&&((currentBranch&&branch===currentBranch)||(currentSha&&sha===currentSha)))continue;
   const other=pathSet(pr?.files||pr?.changedFiles||[]),exact=[...own].filter(p=>other.has(p)).sort(),shared=[],modules=[];
   for(const a of own)for(const b of other){
    if(a===b)continue;
@@ -64,7 +66,7 @@ export function buildConflictReport({repository='Bella0960/q7v2k9n4x6r8',current
   }
   const sh=uniquePairs(shared),mo=uniquePairs(modules);
   if(!exact.length&&!sh.length&&!mo.length)continue;
-  findings.push({number:Number.isSafeInteger(pr?.number)?pr.number:null,title:clean(pr?.title),branch,
+  findings.push({number:Number.isSafeInteger(pr?.number)?pr.number:null,title:clean(pr?.title),branch:clean(branch,120),
    url:typeof pr?.html_url==='string'&&pr.html_url.startsWith('https://github.com/')?pr.html_url:null,
    severity:exact.length?'file-overlap':sh.length?'shared-hotspot':'module-overlap',
    exactPaths:exact,sharedHotspots:sh,moduleOverlaps:mo});
@@ -78,37 +80,66 @@ export function buildConflictReport({repository='Bella0960/q7v2k9n4x6r8',current
   sharedHotspotCount:findings.reduce((n,x)=>n+x.sharedHotspots.length,0),
   moduleOverlapCount:findings.reduce((n,x)=>n+x.moduleOverlaps.length,0),findings};
 }
-function git(...args){return execFileSync('git',args,{encoding:'utf8',stdio:['ignore','pipe','pipe'],timeout:60000}).trim();}
+function git(...args){return execFileSync('git',args,{encoding:'utf8',stdio:['ignore','pipe','pipe'],timeout:60000});}
 function nextLink(h){return String(h||'').match(/<([^>]+)>;\s*rel="next"/)?.[1]||null;}
 async function getJson(url){
  const headers={accept:'application/vnd.github+json','x-github-api-version':'2022-11-28','user-agent':'maomao-engineering-conflict-audit'};
  const token=process.env.GITHUB_TOKEN||process.env.GH_TOKEN;if(token)headers.authorization='Bearer '+token;
  const r=await fetch(url,{headers,signal:AbortSignal.timeout(20000)});
+ if((r.status===403||r.status===429)&&r.headers.get('x-ratelimit-remaining')==='0'){
+  const advice=token?'Wait for the GitHub rate limit to reset.':'Set GH_TOKEN or GITHUB_TOKEN for a full scan.';
+  throw new Error('GitHub API rate limit reached. '+advice);
+ }
  if(!r.ok)throw new Error('GitHub API request failed ('+r.status+')');
  return {data:await r.json(),next:nextLink(r.headers.get('link'))};
 }
 async function pages(url){const out=[];while(url){const p=await getJson(url);if(!Array.isArray(p.data))throw new Error('GitHub API returned invalid list');out.push(...p.data);url=p.next;}return out;}
 async function openPrs(repo){
  const root=API+'/repos/'+repo,prs=await pages(root+'/pulls?state=open&per_page=100');
- const out=new Array(prs.length);let i=0;
- await Promise.all(Array.from({length:Math.min(4,prs.length)},async()=>{while(true){const n=i++;if(n>=prs.length)return;const p=prs[n];out[n]={number:p.number,title:p.title,state:p.state,branch:p.head?.ref,headSha:p.head?.sha,html_url:p.html_url,files:await pages(root+'/pulls/'+p.number+'/files?per_page=100')};}}));
+ const out=new Array(prs.length);
+ let nextIndex=0;
+ await Promise.all(Array.from({length:Math.min(4,prs.length)},async()=>{
+  while(nextIndex<prs.length){
+   const index=nextIndex++;
+   const pr=prs[index];
+   const files=await pages(root+'/pulls/'+pr.number+'/files?per_page=100');
+   // GitHub caps the PR files endpoint at 3,000 files.
+   if(files.length>=3000||files.some(file=>!normalizeRepoPath(file?.filename)||
+     (file.status==='renamed'&&!normalizeRepoPath(file.previous_filename)))){
+    throw new Error('GitHub returned an incomplete file list for PR #'+pr.number);
+   }
+   out[index]={...pr,files};
+  }
+ }));
  return out;
 }
 function changedPaths(base,head){
+ const diffArgs=['diff','--name-only','-z','--no-renames'];
  let committed;
- try{committed=git('diff','--name-only',base+'...'+head);}
- catch{if(base!=='origin/main')throw new Error('Base reference unavailable');try{git('fetch','--quiet','--no-tags','origin','main');committed=git('diff','--name-only',base+'...'+head);}catch{throw new Error('Cannot compare with origin/main');}}
- return [...new Set([committed,git('diff','--name-only'),git('diff','--cached','--name-only'),git('ls-files','--others','--exclude-standard')].flatMap(x=>x.split(/\r?\n/)).map(normalizeRepoPath).filter(Boolean))].sort();
+ try{committed=git(...diffArgs,base+'...'+head);}
+ catch{
+  if(base!=='origin/main')throw new Error('Base reference unavailable');
+  try{
+   git('fetch','--quiet','--no-tags','origin','main');
+   committed=git(...diffArgs,base+'...'+head);
+  }catch{throw new Error('Cannot compare with origin/main');}
+ }
+ const outputs=[committed,git(...diffArgs),git(...diffArgs,'--cached'),
+  git('ls-files','-z','--others','--exclude-standard')];
+ return [...new Set(outputs.flatMap(output=>output.split('\0')).filter(Boolean))].sort();
 }
 export async function runConflictAudit({repo=process.env.GITHUB_REPOSITORY||'Bella0960/q7v2k9n4x6r8',base='origin/main',head='HEAD'}={}){
  if(!/^[A-Za-z0-9_.-]+\/[A-Za-z0-9_.-]+$/.test(repo))throw new Error('Repository must use owner/name form');
- const branch=git('branch','--show-current'),sha=git('rev-parse',head);
+ const branch=git('branch','--show-current').trim(),sha=git('rev-parse',head).trim();
  if(!/^[0-9a-f]{40}$/.test(sha))throw new Error('Current Git SHA invalid');
  const mine=changedPaths(base,head);
  if(!mine.length)return buildConflictReport({repository:repo,currentBranch:branch,currentSha:sha,currentPaths:mine});
  return buildConflictReport({repository:repo,currentBranch:branch,currentSha:sha,currentPaths:mine,pullRequests:await openPrs(repo)});
 }
 function render(r){
+ const displayPath=path=>/[\u0000-\u001f\u007f-\u009f]/.test(path)
+  ?JSON.stringify(path).replace(/[\u007f-\u009f]/g,char=>'\\u'+char.charCodeAt(0).toString(16).padStart(4,'0'))
+  :path;
  const lines=['MAOMAO engineering ownership scan','Repository: '+r.repository,'Branch: '+(r.currentBranch||'(detached)'),
  'Changed paths: '+r.changedPathCount,'Open PRs scanned: '+(r.openPullRequestCount??'not scanned'),
  'Exact file overlaps: '+r.exactOverlapCount,'Shared hotspots: '+r.sharedHotspotCount,'Same-module overlaps: '+r.moduleOverlapCount,''];
@@ -117,9 +148,9 @@ function render(r){
  for(const f of r.findings){
   lines.push((f.number?'#'+f.number:'Open PR')+' · '+f.severity+' · '+(f.branch||'unknown branch'));
   if(f.title)lines.push('  '+f.title);
-  for(const p of f.exactPaths)lines.push('  BLOCK: '+p);
-  for(const p of f.sharedHotspots)lines.push('  SHARED '+p.scope+': '+p.currentPath+' ↔ '+p.otherPath);
-  for(const p of f.moduleOverlaps)lines.push('  REVIEW '+p.scope+': '+p.currentPath+' ↔ '+p.otherPath);
+  for(const p of f.exactPaths)lines.push('  BLOCK: '+displayPath(p));
+  for(const p of f.sharedHotspots)lines.push('  SHARED '+p.scope+': '+displayPath(p.currentPath)+' ↔ '+displayPath(p.otherPath));
+  for(const p of f.moduleOverlaps)lines.push('  REVIEW '+p.scope+': '+displayPath(p.currentPath)+' ↔ '+displayPath(p.otherPath));
   if(f.url)lines.push('  '+f.url);
  }
  lines.push('','Advisory only: file overlap is not a complete semantic conflict prediction or integration authorization.');

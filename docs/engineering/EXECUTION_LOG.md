@@ -299,3 +299,10 @@ On the next turn/session, read this file and the current `AGENTS.md` first. Cont
 - **Checks:** eight focused Node unit tests cover exact overlaps, shared hotspots, same-module warnings, disjoint paths, branch exclusions, renamed files, unsafe paths, and empty-scan semantics. Full repository/remote API execution remains NOT VERIFIED until run from a complete checkout with `origin/main` and GitHub API access. No product build or deployment is applicable.
 - **Next:** review PR, merge only with owner authorization; separately diagnose the travel browser gate and complete PR #507 adaptive-path acceptance before claiming the fast selector is globally active.
 
+
+### GOV-006 scanner verification follow-up
+
+- Fixed path matching for quoted or whitespace-containing Git paths, including both sides of local renames. PRs from forks with the same branch name are still scanned.
+- The scanner stops with an incomplete result when the GitHub API quota is exhausted or the PR file list reaches GitHub's 3,000-file cap.
+- Node 24.22.3 syntax check and 10/10 focused tests passed. The CLI regression used real Git commits, staging, and working-tree changes with simulated paginated GitHub responses.
+- Ran `npm run eng:conflicts -- --json` from the GOV-006 checkout with a valid `origin/main` merge base. GitHub's anonymous rate limit prevented the full live scan. Its exit code was 1 and it returned no conflict report. Full authenticated scan remains NOT VERIFIED.
