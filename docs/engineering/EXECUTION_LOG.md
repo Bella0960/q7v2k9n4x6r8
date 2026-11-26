@@ -360,3 +360,13 @@ On the next turn/session, read this file and the current `AGENTS.md` first. Cont
 - **Safety:** no merge to `main`, no official QA request/deployment, no production deployment, no Worker configuration change, no APK action, and no user-data operation.
 - **Next:** execute the committed CLI suite in an authorized Node 22 runner. Do not mark P0-1 complete or start P0-2 until the five CLI cases and the focused queue/batch suites have actually run. Do not merge `main` merely to manufacture a green check.
 
+
+
+### GOV-006 P0-1 test-fixture correction — 2026-11-27
+
+- **Independent execution evidence:** Node.js 22.16.0, full checkout at `294032a42f00032cda34eed67622708761853b65`. Both queue/batch production CLI syntax checks passed. The three focused suites reported 29 passed / 5 failed; all five failures were in queue readiness tests before dependency selection.
+- **Root cause:** the `runQueueAssembleCli()` GitHub API fixture returned only a successful `Node Tests` check-run, while each registered task manifest requires both `Node Tests` and `Vite Build`. The production readiness evaluator correctly blocked the fixture's tasks because the required build evidence was absent.
+- **Independent production-path verification:** the five `assemble` CLI dependency scenarios were separately exercised against the unchanged production CLI with real temporary Git operations and simulated GitHub API responses; all five passed (unready prerequisite, dependency ordering/receipt, missing prerequisite, cycle rejection, and independent task).
+- **Correction:** add a successful `Vite Build` check-run to the queue CLI test fixture, pinned to the same task `head` SHA. No production code or dependency logic changed.
+- **Status:** fixture correction committed; rerun of the three focused suites on the resulting commit is **PENDING / NOT VERIFIED**. P0-1 is not marked complete until that rerun confirms all 34 tests pass.
+- **Safety:** no merge, QA request/deployment, production deployment, Worker change, APK action, secret change, or user-data operation.

@@ -313,13 +313,22 @@ function runQueueAssembleCli(t, specs) {
         commit_id: head,
         submitted_at: '2026-11-26T10:00:00Z'
       }],
-      check_runs: [{
-        name: 'Node Tests',
-        head_sha: head,
-        status: 'completed',
-        conclusion: spec.ready === false ? 'failure' : 'success',
-        started_at: '2026-11-26T10:00:00Z'
-      }],
+      check_runs: [
+        {
+          name: 'Node Tests',
+          head_sha: head,
+          status: 'completed',
+          conclusion: spec.ready === false ? 'failure' : 'success',
+          started_at: '2026-11-26T10:00:00Z'
+        },
+        {
+          name: 'Vite Build',
+          head_sha: head,
+          status: 'completed',
+          conclusion: 'success',
+          started_at: '2026-11-26T10:00:00Z'
+        }
+      ],
       status: { state: 'success', total_count: 0, statuses: [] },
       files: [{ filename: path }]
     };
