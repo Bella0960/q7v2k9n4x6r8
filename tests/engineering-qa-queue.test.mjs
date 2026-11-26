@@ -759,3 +759,20 @@ test('CLI invalidate refuses to delete a candidate that already exists remotely'
   assert.equal(fixture.git('rev-parse', fixture.candidateRef), saved.candidate);
   assert.ok(existsSync(fixture.receiptPath));
 });
+
+test('ready-batch workflow archives a candidate before pushing and restores it by prior run ID', () => {
+  const workflow = readFileSync(new URL('../.github/workflows/engineering-ready-batch.yml', import.meta.url), 'utf8');
+  const download = workflow.indexOf('actions/download-artifact@v4');
+  const restore = workflow.indexOf('Restore exact candidate bundle and immutable receipt');
+  const assemble = workflow.indexOf('Assemble one immutable candidate locally');
+  const archive = workflow.indexOf('Archive exact candidate and receipt before pushing');
+  const upload = workflow.indexOf('actions/upload-artifact@v4');
+  const push = workflow.indexOf('Push the exact archived candidate (create-only)');
+  assert.ok(download >= 0 && download < restore);
+  assert.ok(restore < assemble && assemble < archive && archive < upload && upload < push);
+  assert.match(workflow, /resume_run_id:/);
+  assert.match(workflow, /actions: read/);
+  assert.match(workflow, /git bundle create/);
+  assert.match(workflow, /retention-days: 30/);
+  assert.match(workflow, /cancel-in-progress: false/);
+});
