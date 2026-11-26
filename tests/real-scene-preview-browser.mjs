@@ -226,6 +226,172 @@ try {
   assert.equal((await apiPage.evaluate(() => window.MAOMAORealScenePreview._state())).gestureActive, false, 'direct API preview clears gesture');
   await apiCtx.close();
   console.log('PASS direct API entry sanity: open() opens and cleans up');
+
+  // 30 组合矩阵：六主题 × 五场景。API 级打开，断言真实结构、主题属性、场景样式表加载与未覆盖回退。
+  const MATRIX_THEMES = ['default', 'imessage', 'qq', 'silver-butterfly', 'wechat', 'atmosphere'];
+  const MATRIX_SCENES = ['list', 'detail', 'moments', 'mine', 'home'];
+  const AT_SURFACE = { list: 'chats', detail: 'detail', moments: 'moments', mine: 'profile' };
+  const STRUCTURE = {
+    list: ['main-stage', 'cover-gradient-banner', 'white-profile-stage', 'arch-avatar-bridge', 'user-id-text', 'tier4-floating-stream'],
+    detail: ['chat-header', 'chat-stage', 'msg-row received', 'msg-row sent', 'msg-bubble', 'input-dock'],
+    moments: ['space-stage', 'wechat-moments-toolbar', 'cover-block', 'wechat-cover-name', 'moments-main-panel'],
+    mine: ['profile-content', 'info-row', 'profile-edit-btn', 'profile-cover', 'menu-card'],
+    home: ['page-wallpaper', 'wallpaper-veil', 'cover-nav-btn', 'space-stage', 'profile-hero', 'stats-row', 'feed']
+  };
+  const SCENE_CSS_MARKER = {
+    list: ['chat-light-surfaces.css', 'atmosphere-pages.css'],
+    detail: ['chat-beauty-runtime.css', 'chat-light-surfaces.css'],
+    moments: ['atmosphere-pages.css'],
+    mine: ['profile-chat-themes.css'],
+    home: ['atmosphere-my-home.css']
+  };
+  // 场景组内必须被浏览器真实解析、规则非空的样式表（probe.ruleCounts 字段名）。
+  const RULE_CHECK = {
+    list: ['atmospherePages'],
+    detail: ['runtime', 'atmospherePages'],
+    moments: ['atmospherePages'],
+    mine: ['profile', 'atmospherePages'],
+    home: ['home']
+  };
+
+  function covered(theme, scene) {
+    if (scene === 'home') return theme === 'atmosphere';
+    if (theme === 'imessage') return scene === 'detail';
+    return true;
+  }
+
+  function expectedEffective(theme, scene) {
+    return covered(theme, scene) ? theme : 'default';
+  }
+
+  const matrixCtx = await browser.newContext({ viewport: { width: 390, height: 844 }, hasTouch: true });
+  const mp = await matrixCtx.newPage();
+  const matrixErrors = [];
+  mp.on('pageerror', e => matrixErrors.push(e.message));
+  await mp.goto(base + '/theme-store/theme-store.html');
+  await mp.waitForSelector('.sf-product');
+
+  for (const theme of MATRIX_THEMES) {
+    for (const scene of MATRIX_SCENES) {
+      await mp.evaluate(([t, s]) => window.MAOMAORealScenePreview.open(t, s), [theme, scene]);
+      await mp.waitForLoadState('networkidle');
+      const probe = await mp.evaluate(() => {
+        const shell = document.querySelector('.rp-phone-mockup');
+        const stage = shell.querySelector('.chat-stage');
+        const note = document.querySelector('.rp-scope-note');
+        const links = [...document.querySelectorAll('link[rel="stylesheet"]')].map(l => l.getAttribute('href') || '');
+        const has = cls => !!shell.querySelector('.' + cls.split(' ').join('.'));
+        const sentBubble = shell.querySelector('.msg-row.sent .msg-bubble, .msg-row.right .msg-bubble');
+        const sheets = [...document.styleSheets];
+        const ruleCount = marker => { const sh = sheets.find(x => x.href && x.href.includes(marker)); if (!sh) return -1; try { return sh.cssRules.length; } catch (e) { return -2; } };
+        const homeRules = ruleCount('atmosphere-my-home.css');
+        return {
+          preset: shell.getAttribute('data-chat-theme-preset'),
+          stagePreset: stage ? stage.getAttribute('data-chat-theme-preset') : null,
+          surface: shell.getAttribute('data-at-surface'),
+          homeSurface: shell.getAttribute('data-at-home-surface'),
+          unsupported: note.classList.contains('rp-scope-unsupported'),
+          noteText: note.textContent.trim(),
+          links,
+          ruleCounts: { runtime: ruleCount('chat-beauty-runtime.css'), profile: ruleCount('profile-chat-themes.css'), atmospherePages: ruleCount('atmosphere-pages.css'), home: homeRules },
+          computed: {
+            shellBg: getComputedStyle(shell).backgroundColor,
+            sentBg: sentBubble ? getComputedStyle(sentBubble).backgroundColor : null
+          },
+          structure: {
+            'main-stage': has('main-stage'),
+            'cover-gradient-banner': has('cover-gradient-banner'),
+            'white-profile-stage': has('white-profile-stage'),
+            'arch-avatar-bridge': has('arch-avatar-bridge'),
+            'user-id-text': has('user-id-text'),
+            'tier4-floating-stream': has('tier4-floating-stream'),
+            'chat-stage': has('chat-stage'),
+            'chat-header': has('chat-header'),
+            'msg-row received': has('msg-row received'),
+            'msg-row sent': has('msg-row sent'),
+            'msg-bubble': has('msg-bubble'),
+            'input-dock': has('input-dock'),
+            'space-stage': has('space-stage'),
+            'wechat-moments-toolbar': has('wechat-moments-toolbar'),
+            'cover-block': has('cover-block'),
+            'wechat-cover-name': has('wechat-cover-name'),
+            'moments-main-panel': has('moments-main-panel'),
+            'profile-content': has('profile-content'),
+            'info-row': has('info-row'),
+            'profile-edit-btn': has('profile-edit-btn'),
+            'profile-cover': has('profile-cover'),
+            'menu-card': has('menu-card'),
+            'page-wallpaper': has('page-wallpaper'),
+            'wallpaper-veil': has('wallpaper-veil'),
+            'cover-nav-btn': has('cover-nav-btn'),
+            'profile-hero': has('profile-hero'),
+            'stats-row': has('stats-row'),
+            'feed': has('feed')
+          }
+        };
+      });
+
+      const effective = expectedEffective(theme, scene);
+      const inScope = covered(theme, scene);
+      const label = theme + '/' + scene;
+
+      // 壳层 preset 落有效主题；未覆盖组合诚实回退 default。
+      assert.equal(probe.preset, effective, label + ' shell preset falls back correctly');
+      assert.equal(probe.unsupported, !inScope, label + ' unsupported note matches scope');
+      if (!inScope) assert.match(probe.noteText, /不受此主题修改/, label + ' fallback note wording');
+
+      // 真实结构：当前场景的关键骨架节点必须存在。
+      for (const cls of STRUCTURE[scene]) {
+        assert.ok(probe.structure[cls], label + ' missing real structure .' + cls);
+      }
+
+      // 详情舞台同步同一 preset，命中运行时舞台级气泡选择器。
+      if (scene === 'detail') {
+        assert.equal(probe.stagePreset, probe.preset, label + ' chat-stage mirrors shell preset');
+      }
+
+      // atmosphere 等价 surface 属性：仅 atmosphere 设置；其余主题显式清除，无残留。
+      if (effective === 'atmosphere' && scene !== 'home') {
+        assert.equal(probe.surface, AT_SURFACE[scene], label + ' atmosphere data-at-surface');
+        assert.equal(probe.homeSurface, null, label + ' no home-surface on non-home');
+      } else if (effective === 'atmosphere' && scene === 'home') {
+        assert.equal(probe.homeSurface, 'personal-home', label + ' atmosphere home surface');
+        assert.equal(probe.surface, null, label + ' no page-surface on home');
+      } else {
+        assert.equal(probe.surface, null, label + ' non-atmosphere clears data-at-surface');
+        assert.equal(probe.homeSurface, null, label + ' non-atmosphere clears home-surface');
+      }
+
+      // 场景级生产样式表已注入（映射命中证据）。
+      for (const marker of SCENE_CSS_MARKER[scene]) {
+        assert.ok(probe.links.some(h => h.includes(marker)), label + ' loads ' + marker);
+      }
+
+      // 场景组样式表已被浏览器真实解析、规则非空（不是空挂 link）。
+      for (const field of RULE_CHECK[scene]) {
+        assert.ok(probe.ruleCounts[field] > 0, label + ' parsed scene stylesheet rules (' + field + '=' + probe.ruleCounts[field] + ')');
+      }
+
+      // 关键计算样式命中（headless 下经两轮探测稳定的差异化落点；其余主题视觉留真机复核）。
+      if (theme === 'imessage' && scene === 'detail') {
+        assert.equal(probe.computed.shellBg, 'rgb(242, 242, 247)', label + ' imessage detail shell background');
+        assert.notEqual(probe.computed.sentBg, 'rgb(255, 255, 255)', label + ' imessage detail sent bubble tinted');
+      }
+      if (theme === 'qq' && scene === 'detail') {
+        assert.equal(probe.computed.sentBg, 'rgb(176, 176, 176)', label + ' qq detail sent bubble gray');
+      }
+      if (theme === 'atmosphere' && scene === 'home') {
+        assert.notEqual(probe.computed.shellBg, 'rgb(255, 255, 255)', label + ' atmosphere home shell tinted');
+      }
+
+      await mp.evaluate(() => window.MAOMAORealScenePreview.close());
+      assert.equal(await mp.locator('.rp-overlay').count(), 0, label + ' overlay closed');
+    }
+  }
+
+  assert.deepEqual(matrixErrors, [], 'matrix run has no page errors');
+  await matrixCtx.close();
+  console.log('PASS 30-combination matrix: structure, theme attributes, scene CSS mapping, fallback cleanup');
 } finally {
   await browser.close();
   await new Promise(r => server.close(r));

@@ -114,6 +114,7 @@
 }
 
 .rp-phone-mockup {
+  position: relative;
   height: 100%;
   min-height: 420px;
   display: flex;
@@ -316,6 +317,49 @@
 }
 
 /* ---- moments 动态 ---- */
+.rp-phone-mockup .space-stage {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  overflow-y: auto;
+}
+
+.rp-phone-mockup .wechat-moments-toolbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 12px 16px 4px;
+}
+
+.rp-phone-mockup .wechat-moments-toolbar strong {
+  font-size: 16px;
+  font-weight: 600;
+  color: #171717;
+}
+
+.rp-phone-mockup .wechat-moments-back,
+.rp-phone-mockup .wechat-moments-toolbar button {
+  width: 32px;
+  height: 32px;
+  display: grid;
+  place-items: center;
+  border: 0;
+  background: transparent;
+  color: #171717;
+  cursor: pointer;
+}
+
+.rp-phone-mockup .wechat-cover-name {
+  position: absolute;
+  right: 60px;
+  bottom: 14px;
+  font-size: 13px;
+  font-weight: 600;
+  color: #171717;
+}
+
 .rp-phone-mockup .cover-block {
   position: relative;
   height: 120px;
@@ -436,6 +480,98 @@
 }
 
 /* ---- list 聊天首页 ---- */
+.rp-phone-mockup .main-stage {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  overflow-y: auto;
+}
+
+.rp-phone-mockup .cover-gradient-banner {
+  height: 88px;
+  background: #f0f0f3;
+  flex: none;
+}
+
+.rp-phone-mockup .cover-click-area {
+  position: relative;
+  height: 0;
+}
+
+.rp-phone-mockup .wechat-home-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 12px 16px 4px;
+}
+
+.rp-phone-mockup .wechat-home-header h1 {
+  font-size: 20px;
+  font-weight: 600;
+  color: #171717;
+  margin: 0;
+}
+
+.rp-phone-mockup .wechat-home-actions {
+  display: flex;
+  gap: 8px;
+  flex: none;
+}
+
+.rp-phone-mockup .wechat-home-actions button {
+  width: 32px;
+  height: 32px;
+  display: grid;
+  place-items: center;
+  border: 0;
+  border-radius: 50%;
+  background: #f4f4f6;
+  color: #171717;
+  cursor: pointer;
+}
+
+.rp-phone-mockup .cover-spacer { height: 10px; flex: none; }
+
+.rp-phone-mockup .white-profile-stage {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  padding: 0 0 10px;
+}
+
+.rp-phone-mockup .arch-avatar-bridge {
+  align-self: center;
+  margin-top: -22px;
+}
+
+.rp-phone-mockup .avatar-circle {
+  width: 54px;
+  height: 54px;
+  border-radius: 50%;
+  background: #ececef;
+  border: 2px solid #ffffff;
+  display: grid;
+  place-items: center;
+  font-size: 18px;
+  color: #77777d;
+}
+
+.rp-phone-mockup .user-id-text {
+  text-align: center;
+  font-size: 12px;
+  color: #8a8a90;
+  margin: 6px 0 10px;
+}
+
+.rp-phone-mockup .tier4-floating-stream {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+}
+
 .rp-phone-mockup .chat-theme-header {
   display: flex;
   align-items: center;
@@ -542,6 +678,39 @@
 }
 
 /* ---- mine 我的 ---- */
+.rp-phone-mockup .info-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  width: 100%;
+  padding: 0 4px;
+}
+
+.rp-phone-mockup .info-row .profile-avatar { margin-top: 0; }
+
+.rp-phone-mockup .info-row .profile-info {
+  flex: 1;
+  min-width: 0;
+  text-align: left;
+}
+
+.rp-phone-mockup .profile-edit-btn {
+  flex: none;
+  border: 1px solid #e6e6e9;
+  background: #ffffff;
+  color: #333338;
+  font-size: 12px;
+  padding: 7px 12px;
+  border-radius: 10px;
+  text-decoration: none;
+}
+
+.rp-phone-mockup .cover-placeholder {
+  width: 20px;
+  height: 20px;
+  color: #b6b6bc;
+}
+
 .rp-phone-mockup .profile-content {
   flex: 1;
   overflow-y: auto;
@@ -636,6 +805,43 @@
 }
 
 /* ---- home 我的主页 ---- */
+.rp-phone-mockup .page-wallpaper {
+  position: absolute;
+  inset: 0;
+  background: #f0f0f3;
+}
+
+.rp-phone-mockup .wallpaper-veil {
+  position: absolute;
+  inset: 0;
+  background: rgba(255, 255, 255, 0.35);
+}
+
+.rp-phone-mockup .cover-nav-btn {
+  position: absolute;
+  top: 12px;
+  left: 14px;
+  width: 32px;
+  height: 32px;
+  display: grid;
+  place-items: center;
+  border: 0;
+  border-radius: 50%;
+  background: rgba(255, 255, 255, 0.7);
+  color: #171717;
+  cursor: pointer;
+  z-index: 1;
+}
+
+.rp-phone-mockup .space-stage {
+  position: relative;
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  overflow-y: auto;
+}
+
 .rp-phone-mockup .cover-upload-label {
   display: block;
   height: 130px;

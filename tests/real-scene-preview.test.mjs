@@ -165,3 +165,61 @@ test('controller is a safe no-op outside a browser document', () => {
   p.close(); // must not throw when overlay is null
   assert.equal(p._state().open, false);
 });
+
+test('real-page nesting: list / moments / mine / home carry the shell sections audited from production', () => {
+  const p = loadPreview();
+
+  const list = p.render('default', 'list').body;
+  for (const cls of ['main-stage', 'cover-gradient-banner', 'cover-click-area', 'wechat-home-header', 'cover-spacer', 'white-profile-stage', 'arch-avatar-bridge', 'avatar-circle', 'user-id-text', 'tier4-floating-stream']) {
+    assert.match(list, new RegExp('class="' + cls + '"'), 'list missing ' + cls);
+  }
+
+  const moments = p.render('default', 'moments').body;
+  for (const cls of ['space-stage', 'wechat-moments-toolbar', 'wechat-moments-back', 'wechat-cover-name']) {
+    assert.match(moments, new RegExp('class="' + cls + '"'), 'moments missing ' + cls);
+  }
+
+  const mine = p.render('default', 'mine').body;
+  for (const cls of ['info-row', 'profile-edit-btn', 'cover-placeholder']) {
+    assert.match(mine, new RegExp('class="' + cls + '"'), 'mine missing ' + cls);
+  }
+
+  const home = p.render('atmosphere', 'home').body;
+  for (const cls of ['page-wallpaper', 'wallpaper-veil', 'cover-nav-btn', 'space-stage']) {
+    assert.match(home, new RegExp('class="' + cls + '"'), 'home missing ' + cls);
+  }
+});
+
+test('scene CSS groups match the audited production <link> per page', () => {
+  const p = loadPreview();
+  const detail = p.sceneCss('detail');
+  assert.ok(detail.some(h => h.includes('chat-beauty-runtime.css')), 'detail loads bubble runtime');
+  assert.ok(detail.some(h => h.includes('chat-light-surfaces.css')));
+
+  const mine = p.sceneCss('mine');
+  assert.ok(mine.some(h => h.includes('profile-chat-themes.css')), 'mine loads profile theme rules (silver/QQ/wechat)');
+
+  const home = p.sceneCss('home');
+  assert.ok(home.some(h => h.includes('atmosphere-my-home.css')));
+
+  // QQ profile rules live in profile-chat-themes.css; QQ bubble rules in runtime css.
+  assert.ok(p.cssFor('qq', 'mine').some(h => h.includes('profile-chat-themes.css')));
+  assert.ok(p.cssFor('qq', 'detail').some(h => h.includes('chat-beauty-runtime.css')));
+
+  // Independent list theme / call overlay / studio runtime are not pulled into the five scenes.
+  for (const scene of SCENES) {
+    for (const href of p.sceneCss(scene)) {
+      assert.doesNotMatch(href, /chat-list-editorial-theme\.css/);
+      assert.doesNotMatch(href, /call-overlay\.css/);
+      assert.doesNotMatch(href, /theme-studio-runtime\.css/);
+    }
+  }
+});
+
+test('cssFor merges scene group and theme layer with no duplicate hrefs', () => {
+  const p = loadPreview();
+  const merged = p.cssFor('atmosphere', 'list');
+  assert.ok(merged.length >= p.sceneCss('list').length);
+  assert.equal(new Set(merged).size, merged.length, 'hrefs are de-duplicated');
+  assert.ok(merged.some(h => h.includes('atmosphere-pages.css')));
+});

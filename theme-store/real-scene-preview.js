@@ -26,8 +26,9 @@
     { id: 'home', name: '我的主页' }
   ]);
 
-  // 主题 → 生产主题样式表（相对 theme-store/ 目录）。选择器以
+  // 主题专属补充样式表（相对 theme-store/ 目录）。选择器以
   // .phone-mockup[data-chat-theme-preset="..."] 为作用域前缀，不会命中商城主壳层。
+  // 场景级基础 + 页面主题层见 SCENE_CSS；控制器合并两者并去重。
   var THEME_CSS = Object.freeze({
     default: [],
     imessage: [],
@@ -40,6 +41,63 @@
       '../shared/css/atmosphere-my-home.css'
     ]
   });
+
+  // 场景级生产样式表组：对照五个真实页面 <link> 清单逐页审计得出。
+  // 真实页面一次性加载该页整组样式，壳层 data-chat-theme-preset 决定哪套规则命中；
+  // 预览沿用同一口径，按场景加载整组，剔除通话浮层、编辑器运行时与独立列表主题等无关层。
+  var SHARED_CSS = '../shared/css/';
+  var SCENE_CSS = Object.freeze({
+    // chat/chat/chat.html（聊天首页）
+    list: [
+      SHARED_CSS + 'mobile-fit.css',
+      SHARED_CSS + 'silver-butterfly-theme.css',
+      SHARED_CSS + 'wechat-theme-refinements.css',
+      SHARED_CSS + 'chat-light-surfaces.css',
+      SHARED_CSS + 'atmosphere-theme.css',
+      SHARED_CSS + 'atmosphere-pages.css'
+    ],
+    // chat/chat/chat-detail.html（聊天详情，含聊天气泡运行时规则）
+    detail: [
+      SHARED_CSS + 'chat-beauty-runtime.css',
+      SHARED_CSS + 'mobile-fit.css',
+      SHARED_CSS + 'silver-butterfly-theme.css',
+      SHARED_CSS + 'wechat-theme-refinements.css',
+      SHARED_CSS + 'chat-light-surfaces.css',
+      SHARED_CSS + 'atmosphere-theme.css',
+      SHARED_CSS + 'atmosphere-pages.css'
+    ],
+    // chat/moments/moments.html（动态）
+    moments: [
+      SHARED_CSS + 'mobile-fit.css',
+      SHARED_CSS + 'silver-butterfly-theme.css',
+      SHARED_CSS + 'wechat-theme-refinements.css',
+      SHARED_CSS + 'atmosphere-theme.css',
+      SHARED_CSS + 'atmosphere-pages.css'
+    ],
+    // profile/profile.html（我的；含银蝶/QQ/微信资料页规则 profile-chat-themes.css）
+    mine: [
+      SHARED_CSS + 'mobile-fit.css',
+      SHARED_CSS + 'profile-chat-themes.css',
+      SHARED_CSS + 'wechat-theme-refinements.css',
+      SHARED_CSS + 'atmosphere-theme.css',
+      SHARED_CSS + 'atmosphere-pages.css'
+    ],
+    // chat/moments/my-moments.html（我的主页）
+    home: [
+      SHARED_CSS + 'mobile-fit.css',
+      SHARED_CSS + 'atmosphere-my-home.css'
+    ]
+  });
+
+  // atmosphere 页面脚本（atmosphere-pages.js / atmosphere-my-home.js）在真实页面写入的
+  // 等价 surface 属性；预览不加载这些生产脚本，由隔离控制器按场景显式设置。
+  var AT_SURFACE = Object.freeze({
+    list: 'chats',
+    detail: 'detail',
+    moments: 'moments',
+    mine: 'profile'
+  });
+  var AT_HOME_SURFACE = 'personal-home';
 
   // 沿用现有商城/预览的覆盖边界：
   // - home（我的主页）仅 atmosphere 覆盖；
@@ -82,6 +140,9 @@
 
   var PERSON_SVG = '<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="#888888" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"></path><circle cx="12" cy="7" r="4"></circle></svg>';
   var BACK_SVG = '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#111111" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M15 18l-6-6 6-6"></path></svg>';
+  var SEARCH_SVG = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" aria-hidden="true"><circle cx="10.8" cy="10.8" r="6.8"></circle><path d="m16 16 5 5"></path></svg>';
+  var PLUS_SVG = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" aria-hidden="true"><path d="M12 5v14M5 12h14"></path></svg>';
+  var CAMERA_SVG = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 7h3l2-2h6l2 2h3a2 2 0 0 1 2 2v9a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V9a2 2 0 0 1 2-2Z"/><circle cx="12" cy="13" r="3.5"/></svg>';
 
   // ---- 各场景真实 DOM 骨架（class 与真实页面对齐；仅保留预览所需核心区块） ----
 
@@ -145,11 +206,19 @@
       '</article>';
     }).join('');
     return '' +
-      '<div class="cover-block">' +
-        '<div class="cover-avatar-left">' + PERSON_SVG + '</div>' +
-        '<button class="cover-add-btn" type="button" aria-label="更多">+</button>' +
-      '</div>' +
-      '<main class="moments-main-panel">' + posts + '</main>';
+      '<div class="space-stage">' +
+        '<div class="wechat-moments-toolbar">' +
+          '<span class="wechat-moments-back" aria-label="返回微信">' + BACK_SVG + '</span>' +
+          '<strong>朋友圈</strong>' +
+          '<button type="button" aria-label="发表动态">' + CAMERA_SVG + '</button>' +
+        '</div>' +
+        '<div class="cover-block">' +
+          '<div class="cover-avatar-left">' + PERSON_SVG + '</div>' +
+          '<div class="wechat-cover-name">' + esc(FIXTURES.profile.name) + '</div>' +
+          '<div class="cover-add-btn" role="button" tabindex="0" aria-label="更多">' + PLUS_SVG + '</div>' +
+        '</div>' +
+        '<main class="moments-main-panel" id="momentsList">' + posts + '</main>' +
+      '</div>';
   }
 
   function listMarkup() {
@@ -163,18 +232,32 @@
       '</div>';
     }).join('');
     return '' +
-      '<div class="chat-theme-header">' +
-        '<div class="chat-theme-copy"><h1>Chat</h1><p>Talk to the world<br>in your own way.</p></div>' +
-        '<div class="chat-theme-actions">' +
-          '<button class="chat-theme-action" type="button" aria-label="搜索聊天">' +
-            '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" aria-hidden="true"><circle cx="10.8" cy="10.8" r="6.8"></circle><path d="m16 16 5 5"></path></svg>' +
-          '</button>' +
-          '<button class="chat-theme-action chat-theme-plus" type="button" aria-label="创建群聊">' +
-            '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" aria-hidden="true"><path d="M12 5v14M5 12h14"></path></svg>' +
-          '</button>' +
+      '<div class="main-stage">' +
+        '<div class="cover-gradient-banner" aria-hidden="true"></div>' +
+        '<div class="cover-click-area" aria-label="更换封面"></div>' +
+        '<div class="wechat-home-header">' +
+          '<h1>微信</h1>' +
+          '<div class="wechat-home-actions">' +
+            '<button type="button" aria-label="搜索聊天">' + SEARCH_SVG + '</button>' +
+            '<button type="button" aria-label="更多操作">' + PLUS_SVG + '</button>' +
+          '</div>' +
         '</div>' +
-      '</div>' +
-      '<div id="chatListContainer">' + rows + '</div>';
+        '<div class="chat-theme-header">' +
+          '<div class="chat-theme-copy"><h1>Chat</h1><p>Talk to the world<br>in your own way.</p></div>' +
+          '<div class="chat-theme-actions">' +
+            '<button class="chat-theme-action" type="button" aria-label="搜索聊天">' + SEARCH_SVG + '</button>' +
+            '<button class="chat-theme-action chat-theme-plus" type="button" aria-label="创建群聊">' + PLUS_SVG + '</button>' +
+          '</div>' +
+        '</div>' +
+        '<div class="cover-spacer" aria-hidden="true"></div>' +
+        '<div class="white-profile-stage">' +
+          '<div class="arch-avatar-bridge"><div class="avatar-circle">' + esc(Array.from(FIXTURES.profile.name)[0] || '?') + '</div></div>' +
+          '<div class="user-id-text">@' + esc(FIXTURES.profile.name) + '</div>' +
+          '<div class="tier4-floating-stream">' +
+            '<div id="chatListContainer">' + rows + '</div>' +
+          '</div>' +
+        '</div>' +
+      '</div>';
   }
 
   function mineMarkup() {
@@ -187,9 +270,14 @@
     return '' +
       '<main class="profile-content">' +
         '<section class="profile-hero">' +
-          '<div class="profile-cover" aria-hidden="true"></div>' +
-          '<div class="profile-avatar">' + esc(Array.from(FIXTURES.profile.name)[0] || '?') + '</div>' +
-          '<div class="profile-info"><h1 class="profile-name">' + esc(FIXTURES.profile.name) + '</h1><p class="profile-sign">' + esc(FIXTURES.profile.sign) + '</p></div>' +
+          '<div class="profile-cover" aria-hidden="true">' +
+            '<svg class="cover-placeholder" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/><path d="M21 15l-5-5L5 21"/></svg>' +
+          '</div>' +
+          '<div class="info-row">' +
+            '<div class="profile-avatar">' + PERSON_SVG + '</div>' +
+            '<div class="profile-info"><h1 class="profile-name">' + esc(FIXTURES.profile.name) + '</h1><p class="profile-sign">' + esc(FIXTURES.profile.sign) + '</p></div>' +
+            '<a class="profile-edit-btn" href="javascript:void(0)">编辑资料</a>' +
+          '</div>' +
         '</section>' +
         '<section class="menu-card">' + rows + '</section>' +
       '</main>';
@@ -201,16 +289,20 @@
         return '<div class="stat"><span class="stat-label">' + esc(s[0]) + '</span><span class="stat-num">' + s[1] + '</span></div>';
       }).join('');
     return '' +
-      '<label class="cover-upload-label" aria-hidden="true"></label>' +
-      '<header class="profile-hero">' +
-        '<div class="profile-avatar">' + esc(Array.from(FIXTURES.home.name)[0] || '?') + '</div>' +
-        '<div class="profile-text-box"><h1 class="profile-name">' + esc(FIXTURES.home.name) + '</h1></div>' +
-      '</header>' +
-      '<div class="stats-row">' + stats + '</div>' +
-      '<section class="feed">' +
-        '<div class="feed-head"><span class="feed-title">动态</span></div>' +
-        '<div id="innerPanel"><div class="my-post my-post-placeholder" aria-hidden="true"></div></div>' +
-      '</section>';
+      '<div class="page-wallpaper" aria-hidden="true"><div class="wallpaper-veil"></div></div>' +
+      '<button class="cover-nav-btn" type="button" aria-label="返回">' + BACK_SVG + '</button>' +
+      '<div class="space-stage">' +
+        '<label class="cover-upload-label" aria-hidden="true"></label>' +
+        '<header class="profile-hero">' +
+          '<div class="profile-avatar">' + PERSON_SVG + '</div>' +
+          '<div class="profile-text-box"><h1 class="profile-name">' + esc(FIXTURES.home.name) + '</h1></div>' +
+        '</header>' +
+        '<div class="stats-row">' + stats + '</div>' +
+        '<section class="feed">' +
+          '<div class="feed-head"><span class="feed-title">动态</span></div>' +
+          '<div id="innerPanel"><div class="my-post my-post-placeholder" aria-hidden="true"></div></div>' +
+        '</section>' +
+      '</div>';
   }
 
   var SCENE_MARKUP = {
@@ -247,6 +339,21 @@
     return (THEME_CSS[themeId] || []).slice();
   }
 
+  // 场景级生产样式表组（对照真实页面 <link> 清单审计；Node 测试可读）。
+  function sceneCss(sceneId) {
+    return (SCENE_CSS[sceneId] || []).slice();
+  }
+
+  // 合并场景组与主题专属层，路径去重。
+  function cssFor(preset, sceneId) {
+    var seen = {};
+    return sceneCss(sceneId).concat(themeCss(preset)).filter(function (href) {
+      if (seen[href]) return false;
+      seen[href] = true;
+      return true;
+    });
+  }
+
   // ---- 浏览器控制器（Node 环境下安全空操作） ----
 
   var hasDoc = typeof global.document !== 'undefined' && !!global.document;
@@ -275,14 +382,14 @@
     return 0;
   }
 
-  function ensureThemeCss(themeId) {
+  function ensureCssList(hrefs, tag) {
     if (!hasDoc) return;
-    themeCss(themeId).forEach(function (href) {
+    hrefs.forEach(function (href) {
       if (loadedCss[href]) return;
       var link = global.document.createElement('link');
       link.rel = 'stylesheet';
       link.href = href;
-      link.dataset.rpTheme = themeId;
+      link.dataset.rpTheme = tag;
       global.document.head.appendChild(link);
       loadedCss[href] = link;
     });
@@ -297,9 +404,9 @@
     loadedCss = {};
   }
 
-  function syncThemeCss(preset) {
+  function syncThemeCss(preset, sceneId) {
     releaseThemeCss();
-    ensureThemeCss(preset);
+    ensureCssList(cssFor(preset, sceneId), preset);
   }
 
   function applyIsolatedVars(shell, themeId) {
@@ -309,15 +416,42 @@
     beauty.applyVars(vars, shell);
   }
 
+  // 由隔离控制器显式复刻真实主题脚本写入的等价属性：
+  // - 壳层 data-chat-theme-preset；详情舞台 .chat-stage 同步同一 preset，命中
+  //   chat-beauty-runtime.css 的舞台级气泡选择器；
+  // - atmosphere：list/detail/moments/mine 写 data-at-surface，home 写 data-at-home-surface；
+  //   非 atmosphere 主题显式清除这些属性，避免上一场景残留命中。
+  function applySceneAttributes(shell, result) {
+    var preset = result.effectivePreset;
+    shell.setAttribute('data-chat-theme-preset', preset);
+
+    var stage = shell.querySelector('.chat-stage');
+    if (stage) stage.setAttribute('data-chat-theme-preset', preset);
+
+    if (preset === 'atmosphere') {
+      if (result.scene === 'home') {
+        shell.setAttribute('data-at-home-surface', AT_HOME_SURFACE);
+        shell.removeAttribute('data-at-surface');
+      } else {
+        var surface = AT_SURFACE[result.scene];
+        if (surface) shell.setAttribute('data-at-surface', surface);
+        shell.removeAttribute('data-at-home-surface');
+      }
+    } else {
+      shell.removeAttribute('data-at-surface');
+      shell.removeAttribute('data-at-home-surface');
+    }
+  }
+
   function renderScene(themeId, sceneId) {
     if (!overlay) return;
     var result = render(themeId, sceneId);
     var shell = overlay.querySelector('.rp-phone-mockup');
     if (!shell) return;
-    shell.setAttribute('data-chat-theme-preset', result.effectivePreset);
     shell.innerHTML = result.body;
+    applySceneAttributes(shell, result);
     applyIsolatedVars(shell, result.effectivePreset);
-    syncThemeCss(result.effectivePreset);
+    syncThemeCss(result.effectivePreset, result.scene);
 
     var scopeNote = overlay.querySelector('.rp-scope-note');
     if (scopeNote) {
@@ -434,7 +568,7 @@
     lockedBodyScroll = global.document.body.style.overflow;
 
     var initial = render(theme, scene);
-    syncThemeCss(initial.effectivePreset);
+    syncThemeCss(initial.effectivePreset, scene);
 
     overlay = global.document.createElement('div');
     overlay.className = 'rp-overlay';
@@ -523,6 +657,8 @@
     covered: covered,
     render: render,
     themeCss: themeCss,
+    sceneCss: sceneCss,
+    cssFor: cssFor,
     open: open,
     close: close,
     _state: function () { return { open: state.open, theme: state.theme, scene: state.scene, gestureActive: state.gestureActive }; }
