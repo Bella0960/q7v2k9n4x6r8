@@ -10,7 +10,7 @@
 
 ## Start here
 
-> 当前发布流程以 [2026-11-24 发布规范](RELEASE_POLICY.md) 为准；旧日期的版本、部署方式和测试范围不得当成现行指令。
+> Every development window must follow the current main-branch [GOV-006 engineering workflow](ENGINEERING_WORKFLOW.md). The [release policy](RELEASE_POLICY.md) remains the authority for QA/production permissions and release gates; this workflow does not replace it.
 
 - **RELEASE_POLICY.md** — current authoritative release and QA migration policy.
 
@@ -19,7 +19,8 @@
 - **STORAGE_AND_MIGRATION.md** — browser storage inventory, known data risks, target design, safe migration procedure.
 - **DEVELOPMENT_GOVERNANCE.md** — GitHub workflow, branch/PR policy, tests, security, asset rules, AI collaboration.
 - **REMEDIATION_BACKLOG.md** — phased tasks, dependencies, parallel work lanes, acceptance criteria.
-- **AI_HANDOFF_PROMPT.md** — copyable prompt and task assignment template for other AIs.
+- **ENGINEERING_WORKFLOW.md** — current GOV-006 workflow for conflict scans, PR-backed task registration, automatic ready-task batching, candidate recovery, and the single QA release coordinator.
+- **AI_HANDOFF_PROMPT.md** — current copyable work-window prompt; it points to the live workflow and contains no static legacy task assignments.
 
 Existing references which remain important:
 

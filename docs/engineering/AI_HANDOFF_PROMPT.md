@@ -1,105 +1,56 @@
-# MAOMAO AI Collaboration Handoff
+# MAOMAO AI Work-Window Prompt (GOV-006)
 
-Use this document when inviting another AI agent to inspect or repair the project.
+Copy this current prompt when starting a new MAOMAO development window. Do not reuse historical handoff snapshots, old version-specific task lists, or retired manual QA instructions.
 
-## Context prompt (copy all of this section)
+You are one independent implementation/review window in the shared MAOMAO project. You are **not** the integration coordinator unless the owner explicitly assigns that role.
 
-You are helping maintain MAOMAO (“小手机”), a mature AI-character phone simulator in public repository Bella0960/q7v2k9n4x6r8.
+## Mandatory reading
 
-Before proposing or editing code, read:
-- docs/engineering/RELEASE_POLICY.md (current release rules; supersedes historical deployment instructions)
-- AGENTS.md
-- docs/engineering/README.md
-- docs/engineering/PROJECT_ARCHITECTURE.md
-- docs/engineering/STORAGE_AND_MIGRATION.md
-- docs/engineering/DEVELOPMENT_GOVERNANCE.md
-- docs/engineering/REMEDIATION_BACKLOG.md
-- docs/chat-architecture-contract.md and docs/chat-regression-baseline.md for chat tasks
-- docs/MAOMAO_VISUAL_DESIGN_CONSTITUTION.md for UI tasks
+Read the current `main` versions before acting:
 
-Project constraints:
-- Native HTML/CSS/JS multi-page app with Vite. Do not rewrite it as React/Vue/SPA.
-- Preserve existing features, routes, role IDs, group IDs, message fields, themes, and user data.
-- Do not delete or cap old chat messages to “solve storage.”
-- Large media belongs in IndexedDB/Blob storage, but the migration is not complete and backup coverage must be fixed first.
-- Existing PhoneStorage, PhoneAPI, PhoneStream, PhoneContext, repository classes, and MediaRepository should be extended/reused where suitable rather than replaced.
-- Cloudflare Worker has a CLOUD_DB binding in current main; preserve the live account/identity configuration and use the isolated QA release policy.
-- Website is the active delivery method. APK build is manual only and should remain that way.
-- Respect the black/white/gray editorial design constitution. Avoid generic oversized card layouts, unnecessary text, gradients, or colors that conflict with explicit user requirements.
+1. [Agent rules](../../AGENTS.md)
+2. [Unified engineering workflow](ENGINEERING_WORKFLOW.md) — task registration, conflict scan, ready-batch and handoff.
+3. [Release policy](RELEASE_POLICY.md) — mandatory for any QA/release action.
+4. [Engineering handbook](README.md)
+5. [Architecture](PROJECT_ARCHITECTURE.md) and [storage/migration safety](STORAGE_AND_MIGRATION.md)
+6. [Development governance](DEVELOPMENT_GOVERNANCE.md) and the relevant task in [remediation backlog](REMEDIATION_BACKLOG.md)
+7. For chat: `docs/chat-architecture-contract.md` and `docs/chat-regression-baseline.md`.
+8. For UI: `docs/MAOMAO_VISUAL_DESIGN_CONSTITUTION.md`.
 
-Do not treat historical audits as current truth. Re-check every finding in main before changing it. Where the code and docs conflict, report the conflict first and cite the exact file/path and current behavior.
+Current main and the deployed QA source can be on different Git histories. For a QA-bound task, read the live `preview.mao520.com/qa-build-receipt.json` and use its latest successful QA-only release source SHA. Never guess a baseline from an old chat, version label, branch name, or main SHA.
 
-Work only within the owner's assigned task scope. A direct request to fix/finish/complete authorizes implementation on a dedicated branch; do not default to read-only or stop after each small subtask to ask for “continue”. Use read-only mode only when explicitly requested. Decompose the work, implement, test, repair failures, update docs/engineering/EXECUTION_LOG.md, and continue through all independent in-scope subtasks. Do not modify main directly. Do not merge, deploy, update APKs, configure secrets, or perform irreversible user-data operations without explicit owner approval. Never edit the same files as another agent at the same time. If blocked, record the exact blocker and continue independent work.
+## Work-window rules
 
-Every proposal or patch must include:
-1. Task ID and problem statement.
-2. Verified current behavior and evidence (file paths/functions).
-3. Exact files to change.
-4. Minimal solution and non-goals.
-5. Data compatibility/migration plan if applicable.
-6. Tests and real-device/manual checks.
-7. Rollback plan.
-8. Risks and NOT VERIFIED items.
+- One bounded Task ID, one owned branch, one PR. State expected behavior, exact paths, risk lane (`F1`–`F4`), dependencies, non-goals, and required checks.
+- Independent windows may work in parallel only when their owned files and shared contracts do not overlap. Shared runtime, Worker, storage, account, route, workflow, build, release, and governance files require one named owner.
+- After making changes and before opening/updating the PR, run `npm run eng:conflicts` from a complete checkout. Resolve **BLOCK** overlaps; coordinate **SHARED** hotspots; review **REVIEW** findings. An incomplete scan is not a clean scan.
+- Open the PR against an approved `main`, `integration/*`, or `qa/*` base whose diff is consistent with the exact QA baseline. Do not blindly retarget or rebase old branches.
+- Register the PR using:
 
-Do not claim deployment, CI, or tests passed unless you inspected the exact run for the relevant commit.
+```sh
+npm run eng:register -- <PR-number> <TASK-ID> <QA-baseline-SHA> <F1|F2|F3|F4> "<exact GitHub check name>" ["<another exact check name>"] [--depends-on=TASK-ID,TASK-ID]
+```
 
-## Continuous execution contract
-
-One owner request is one work package, not one isolated patch. The agent must:
-1. Read the current task checkpoint and relevant source-of-truth docs.
-2. Decompose the request into ordered subtasks with acceptance criteria.
-3. Implement on a dedicated branch by default, preserving the exact scope and existing data.
-4. Run relevant tests/build checks, repair failures, and repeat until pass or a concrete external blocker.
-5. Continue with the next independent task without asking the owner to prompt “continue”.
-6. Update `docs/engineering/EXECUTION_LOG.md` after meaningful milestones and before ending a session.
-
-Pause only for an unresolved product choice, missing requirement, credential/secret, destructive action, data migration requiring approval, or explicit release boundary. Keep `main`, production deployment, APK release, secrets, and irreversible user data protected until explicitly approved. Work does not continue in the background after the active chat/session ends; use the checkpoint for a clean next-session handoff.
+- Re-run registration after every new commit so the manifest pins the current PR head. The tool records a submitted task; the coordinator computes READY only from current-head approval, required checks, all other check states, complete changed-file evidence, ancestry, and dependency validity.
+- D0 documentation-only tasks use a narrow reviewed PR and documentation checks; they do not enter the QA release batch.
+- Keep code changes narrow, preserve all existing user data and behavior, add focused regression coverage, and report exact test evidence. Mark anything not actually executed as **NOT VERIFIED**.
+- Do not create local task-directory JSON batches. The old `npm run eng:batch` alias is deprecated and must not be used; its removal is deferred until the open package.json change in PR #545 is resolved. Use the PR-backed registry and `npm run eng:batch:auto` only through the shared coordinator flow.
+- Do not independently dispatch QA or claim that a candidate push is a deployment. Only the integration coordinator runs the owner-only ready-batch workflow and submits one authorized QA-only release through the fixed QA entry.
+- Do not merge main, deploy production, update APKs, configure secrets, or perform destructive data operations without explicit owner approval.
 
 ## Task assignment template
 
-Task ID:
-Owner/agent:
-Mode: READ-ONLY AUDIT / PROPOSAL ONLY / IMPLEMENT ON BRANCH
-Exact scope:
-Files allowed to edit:
-Files forbidden to edit:
-Dependencies:
-Expected output:
-Acceptance criteria:
-Tests required:
-Do not touch:
-- main branch directly
-- unrelated UI or app features
-- storage keys/schema without an approved migration
-- private user data or API credentials
+- **Task ID:**
+- **Expected behavior / root problem:**
+- **QA baseline SHA:**
+- **PR base branch:**
+- **Owned paths:**
+- **Risk lane (F1–F4):**
+- **Dependencies:**
+- **Non-goals:**
+- **Required GitHub checks:**
+- **Acceptance evidence:**
 
-## Recommended starter tasks
+## Completion report
 
-### Agent A — App and route inventory
-Task: GOV-002
-Mode: READ-ONLY AUDIT
-Deliver: map 88 HTML pages into production apps, maintenance pages, previews, and docs; map launcher links, query params, page navigation, and cross-app calls. Do not edit files.
-
-### Agent B — Storage/database registry
-Task: DATA-001
-Mode: READ-ONLY AUDIT
-Deliver: every localStorage key family and every IndexedDB database/store, owner module, version, blob fields, backup status, migration status, and quota/error handling. Verify current maomao-assets v2 coverage (assets/blobs/refs/image_records), Blob limits, atomicExport/clearOnRestore, and the media-backup regression results. Separately report the maomao-media-store audio Blob exclusion. Do not migrate data.
-
-### Agent C — Chat-history call-site inventory
-Task: DATA-005
-Mode: READ-ONLY AUDIT
-Deliver: all readers/writers of chat_history_<id>, role/group isolation, date-mode interactions, wallet/forum/call/notification integrations, direct localStorage vs PhoneStorage usage, and tests needed. Do not edit chat files.
-
-### Agent D — CI and release workflow audit
-Task: CI-002 and CI-003
-Mode: READ-ONLY AUDIT / PROPOSAL ONLY
-Deliver: workflow trigger matrix, permissions, artifact/cache producers, redundant runs, package release workflow risk, and a minimal patch proposal. Do not publish packages or re-enable APK build.
-
-### Agent E — Static asset audit
-Task: PERF-001
-Mode: READ-ONLY AUDIT
-Deliver: largest assets, dimensions, formats, references, duplicate/near-duplicate candidates, suggested size targets, and visual QA plan. Do not replace, delete, or recompress images.
-
-## Integration rule
-
-Multiple agents may inspect in parallel, but code changes require explicit file ownership and one integrator. Merge only after independent review, relevant tests, and data-safety verification.
+Report the Task ID, root cause, files changed, behavior preserved, exact checks/results, branch and PR link, any blockers, and whether the work is eligible for the shared ready queue. Do not report merge, QA release, production deployment, or device verification unless the corresponding action actually occurred and its receipt/evidence was checked.

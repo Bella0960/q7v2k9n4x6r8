@@ -8,6 +8,7 @@ Always read the current main branch:
 - [Engineering handbook](README.md)
 - [Architecture](PROJECT_ARCHITECTURE.md)
 - [Storage and migration](STORAGE_AND_MIGRATION.md)
+- [Unified GOV-006 engineering workflow](ENGINEERING_WORKFLOW.md) — mandatory for every development window.
 - [Development governance](DEVELOPMENT_GOVERNANCE.md)
 - [Task backlog](REMEDIATION_BACKLOG.md)
 - [AI handoff](AI_HANDOFF_PROMPT.md)
