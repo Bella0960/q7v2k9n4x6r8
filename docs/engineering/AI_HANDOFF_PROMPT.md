@@ -34,7 +34,7 @@ npm run eng:register -- <PR-number> <TASK-ID> <QA-baseline-SHA> <F1|F2|F3|F4> "<
 - Re-run registration after every new commit so the manifest pins the current PR head. The tool records a submitted task; the coordinator computes READY only from current-head approval, required checks, all other check states, complete changed-file evidence, ancestry, and dependency validity.
 - D0 documentation-only tasks use a narrow reviewed PR and documentation checks; they do not enter the QA release batch.
 - Keep code changes narrow, preserve all existing user data and behavior, add focused regression coverage, and report exact test evidence. Mark anything not actually executed as **NOT VERIFIED**.
-- Do not create local task-directory JSON batches. The old `npm run eng:batch` command is retired. Use the PR-backed registry and `npm run eng:batch:auto` only through the shared coordinator flow.
+- Do not create local task-directory JSON batches. The old `npm run eng:batch` alias is deprecated and must not be used; its removal is deferred until the open package.json change in PR #545 is resolved. Use the PR-backed registry and `npm run eng:batch:auto` only through the shared coordinator flow.
 - Do not independently dispatch QA or claim that a candidate push is a deployment. Only the integration coordinator runs the owner-only ready-batch workflow and submits one authorized QA-only release through the fixed QA entry.
 - Do not merge main, deploy production, update APKs, configure secrets, or perform destructive data operations without explicit owner approval.
 
