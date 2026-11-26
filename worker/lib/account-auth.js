@@ -303,7 +303,8 @@ export function createAccountAuth({ store, env = {}, now = () => Date.now() }) {
     const internalOrigin = 'https://mao520.com';
     const headers = {
       authorization: 'Bearer ' + token,
-      accept: 'application/json'
+      accept: 'application/json',
+      'x-mao-account-context': admin.account_id
     };
     const options = { method, headers };
     if (method === 'POST') {

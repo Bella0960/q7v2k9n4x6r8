@@ -38,6 +38,10 @@ function fixture({ role = 'super_admin', disabled = false, wrongAuthority = fals
         origin: request.headers.get('origin'),
         body: request.method === 'POST' ? await request.text() : ''
       });
+      if (url.pathname.startsWith('/api/admin/') && url.pathname !== '/api/admin/bootstrap/status' &&
+          request.headers.get('x-mao-account-context') !== FOUNDER_ID) {
+        return Response.json({ ok: false, error: { code: 'ACCOUNT_CONTEXT_REQUIRED' } }, { status: 409 });
+      }
       if (url.pathname.startsWith('/api/admin/') && url.pathname !== '/api/admin/bootstrap/status' && authorityError === 'forbidden') {
         return Response.json({ ok: false, error: { code: 'DELEGATED_ACCOUNT_MANAGED_CENTRALLY',
           message: '管理权限尚未接通' } }, {
