@@ -1,10 +1,13 @@
 name: Engineering tooling tests
 
+# Push is the bootstrap trigger for feature branches: this workflow is new in
+# GOV-006 and is not present on main yet, so it cannot receive this PR's
+# pull_request event until the definition is merged. One push run per commit
+# also avoids duplicate push + pull_request test runs.
 on:
-  pull_request:
-    branches: [main]
   push:
-    branches: [main]
+    branches:
+      - '**'
   workflow_dispatch:
 
 permissions:
