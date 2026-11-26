@@ -10,6 +10,7 @@ import { runConflictAudit } from './engineering-pr-conflicts.mjs';
 const API = 'https://api.github.com';
 const DEFAULT_REPO = 'Bella0960/q7v2k9n4x6r8';
 const QA_REPOSITORY = 'Bella0960/web-runtime-lab';
+const QA_WORKFLOW_FILE = 'reusable-qa-request.yml';
 const QA_WORKFLOW_ID = 428897690;
 const QA_WORKFLOW_PATH = '.github/workflows/' + QA_WORKFLOW_FILE;
 const QA_REQUEST_PATH = '.github/qa-release-request.json';
