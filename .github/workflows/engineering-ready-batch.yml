@@ -125,7 +125,7 @@ jobs:
           name: maomao-qa-batch-${{ inputs.qa_baseline_sha }}
           path: ${{ runner.temp }}/maomao-qa-batch-recovery/
           if-no-files-found: error
-          retention-days: 30
+          retention-days: 90
       - name: Push the exact archived candidate (create-only)
         if: steps.assemble.outputs.candidate_ready == 'true'
         env:
