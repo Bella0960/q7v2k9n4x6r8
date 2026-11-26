@@ -48,8 +48,8 @@ test('v158 PWA build stamp and complete storefront asset links retain legacy cho
  assert.match(sw,/BUILD_RELEASE = '__MAOMAO_BUILD_RELEASE__'/,'release stamp remains functional');
  assert.match(sw,/cacheableStaticAsset/,'existing MIME and release asset guard retained');
  assert.ok(sw.includes('./theme-store/theme-store.html'),'original theme entry retained');
- for(const name of ['market-expansion.js','collection-store.js','preview-scene.js','storefront.js',
-                   'market-expansion.css','preview-scene.css','storefront.css']){
+ for(const name of ['market-expansion.js','collection-store.js','real-scene-preview.js','storefront.js',
+                   'market-expansion.css','real-scene-preview.css','storefront.css']){
    assert.ok(page.includes('./'+name+'?v='),'versioned marketplace asset linked: '+name);
    readFileSync(new URL('../theme-store/'+name,import.meta.url),'utf8');
  }
@@ -267,9 +267,9 @@ test('modal focus survives theme apply and favorite re-render without trapping t
   const js=readFileSync(new URL('../theme-store/storefront.js',import.meta.url),'utf8');
   let clickHandler,overlay,active='default',renderCount=0;
   const shell={inert:false},document={activeElement:null};
-  const old={dataset:{sf:'detail',id:'wechat'},isConnected:true,disabled:false,focus(){document.activeElement=this},closest(){return this}};
-  const live={dataset:{sf:'detail',id:'wechat'},isConnected:false,disabled:false,focus(){document.activeElement=this},closest(){return this}};
-  document.activeElement=old;
+  const opener={dataset:{sf:'apply-theme',id:'wechat'},isConnected:true,disabled:false,focus(){document.activeElement=this},closest(){return this}};
+  const live={dataset:{sf:'apply-theme',id:'wechat'},isConnected:false,disabled:false,focus(){document.activeElement=this},closest(){return this}};
+  document.activeElement=opener;
   document.addEventListener=(type,fn)=>{if(type==='click')clickHandler=fn;};
   document.createElement=()=>({
     isConnected:false,addEventListener(){},remove(){this.isConnected=false;},
@@ -283,30 +283,27 @@ test('modal focus survives theme apply and favorite re-render without trapping t
   const favorites=[];
   const window={
     ChatBeauty:{getThemePreset:()=>active},
-    MAOMAOMarketCollection:{read:()=>({favorites:[...favorites],outfits:[],creations:[]}),favorite(id){const i=favorites.indexOf(id);if(i>=0)favorites.splice(i,1);else favorites.push(id);}}
+    MAOMAOMarketCollection:{read:()=>({favorites:[...favorites],outfits:[],creations:[]}),favorite(id){const i=favorites.indexOf(id);if(i>=0)favorites.splice(i,1);else favorites.push(id);}},
+    MAOMAORealScenePreview:{open(){},close(){},_state:()=>({open:false})}
   };
   vm.runInNewContext(js,{window,document});
-  const refresh=()=>{renderCount++;old.isConnected=false;live.isConnected=true;};
+  const refresh=()=>{renderCount++;opener.isConnected=false;live.isConnected=true;};
   window.MAOMAOStorefront.init({
     themes:[{id:'wechat',name:'微信',desc:'演示主题'}],nativeArt:()=>'<div class="product-art"></div>',
     render:refresh,applyTheme:id=>{active=id;refresh();return true;},toast(){},market:{renderWallpapers:()=>''}
   });
   const action=(sf,id)=>({dataset:{sf,id},disabled:false,closest(){return this;}});
   const click=target=>clickHandler({target,preventDefault(){}});
-  await click(old);assert.equal(shell.inert,true);
-  await click(action('apply-theme','wechat'));
+  await click(opener);
+  assert.equal(shell.inert,true);
+  assert.ok(overlay&&overlay.isConnected,'confirmation modal opens from apply-theme');
   await click(action('confirm-apply-theme','wechat'));
   assert.equal(active,'wechat');
   assert.equal(document.activeElement,live,'return focus to live replacement after theme apply');
   assert.equal(shell.inert,false,'inert storefront must be released');
   assert.equal(overlay.isConnected,false,'confirmation modal must close');
-  await click(live);
   await click(action('favorite','wechat'));
   assert.ok(favorites.includes('wechat'));
-  assert.equal(overlay.isConnected,true,'favorite keeps preview open');
-  await click(action('close',''));
-  assert.equal(document.activeElement,live);
-  assert.equal(shell.inert,false);
   assert.ok(renderCount>=2);
 });
 

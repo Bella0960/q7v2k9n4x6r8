@@ -52,15 +52,15 @@ for(const width of [375,390,430]){
   await firstFav.click();
   assert.equal(await firstFav.getAttribute('aria-pressed'),'false','favorite toggles off');
 
-  // 4. 详情弹窗内收藏：弹窗保持打开，文案与 pressed 同步；关闭后焦点回到对应主题。
+  // 4. 真实预览内收藏：预览保持打开，文案与 pressed 同步；关闭后焦点回到对应主题。
   const cover=page.locator('.sf-theme-cover[data-sf="detail"][data-id="'+favId+'"]').first();
   await cover.click();
-  await page.waitForSelector('.sf-dialog');
-  const dialogFav=page.locator('.sf-dialog [data-sf="favorite"][data-id="'+favId+'"]');
-  await dialogFav.click();
-  assert.ok(await page.locator('.sf-dialog').isVisible(),'favoriting in detail keeps dialog open');
-  assert.equal(await dialogFav.getAttribute('aria-pressed'),'true');
-  await page.locator('.sf-dialog [data-sf="close"]').click();
+  await page.waitForSelector('.rp-overlay');
+  const rpFav=page.locator('[data-rp-favorite]');
+  await rpFav.click();
+  assert.ok(await page.locator('.rp-overlay').isVisible(),'favoriting in preview keeps preview open');
+  assert.equal(await rpFav.getAttribute('aria-pressed'),'true');
+  await page.locator('.rp-close').click();
   assert.equal(await page.evaluate(()=>document.activeElement?.getAttribute('data-id')),favId,'focus returns to the themed item after rerender');
 
   // 5. 我的 · 收藏栏与刚才的收藏一致（readCache 不能留下陈旧状态）。

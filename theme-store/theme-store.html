@@ -12,8 +12,8 @@
   <script src="../shared/js/atmosphere-icons.js?v=20261112i1"></script>
   <script src="./market-expansion.js?v=20261113m2"></script>
   <script src="./collection-store.js?v=20261112m3"></script>
-  <script src="./preview-scene.js?v=20261113m7"></script>
   <script src="./storefront.js?v=20261119isolated3"></script>
+  <script src="./real-scene-preview.js?v=20261126rp1"></script>
   <link rel="stylesheet" href="../shared/css/chat-beauty-runtime.css?v=20261031v1">
   <link rel="stylesheet" href="../shared/css/mobile-fit.css">
   <style>
@@ -198,7 +198,7 @@
 </style>
 <link rel="stylesheet" href="./market-expansion.css?v=20261113m2">
 <link rel="stylesheet" href="./storefront.css?v=20261119isolated3">
-<link rel="stylesheet" href="./preview-scene.css?v=20261113m7">
+<link rel="stylesheet" href="./real-scene-preview.css?v=20261126rp1">
 </head>
 <body>
   <div class="store-app">
@@ -639,7 +639,7 @@
       else if(action.dataset.action==='bubble-apply')applyBubblePreset(id);
       else if(action.dataset.action==='font-apply')applyFont(id);
       else if(action.dataset.action==='font-default')useSystemFont();
-      else if(action.dataset.action==='market-preview'&&market)market.preview('atmosphere');
+      else if(action.dataset.action==='market-preview'&&window.MAOMAOStorefront&&typeof window.MAOMAOStorefront.previewTheme==='function')window.MAOMAOStorefront.previewTheme('atmosphere');
       else if(action.dataset.action==='market-apply-theme'&&market)applyTheme('atmosphere');
       else if(action.dataset.action==='market-category')setCategory(id);
       else if(action.dataset.action==='market-widget-open'&&market)market.widgetRoute(id);
@@ -667,7 +667,6 @@
         if(currentCategory==='fonts'){render();bindFontSpecimens();}
       });
     }
-    document.addEventListener('maomao:market-apply-atmosphere',function(){applyTheme('atmosphere');});
     window.addEventListener('pageshow',refreshAll);
     window.addEventListener('storage',function(event){
       if(!event.key||[VISUAL_KEY,DELETED_KEY,'beauty_chat_global_v1','maomao_chat_theme_preset','active_font_preset_id',OWN_KEY,CHAT_LIST_THEME_KEY].indexOf(event.key)>=0)refreshAll();

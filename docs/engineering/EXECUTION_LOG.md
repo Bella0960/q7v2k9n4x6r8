@@ -754,3 +754,69 @@ On the next turn/session, read this file and the current `AGENTS.md` first. Cont
 - 同一候选链追加总览优化：使用已验证的账号目录总数，压缩首页快捷区，并接入原有真人好友审批和账号安全页面。保留现有服务端权限与审计。Node 224/224，Vite 通过，合成账号 Chromium 375/390/430px 三档通过。真机登录仍待验证。
 
 - ADMIN-CORE-001 真机反馈：管理目录同时返回账号上下文错误。QA 转发使用已验证的创始账号标识传递作用域至现有独立身份服务。回归模拟身份服务作用域门禁，覆盖目录读取和写入。回滚可还原本提交。
+
+## 2026-11-26 · THEME-PREVIEW-005 · 六主题五场景真实预览
+
+- **Owner request:** Stop asking the user to relay separate handoff documents. Assign and track work directly in the source repository; Doubao implements on the task branch and reports through the PR.
+- **Stage04 evidence:** verify run 45715229293 completed/success; QA release run 45773629382 completed/success for integrated stage04 candidate e2f2f22c4e810a8db116e3d95d6a4e3b10511615. Follow-up QA candidate bc7d062f333d29c3623a660193c171f094550eb5 is the current immutable request candidate; queue/publish workflow 45774682577 completed/success. No production release authorized.
+- **Task base:** `bc7d062f333d29c3623a660193c171f094550eb5`. The old #531 head 49e6267f is stale for new work and is not the base.
+- **Task branch:** `THEME-PREVIEW-005/real-scene-previews` (created directly from the current QA candidate; initially clean).
+- **Scope:** six full themes × five real scenes, 30 combinations; first runnable isolation prototypes for chat detail and Moments, then expand. Existing theme coverage boundaries remain explicit; unsupported combinations show the actual scene in default styling with an honest note.
+- **Safety:** synthetic fixtures only; no production page business scripts, real localStorage/IndexedDB, real contacts/media, AI/MCP/network calls, setThemePreset, or resolve(realContactId). No schema, backup, SW, account, wallet, desktop layout, production, or deployment changes.
+- **Delivery rule:** all source/tests are committed in this repository and surfaced through the PR. No separate user-facing handoff Markdown, ZIP, patch, or screenshot bundle. This execution log is the internal checkpoint required by AGENTS.md.
+- **Status:** IN PROGRESS. Code changes are local on the task worktree only; nothing committed, pushed, deployed, or merged. No production/account/wallet/schema/backup/SW/desktop-layout change; the stage04 main-repo working tree was left untouched.
+- **Local increment (uncommitted, reported from worktree; not yet independently verified from a pushed commit):**
+  - `shared/js/chat-beauty.js`: pure additive `NS.blankVars(preset)` — built-in defaults + theme bubble defaults only; no localStorage/IDB read, no saved-overlay, no resolve/apply/save change.
+  - `theme-store/real-scene-preview.js` / `.css`: isolated real-scene preview module. Six themes × five scenes (30 combos); real page class skeletons; production theme CSS lazy-loaded by shell `data-chat-theme-preset`; synthetic fixtures only; single active instance; swipe/tab/button/keyboard/Esc/backdrop/focus-loop/body scroll-lock/reduced-motion; observer and injected-CSS cleanup on close.
+  - `tests/real-scene-preview.test.mjs`, `tests/chat-beauty-blank-vars.test.mjs`: Node isolation contracts.
+  - `theme-store/theme-store.html`: preloads the new JS/CSS with version stamp; no entry button wired yet.
+- **Reported local verification:** new preview Node contract 11/11; engine blankVars 4/4; related storefront/theme regression 103/103; `npm run build` exit 0 with postbuild asset-isolation 3/3. Temporary headless Chromium probe (removed after run): all 30 combos render; unsupported combos fall back to default preset with an honest note; theme CSS injected on open and removed on close; tab/Esc/backdrop close; no horizontal overflow at 320/375/390/430; 50 open/close cycles leave no overlay/scroll-lock/shell/error; localStorage bytes unchanged; 0 pageerrors.
+- **Remaining work:** wire theme-card and five-scene entry while preserving apply confirmation/favorites; migrate old preview Node/browser assertions; full static/dynamic consumer search before retiring old preview code; persist four-viewport Chromium/lifecycle/storage tests; run targeted checks/build; push all work to PR #547. Physical-device verification remains NOT VERIFIED; headless results do not substitute for device review.
+
+### 2026-11-26 · Retire old static preview (continuation batch)
+
+- **Retired source (old static six-screen preview, superseded by `real-scene-preview`):**
+  - `theme-store/preview-scene.js`, `theme-store/preview-scene.css`: `git rm`.
+  - `theme-store/storefront.js`: removed old `previewTone/previewPage` state, static `pages/covered/scene` render, old `detail/stepPreview/showPage` functions, `page`/`tone` action branches, and the old `detail(id)` fallback in `openRealPreview`; `nativeArt(t)` now falls back to an empty string. Card `apply-theme` shortcut and the apply-confirmation modal are retained.
+  - `theme-store/market-expansion.js`: removed old preview overlay state, SWIPE constants, `swipeDirection/previewScreen/clearGesture/bindPreviewGesture/closePreview/preview` and the `preview`/`_previewState` exports; `screens` trimmed to `{id,name}` only.
+  - `theme-store/theme-store.html`: removed the `preview-scene.js/css` includes, the `market.preview('atmosphere')` fallback branch, and the `maomao:market-apply-atmosphere` document listener (no other dispatcher remains in the repo).
+  - `theme-store/market-expansion.css`: removed `.market-preview-*`, `.mp-*` blocks and the two old preview-only media queries; `storefront.css`: removed the old detail-modal `.sf-theme-detail-*` block.
+- **Test migration to the new `.rp-*` chain:**
+  - `tests/market-preview-gesture-browser.mjs`: `git rm` (contract fully covered by `real-scene-preview-browser.mjs`).
+  - `tests/market-preview-scene.test.mjs`: rewritten to stable contracts (apply order, native card covers, vertical layout, gallery-before-list, favorite aria-pressed, spotlight, narrow-width CSS, native cover not gray ball); no `preview-scene` source read.
+  - `tests/theme-store-expansion.test.mjs`, `tests/market-collection.test.mjs`: adapted to the new file list and RP/confirmation-modal flow; collection Node mock stubs `MAOMAORealScenePreview`.
+  - `tests/market-storefront-browser.mjs`, `tests/atmosphere-theme-browser.mjs`, `tests/theme-store-perf-browser.mjs`: cover entry now opens `.rp-overlay`; apply goes through `[data-rp-apply]` → RP `close()` → `.sf-dialog [data-sf="confirm-apply-theme"]`; favorite asserted on `[data-rp-favorite]`.
+- **Focus hardening:** `real-scene-preview.js` `close()` now mirrors the storefront live-item fallback — if the saved opener was detached by a re-render (favorite/apply refreshes the gallery), it re-resolves the matching live `[data-sf][data-id]` node before focusing; otherwise focus stays on a connected element.
+- **Residual CSS (not stripped this batch, honest note):** `storefront.css` line 2 is a 9090-char merged rule line; old mock skeleton classes (`sf-scene/sf-status/sf-person/sf-bubble/sf-input/sf-atmosphere/sf-imessage/sf-wechat/sf-qq/sf-silver-butterfly/sf-music/sf-landscape/sf-identity/sf-gallery/sf-menu/sf-post/sf-clock/sf-apps/sf-app/sf-app-icon/sf-preview-tabs/sf-grid/sf-product-meta`) have no js/html consumer and are dead rules, but stable card/dialog rules are interleaved on the same line. They render nothing and do not affect runtime; stripping is deferred to a dedicated pure-CSS cleanup batch to avoid touching stable styles. `sf-native-cover/sf-native-feature/sf-native-detail-art` remain live and are retained.
+- **Local verification (worktree, headless; not yet independently verified from a pushed commit):**
+  - Node targeted set 202/202 pass: real-scene-preview 11, chat-beauty-blank-vars 4, market-collection, theme-store-expansion, market-preview-scene, atmosphere-theme 15, chat-regression-contract 127.
+  - Chromium: real-scene-preview 4 viewports + API sanity (5 scenarios); market-storefront 6 scenarios; theme-store-perf 3; atmosphere-theme 4 viewports + desktop; stage04-market-integration 27; market-outfit-scope 3.
+  - `npm run build` exit 0; postbuild production-assets-isolation 3/3.
+  - Full static/dynamic consumer search: old symbols (`preview-scene`, `MAOMAOStorefrontPreview`, `_previewState`, `market-apply-atmosphere`, `sfPreview`, `sp-screen/sp-wx/sp-qq/sp-dark`, `data-sf="page"/"tone"`, `market-preview-overlay/dialog`) return zero matches in source and tests; SW static manifest does not enumerate the removed files.
+- **NOT VERIFIED:** physical-device acceptance not performed; headless Chromium results do not substitute for real-phone review. No merge, deployment, production/account/wallet/schema/backup/SW/desktop-layout change.
+- **Tracking:** Draft PR #547 https://github.com/Bella0960/q7v2k9n4x6r8/pull/547 is the sole stage05 code-delivery entry. PR #531 is not the stage05 work branch. No merge or deployment authorized.
+- **Owner workflow:** no external handoff documents, ZIPs, patch bundles, or screenshot bundles; implementation and test evidence stay in this repository/PR.
+- **Pushed (2026-11-26):** fast-forward `9f2ee9d4..d6d4e767` to `THEME-PREVIEW-005/real-scene-previews` (no force push). Commits: `f7ecaced08643d287b3a04a00215f6a3c1907ffa` (feat, 21 files, +1841/-1195) and `d6d4e767c25918406a10ff70ccdb58a7609ec7eb` (backlog status). Remote head verified as `d6d4e767c25918406a10ff70ccdb58a7609ec7eb`. Pre-push re-check on the clean worktree: targeted Node 202/202 pass, `npm run build` exit 0 with postbuild production-assets-isolation 3/3; Chromium scenarios as listed above were last run in this batch and code was unchanged since. Still pending owner re-review and real-device verification — device NOT VERIFIED.
+
+### 2026-11-26 · 总控复核返修（评论 7196284933，基于 head `163a8d3d`）
+
+总控独立复核判定上一批尚不能验收为“五场景真实预览”，提出五项；本批在原任务分支继续修复，未合并、未部署、保持 Draft。
+
+- **① 真实结构对齐：** 五个场景 builder 对照 `chat/chat/chat.html`、`chat/chat/chat-detail.html`、`chat/moments/moments.html`、`profile/profile.html`、`chat/moments/my-moments.html` 重建静态骨架，补齐列表 `.main-stage`/封面渐变横幅/白色资料区/拱桥头像/用户 ID/四级浮动流；详情 `.chat-header`/`.chat-stage`/收发气泡/输入坞；动态 `.space-stage`/微信动态工具栏/封面块/封面名/主面板；我的 `.profile-content`/`.info-row`/`.profile-edit-btn`/`.profile-cover`/菜单卡；我的主页 `.page-wallpaper`/`.wallpaper-veil`/`.cover-nav-btn`/`.profile-hero`/`.stats-row`/`.feed`。仅抽取无业务副作用的静态结构，替换为合成 fixtures；未加载生产业务脚本、存储、AI/MCP、真实联系人或媒体。`real-scene-preview.css` 为新增真实 class 补兜底排版，壳层补 `position:relative`。
+- **② 补齐主题属性：** 隔离控制器按场景显式复刻壳层 `data-chat-theme-preset` 双写（rootEl 与向上 `.phone-mockup`）；详情舞台 `.chat-stage` 同步同一 preset，命中 `chat-beauty-runtime.css` 舞台级气泡选择器；atmosphere 等价 surface 属性按场景设置/清除——list→`chats`、detail→`detail`、moments→`moments`、mine→`profile`，home→`data-at-home-surface=personal-home`；非 atmosphere 主题显式删除这两类属性，无残留。预览不加载 `atmosphere-pages.js` / `atmosphere-my-home.js` 生产脚本。
+- **③ 补齐 CSS 映射：** 新增 `SCENE_CSS` 五场景生产样式表组（逐页对照真实 `<link>` 清单审计），`cssFor(preset, sceneId)` 合并场景组与主题层并去重；我的场景纳入 `profile-chat-themes.css`，动态/列表/详情纳入 `chat-light-surfaces.css`、`atmosphere-theme.css`、`atmosphere-pages.css`，主页纳入 `atmosphere-my-home.css`。剔除通话浮层、编辑器运行时、独立列表主题（`messages-editorial`）等无关层。覆盖边界沿用既有口径：home 仅 atmosphere；imessage 仅 detail；其余 list/detail/moments/mine 由 default/wechat/qq/silver-butterfly/atmosphere 覆盖；未覆盖组合落 default 并标注“「X」不受此主题修改，保留现有默认样式。”
+- **④ 30 组合持久浏览器验收：** `real-scene-preview-browser.mjs` 新增六主题 × 五场景矩阵（同一持久 context 复用），逐组合断言：壳层 preset 落有效主题/未覆盖诚实回退、场景关键骨架节点存在、详情舞台 preset 同步、atmosphere surface 属性设置或清除、场景样式表 link 注入、场景组样式表已被浏览器真实解析且规则非空（非空挂 link）、关键计算样式命中、关闭后 overlay 移除。computed 断言仅固化两轮 headless 探测稳定的差异化落点：imessage/detail 壳层 `rgb(242,242,247)` 且右气泡非白；qq/detail 右气泡 `rgb(176,176,176)`；atmosphere/home 壳层非白。其余主题气泡在 headless 下落兜底白/透明，未写死颜色断言，留真机复核。既有隔离口径保留：存储只读（剔除收藏业务键 `maomao_market_collection_v1`）、收藏双向同步、应用二次确认、Esc/遮罩/焦点/滚动锁、50 次开关清理。
+- **⑤ check 状态如实记录（推送前基线 head `163a8d3d`）：** Cloudflare `Workers Builds: mao` check run `139993410998`，status=`completed`、conclusion=`failure`，完成于 2026-11-26T14:57:24Z；bot 评论记 `build_outcome=Skipped`，无初始化/运行时间、无日志、无 preview URL；combined status state=`pending`，无 statuses。这不是一次已证实的编译失败，也不能标记为构建成功或部署成功；未手动部署、未触发生产发布。
+- **推送后复核（head `f8365d9c79ea41060b211b221066743508cc260d`）：** check run `140035308799`（`Workers Builds: mao`）status=`completed`、conclusion=`failure`，started/completed 均为 2026-11-26T16:10:33Z（同一时刻，无可见运行时长），details build `4413a288-5850-41f2-9671-2240c7620316`；combined status state=`pending`，`statuses=[]`。Cloudflare bot 的 outcome 表尚未刷新到该 commit，未见运行日志或 preview URL。形态与上一 head 同型（failure、同时刻起止、无 preview URL）；本批未手动部署、未触发生产发布。**不能据此写成构建成功或部署成功，也不能判定为已证实的编译失败。**
+
+**本批本地验证（隔离 worktree，headless；推送前尚未由总控独立重跑）：**
+- Node 定向：`real-scene-preview.test.mjs` **14/14 pass**（新增真实结构 class、场景 CSS 映射审计、cssFor 去重三例）；相邻 Node `chat-beauty-blank-vars`/`market-preview-scene`/`theme-store-expansion`/`market-collection` **49/49 pass**。
+- Chromium：`real-scene-preview-browser.mjs` 四视口（320/375/390/430）+ API sanity + 30 组合矩阵全过；`market-storefront-browser` 6 场景；`atmosphere-theme-browser` 375/390/430/1280；`stage04-market-integration-browser` 27；`market-outfit-scope-browser` 3；`theme-store-perf-browser` 3。
+- `npm run build` 退出 **0**；postbuild production-assets-isolation **3/3**。
+
+**诚实边界与 NOT VERIFIED：**
+- 真机（Android/PWA）验收未做；以上均为本地 headless Chromium/Node 结果，不替代真机复核。
+- qq 在 list/moments 无专属规则表（规则仅落在 runtime 详情气泡/头部与 `profile-chat-themes.css` 我的资料页）；该既有覆盖边界本批未擅自缩小。
+- wechat/silver-butterfly/atmosphere 的气泡背景在 headless 无素材/变量缺失时落兜底，computed 命中未固化；需真机与完整素材环境复核。
+- 未改 schema、备份、SW、账号、钱包、桌面布局、生产环境；未合并、未部署；未发送外部文档/ZIP/补丁包/截图包。基线来源文件 `worker/lib/account-auth.js`、`tests/account-qa-admin-proxy.test.mjs` 来自基线 `bc7d062f`（ADMIN-CORE-001 QA 候选），本批未删除或重写。
+

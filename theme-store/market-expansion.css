@@ -46,7 +46,7 @@
 :is(.market-primary,.market-subtle,.market-secondary):active{transform:scale(.97);}
 :is(.market-primary,.market-subtle,.market-secondary):focus-visible,
 .market-discover button:focus-visible,.market-catalog button:focus-visible,
-.market-preview-overlay button:focus-visible,.market-theme-feature button:focus-visible{
+.market-theme-feature button:focus-visible{
  outline:1px solid #111;outline-offset:3px;
 }
 .market-collections{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:7px;}
@@ -142,75 +142,6 @@
  min-height:85px;text-align:left;}
 .market-mine-kpis strong{font:400 28px/1 Georgia,serif;}
 .market-mine-kpis span{font-size:10px;color:#888;}
-/* A real interactive five-page visual study; no user data inside this sample. */
-.market-preview-overlay{position:fixed;inset:0;z-index:25000;display:flex;align-items:center;
- justify-content:center;padding:calc(14px + env(safe-area-inset-top)) 12px calc(14px + env(safe-area-inset-bottom));
- color:#1c1c1c;}
-.market-preview-backdrop{position:absolute;inset:0;background:#0008;border:0;}
-.market-preview-dialog{position:relative;width:min(100%,600px);max-height:100%;
- display:flex;flex-direction:column;gap:10px;border-radius:16px;padding:15px 14px 12px;
- overflow:hidden;background:#fbfbfb;box-shadow:0 20px 55px #0003;}
-.market-preview-dialog header{display:flex;justify-content:space-between;align-items:center;gap:12px;}
-.market-preview-dialog header>div{display:flex;flex-direction:column;gap:4px;}
-.market-preview-dialog header small{font:8px Georgia,serif;color:#999;letter-spacing:.16em;}
-.market-preview-dialog header strong{font:400 21px Georgia,"Songti SC",serif;}
-.market-preview-close{width:36px;height:36px;border:1px solid #ddd;border-radius:50%;background:#fff;font:24px Georgia;cursor:pointer;}
-.market-preview-caption{font-size:10px;color:#888;line-height:1.6;}
-.market-preview-tabs{display:flex;gap:6px;flex:none;overflow:auto;scrollbar-width:none;padding:1px 1px 7px;}
-.market-preview-tabs::-webkit-scrollbar{display:none;}
-.market-preview-tabs button{flex:none;min-height:34px;padding:8px 10px;border:1px solid #e3e3e3;
- border-radius:5px;background:#fff;color:#777;font-size:10px;white-space:nowrap;}
-.market-preview-tabs button[aria-selected=true]{background:#242424;color:#fff;border-color:#242424;}
-.market-preview-current{text-align:center;font-size:10px;color:#777;}
-.market-preview-visual{min-height:0;flex:1;display:flex;align-items:center;justify-content:center;overflow:auto;touch-action:pan-y;user-select:none;-webkit-user-select:none;}
-.market-preview-phone{width:min(250px,75vw);height:360px;border:1px solid #d5d5d5;
- border-radius:24px;background:#f7f7f6;overflow:hidden;box-shadow:0 12px 22px #00000010;}
-.market-preview-status{height:24px;display:flex;justify-content:space-between;align-items:center;
- padding:9px 14px 0;color:#303030;font:9px/1 Georgia,serif;}
-.market-preview-body{height:calc(100% - 24px);display:flex;flex-direction:column;padding:10px 13px;gap:9px;overflow:hidden;}
-.market-preview-dialog footer{display:flex;align-items:center;gap:7px;flex-wrap:wrap;}
-.market-preview-dialog footer button{flex:1;min-height:40px;border:1px solid #d7d7d7;
- border-radius:6px;background:#fff;font-size:10px;padding:8px;}
-.market-preview-dialog footer [data-market-apply]{background:#1b1b1b;color:#fff;border-color:#1b1b1b;flex:1.2;}
-/* Preview layouts are illustrative, never copies of a user's conversations. */
-.mp-mini-head,.mp-mini-chat-head{display:flex;align-items:center;justify-content:space-between;
- min-height:22px;gap:5px;font-size:10px;}
-.mp-mini-head strong,.mp-mini-chat-head strong{font:400 15px Georgia,serif;}
-.mp-circle{width:18px;height:18px;border-radius:50%;background:#e3e3e3;}
-.mp-dots{font-size:18px;}
-.mp-mini-id{display:flex;gap:9px;align-items:center;padding:6px 0 12px;}
-.mp-photo{width:33px;height:33px;background:linear-gradient(130deg,#d8d8d8,#747474);border-radius:5px;flex:none;}
-.mp-mini-id>span:last-child{display:flex;flex-direction:column;font-size:11px;gap:4px;}
-.mp-mini-id small{display:block;font-size:8px;color:#888;}
-.mp-mini-row{display:flex;gap:8px;align-items:center;min-height:40px;}
-.mp-mini-row i{width:29px;height:29px;flex:none;border-radius:6px;background:linear-gradient(120deg,#e2e2e2,#8d8d8d);}
-.mp-mini-row span{flex:1;display:flex;flex-direction:column;gap:5px;min-width:0;}
-.mp-mini-row b{font-weight:500;font-size:10px;}
-.mp-mini-row small{font-size:9px;color:#8c8c8c;}
-.mp-mini-row em{font:8px Georgia,serif;color:#aaa;font-style:normal;}
-.mp-mini-date{font:8px Georgia,serif;letter-spacing:.1em;text-align:center;color:#aaa;margin:16px 0 10px;}
-.mp-bubble{max-width:76%;padding:7px 9px;background:#ebebeb;border-radius:9px 9px 9px 2px;font-size:10px;}
-.mp-bubble.right{align-self:flex-end;background:#242424;color:#fff;border-radius:9px 9px 2px 9px;}
-.mp-mini-tools{display:flex;justify-content:space-around;border-top:1px solid #e5e5e5;margin-top:auto;padding:10px 0 5px;font-size:13px;}
-.mp-mini-input{border-radius:15px;background:#fff;padding:9px;font-size:9px;color:#aaa;}
-.mp-mini-input span{float:right;color:#444;}
-.mp-mini-cover{height:90px;border-radius:5px;background:linear-gradient(135deg,#c7c7c7,#f7f7f7,#515151);
- display:flex;align-items:end;justify-content:flex-end;padding:10px;font-size:11px;color:#fff;}
-.mp-mini-cover.small{height:85px;}
-.mp-mini-photo,.mp-mini-gallery{display:flex;gap:5px;}
-.mp-mini-photo span{height:61px;flex:1;background:linear-gradient(120deg,#f1f1f1,#959595);border-radius:3px;}
-.mp-mini-photo span:nth-child(2){background:linear-gradient(140deg,#626262,#c7c7c7);}
-.mp-mini-photo span:nth-child(3){background:linear-gradient(100deg,#d6d6d6,#999);}
-.mp-mini-meta{font-size:9px;color:#aaa;}
-.mp-mini-menu{display:flex;justify-content:space-between;font-size:10px;padding:8px 4px;border-bottom:1px solid #e6e6e6;}
-.mp-home-id{display:flex;flex-direction:column;align-items:center;gap:5px;padding:5px 0;}
-.mp-home-id strong{font:400 13px Georgia,"Songti SC",serif;}
-.mp-home-id small{font-size:9px;color:#aaa;}
-.mp-mini-stats{display:flex;justify-content:space-around;text-align:center;font:14px Georgia,serif;}
-.mp-mini-stats span{display:flex;flex-direction:column;gap:2px;}
-.mp-mini-stats small{font:8px sans-serif;color:#aaa;}
-.mp-mini-gallery i{height:48px;flex:1;border-radius:3px;background:linear-gradient(150deg,#e8e8e8,#777);}
-.mp-mini-gallery i:nth-child(even){background:linear-gradient(45deg,#666,#d3d3d3);}
 @media(hover:hover){.market-scene:hover{transform:translateY(-3px)}}
 @media(max-width:370px){
  .store-app .topbar{padding-left:14px;padding-right:14px;}
@@ -226,19 +157,6 @@
  .market-hub-grid{gap:6px;}
  .market-hub-item{grid-template-columns:26px minmax(0,1fr) 9px;gap:5px;padding:8px 6px;}
 }
-@media(max-height:680px){
- .market-preview-dialog{gap:6px;padding:10px;}
- .market-preview-phone{height:270px;width:190px;}
-}
-@media(max-width:360px){
- .market-preview-overlay{padding:calc(10px + env(safe-area-inset-top)) 10px calc(10px + env(safe-area-inset-bottom));}
- .market-preview-dialog{gap:8px;padding:12px 11px 10px;}
- .market-preview-phone{width:min(228px,78vw);}
- .market-preview-tabs{gap:5px;}
- .market-preview-dialog footer{gap:6px;}
- .market-preview-dialog footer button{min-height:38px;padding:7px 6px;}
-}
 @media(prefers-reduced-motion:reduce){
- .store-app :is(.market-scene,.market-primary,.market-subtle,.market-secondary,.market-mini-action,.market-hub-item),
- .market-preview-overlay *{transition:none!important;animation:none!important;scroll-behavior:auto!important;}
+ .store-app :is(.market-scene,.market-primary,.market-subtle,.market-secondary,.market-mini-action,.market-hub-item){transition:none!important;animation:none!important;scroll-behavior:auto!important;}
 }

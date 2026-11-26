@@ -253,6 +253,21 @@ Acceptance:
 - Settings gallery supports per-character and public/private filtering, and generation/persistence failures are visible.
 - Tests cover prompt construction, record persistence, privacy filtering, backup inclusion, and chat command/render contracts.
 
+### THEME-PREVIEW-005 — 六套主题 × 五场景真实预览
+**Priority:** P1 · **Status:** IN PROGRESS (2026-11-26; 总控复核 7196284933 五项返修在原分支完成本地隔离验证：五场景真实结构骨架、atmosphere/iMessage 等价属性、逐场景 CSS 映射、30 组合持久 Chromium 矩阵（结构/属性/规则解析/稳定 computed 命中/回退清理）；RP Node 14/14、相邻 Node 49/49、相邻浏览器全过、`npm run build` 0 / 隔离门 3/3。待推送 Draft PR #547、总控独立复核与真机验收 — device NOT VERIFIED. Branch `THEME-PREVIEW-005/real-scene-previews`)
+
+**Base:** latest QA-published candidate `bc7d062f333d29c3623a660193c171f094550eb5` (stage04 integration plus subsequent admin-context follow-up). Do not branch from stale #531 head `49e6267f`.
+
+**Scope:** Implement real previews for six full themes (`default`, `imessage`, `qq`, `silver-butterfly`, `wechat`, `atmosphere`) across five real scenes: chat list, chat detail, Moments, profile, and My Moments. The independent `messages-editorial` list preset is not a full theme.
+
+**Execution:** Start with runnable isolation prototypes for chat detail and Moments, then select the smallest architecture that proves visual fidelity, data isolation, and mobile performance. Expand to all 30 theme/scene pairs. Unsupported theme/scene pairs must show the real scene with default styling and an explicit “该主题不修改此页面” note; do not silently imply that the theme applies.
+
+**Non-negotiable safety:** Use synthetic fixtures only. Do not mount production storage, AI, MCP, memory/worldbook, message-send, or upload scripts. Block Moments `/chat/completions` and all non-static network activity. Never call `ChatBeauty.setThemePreset()` or `ChatBeauty.resolve(realContactId)`; only use `ChatBeauty.applyVars(vars, isolatedRoot)` after proving its scope cannot reach the live phone shell. No localStorage/IndexedDB reads or writes, no user media, no schema/backup/Service Worker/account/wallet/desktop-layout changes.
+
+**Acceptance:** 30 combinations are reachable; actual scene structure and production theme CSS are reused rather than static fake mockups; one active preview instance at a time; swipe/tabs/buttons/keyboard/Esc/backdrop/focus/ARIA/body-scroll/reduced-motion behavior preserved; 50 open-close cycles leave no overlay, lock, listeners, timers, or errors; storage and theme settings remain byte-for-byte unchanged; Chromium 320/375/390/430px, focused Node tests, and Vite build pass. Migrate old preview tests to the new behavior before deleting old preview JS/CSS; retain `themeArt` card covers unless proven unused.
+
+**Delivery:** Commit code and tests directly on the task branch and open a reviewable PR. Update only repository-internal `EXECUTION_LOG.md` / backlog status as required by AGENTS.md. Do not send the owner separate Markdown handoff files, ZIPs, patch bundles, or screenshot bundles. Final PR comment should contain exact changed files, commands, results, blockers, and rollback. No merge or deployment without a separate owner instruction.
+
 ## Phase 3 — Shared architecture and feature safety
 
 ### ARCH-001 — Reduce chat-detail coupling

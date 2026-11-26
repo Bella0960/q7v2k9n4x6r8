@@ -382,6 +382,32 @@
         return Object.assign({}, ATMOSPHERE_BUBBLE_DEFAULTS);
     };
 
+    // Isolated preview-only vars: built-in defaults + the chosen preset's bubble
+    // defaults, with NO localStorage / IndexedDB / saved global-or-role layering.
+    // Used by the storefront real-scene preview so it can style an isolated shell
+    // without reading or writing the live user's theme settings. resolve() stays
+    // unchanged for real pages.
+    NS.blankVars = function (preset) {
+        var out = {};
+        for (var k in DEFAULTS) out[k] = Array.isArray(DEFAULTS[k]) ? DEFAULTS[k].slice() : DEFAULTS[k];
+        var active = (preset === 'imessage' || preset === 'qq' || preset === 'silver-butterfly' ||
+            preset === 'wechat' || preset === 'atmosphere') ? preset : 'default';
+        if (active === 'default') {
+            for (var lightKey in LIGHT_DEFAULTS) out[lightKey] = LIGHT_DEFAULTS[lightKey];
+        }
+        var pageDefaults = active === 'imessage' ? IMESSAGE_BUBBLE_DEFAULTS :
+            (active === 'silver-butterfly' ? SILVER_BUTTERFLY_BUBBLE_DEFAULTS :
+            (active === 'atmosphere' ? ATMOSPHERE_BUBBLE_DEFAULTS :
+            (active === 'wechat' ? WECHAT_BUBBLE_DEFAULTS : null)));
+        if (pageDefaults) {
+            for (var tk in pageDefaults) {
+                if (tk in DEFAULTS) out[tk] = Array.isArray(pageDefaults[tk]) ? pageDefaults[tk].slice() : pageDefaults[tk];
+            }
+        }
+        out.themePreset = active;
+        return out;
+    };
+
     /* ========== 读取与合并 ========== */
 
     // 最终参数 = 内置默认 < 全局 < 单聊；null / 空串视为"未设置"，继续下沉

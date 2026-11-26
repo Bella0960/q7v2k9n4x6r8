@@ -36,16 +36,11 @@
   {id:'dialog',name:'双人对话',shape:'chat',subtitle:'2 × 2 · 气泡'}
  ];
  var screens=[
-  {id:'list',name:'聊天首页',title:'CHATS',subtitle:'干净的会话节奏',
-   body:'<div class="mp-mini-head"><span class="mp-circle"></span><strong>Chats</strong><span class="mp-dots">···</span></div><div class="mp-mini-id"><span class="mp-photo"></span><span>我的日常<small>MONDAY · 09:41</small></span></div><div class="mp-mini-row"><i></i><span><b>沈知行</b><small>晚一点见。</small></span><em>09:30</em></div><div class="mp-mini-row"><i></i><span><b>林望</b><small>这张照片很漂亮。</small></span><em>08:55</em></div><div class="mp-mini-row"><i></i><span><b>好友群聊</b><small>下午有什么安排？</small></span><em>昨天</em></div>'},
-  {id:'detail',name:'聊天详情',title:'MESSAGES',subtitle:'纤细气泡与横向功能栏',
-   body:'<div class="mp-mini-chat-head"><span>‹</span><strong>沈知行</strong><span>···</span></div><div class="mp-mini-date">TODAY 09:41</div><div class="mp-bubble">天气很好。</div><div class="mp-bubble right">一起出去走走？</div><div class="mp-bubble">好，等你。</div><div class="mp-mini-tools"><span>▢</span><span>◇</span><span>♩</span><span>⌖</span><span>···</span></div><div class="mp-mini-input">发送消息 <span>↗</span></div>'},
-  {id:'moments',name:'动态',title:'MOMENTS',subtitle:'照片、评论与清晰时间线',
-   body:'<div class="mp-mini-chat-head"><span>‹</span><strong>动态</strong><span>▢</span></div><div class="mp-mini-cover"><span>我的日常</span></div><div class="mp-mini-row"><i></i><span><b>林望</b><small>今天的阳光很好。</small></span><em>2h</em></div><div class="mp-mini-photo"><span></span><span></span><span></span></div><div class="mp-mini-meta">♡　评论　·　今天 09:41</div>'},
-  {id:'mine',name:'我的',title:'PROFILE',subtitle:'个人资料与轻量功能入口',
-   body:'<div class="mp-mini-head"><span class="mp-circle"></span><strong>我的</strong><span>···</span></div><div class="mp-mini-cover small"></div><div class="mp-mini-id"><span class="mp-photo"></span><span>我的资料<small>编辑资料与头像</small></span></div><div class="mp-mini-menu">我的主页 </div><div class="mp-mini-menu">我的收藏 </div><div class="mp-mini-menu">钱包 </div><div class="mp-mini-menu">设置 </div>'},
-  {id:'home',name:'我的主页',title:'MY SPACE',subtitle:'独立封面与动态照片轨道',
-   body:'<div class="mp-mini-chat-head"><span>‹</span><strong>MY SPACE</strong><span>◐</span></div><div class="mp-mini-cover"></div><div class="mp-home-id"><span class="mp-photo"></span><strong>我的主页</strong><small>一句私人的注释</small></div><div class="mp-mini-stats"><span>08<small>动态</small></span><span>12<small>照片</small></span><span>32<small>喜欢</small></span></div><div class="mp-mini-gallery"><i></i><i></i><i></i><i></i></div>'}
+  {id:'list',name:'聊天首页'},
+  {id:'detail',name:'聊天详情'},
+  {id:'moments',name:'动态'},
+  {id:'mine',name:'我的'},
+  {id:'home',name:'我的主页'}
  ];
  function esc(value){return String(value==null?'':value).replace(/[&<>"']/g,function(c){return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c];});}
  function ico(name){
@@ -159,111 +154,11 @@
   if(!widgets.some(function(w){return w.id===id;}))return false;
   global.location.href='../desktop/widgets.html?widget='+encodeURIComponent(id);return true;
  }
- var overlay=null,lastFocus=null,lastScreen=0,lockedBodyScroll='';
- var gesture=null;
- var SWIPE_MIN_X=45,SWIPE_RATIO=1.3,SWIPE_EDGE=12;
- // Resolve a finished gesture from its final pointer position; an earlier
- // over-threshold move does not count. Returns 1 / -1 / 0 (no turn).
- function swipeDirection(g,endX,endY){
-  var dx=endX-g.startX,dy=endY-g.startY;
-  if(Math.abs(dx)<SWIPE_MIN_X)return 0;
-  if(Math.abs(dx)<SWIPE_RATIO*Math.abs(dy))return 0;
-  return dx<0?1:-1;
- }
- function previewScreen(i){
-  if(!overlay)return;
-  lastScreen=(i+screens.length)%screens.length;
-  var screen=screens[lastScreen],view=overlay.querySelector('.market-preview-visual');
-  if(view)view.innerHTML='<div class="market-preview-phone"><div class="market-preview-status">9:41 <span>◔  ▰</span></div><div class="market-preview-body">'+screen.body+'</div></div>';
-  var title=overlay.querySelector('.market-preview-current');
-  if(title)title.textContent=screen.name+' / '+screen.subtitle;
-  overlay.querySelectorAll('[data-screen-index]').forEach(function(btn){
-   var selected=Number(btn.dataset.screenIndex)===lastScreen;
-   btn.setAttribute('aria-selected',selected?'true':'false');btn.tabIndex=selected?0:-1;
-  });
- }
- function clearGesture(){gesture=null;}
- function bindPreviewGesture(visual){
-  if(!visual||typeof global.PointerEvent==='undefined')return;
-  visual.addEventListener('pointerdown',function(event){
-   if(gesture)return;
-   if(event.pointerType==='mouse'&&event.button!==0)return;
-   if(event.target.closest('button,a,input,select,textarea'))return;
-   var box=visual.getBoundingClientRect();
-   var x=event.clientX-box.left;
-   if(box.width>0&&(x<SWIPE_EDGE||x>box.width-SWIPE_EDGE))return;
-   gesture={pointerId:event.pointerId,startX:event.clientX,startY:event.clientY};
-   try{visual.setPointerCapture(event.pointerId);}catch(e){}
-  });
-  visual.addEventListener('pointermove',function(event){
-   if(!gesture||event.pointerId!==gesture.pointerId)return;
-   var dx=event.clientX-gesture.startX,dy=event.clientY-gesture.startY;
-   if(Math.abs(dx)>=SWIPE_MIN_X&&Math.abs(dx)>=SWIPE_RATIO*Math.abs(dy))event.preventDefault();
-  });
-  visual.addEventListener('pointerup',function(event){
-   if(!gesture||event.pointerId!==gesture.pointerId)return;
-   var dir=swipeDirection(gesture,event.clientX,event.clientY);
-   clearGesture();
-   if(dir)previewScreen(lastScreen+dir);
-  });
-  // A cancelled gesture (browser takes over scroll, system/device cancel, lost
-  // contact) never turns a page; it only releases the in-progress state.
-  visual.addEventListener('pointercancel',function(event){
-   if(!gesture||event.pointerId!==gesture.pointerId)return;
-   clearGesture();
-  });
-  visual.addEventListener('lostpointercapture',function(event){
-   if(gesture&&event.pointerId===gesture.pointerId)clearGesture();
-  });
- }
- function closePreview(){
-  if(!overlay)return;
-  clearGesture();
-  overlay.remove();overlay=null;
-  document.body.style.overflow=lockedBodyScroll;
-  if(lastFocus&&lastFocus.isConnected)lastFocus.focus();
- }
- function preview(themeId){
-  if(themeId&&themeId!=='atmosphere')return false;
-  if(overlay)closePreview();
-  lastFocus=document.activeElement;lockedBodyScroll=document.body.style.overflow;
-  overlay=document.createElement('div');overlay.className='market-preview-overlay';
-  overlay.innerHTML='<button class="market-preview-backdrop" type="button" aria-label="关闭预览"></button>'+
-   '<section role="dialog" aria-modal="true" aria-label="薄影多页面预览" class="market-preview-dialog">'+
-   '<header><div><small>THEME PREVIEW · SAMPLE</small><strong>薄影 · 逐页体验</strong></div><button type="button" class="market-preview-close" aria-label="关闭">×</button></header>'+
-   '<p class="market-preview-caption">这是五页布局示意，实际使用时显示你的真实聊天、照片和资料。</p>'+
-   '<div class="market-preview-tabs" role="tablist" aria-label="预览页面">'+screens.map(function(s,i){return '<button type="button" role="tab" data-screen-index="'+i+'">'+esc(s.name)+'</button>';}).join('')+'</div>'+
-   '<div class="market-preview-current"></div><div class="market-preview-visual"></div>'+
-   '<footer><button type="button" data-market-prev>上一页</button><button type="button" data-market-next>下一页</button><button type="button" data-market-apply>应用这个主题</button></footer></section>';
-  overlay.querySelector('.market-preview-backdrop').addEventListener('click',closePreview);
-  overlay.querySelector('.market-preview-close').addEventListener('click',closePreview);
-  overlay.querySelector('[data-market-prev]').addEventListener('click',function(){previewScreen(lastScreen-1);});
-  overlay.querySelector('[data-market-next]').addEventListener('click',function(){previewScreen(lastScreen+1);});
-  overlay.querySelector('[data-market-apply]').addEventListener('click',function(){
-   closePreview();document.dispatchEvent(new CustomEvent('maomao:market-apply-atmosphere'));
-  });
-  overlay.querySelectorAll('[data-screen-index]').forEach(function(btn){btn.addEventListener('click',function(){previewScreen(Number(btn.dataset.screenIndex));});});
-  overlay.addEventListener('keydown',function(event){
-   if(event.key==='Escape'){event.preventDefault();closePreview();return;}
-   if(event.key==='ArrowRight'&&event.target.closest('[role=tablist]')){event.preventDefault();previewScreen(lastScreen+1);overlay.querySelector('[data-screen-index="'+lastScreen+'"]').focus();}
-   if(event.key==='ArrowLeft'&&event.target.closest('[role=tablist]')){event.preventDefault();previewScreen(lastScreen-1);overlay.querySelector('[data-screen-index="'+lastScreen+'"]').focus();}
-   if(event.key==='Tab'){
-    var all=Array.from(overlay.querySelectorAll('button')).filter(function(b){return !b.disabled&&b.getClientRects().length;});
-    if(!all.length)return;
-    if(event.shiftKey&&document.activeElement===all[0]){event.preventDefault();all[all.length-1].focus();}
-    else if(!event.shiftKey&&document.activeElement===all[all.length-1]){event.preventDefault();all[0].focus();}
-   }
-  });
-  bindPreviewGesture(overlay.querySelector('.market-preview-visual'));
-  document.body.append(overlay);document.body.style.overflow='hidden';
-  previewScreen(0);overlay.querySelector('.market-preview-close').focus();return true;
- }
  global.MAOMAOMarketExpansion=Object.freeze({
   renderDiscover:renderDiscover,renderThemeFeature:renderThemeFeature,
   renderWidgets:renderWidgets,renderWallpapers:renderWallpapers,renderHub:renderHub,
   renderMineExtra:renderMineExtra,loadWallpaper:loadWallpaper,applyWallpaper:applyWallpaper,
-  route:route,widgetRoute:widgetRoute,preview:preview,
-  _previewState:function(){return {open:!!overlay,screen:lastScreen,gestureActive:!!gesture};},
+  route:route,widgetRoute:widgetRoute,
   wallpapers:Object.freeze(Object.keys(originals)),widgets:Object.freeze(widgets.map(function(w){return w.id;}))
  });
 })(window);
