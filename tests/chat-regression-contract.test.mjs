@@ -76,15 +76,15 @@ const wechatThemeCss = read('shared/css/wechat-theme-refinements.css');
 const packageJson = JSON.parse(read('package.json'));
 
 test('contacts page keeps the neutral background continuous through the bottom shell', () => {
-  const shellRule = contactsPage.match(/\\.phone-mockup\\s*\\{([\\s\\S]*?)\\n\\s*\\}/)?.[1] || '';
-  const stageRule = contactsPage.match(/\\.contact-stage\\s*\\{([\\s\\S]*?)\\n\\s*\\}/)?.[1] || '';
+  const shellRule = contactsPage.match(/\.phone-mockup\s*\{([\s\S]*?)\n\s*\}/)?.[1] || '';
+  const stageRule = contactsPage.match(/\.contact-stage\s*\{([\s\S]*?)\n\s*\}/)?.[1] || '';
   const silverTheme = read('shared/css/silver-butterfly-theme.css');
 
-  assert.match(shellRule, /background-color:\\s*#FAFAFA/i, 'outer contacts shell should match the neutral contact canvas');
-  assert.match(stageRule, /background:\\s*#FAFAFA/i, 'contact content stage should retain its neutral canvas');
-  assert.match(silverTheme, /\\.phone-mockup\\[data-chat-theme-preset="silver-butterfly"\\][\\s\\S]*?background:\\s*linear-gradient/i);
-  assert.match(wechatThemeCss, /\\.phone-mockup\\[data-chat-theme-preset="wechat"\\][\\s\\S]*?background:\\s*var\\(--wechat-page\\)\\s*!important/i);
-});
+  assert.match(shellRule, /background-color:\s*#FAFAFA/i, 'outer contacts shell should match the neutral contact canvas');
+  assert.match(stageRule, /background:\s*#FAFAFA/i, 'contact content stage should retain its neutral canvas');
+  assert.match(silverTheme, /\.phone-mockup\[data-chat-theme-preset="silver-butterfly"\][\s\S]*?background:\s*linear-gradient/i);
+  assert.match(wechatThemeCss, /\.phone-mockup\[data-chat-theme-preset="wechat"\][\s\S]*?background:\s*var\(--wechat-page\)\s*!important/i);
+});;
 
 test('synthetic fixture set covers the compatibility-critical message families', () => {
   const ids = fixtures.cases.map((item) => item.id);
