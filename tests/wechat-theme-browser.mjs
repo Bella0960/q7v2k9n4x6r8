@@ -155,6 +155,50 @@ try {
         assert.ok(metrics.documentWidth <= width + 1, label + ' document overflow: ' + JSON.stringify(metrics));
         assert.ok(metrics.bodyWidth <= width + 1, label + ' body overflow: ' + JSON.stringify(metrics));
 
+        if (label === 'Moments') {
+          const momentsHeader = await page.locator('.wechat-moments-toolbar').evaluate(toolbar => {
+            const box = element => {
+              const rect = element.getBoundingClientRect();
+              return [Math.round(rect.width), Math.round(rect.height)];
+            };
+            const back = toolbar.querySelector('.wechat-moments-back svg');
+            const camera = toolbar.querySelector('#wechatMomentsCamera svg');
+            const cover = toolbar.parentElement.querySelector('.cover-block');
+            return {
+              display: getComputedStyle(toolbar).display,
+              back: box(back),
+              camera: box(camera),
+              toolbarHeight: Math.round(toolbar.getBoundingClientRect().height),
+              toolbarBottom: Math.round(toolbar.getBoundingClientRect().bottom),
+              coverTop: Math.round(cover.getBoundingClientRect().top)
+            };
+          });
+          assert.equal(momentsHeader.display, 'flex', 'WeChat Moments toolbar is visible in WeChat theme');
+          assert.deepEqual(momentsHeader.back, [20, 20], 'Moments back arrow remains 20px');
+          assert.deepEqual(momentsHeader.camera, [21, 21], 'Moments publish icon remains 21px');
+          assert.equal(momentsHeader.toolbarHeight, 88, 'Moments toolbar stays 88px high');
+          assert.equal(momentsHeader.coverTop, momentsHeader.toolbarBottom, 'Moments cover starts directly below toolbar');
+
+          await page.evaluate(() => {
+            localStorage.setItem('maomao_chat_theme_preset', 'default');
+            window.dispatchEvent(new Event('maomao:chat-theme-change'));
+          });
+          await page.waitForFunction(() =>
+            document.querySelector('.phone-mockup')?.getAttribute('data-chat-theme-preset') === 'default'
+          );
+          const defaultToolbarDisplay = await page.locator('.wechat-moments-toolbar')
+            .evaluate(toolbar => getComputedStyle(toolbar).display);
+          assert.equal(defaultToolbarDisplay, 'none', 'WeChat-only Moments toolbar stays hidden in default theme');
+
+          await page.evaluate(() => {
+            localStorage.setItem('maomao_chat_theme_preset', 'wechat');
+            window.dispatchEvent(new Event('maomao:chat-theme-change'));
+          });
+          await page.waitForFunction(() =>
+            document.querySelector('.phone-mockup')?.getAttribute('data-chat-theme-preset') === 'wechat'
+          );
+        }
+
         if (label === 'chat detail') {
           const send = page.locator('#myFloatSend');
           await send.waitFor({ state: 'visible', timeout: 10000 });
