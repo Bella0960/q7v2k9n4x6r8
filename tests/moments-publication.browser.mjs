@@ -37,6 +37,26 @@ try {
         const target=origin+'/chat/moments/moments.html';
         await page.goto(target);
         await page.waitForFunction(()=>!!window.MomentsChatAction&&!!window.MomentsCoverStore);
+        const momentsHeader = await page.locator('.wechat-moments-toolbar').evaluate(toolbar => {
+            const rect = element => {
+                const box = element.getBoundingClientRect();
+                return [Math.round(box.width), Math.round(box.height)];
+            };
+            const back = toolbar.querySelector('.wechat-moments-back svg');
+            const camera = toolbar.querySelector('#wechatMomentsCamera svg');
+            const cover = toolbar.parentElement.querySelector('.cover-block');
+            return {
+                back: rect(back),
+                camera: rect(camera),
+                toolbarHeight: Math.round(toolbar.getBoundingClientRect().height),
+                toolbarBottom: Math.round(toolbar.getBoundingClientRect().bottom),
+                coverTop: Math.round(cover.getBoundingClientRect().top)
+            };
+        });
+        assert.deepEqual(momentsHeader.back, [20, 20], 'back arrow must remain a compact 20px icon');
+        assert.deepEqual(momentsHeader.camera, [21, 21], 'publish icon must remain compact');
+        assert.equal(momentsHeader.toolbarHeight, 88, 'Moments toolbar must not expand with SVG intrinsic sizing');
+        assert.equal(momentsHeader.coverTop, momentsHeader.toolbarBottom, 'cover must start directly below the toolbar');
         await page.evaluate(()=>{
             window.mockCalls=0;
             window.PhoneAPI.complete=async opts=>{
