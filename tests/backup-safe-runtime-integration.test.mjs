@@ -9,11 +9,13 @@ const media=()=>pack(undefined,{media:{audio:[{id:'a',blob:'YWJj'}]}},{media:1})
 function fixture(opts={}){
  const data=Object.assign(Object.create(null),{chat_history_A:'[{"text":"原文"}]',api_settings:'fixture-config'});
  let writes=0,confirmed=0,created=0,deleted=0,task,prompt='',rp;
- const attempted=[];
+ const attempted=[],checkpoints=[];
  const alerts=[],toasts=[];
  const localStorage=new Proxy(data,{get(t,k){if(k==='getItem')return id=>Object.hasOwn(t,id)?t[id]:null;if(k==='setItem')return (id,v)=>{writes++;t[id]=String(v);};return t[k];}});
  const account={ready:true,accountId:'fixture'};
- const window={__MAO_ACCOUNT_SCOPE__:opts.notReady?undefined:account};
+ const window={__MAO_ACCOUNT_SCOPE__:opts.notReady?undefined:account,crypto:{subtle:{digest:async(algo,bytes)=>{
+   const out=new Uint8Array(32);for(let i=0;i<bytes.length;i++)out[i%32]=(out[i%32]*31+bytes[i])&255;return out.buffer;
+ }}}};
  const document={querySelector:()=>({content:'fixture'})};
  const snapshot=()=>Object.assign({},data);
  const neverBackupKey=k=>k==='auth_token';
@@ -27,15 +29,22 @@ function fixture(opts={}){
   toast:x=>toasts.push(x),alert:x=>alerts.push(x),confirm:x=>{confirmed++;prompt=x;return !opts.cancel;},
   snapshot,RP_ROLE_PRE:'pre-import',
   captureMediaRestorePoint:async()=>{if(opts.captureFail)throw Error('fixture');return '{"media":{"existed":true,"stores":{}}}';},
-  rpWriteSnapshot:async(snap,role,media)=>{created++;rp={snap:Object.assign({},snap),media:opts.corruptMedia?'{}':media};if(opts.stale)data.chat_history_A='[]';},
+  rpWriteSnapshot:async(snap,role,media)=>{created++;rp={role,createdAt:1,snap:Object.assign({},snap),media:opts.corruptMedia?'{}':media};if(opts.stale)data.chat_history_A='[]';},
   rpReadSnapshot:async()=>opts.existing?{snap:{},media:'{}'}:rp||null,verifyRestore:()=>({ok:true}),
+  rpOpen:async()=>({close(){},transaction(){
+   let next=rp,stopped=false;const tx={objectStore(){return {get(){const req={};Promise.resolve().then(()=>{
+    req.result=rp;req.onsuccess();if(!stopped){rp=next;tx.oncomplete();}
+   });return req;},put(record){checkpoints.push(JSON.parse(JSON.stringify(record.journal)));if(opts.checkpointFail===checkpoints.length){tx.abort();return;}next=record;},
+   delete(){deleted++;if(opts.cleanupFail){tx.abort();return;}next=null;}
+   };},abort(){if(!stopped){stopped=true;tx.onabort();}}};return tx;
+  }}),RP_STORE_NAME:'restores',
   downloadSnapshot:()=>{},restore:snap=>{writes++;Object.keys(data).forEach(k=>delete data[k]);Object.assign(data,snap);return true;},
   restoreScoped:()=>true,carryOverSecrets:(incoming,old)=>{if(!Object.hasOwn(incoming,'api_settings'))data.api_settings=old.api_settings;return {written:1,failed:0,failedKeys:[]};},
   restoreDatabase:async(name)=>{attempted.push(name);if(opts.dbFail)throw Error('fixture');return {written:opts.countMismatch?0:1,skipped:opts.skip?1:0};},
-  checkFontPresetOrphan:async()=>false,rpDeleteRole:()=>{deleted++;return !opts.cleanupFail;},setTimeout:()=>{},location:{reload(){}}
+  checkFontPresetOrphan:async()=>false,rpDeleteRole:()=>{throw Error('must use exact cleanup');},setTimeout:()=>{},location:{reload(){}}
  };
  const api=new Function(...Object.keys(params),source.slice(start,end)+'\nreturn {validateRestorePayload,restoreOutcomeComplete,handleImportFile};')(...Object.values(params));
- return {api,data,alerts,toasts,writes:()=>writes,confirmed:()=>confirmed,created:()=>created,deleted:()=>deleted,prompt:()=>prompt,attempted:()=>attempted,async run(obj){api.handleImportFile(JSON.stringify(obj));await task;},async runRaw(raw){api.handleImportFile(raw);await task;}};
+ return {api,data,alerts,toasts,writes:()=>writes,confirmed:()=>confirmed,created:()=>created,deleted:()=>deleted,prompt:()=>prompt,attempted:()=>attempted,checkpoints:()=>checkpoints,point:()=>rp,async run(obj){api.handleImportFile(JSON.stringify(obj));await task;},async runRaw(raw){api.handleImportFile(raw);await task;}};
 }
 test('valid legacy text accepted',()=>assert.equal(fixture().api.validateRestorePayload(pack(),''),''));
 test('invalid history rejected',()=>assert.ok(fixture().api.validateRestorePayload(pack({chat_history_A:'{}'}),'')));
@@ -72,3 +81,9 @@ test('media snapshot failure blocks local and media writes',async()=>{const f=fi
 test('media recovery point readback mismatch blocks restore',async()=>{const f=fixture({corruptMedia:true});await f.run(media());assert.equal(f.created(),1);assert.equal(f.writes(),0);assert.equal(f.deleted(),0);});
 
 test('cleanup failure does not report unqualified import success',async()=>{const f=fixture({cleanupFail:true});await f.run(media());assert.equal(f.deleted(),1);assert.ok(f.alerts.some(x=>x.includes('恢复点未能清理')));assert.ok(!f.toasts.some(x=>x.includes('导入成功')));});
+
+test('actual import persists intent and writing state before writes',async()=>{const f=fixture();await f.run(media());assert.equal(f.checkpoints()[0].local.state,'not-started');assert.equal(f.checkpoints()[1].local.state,'writing');assert.equal(f.checkpoints()[2].local.state,'verified');assert.equal(f.checkpoints()[3].databases[0].state,'writing');assert.equal(f.checkpoints()[4].databases[0].state,'reported-committed');assert.equal(f.deleted(),1);});
+test('checkpoint failure before local mutation blocks all business writes',async()=>{const f=fixture({checkpointFail:2});await f.run(media());assert.equal(f.writes(),0);assert.equal(f.attempted().length,0);assert.equal(f.deleted(),0);assert.equal(f.point().journal.local.state,'not-started');});
+test('checkpoint failure after local mutation blocks media writes',async()=>{const f=fixture({checkpointFail:3});await f.run(media());assert.equal(f.writes()>0,true);assert.equal(f.attempted().length,0);assert.equal(f.point().journal.local.state,'writing');assert.equal(f.deleted(),0);});
+test('failed media reports uncertainty and keeps intent',async()=>{const f=fixture({dbFail:true});await f.run(media());assert.equal(f.point().journal.local.state,'verified');assert.equal(f.point().journal.databases[0].state,'uncertain');assert.equal(f.deleted(),0);});
+test('media write intent checkpoint failure stops before opening target',async()=>{const f=fixture({checkpointFail:4});await f.run(media());assert.equal(f.attempted().length,0);assert.equal(f.point().journal.databases[0].state,'not-started');assert.equal(f.deleted(),0);});
