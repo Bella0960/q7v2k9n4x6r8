@@ -285,3 +285,124 @@ On the next turn/session, read this file and the current `AGENTS.md` first. Cont
 - **测试：** 新增 `tests/games-storage-trust.test.mjs`（9 项，VM 跑真实 `saveRaw/saveJSON/saveCaseProgress/selectRole/saveStat`），9/9 通过；7 段内联脚本全部 `vm.Script` 解析通过。
 - **登记未做（需产品决策）：** 游戏大厅只读角色卡 + 记忆无关；不产出世界事件（依赖 `ECO-LINK-002`）；侦探案件生成为付费调用，无次数限制或失败重试预算控制。
 - **未验证：** Vite 全站构建、Chromium 375/390/430、真机、真实配额场景。
+
+
+## 2026-11-26 · GOV-006 · Fast parallel delivery and batched QA release
+
+- **Status:** Governance and read-only conflict-scanner implementation prepared on branch `GOV-006/fast-parallel-qa-delivery-20261126`; open PR, not merged to main and not deployed.
+- **Baseline:** source main `7f666f1d53c593d341b390442e0e4ff1d0a8f39d`. Read current `AGENTS.md`, `RELEASE_POLICY.md`, `DEVELOPMENT_GOVERNANCE.md`, `REMEDIATION_BACKLOG.md`, and the current QA reusable entry and runner.
+- **Verified workflow facts:** the reusable QA request has separate verify/release operations; both invoke `run-candidate.mjs`, which runs the candidate test plan, while release additionally performs QA-only deployment and post-upload checks. QA publication is serialized with `cancel-in-progress: false`; verification uses a separate concurrency group. A same-SHA verify followed by release repeats the test plan.
+- **Adaptive coverage boundary:** inspected candidate `6c61b0395705848dfa898073709a651869e87b90` includes an adaptive presentation classifier for only library, diary, music, travel, cafe, and games. Structural/script/attribute/resource changes and unmapped modules fall back to standard regression. PR #507 remains Draft/open; the active release policy still marks adaptive migration under acceptance.
+- **Latest failure evidence:** QA verify run [#45792397059](https://github.com/Bella0960/web-runtime-lab/actions/runs/45792397059) stopped at gate 27/51, mapped from the candidate test plan to `tests/travel-storage.browser.mjs`. Release was skipped. The available sanitized output does not identify the underlying assertion or prove a product defect; root cause is NOT VERIFIED. No blind rerun or QA request mutation was made.
+- **Changes in this task:** add the mandatory multi-window file-ownership protocol, risk lanes, narrow F1 criteria, one-coordinator batch release, verify/release deduplication, stage-specific failure handling, a read-only GitHub PR file-overlap scanner (`scripts/engineering-pr-conflicts.mjs`), `npm run eng:conflicts`, eight focused unit tests, GOV-006 backlog acceptance, and this durable execution record.
+- **Safety boundary:** no product code, user data, QA request file, workflow, secrets, Worker, identity core, production target, or APK changed. The scanner is read-only and queries public PR metadata/filenames only. No QA deployment requested.
+- **Checks:** eight focused Node unit tests cover exact overlaps, shared hotspots, same-module warnings, disjoint paths, branch exclusions, renamed files, unsafe paths, and empty-scan semantics. Full repository/remote API execution remains NOT VERIFIED until run from a complete checkout with `origin/main` and GitHub API access. No product build or deployment is applicable.
+- **Next:** review PR, merge only with owner authorization; separately diagnose the travel browser gate and complete PR #507 adaptive-path acceptance before claiming the fast selector is globally active.
+
+
+### GOV-006 scanner verification follow-up
+
+- Fixed path matching for quoted or whitespace-containing Git paths, including both sides of local renames. PRs from forks with the same branch name are still scanned.
+- The scanner stops with an incomplete result when the GitHub API quota is exhausted or the PR file list reaches GitHub's 3,000-file cap.
+- Node 24.22.3 syntax check and 10/10 focused tests passed. The CLI regression used real Git commits, staging, and working-tree changes with simulated paginated GitHub responses.
+- Ran `npm run eng:conflicts -- --json` from the GOV-006 checkout with a valid `origin/main` merge base. GitHub's anonymous rate limit prevented the full live scan. Its exit code was 1 and it returned no conflict report. Full authenticated scan remains NOT VERIFIED.
+
+### GOV-006 live repository scan
+
+- Eliminated per-PR API calls. The scanner reads paginated open PR metadata and derives changed paths from the pinned base and head commits in Git. It fetches missing commits without checking out another branch or changing local branch refs.
+- Ran the CLI against the live public source from the GOV-006 checkout with no token. The scan completed across 174 open PRs in two API pages, found 136 PR/path overlaps across six branch paths, and exited 2 as expected. Cross-checked exact findings for PRs #300 and #547 against GitHub’s changed-file lists.
+- Node syntax check, 10/10 focused tests, and `git diff --check` passed. The tests exercise paginated PR metadata, actual Git history, filenames and renames, and incomplete API responses.
+
+### GOV-006 isolated QA batch assembly
+
+- Added `npm run eng:batch` to collect ready task records and assemble their reviewed commits on the recorded QA baseline. The Git ref is created only after every ownership, ancestry, and merge check passes.
+- The isolated Git test verified two independent tasks, preservation of existing baseline content and dirty working files, exclusion of an unfinished task, exact overlap rejection, and rejection of an existing integration ref. Together with the scanner, 11/11 focused tests passed.
+- The current fixed QA workflow was inspected. A QA release, adaptive coverage expansion, and the live version/source receipt remain outside this local assembly verification. Source PR #507 is still open in draft and the active release policy keeps adaptive migration in acceptance.
+
+
+### GOV-006 batch assembly hardening — 2026-11-26
+
+- **Commit:** `e224abdd52955ce6257dc1ee37a028517df7656a` on the existing GOV-006 branch.
+- **Changes:** batch receipts now include each task ID, base SHA, head SHA, and exact owned paths. Git failures include bounded diagnostic output; file-versus-directory merge conflicts expose the conflict type/path and abort before creating the candidate ref.
+- **Tests:** the previous 11/11 focused checks are recorded above. One additional file/directory-conflict regression test was added in this commit. The updated 12-test combined suite has **NOT VERIFIED** status until it is rerun against this commit; do not carry forward the earlier pass as evidence for the new test.
+- **GitHub status:** PR #546 remains open and unmerged. The current commit has two successful Netlify deploy-preview statuses, but no GitHub Actions workflow runs; these are not test results.
+- **Automation boundary:** `eng:batch` still reads a coordinator-local task directory and creates only a local integration ref. Cross-window PR discovery, automated review/check evidence collection, remote candidate push, and one-shot QA request dispatch remain OPEN.
+- **QA dependency:** the fixed reusable QA workflow requires the candidate source to contain the adaptive-release marker. The current #507 base branch's `scripts/qa-direct-release.mjs` lacks that marker; PR #507 head contains it. The live deployed QA source receipt was not read in this checkpoint, so whether the deployed baseline already includes #507 is **NOT VERIFIED**. Confirm this before attempting a batch release.
+- **Safety:** no QA request, QA deployment, production deployment, Worker change, APK action, secret change, or user-data operation was performed.
+- **Next:** implement a durable PR-backed task registry with explicit ready/review/test evidence; then add a safe remote-candidate handoff. Keep QA dispatch as a single coordinator-controlled action under the current release policy.
+
+
+### GOV-006 PR-backed ready-task registry — 2026-11-26
+
+- Added a shared registry embedded in each task PR, plus a command to register/refresh task ID, QA baseline SHA, current head SHA, risk lane, and exact required check names.
+- Added cross-window discovery across all paginated open PRs, exact-head approval validation, required GitHub check validation, stale-head detection, complete changed-file pagination, and exact path comparison against the pinned Git diff.
+- Added automatic task-record generation and reuse of the isolated batch assembler. The candidate is unique and create-only per QA baseline; optional push is non-force and verifies the remote SHA.
+- Added a second ownership scan against non-selected open PRs. Exact path overlap and shared-core hotspot overlap reject the candidate; incomplete scans also reject it.
+- Added owner-only workflow-dispatch entry and focused engineering-tooling CI. The workflow requires the exact current QA source SHA from the latest successful receipt; it does not guess a baseline or deploy QA.
+- **Not yet verified:** run the newly added Node test suite on the current PR head and inspect the GitHub Actions result. No QA request, QA deployment, production deployment, Worker change, secret change, or APK action was performed.
+
+
+### GOV-006 queue hardening follow-up — 2026-11-26
+
+- Fixed the PR base-branch classifier for `integration/*` and `qa/*` task PRs.
+- Commit-status handling now allows a pending legacy combined status only when it has no status contexts; named successful check-runs remain mandatory. A pending/failing context still blocks.
+- Added optional task dependencies and topological ordering. Tasks whose prerequisite is not ready are excluded while independent ready tasks can continue; dependency cycles fail before candidate creation.
+- Candidate push now uses an empty expected remote ref lease, preventing a race from updating a branch created by another run.
+- **Validation status:** focused test additions are committed but not executed in this environment. The current branch has successful Netlify previews; Cloudflare Workers Builds for the production Worker reports `build_outcome: skipped` with no log lines. This is NOT VERIFIED, not a successful build.
+
+### GOV-006 P0-1 dependency propagation — 2026-11-26
+
+- **Commit:** `756d3e488dee3be58a93373da0e9d521515196a9` on the existing GOV-006 branch.
+- **Root cause:** `collectReadyTasks()` parsed `dependsOn` from each PR manifest but omitted it from the registered ready-task object. The coordinator therefore wrote records without dependencies. The batch assembler receipt also omitted the dependency field.
+- **Fix:** propagate `manifest.dependsOn` into ready-task records; preserve it in batch receipts and final included-task receipts. Existing topological sorting, missing-prerequisite rejection, and cycle detection are now connected to the production CLI data path.
+- **Regression coverage added:** five `engineering-qa-queue.mjs assemble` CLI integration cases cover an unready prerequisite with an independent task, dependency/topological order, a missing prerequisite, a dependency cycle, and a standalone independent task. The direct batch test also asserts dependency receipt preservation.
+- **Verification:** **NOT VERIFIED**. The current SHA has no GitHub Actions run. `.github/workflows/engineering-tooling-tests.yml` exists on this PR branch but returns 404 on `main`; therefore this PR cannot use that branch-only workflow as CI evidence. The earlier 29/29 result predates this patch and does not cover these changes. Netlify deploy-preview checks are not test evidence. The Cloudflare Workers Builds check failed and is not a code-test result.
+- **Safety:** no merge to `main`, no official QA request/deployment, no production deployment, no Worker configuration change, no APK action, and no user-data operation.
+- **Next:** execute the committed CLI suite in an authorized Node 22 runner. Do not mark P0-1 complete or start P0-2 until the five CLI cases and the focused queue/batch suites have actually run. Do not merge `main` merely to manufacture a green check.
+
+
+
+### GOV-006 P0-1 test-fixture correction — 2026-11-27
+
+- **Independent execution evidence:** Node.js 22.16.0, full checkout at `294032a42f00032cda34eed67622708761853b65`. Both queue/batch production CLI syntax checks passed. The three focused suites reported 29 passed / 5 failed; all five failures were in queue readiness tests before dependency selection.
+- **Root cause:** the `runQueueAssembleCli()` GitHub API fixture returned only a successful `Node Tests` check-run, while each registered task manifest requires both `Node Tests` and `Vite Build`. The production readiness evaluator correctly blocked the fixture's tasks because the required build evidence was absent.
+- **Independent production-path verification:** the five `assemble` CLI dependency scenarios were separately exercised against the unchanged production CLI with real temporary Git operations and simulated GitHub API responses; all five passed (unready prerequisite, dependency ordering/receipt, missing prerequisite, cycle rejection, and independent task).
+- **Correction:** add a successful `Vite Build` check-run to the queue CLI test fixture, pinned to the same task `head` SHA. No production code or dependency logic changed.
+- **Status:** fixture correction committed; rerun of the three focused suites on the resulting commit is **PENDING / NOT VERIFIED**. P0-1 is not marked complete until that rerun confirms all 34 tests pass.
+- **Safety:** no merge, QA request/deployment, production deployment, Worker change, APK action, secret change, or user-data operation.
+
+
+### GOV-006 P0-2 authoritative QA baseline guard — 2026-11-27
+
+- **Current QA history checked:** all 95 runs of the fixed reusable QA workflow were present in the newest 100 repository workflow-run records (run numbers 95 through 1). The newest successful run #95 is verify-only: its release step was skipped and its immutable request contains candidate `4b49c0a95ea8cfedc8aa2007c061a1f6f6771431`. The newer failed run #92 is also verify-only (candidate `6c61b0395705848dfa898073709a651869e87b90`). The latest successful QA-only release is run #91; its request commit is `49cb60dee61617e4a2161c34330f170cf5190d65`, its release step succeeded, and its source checkout/log confirms deployed candidate `8abeaf52923ebcb39d5270dbe066b089d33b7faf`. PR contract runs #93/#94 do not supersede the release receipt.
+- **Root cause:** the ready-batch workflow validated only SHA syntax. The queue accepted any available commit that satisfied task ancestry; it did not compare the supplied baseline with the latest successful QA-only release source SHA. A valid old baseline could therefore produce a candidate omitting newer deployed files.
+- **Fix in this PR:** query the fixed public QA reusable workflow, distinguish successful release steps from verify-only runs, read the immutable request file at the successful release run's exact QA-repository commit, and use its candidate SHA as the only accepted baseline. Public QA metadata reads are unauthenticated/read-only; source PR discovery remains authenticated.
+- **Guards:** validate before task discovery/assembly, carry the verified release receipt into the batch assembler/candidate commit trailers, and revalidate after assembly at the QA handoff boundary. The duplicate workflow-level preflight was removed so the same API validation is not needlessly repeated; the queue itself is the mandatory first step. If the QA source SHA changes, delete the local candidate ref and stop with the new required baseline.
+- **Fail-closed cases:** missing/invalid release receipts, newer failed or active release attempts, ambiguous successful workflow runs, active QA release requests, and a successful manual-dispatch release without an immutable request-commit receipt cannot be used as a guessed baseline.
+- **Live QA evidence:** the fixed reusable workflow ID is 428897690. Current run #95 (2026-11-26 15:17 UTC) is a successful verify-only request; run #92 is a failed verify-only request; run #91 is the latest successful release. Its immutable request at commit `49cb60dee61617e4a2161c34330f170cf5190d65` names candidate `8abeaf52923ebcb39d5270dbe066b089d33b7faf`, and its release step is confirmed successful. Runs #93/#94 are pull-request contract runs and are excluded. Run #91 job logs confirm the restricted checkout used exact candidate SHA `8abeaf52923ebcb39d5270dbe066b089d33b7faf`, the release ran with `QA_ADAPTIVE_RELEASE=1`, and the final isolated QA-only release/origin checks passed. The candidate's `qa-direct-release.mjs` independently reads the live `preview.mao520.com/qa-build-receipt.json`, requires the deployed source SHA to be an ancestor of the candidate via `qa-release-plan.mjs`, and rechecks the live receipt immediately before upload; a release that lands after batch assembly therefore blocks a stale candidate at release time. The queue guard queries workflow ID 428897690 and orders by latest run-attempt update timestamp, with run-attempt/run-number tie-breaks, so rerunning an older release cannot make a stale deployed SHA appear current.
+- **Safety:** no QA request, QA deployment, production deployment, APK action, merge, or mutation of the QA repository.
+
+- **Local verification:** Node.js 22.16.0 isolated batch assembler syntax check passed; the repository's batch assembler test file passed **5/5**. A separate Node 22.16.0 harness copied from the QA receipt guard logic passed **6/6** cases: latest release selection, stale SHA rejection, failed newer release fail-closed, manual release ambiguity fail-closed, baseline change during assembly, and older release rerun ordering. This does not replace the complete 25-test queue CLI suite.
+- **Hosted CI:** no GitHub Actions run is attached to the current PR head; hosted CI remains **NOT VERIFIED**. No local test result is represented as a hosted Actions pass.
+
+
+### GOV-006 CI trigger and exact-SHA check — 2026-11-27
+
+- **Verified on current main:** `.github/workflows/engineering-tooling-tests.yml` and `.github/workflows/engineering-ready-batch.yml` are absent from main. A pull-request workflow introduced only by PR #546 cannot trigger that same PR; GitHub requires the workflow definition to exist on the default branch for `pull_request` events.
+- **Existing fallback workflow:** `.github/workflows/chat-regression-contract.yml` does exist on main and includes `tests/**`, so the PR's added engineering test files match its current path filter. However, the repository's latest Actions run in the available run listing is dated 2026-11-21; there are no current PR #546 runs. The absence is therefore not explained by the new workflow file alone.
+- **Repo state:** repository is public and not archived/disabled. The connected GitHub read capability does not expose Actions repository settings or credential provenance, so whether Actions are disabled/restricted or branch updates are being made with a workflow-suppressing token remains **NOT VERIFIED**. Do not claim either cause without the Actions settings or an independently generated user push event.
+- **Workflow hardening in this PR:** remove path filters from the lightweight engineering-tools workflow (the suite is about 1.4 seconds locally), run once per PR update and on main pushes/manual dispatch, cancel superseded runs for the same PR, check out the exact PR head SHA, and print event/ref/head/actual checkout SHA/Node version into the job summary. This avoids missed dependency paths, duplicate feature-branch push+PR runs, and ambiguous tested-SHA reports.
+- **Activation limitation:** because the workflow file is not on main yet, this change cannot create a hosted run for PR #546 before it is merged. No merge is authorized or performed. The existing main-branch workflow is the only available PR-trigger fallback; its run is still absent.
+- **Verification:** workflow YAML is reviewed structurally; hosted CI is **NOT VERIFIED**. No tests, QA release, deployment, main update, or APK action were triggered by this change.
+- **Required owner-side setting check:** inspect repository **Settings → Actions → General** and confirm Actions are enabled and permitted for the repository. Also confirm branch updates are made by a user/App credential rather than the workflow's own `GITHUB_TOKEN`, which suppresses downstream workflow events.
+
+## 2026-11-27 · GOV-006 · P0-3 immutable candidate recovery
+
+- **Status:** Implemented on the existing GOV-006 branch and covered by GitHub-hosted tests. PR #546 remains open; no merge, QA request, or deployment was performed.
+- **Root cause:** assembleReadyBatch() rejected any existing local/remote candidate ref before checking for a prior receipt. pushCandidate() rejected every existing remote ref, including the exact same candidate SHA. A failed push therefore left a local candidate ref that the original command could not resume.
+- **Local recovery:** candidate assembly now writes an atomic versioned receipt under Git's private metadata path maomao-qa-batch-receipts/qa-batch-<baseline>.json before any push. It records repository, baseline SHA, candidate SHA, branch, task IDs, task base/head/path/dependency data, PR numbers, QA source receipt, ownership warnings, and creation time. Re-running assemble <baseline> --push validates the receipt and resumes the exact same candidate without reassembling.
+- **Remote behavior:** an empty remote ref is created with an empty expected-ref lease; an identical remote SHA is idempotent success; a different remote SHA blocks without overwrite. A missing local candidate object and empty remote ref fails closed and instructs the coordinator to restore the saved bundle rather than rebuilding silently.
+- **Explicit invalidation:** node scripts/engineering-qa-queue.mjs invalidate <baseline> --confirm-candidate=<candidate-sha> removes only the exact saved local candidate when no remote ref exists. If the exact candidate is already remote, the coordinator must additionally pass --delete-remote; the command checks the QA release queue is idle and uses an exact-old-SHA lease for remote deletion. A different remote SHA is never deleted.
+- **Ephemeral runner recovery:** engineering-ready-batch.yml now assembles locally, archives the candidate Git bundle and receipt before pushing, uploads the artifact for 90 days, and then performs the create-only push. A retry can supply the previous failed run ID via resume_run_id; the workflow validates the receipt, restores the exact bundle/ref, and reuses the same candidate. The artifact is not a QA release receipt and does not authorize deployment.
+- **Hosted verification:** run [45879298762](https://github.com/Bella0960/q7v2k9n4x6r8/actions/runs/45879298762), checked-out SHA  f8c387f2bdd30f7dc744c002b8b73c3ae6f97139, Ubuntu 24.04, Node.js v22.23.5: syntax checks passed; **48/48 engineering-tooling tests passed, 0 failed, 4.00 seconds**. Coverage includes first-push rejection and same-SHA retry, remote different-SHA protection, exact coordinator confirmation, remote-delete lease protection, and workflow artifact ordering/restore contract.
+- **Not yet verified:** the new workflow_dispatch recovery path cannot be executed while its workflow definition is still only in this PR and has not been merged to main. The static workflow contract is covered by the hosted Node suite. The first real post-merge artifact upload/download cycle remains pending. No QA deployment has been attempted.

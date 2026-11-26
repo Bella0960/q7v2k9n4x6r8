@@ -58,6 +58,43 @@ Acceptance:
 
 Execution semantics: “complete all” means all authorized work in the assigned scope, not silently activating deferred roadmap items or crossing approval boundaries. Blocked items must be recorded with the exact dependency and not disguised as completed.
 
+### GOV-006 — Fast parallel delivery and batched QA release
+**Priority:** P0 · **Status:** IN PROGRESS (2026-11-26)
+
+Purpose: reduce owner wait time as MAOMAO and its parallel development windows grow, while preserving all existing correctness, privacy, account, storage, and deployment safeguards.
+
+Verified baseline on 2026-11-26:
+- The public QA reusable entry separates `verify` from `release`, but both operations invoke the candidate test runner; the release operation then deploys. Running both for the same unchanged SHA repeats the test plan.
+- QA publication uses one non-cancelling serialized release group. Verification does not take the publish lock; concurrent publish requests still queue.
+- The inspected adaptive presentation selector currently supports only `library`, `diary`, `music`, `travel`, `cafe`, and `games`, and only a narrow HTML/CSS-only presentation diff. Other changes fall back to the standard test plan.
+- QA infrastructure PR #507 is still Draft/open; the current release policy says adaptive migration remains under acceptance.
+- Latest inspected verify run #45792397059 failed at gate 27/51, mapped to `tests/travel-storage.browser.mjs`; the release step was skipped. The root cause is NOT VERIFIED and must not be called a product defect without further evidence.
+
+Scope:
+- Establish one-task/one-branch ownership and safe parallel work across windows.
+- Define risk-based local checks and prohibit unnecessary full-suite repetition for low-risk changes.
+- Batch only READY tasks into one immutable approved QA candidate, with one release coordinator.
+- Avoid the duplicate verify-then-release test pass for the same SHA when a QA-only release is already authorized.
+- Define stage-specific failure diagnosis and safe retry rules.
+- Expand adaptive module coverage only as a separately tested, evidence-backed follow-up; do not lower the current fallback or security gates.
+
+Acceptance:
+- Every window records Task ID, base SHA, owned paths, risk lane, non-goals, checks, and PR/status.
+- Conflicting file ownership is serialized; independent work continues while QA is running.
+- A read-only GitHub PR conflict scanner compares branch/working-tree paths against all open PRs; exact path overlap blocks shared ownership, cross-cutting hotspots warn, and incomplete scans fail closed.
+- One coordinator forms the candidate from the currently deployed QA source plus only reviewed, ready changes.
+- The release queue remains serialized and non-cancelling; no parallel window deploys the same QA target.
+- The same unchanged candidate is not needlessly run through both verify and release.
+- Pure presentation fast-lane eligibility is explicit, module-mapped, browser-tested, and only used after the adaptive migration is accepted.
+- Failures are tied to a precise stage and evidence; no blind reruns, skipped gates, or fabricated results.
+- Release evidence records exact SHA, workflow run, deployed Worker version, and actual QA source receipt.
+
+Current blockers / follow-up:
+- Re-run the new engineering tooling suites on the PR head after the PR is integrated into the default branch; the new workflow file cannot run from a pull request before it exists on the base branch.
+- Cloudflare's production Worker check for the latest tooling commit reports a skipped build (build outcome `skipped`, no build log), not a compiler diagnostic. The check remains NOT VERIFIED and is not treated as a test pass.
+- Complete public validation and owner acceptance of QA infrastructure PR #507 before treating adaptive selection as generally active.
+- Release receipt, current QA baseline, and actual QA-only deployment remain separate acceptance evidence; no source-tooling test can substitute for them.
+
 ## Phase 1 — GitHub and build governance
 
 ### CI-001 — Verify APK automation stop and clear prior artifacts

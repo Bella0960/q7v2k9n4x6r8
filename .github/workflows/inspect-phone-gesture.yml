@@ -16,7 +16,6 @@ on:
       - 'inspect-phone/inspect-feature.js'
       - 'tests/inspect-feature-contract.test.mjs'
       - 'tests/inspect-phone-gesture.test.mjs'
-      - 'package.json'
       - 'package-lock.json'
       - '.github/workflows/inspect-phone-gesture.yml'
   pull_request:
@@ -25,9 +24,7 @@ on:
       - 'inspect-phone/inspect-feature.js'
       - 'tests/inspect-feature-contract.test.mjs'
       - 'tests/inspect-phone-gesture.test.mjs'
-      - 'package.json'
       - 'package-lock.json'
-      - '.github/workflows/inspect-phone-gesture.yml'
   workflow_dispatch:
 
 permissions:
