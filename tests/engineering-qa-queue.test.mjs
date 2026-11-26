@@ -1,5 +1,10 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
+import { spawnSync } from 'node:child_process';
+import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
+import { fileURLToPath } from 'node:url';
 import {
   parseTaskManifest,
   renderTaskManifest,
@@ -7,6 +12,8 @@ import {
   pathSetFromPrFiles,
   evaluateTaskEvidence
 } from '../scripts/engineering-qa-queue.mjs';
+
+const queueScript = fileURLToPath(new URL('../scripts/engineering-qa-queue.mjs', import.meta.url));
 
 const sha = n => String(n).repeat(40).slice(0, 40);
 const manifest = (overrides = {}) => ({
@@ -161,4 +168,84 @@ test('a later successful status context replaces an older failure for that conte
     }
   });
   assert.equal(result.ready, true);
+});
+
+
+test('registers a task from the current PR and persists exact checks and dependencies', t => {
+  const cwd = mkdtempSync(join(tmpdir(), 'maomao-task-register-'));
+  t.after(() => rmSync(cwd, { recursive: true, force: true }));
+  const stubPath = join(cwd, 'github-fetch-stub.mjs');
+  const logPath = join(cwd, 'fetch-log.json');
+  const repository = 'Bella0960/q7v2k9n4x6r8';
+  const currentPr = {
+    number: 10,
+    state: 'open',
+    body: 'Task summary',
+    html_url: 'https://github.com/Bella0960/q7v2k9n4x6r8/pull/10',
+    head: { sha: sha(2), repo: { full_name: repository } },
+    base: { ref: 'main', repo: { full_name: repository } }
+  };
+  const stub = `
+import { writeFileSync } from 'node:fs';
+const repository = 'Bella0960/q7v2k9n4x6r8';
+const currentPr = ${JSON.stringify(currentPr)};
+const calls = [];
+globalThis.fetch = async (input, init = {}) => {
+  const url = new URL(String(input));
+  const method = init.method || 'GET';
+  const path = url.pathname;
+  let payload;
+  if (method === 'GET' && path === '/repos/' + repository + '/pulls/10') {
+    payload = currentPr;
+  } else if (method === 'GET' && path === '/repos/' + repository + '/compare/' + '${sha(1)}' + '...' + '${sha(2)}') {
+    payload = { status: 'ahead', ahead_by: 1 };
+  } else if (method === 'GET' && path === '/repos/' + repository + '/pulls/10/files') {
+    payload = [{ filename: 'chat/chat/detail.html' }];
+  } else if (method === 'PATCH' && path === '/repos/' + repository + '/pulls/10') {
+    const patch = JSON.parse(init.body);
+    payload = { ...currentPr, body: patch.body };
+  } else {
+    throw new Error('Unexpected mocked GitHub request: ' + method + ' ' + path);
+  }
+  calls.push({ method, path, body: init.body || null });
+  if (method === 'PATCH') writeFileSync(process.env.FETCH_LOG, JSON.stringify(calls));
+  return new Response(JSON.stringify(payload), {
+    status: 200,
+    headers: { 'content-type': 'application/json' }
+  });
+};
+`;
+  writeFileSync(stubPath, stub);
+  const result = spawnSync(process.execPath, [
+    '--import', stubPath, queueScript,
+    'register', '10', 'CHAT-FIX-001', sha(1), 'F2',
+    'Node Tests', 'Vite Build', '--depends-on=CHAT-BASE-001'
+  ], {
+    cwd,
+    encoding: 'utf8',
+    env: {
+      ...process.env,
+      GH_TOKEN: 'test-token',
+      GITHUB_REPOSITORY: repository,
+      FETCH_LOG: logPath
+    }
+  });
+  assert.equal(result.status, 0, result.stderr);
+  const receipt = JSON.parse(result.stdout);
+  assert.equal(receipt.status, 'submitted');
+  assert.equal(receipt.pr, 10);
+  assert.equal(receipt.task, 'CHAT-FIX-001');
+  assert.deepEqual(receipt.requiredChecks, ['Node Tests', 'Vite Build']);
+  assert.deepEqual(receipt.dependsOn, ['CHAT-BASE-001']);
+  assert.deepEqual(receipt.changedFiles, ['chat/chat/detail.html']);
+
+  const calls = JSON.parse(readFileSync(logPath, 'utf8'));
+  assert.equal(calls.filter(call => call.method === 'GET' && call.path.endsWith('/pulls/10')).length, 2);
+  const patch = calls.find(call => call.method === 'PATCH');
+  assert.ok(patch);
+  const savedBody = JSON.parse(patch.body).body;
+  const savedManifest = parseTaskManifest(savedBody);
+  assert.deepEqual(savedManifest.requiredChecks, ['Node Tests', 'Vite Build']);
+  assert.deepEqual(savedManifest.dependsOn, ['CHAT-BASE-001']);
+  assert.equal(savedManifest.head, sha(2));
 });
