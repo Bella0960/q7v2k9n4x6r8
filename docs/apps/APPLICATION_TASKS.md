@@ -85,7 +85,7 @@
 - 每个开发窗口使用一个 Task ID、一条独立任务分支和一个 PR，声明准确的文件所有权、风险等级、依赖、非目标及必需检查。
 - 有代码改动后、创建或更新 PR 前运行 `npm run eng:conflicts`。BLOCK 必须先协调；SHARED 必须指定唯一负责人；扫描不完整不得视为无冲突。
 - PR 创建后使用 `npm run eng:register` 写入 `MAOMAO_TASK_V1`，每次新提交后重新登记当前 head。READY 由共享队列根据当前审批、检查、路径和依赖证据计算。
-- 不再使用手工本地任务目录或旧 `npm run eng:batch` 命令；只由唯一集成协调者运行 owner-only `engineering-ready-batch.yml`，汇总证据完整的 PR 并创建一个不可覆盖的 QA 候选。
+- 不再使用手工本地任务目录或旧 `npm run eng:batch` 命令；该 alias 暂时因 PR #545 正在修改 package.json 而保留，但禁止使用，待该 PR 解决后再单独清理。只由唯一集成协调者运行 owner-only `engineering-ready-batch.yml`，汇总证据完整的 PR 并创建一个不可覆盖的 QA 候选。
 - 开发窗口不得各自请求 QA 发布。候选组装/推送不是部署；只有协调者按当前 `RELEASE_POLICY.md` 使用固定 QA 入口完成一次授权的 QA-only 发布。
 - 一个 PR 一个关注点；不重写整个应用；不擅自更改共享底层契约、存储键或消息结构。
 - 只在自己的任务分支提交，不擅自合并或部署；发布与测试一律读取主线最新 [RELEASE_POLICY.md](../engineering/RELEASE_POLICY.md)，不沿用历史版本号和旧流程。
