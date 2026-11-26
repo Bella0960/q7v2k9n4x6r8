@@ -818,3 +818,31 @@ test('CLI invalidate never deletes a different remote SHA even with explicit rem
   assert.equal(fixture.git('rev-parse', fixture.candidateRef), saved.candidate);
   assert.ok(existsSync(fixture.receiptPath));
 });
+
+test('engineering-only test and script changes do not trigger unrelated app regression suites', () => {
+  const tutorial = readFileSync(new URL('../.github/workflows/tutorial-regression.yml', import.meta.url), 'utf8');
+  const font = readFileSync(new URL('../.github/workflows/font-runtime-regression.yml', import.meta.url), 'utf8');
+  const chat = readFileSync(new URL('../.github/workflows/chat-regression-contract.yml', import.meta.url), 'utf8');
+  const section = (source, start, end) => source.split(start)[1].split(end)[0];
+
+  assert.doesNotMatch(tutorial, /- 'package\\.json'/);
+  assert.match(tutorial, /- 'package-lock\\.json'/);
+
+  const fontPr = section(font, '  pull_request:', '  push:');
+  const fontPush = section(font, '  push:', 'permissions:');
+  assert.doesNotMatch(fontPr, /package\\.json|font-runtime-regression\\.yml/);
+  assert.match(fontPr, /package-lock\\.json/);
+  assert.match(fontPush, /package-lock\\.json/);
+  assert.match(fontPush, /font-runtime-regression\\.yml/);
+
+  const chatPr = section(chat, '  pull_request:', '  workflow_dispatch:');
+  const chatPush = section(chat, '  push:', '  pull_request:');
+  for (const paths of [chatPr, chatPush]) {
+    assert.doesNotMatch(paths, /- 'package\\.json'/);
+    assert.match(paths, /- 'package-lock\\.json'/);
+    assert.match(paths, /- 'tests\\/\\*\\*'/);
+    assert.match(paths, /- '!tests\\/engineering-\\*\\.test\\.mjs'/);
+  }
+  assert.doesNotMatch(chatPr, /chat-regression-contract\\.yml/);
+  assert.match(chatPush, /chat-regression-contract\\.yml/);
+});
