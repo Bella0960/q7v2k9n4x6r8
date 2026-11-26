@@ -1,0 +1,729 @@
+/* THEME-PREVIEW-005 · 真实场景隔离预览样式。
+   作用域前缀 rp-；主题层由生产主题 CSS 经壳层 data-chat-theme-preset 命中。 */
+
+.rp-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 9000;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 16px;
+}
+
+.rp-backdrop {
+  position: absolute;
+  inset: 0;
+  border: 0;
+  background: rgba(20, 20, 22, 0.42);
+  cursor: pointer;
+}
+
+.rp-dialog {
+  position: relative;
+  width: min(100%, 400px);
+  max-height: 92dvh;
+  display: flex;
+  flex-direction: column;
+  background: #ffffff;
+  border-radius: 20px;
+  overflow: hidden;
+  box-shadow: 0 24px 64px rgba(0, 0, 0, 0.18);
+}
+
+.rp-dialog-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  padding: 18px 18px 0;
+}
+
+.rp-dialog-header small {
+  display: block;
+  font-size: 9px;
+  letter-spacing: 0.14em;
+  color: #9a9aa0;
+  margin-bottom: 3px;
+}
+
+.rp-dialog-header strong {
+  font-size: 16px;
+  font-weight: 600;
+  color: #171717;
+}
+
+.rp-close {
+  width: 32px;
+  height: 32px;
+  border: 0;
+  border-radius: 50%;
+  background: #f2f2f4;
+  color: #55555a;
+  font-size: 18px;
+  line-height: 1;
+  cursor: pointer;
+}
+
+.rp-caption {
+  margin: 8px 18px 0;
+  font-size: 11px;
+  line-height: 1.6;
+  color: #8a8a90;
+}
+
+.rp-tabs {
+  display: flex;
+  gap: 4px;
+  padding: 12px 18px 0;
+  overflow-x: auto;
+}
+
+.rp-tabs [data-rp-scene] {
+  flex: none;
+  border: 0;
+  background: #f4f4f6;
+  color: #55555a;
+  font-size: 12px;
+  padding: 7px 12px;
+  border-radius: 12px;
+  cursor: pointer;
+}
+
+.rp-tabs [data-rp-scene].active {
+  background: #171717;
+  color: #ffffff;
+}
+
+.rp-scope-note {
+  margin: 10px 18px 0;
+  font-size: 11px;
+  color: #6f6f75;
+}
+
+.rp-scope-note.rp-scope-unsupported {
+  color: #9a7b3a;
+}
+
+.rp-visual {
+  flex: 1;
+  min-height: 0;
+  margin: 14px 18px;
+  border-radius: 18px;
+  overflow: hidden;
+  background: #ffffff;
+}
+
+.rp-phone-mockup {
+  height: 100%;
+  min-height: 420px;
+  display: flex;
+  flex-direction: column;
+  background: #ffffff;
+  isolation: isolate;
+}
+
+.rp-footer {
+  display: flex;
+  gap: 8px;
+  padding: 0 18px 18px;
+}
+
+.rp-btn {
+  flex: 1;
+  border: 1px solid #e6e6e9;
+  background: #ffffff;
+  color: #333338;
+  font-size: 12px;
+  padding: 10px 8px;
+  border-radius: 12px;
+  cursor: pointer;
+}
+
+.rp-btn.primary {
+  background: #171717;
+  border-color: #171717;
+  color: #ffffff;
+}
+
+/* ============ 场景基础骨架（兜底排版；class 与真实页面对齐） ============ */
+
+.rp-phone-mockup .status-bar {
+  display: flex;
+  justify-content: flex-end;
+  padding: 10px 16px 0;
+  font-size: 11px;
+  color: #171717;
+}
+
+/* ---- detail 聊天详情 ---- */
+.rp-phone-mockup .chat-header {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 12px 16px;
+}
+
+.rp-phone-mockup .nav-circle-btn {
+  width: 32px;
+  height: 32px;
+  display: grid;
+  place-items: center;
+  border: 0;
+  border-radius: 50%;
+  background: #f4f4f6;
+  color: #171717;
+  cursor: pointer;
+  flex: none;
+}
+
+.rp-phone-mockup .chat-title-box {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+}
+
+.rp-phone-mockup .chat-header-avatar {
+  width: 30px;
+  height: 30px;
+  border-radius: 50%;
+  background: #ececef;
+  flex: none;
+}
+
+.rp-phone-mockup .chat-user-name {
+  font-size: 15px;
+  font-weight: 600;
+  color: #171717;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.rp-phone-mockup .chat-status-sub {
+  border: 0;
+  background: #f4f4f6;
+  color: #77777d;
+  font-size: 10px;
+  padding: 3px 8px;
+  border-radius: 8px;
+}
+
+.rp-phone-mockup .chat-header-actions {
+  display: flex;
+  gap: 8px;
+  flex: none;
+}
+
+.rp-phone-mockup .chat-stage {
+  flex: 1;
+  overflow-y: auto;
+  padding: 8px 16px 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 13px;
+}
+
+.rp-phone-mockup .message-time {
+  text-align: center;
+  font-size: 10px;
+  color: #9a9aa0;
+}
+
+.rp-phone-mockup .msg-row {
+  display: flex;
+  gap: 8px;
+  max-width: 86%;
+}
+
+.rp-phone-mockup .msg-row.sent,
+.rp-phone-mockup .msg-row.right {
+  align-self: flex-end;
+  flex-direction: row-reverse;
+}
+
+.rp-phone-mockup .msg-avatar {
+  width: 30px;
+  height: 30px;
+  border-radius: 50%;
+  background: #ececef;
+  display: grid;
+  place-items: center;
+  flex: none;
+}
+
+.rp-phone-mockup .msg-bubble {
+  padding: 10px 13px;
+  border-radius: 15px;
+  font-size: 13px;
+  line-height: 1.5;
+  color: #171717;
+  background: #ffffff;
+  border: 1px solid #e6e6e9;
+  overflow-wrap: anywhere;
+}
+
+.rp-phone-mockup .input-dock {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 16px 14px;
+}
+
+.rp-phone-mockup .plus-action-btn,
+.rp-phone-mockup .send-icon-btn {
+  width: 34px;
+  height: 34px;
+  display: grid;
+  place-items: center;
+  border: 0;
+  border-radius: 50%;
+  background: #f4f4f6;
+  color: #171717;
+  flex: none;
+}
+
+.rp-phone-mockup .send-icon-btn.disabled {
+  opacity: 0.4;
+}
+
+.rp-phone-mockup .input-capsule {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  background: #f4f4f6;
+  border-radius: 18px;
+  padding: 6px 10px;
+}
+
+.rp-phone-mockup .voice-input-btn {
+  border: 0;
+  background: transparent;
+  color: #77777d;
+  cursor: pointer;
+}
+
+.rp-phone-mockup .real-input {
+  flex: 1;
+  border: 0;
+  background: transparent;
+  outline: 0;
+  font-size: 13px;
+  color: #171717;
+  resize: none;
+}
+
+/* ---- moments 动态 ---- */
+.rp-phone-mockup .cover-block {
+  position: relative;
+  height: 120px;
+  margin: 12px 16px 0;
+  border-radius: 18px;
+  background: #f0f0f3;
+}
+
+.rp-phone-mockup .cover-avatar-left {
+  position: absolute;
+  left: 14px;
+  bottom: -18px;
+  width: 44px;
+  height: 44px;
+  border-radius: 50%;
+  background: #ffffff;
+  border: 1px solid #e6e6e9;
+  display: grid;
+  place-items: center;
+}
+
+.rp-phone-mockup .cover-add-btn {
+  position: absolute;
+  right: 14px;
+  bottom: 12px;
+  width: 32px;
+  height: 32px;
+  border: 0;
+  border-radius: 50%;
+  background: rgba(255, 255, 255, 0.9);
+  color: #333338;
+  font-size: 18px;
+  cursor: pointer;
+}
+
+.rp-phone-mockup .moments-main-panel {
+  flex: 1;
+  overflow-y: auto;
+  padding: 18px 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 18px;
+}
+
+.rp-phone-mockup .moment-card.post-item {
+  display: flex;
+  gap: 10px;
+}
+
+.rp-phone-mockup .moment-avatar {
+  width: 36px;
+  height: 36px;
+  border-radius: 50%;
+  background: #ececef;
+  display: grid;
+  place-items: center;
+  flex: none;
+  color: #77777d;
+}
+
+.rp-phone-mockup .post-content-box {
+  flex: 1;
+  min-width: 0;
+}
+
+.rp-phone-mockup .post-header {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  margin-bottom: 6px;
+}
+
+.rp-phone-mockup .post-name {
+  font-size: 13px;
+  font-weight: 600;
+  color: #171717;
+}
+
+.rp-phone-mockup .post-time {
+  font-size: 10px;
+  color: #9a9aa0;
+}
+
+.rp-phone-mockup .post-text {
+  font-size: 13px;
+  line-height: 1.6;
+  color: #333338;
+  overflow-wrap: anywhere;
+}
+
+.rp-phone-mockup .post-image-placeholder {
+  margin-top: 8px;
+  height: 120px;
+  border-radius: 12px;
+  background: #f0f0f3;
+}
+
+.rp-phone-mockup .post-actions {
+  display: flex;
+  gap: 16px;
+  margin-top: 8px;
+}
+
+.rp-phone-mockup .action-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  border: 0;
+  background: transparent;
+  color: #77777d;
+  font-size: 11px;
+  cursor: pointer;
+}
+
+.rp-phone-mockup .action-btn svg {
+  width: 14px;
+  height: 14px;
+}
+
+/* ---- list 聊天首页 ---- */
+.rp-phone-mockup .chat-theme-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 14px 16px 8px;
+}
+
+.rp-phone-mockup .chat-theme-header h1 {
+  font-size: 22px;
+  font-weight: 600;
+  color: #171717;
+  margin: 0;
+}
+
+.rp-phone-mockup .chat-theme-copy p {
+  font-size: 11px;
+  color: #8a8a90;
+  margin: 2px 0 0;
+}
+
+.rp-phone-mockup .chat-theme-actions {
+  display: flex;
+  gap: 8px;
+  flex: none;
+}
+
+.rp-phone-mockup .chat-theme-action {
+  width: 32px;
+  height: 32px;
+  display: grid;
+  place-items: center;
+  border: 0;
+  border-radius: 50%;
+  background: #f4f4f6;
+  color: #171717;
+  cursor: pointer;
+}
+
+.rp-phone-mockup .chat-theme-action svg {
+  width: 17px;
+  height: 17px;
+}
+
+.rp-phone-mockup #chatListContainer {
+  flex: 1;
+  overflow-y: auto;
+  padding: 4px 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.rp-phone-mockup .chat-slim-card {
+  display: flex;
+  gap: 12px;
+  padding: 12px 4px;
+  align-items: center;
+}
+
+.rp-phone-mockup .chat-avatar {
+  width: 46px;
+  height: 46px;
+  border-radius: 14px;
+  background: #ececef;
+  display: grid;
+  place-items: center;
+  font-size: 16px;
+  color: #77777d;
+  flex: none;
+}
+
+.rp-phone-mockup .chat-meta {
+  flex: 1;
+  min-width: 0;
+}
+
+.rp-phone-mockup .chat-title-row {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.rp-phone-mockup .chat-name {
+  font-size: 14px;
+  font-weight: 600;
+  color: #171717;
+}
+
+.rp-phone-mockup .chat-time {
+  font-size: 10px;
+  color: #9a9aa0;
+  flex: none;
+}
+
+.rp-phone-mockup .chat-last-msg {
+  font-size: 12px;
+  color: #8a8a90;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  margin-top: 3px;
+}
+
+/* ---- mine 我的 ---- */
+.rp-phone-mockup .profile-content {
+  flex: 1;
+  overflow-y: auto;
+  padding: 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.rp-phone-mockup .profile-hero {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 10px;
+  padding: 18px 0 8px;
+}
+
+.rp-phone-mockup .profile-cover {
+  width: 100%;
+  height: 90px;
+  border-radius: 16px;
+  background: #f0f0f3;
+}
+
+.rp-phone-mockup .profile-avatar {
+  width: 56px;
+  height: 56px;
+  border-radius: 50%;
+  background: #ececef;
+  display: grid;
+  place-items: center;
+  font-size: 20px;
+  color: #77777d;
+  margin-top: -28px;
+  border: 2px solid #ffffff;
+}
+
+.rp-phone-mockup .profile-info {
+  text-align: center;
+}
+
+.rp-phone-mockup .profile-name {
+  font-size: 16px;
+  font-weight: 600;
+  color: #171717;
+  margin: 0 0 3px;
+}
+
+.rp-phone-mockup .profile-sign {
+  font-size: 12px;
+  color: #8a8a90;
+  margin: 0;
+}
+
+.rp-phone-mockup .menu-card {
+  border: 1px solid #ececef;
+  border-radius: 16px;
+  overflow: hidden;
+}
+
+.rp-phone-mockup .menu-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 14px 16px;
+}
+
+.rp-phone-mockup .menu-divider {
+  height: 1px;
+  background: #f0f0f3;
+  margin: 0 16px;
+}
+
+.rp-phone-mockup .menu-icon {
+  width: 22px;
+  height: 22px;
+  border-radius: 8px;
+  background: #f0f0f3;
+  flex: none;
+}
+
+.rp-phone-mockup .menu-text {
+  flex: 1;
+  font-size: 13px;
+  color: #171717;
+}
+
+.rp-phone-mockup .menu-arrow {
+  width: 16px;
+  height: 16px;
+  color: #b6b6bc;
+}
+
+/* ---- home 我的主页 ---- */
+.rp-phone-mockup .cover-upload-label {
+  display: block;
+  height: 130px;
+  margin: 12px 16px 0;
+  border-radius: 18px;
+  background: #f0f0f3;
+}
+
+.rp-phone-mockup .profile-hero {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+  margin-top: -26px;
+}
+
+.rp-phone-mockup .profile-text-box {
+  text-align: center;
+}
+
+.rp-phone-mockup .stats-row {
+  display: flex;
+  align-items: baseline;
+  justify-content: center;
+  gap: 18px;
+  padding: 12px 0;
+}
+
+.rp-phone-mockup .stat {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 2px;
+}
+
+.rp-phone-mockup .stat-num {
+  font-size: 15px;
+  font-weight: 600;
+  color: #171717;
+}
+
+.rp-phone-mockup .stat-label {
+  font-size: 11px;
+  color: #8a8a90;
+}
+
+.rp-phone-mockup .feed {
+  flex: 1;
+  overflow-y: auto;
+  padding: 0 16px 16px;
+}
+
+.rp-phone-mockup .feed-head {
+  padding: 6px 0 10px;
+}
+
+.rp-phone-mockup .feed-title {
+  font-size: 13px;
+  font-weight: 600;
+  color: #171717;
+}
+
+.rp-phone-mockup #innerPanel {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+.rp-phone-mockup .my-post-placeholder {
+  height: 100px;
+  border-radius: 14px;
+  background: #f0f0f3;
+}
+
+/* ============ 响应式与动效 ============ */
+
+@media (max-width: 360px) {
+  .rp-dialog { border-radius: 16px; }
+  .rp-footer { flex-wrap: wrap; }
+  .rp-btn { flex: 1 1 auto; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .rp-overlay,
+  .rp-dialog,
+  .rp-btn,
+  .rp-close {
+    transition: none !important;
+    animation: none !important;
+  }
+}

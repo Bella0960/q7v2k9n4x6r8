@@ -98,7 +98,9 @@ try {
   // second explicit confirmation rather than the retired direct apply button.
   await page.locator('[data-category="themes"]').click();
   await page.locator('.sf-theme-cover[data-sf="detail"][data-id="wechat"]').click();
-  await page.locator('.sf-dialog [data-sf="apply-theme"]').click();
+  await page.waitForSelector('.rp-overlay');
+ await page.locator('[data-rp-apply]').click();
+ await page.waitForSelector('.sf-dialog [data-sf="confirm-apply-theme"]');
   await page.locator('.sf-dialog [data-sf="confirm-apply-theme"]').click();
   await page.goto(base+'/chat/chat/chat.html');
   assert.equal(await shell.getAttribute('data-chat-theme-preset'),'wechat');

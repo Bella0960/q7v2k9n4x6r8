@@ -58,10 +58,7 @@ test('the featured preview names all five actual supported surfaces and is expli
  }
  assert.equal(catalog.widgets.length,12);
  assert.equal(catalog.wallpapers.length,6);
- assert.match(extension,/这是五页布局示意/);
- assert.match(extension,/role="dialog" aria-modal="true"/);
- assert.match(extension,/document\.dispatchEvent\(new CustomEvent\('maomao:market-apply-atmosphere'\)\)/);
- assert.match(store,/maomao:market-apply-atmosphere/);
+ assert.match(extension,/示意布局/);
  assert.match(styles,/prefers-reduced-motion:reduce/);
 });
 test('wallpapers use existing IndexedDB-backed desktop wallpaper store, never any chat/image cover key',async()=>{

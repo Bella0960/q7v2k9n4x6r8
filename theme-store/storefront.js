@@ -2,7 +2,7 @@
 (function (global) {
 'use strict';
 const model=global.MAOMAOMarketCollection;
-let api,section='discover',mineTab='favorites',overlay,focusBefore,openerEl,previewTone='light',previewPage='detail';
+let api,section='discover',mineTab='favorites',overlay,focusBefore,openerEl;
 // Reuse one parsed collection snapshot for the whole render pass; invalidated on every fresh render.
 let favCache=null;
 function readCache(){if(!favCache)favCache=model.read();return favCache;}
@@ -10,22 +10,8 @@ const e=v=>String(v??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt
 const icons={home:'M3 11 12 3l9 8M5 10v11h5v-7h4v7h5V10',theme:'M5 3h14v18H5zM8 7h8M8 11h5',category:'M3 3h7v7H3zM14 3h7v7h-7zM3 14h7v7H3zM14 14h7v7h-7z',mine:'M16 7a4 4 0 1 1-8 0 4 4 0 0 1 8 0M4 21v-2a8 8 0 0 1 16 0v2',star:'m12 3 2.8 5.7 6.2.9-4.5 4.4 1.1 6.2-5.6-3-5.6 3 1.1-6.2L3 9.6l6.2-.9Z',close:'m6 6 12 12M18 6 6 18',back:'M15 18l-6-6 6-6',plus:'M12 4v16M4 12h16',chat:'M4 5h16v12H8l-4 3V5z',diary:'M5 3h14v18H5zM9 8h6M9 12h6',music:'M9 18V5l11-2v13M9 18a3 3 0 1 1-6 0 3 3 0 0 1 6 0M20 16a3 3 0 1 1-6 0 3 3 0 0 1 6 0',book:'M3 5h7a3 3 0 0 1 3 3v13a3 3 0 0 0-3-3H3zM21 5h-5a3 3 0 0 0-3 3v13a3 3 0 0 1 3-3h5z',settings:'M12 3v3M12 18v3M3 12h3M18 12h3M6 6l2 2M16 16l2 2M18 6l-2 2M8 16l-2 2M16 12a4 4 0 1 1-8 0 4 4 0 0 1 8 0',photo:'M3 4h18v16H3zM7 9a1 1 0 1 0 .01 0M4 17l5-5 3 3 3-4 5 6'};
 const svg=n=>'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="'+(icons[n]||icons.theme)+'"/></svg>';
 const button=(text,action,id='',cls='sf-button')=>'<button type="button" class="'+cls+'" data-sf="'+action+'" data-id="'+e(id)+'"'+(action==='favorite'?' aria-label="'+(readCache().favorites.includes(id)?'取消收藏':'收藏')+'" aria-pressed="'+readCache().favorites.includes(id)+'"':'')+'>'+text+'</button>';
-const pages=[['desktop','桌面'],['list','聊天首页'],['detail','聊天详情'],['moments','动态'],['mine','我的'],['home','我的主页']];
-function covered(id,page){if(page==='desktop')return false;if(page==='home')return id==='atmosphere';if(id==='imessage')return page==='detail';return true;}
-function scene(id,page='detail'){
- if(global.MAOMAOStorefrontPreview)return global.MAOMAOStorefrontPreview.render(id,page,previewTone);
- const active=covered(id,page)?id:'default';
- let body='';
- const rows='<div class="sf-person"><i>知</i><span><b>沈知行</b><small>晚一点见。</small></span><time>09:30</time></div><div class="sf-person"><i>林</i><span><b>林望</b><small>今天的风很轻。</small></span><time>08:55</time></div>';
- if(page==='detail')body='<div class="sf-person sf-chat-title"><i>知</i><b>沈知行</b></div><small class="sf-date">今天 09:41</small><p class="sf-bubble">路过一家安静的书店。</p><p class="sf-bubble right">等我，我们一起去。</p><p class="sf-bubble">好，慢慢来。</p><div class="sf-input">发送消息 <span>＋</span></div>';
- if(page==='list')body='<h3>Chats</h3><div class="sf-music"><span>09:41</span><small>一段慢下来的时间</small></div>'+rows+'<div class="sf-person"><i>群</i><span><b>周末小组</b><small>下午一起喝咖啡。</small></span></div>';
- if(page==='moments')body='<h3>动态</h3><div class="sf-landscape"></div>'+rows.slice(0,rows.indexOf('<div class="sf-person">',10))+'<p class="sf-post">把今天留在这里。</p><div class="sf-gallery"><i></i><i></i><i></i></div>';
- if(page==='mine'||page==='home')body='<h3>'+ (page==='home'?'我的主页':'我的')+'</h3><div class="sf-landscape"></div><div class="sf-identity"><i>林</i><b>林间</b><small>记录普通日子里的小事。</small></div>'+(page==='home'?'<div class="sf-gallery"><i></i><i></i><i></i></div><p class="sf-post">今天也有值得记住的瞬间。</p>':'<p class="sf-menu">我的主页</p><p class="sf-menu">我的收藏</p><p class="sf-menu">钱包与设置</p>');
- if(page==='desktop')body='<div class="sf-clock">09:41<small>星期四 · 晴</small></div><div class="sf-apps">'+[['聊天','chat'],['日记','diary'],['音乐','music'],['阅读','book'],['设置','settings'],['相册','photo']].map(([label,icon])=>'<div class="sf-app"><span class="sf-app-icon">'+svg(icon)+'</span><small>'+label+'</small></div>').join('')+'</div>';
- return '<div class="sf-scene sf-'+active+'"><div class="sf-status">9:41 <span>••• ▰</span></div>'+body+'</div>';
-}
 function heading(title,sub){return '<div class="sf-heading"><h2>'+title+'</h2><p>'+sub+'</p></div>';}
-function nativeArt(t){return typeof api.nativeArt==='function'?api.nativeArt(t):scene(t.id,'detail');}
+function nativeArt(t){return typeof api.nativeArt==='function'?api.nativeArt(t):'';}
 // Individual theme gallery metadata: display only, not a second theme engine.
 const themeProfiles=Object.freeze({
  default:{type:'基础主题',scope:'默认聊天样式',note:'恢复原生视觉。已保存的背景、气泡和角色资料不会被覆盖。'},
@@ -99,49 +85,22 @@ function close(){
  pendingOutfit=null;
 }
 function modal(title,body){if(overlay){overlay.remove();overlay=null;}else focusBefore=(openerEl&&openerEl.isConnected)?openerEl:document.activeElement;overlay=document.createElement('div');overlay.className='sf-overlay';overlay.innerHTML='<section role="dialog" aria-modal="true" aria-label="'+e(title)+'" class="sf-dialog"><header><h2>'+e(title)+'</h2>'+button(svg('close'),'close','','sf-close')+'</header>'+body+'<p class="sf-error" role="alert"></p></section>';document.body.append(overlay);document.querySelector('.store-app').inert=true;overlay.querySelector('button').focus();overlay.addEventListener('click',ev=>{if(ev.target===overlay)close();});overlay.addEventListener('keydown',ev=>{if(ev.key==='Escape')close();if(ev.key==='Tab'){const all=[...overlay.querySelectorAll('button,input,select')].filter(x=>!x.disabled&&x.getClientRects().length);const first=all[0],last=all.at(-1);if(ev.shiftKey&&document.activeElement===first){ev.preventDefault();last.focus();}else if(!ev.shiftKey&&document.activeElement===last){ev.preventDefault();first.focus();}}});}
-function detail(id){
+function openApplyConfirm(id){
+ const theme=api.themes.find(item=>item.id===id);
+ if(!theme)throw Error('主题不存在');
+ modal('确认应用主题？','<p class="sf-caption">当前只是独立预览。确认后才会把「'+e(theme.name)+'」设为当前主题；聊天记录和头像保持不变。</p><footer>'+button('继续查看','detail',id)+button('确认应用','confirm-apply-theme',id,'sf-button primary')+'</footer>');
+}
+function openRealPreview(id){
  const t=api.themes.find(x=>x.id===id);if(!t)return;
- const info=themeProfiles[id]||{type:'聊天主题',scope:'以实际页面为准',note:'继续由原有主题系统管理外观。'};
- if(id!=='atmosphere'){
-   // The five original products keep their genuine artwork; a mock is not a live screen.
-   modal(t.name,'<div class="sf-theme-detail-meta" data-theme-id="'+e(id)+'"><small>'+e(info.type)+'</small><strong>'+e(info.scope)+'</strong></div>'+
-    '<div class="sf-native-detail-art sf-theme-detail-cover" data-theme-id="'+e(id)+'">'+nativeArt(t)+'</div>'+
-    '<div class="sf-theme-detail-copy"><strong>主题说明</strong><p>'+e(t.desc)+'</p><strong>独立设置</strong><p>'+e(info.note)+'</p></div>'+
-    '<p class="sf-caption">此处是原主题封面示意，不读取真实聊天；确认后才切换。独立气泡、壁纸和留白 Messages 不会重置。</p>'+
-    '<footer>'+button(readCache().favorites.includes(id)?'已收藏 · 点击取消':'收藏主题','favorite',id)+button('应用这套主题','apply-theme',id,'sf-button primary')+'</footer>');
-   return;
- }
- previewTone='light';previewPage='detail';
- const toneControls=id==='atmosphere'?'<div class="sf-preview-tones" role="group" aria-label="预览明暗模式">'+button('浅色','tone','light','sf-chip active')+button('深色','tone','dark','sf-chip')+'</div>':'';
- modal(t.name,'<p class="sf-caption">'+e(info.scope)+' · 虚构布局演示，不读取聊天或个人资料</p><div class="sf-preview-tabs" aria-label="选择预览页面">'+
- pages.map(([p,label])=>button(label,'page',p,'sf-chip')).join('')+
- '</div>'+toneControls+'<div id="sfPreview" tabindex="0" aria-label="手机预览，左右滑动切换页面" data-theme="'+e(id)+'"></div>'+
- '<p class="sf-preview-help">左右滑动预览，或点击上方页面名称</p><p id="sfScope" class="sf-caption" aria-live="polite"></p>'+
- '<footer>'+button(readCache().favorites.includes(id)?'已收藏 · 点击取消':'收藏主题','favorite',id)+button('应用主题','apply-theme',id,'sf-button primary')+'</footer>');
- showPage('detail');
- const pane=overlay?.querySelector('#sfPreview');
- if(!pane)return;
- let sx=0,sy=0,tracking=false;
- pane.addEventListener('touchstart',ev=>{if(ev.touches.length!==1)return;sx=ev.touches[0].clientX;sy=ev.touches[0].clientY;tracking=true;},{passive:true});
- pane.addEventListener('touchend',ev=>{if(!tracking||!ev.changedTouches.length)return;tracking=false;const dx=ev.changedTouches[0].clientX-sx,dy=ev.changedTouches[0].clientY-sy;if(Math.abs(dx)>45&&Math.abs(dx)>Math.abs(dy)*1.35)stepPreview(dx<0?1:-1);},{passive:true});
- pane.addEventListener('keydown',ev=>{if(ev.key==='ArrowLeft'||ev.key==='ArrowRight'){ev.preventDefault();stepPreview(ev.key==='ArrowRight'?1:-1);}});
+ const RP=global.MAOMAORealScenePreview;
+ if(!RP||typeof RP.open!=='function')return;
+ RP.open(id,'detail',{
+  isFavorite:function(){return readCache().favorites.includes(id);},
+  onFavorite:function(){model.favorite(id);api.render();},
+  onApply:function(){openApplyConfirm(id);}
+ });
 }
-function stepPreview(delta){
- const idx=pages.findIndex(([p])=>p===previewPage);
- const next=Math.max(0,Math.min(pages.length-1,idx+delta));
- if(next!==idx)showPage(pages[next][0]);
-}
-function showPage(page){
- const host=document.getElementById('sfPreview');if(!host)return;
- if(!pages.some(p=>p[0]===page))return;
- previewPage=page;
- host.innerHTML=scene(host.dataset.theme,page);
- const inScope=global.MAOMAOStorefrontPreview?.covered(host.dataset.theme,page)??covered(host.dataset.theme,page);
- const label=pages.find(p=>p[0]===page)[1];
- document.getElementById('sfScope').textContent=inScope?'此主题支持「'+label+'」的外观范围；页面采用虚构示例。':'「'+label+'」不受此主题修改，保留现有设置。';
- overlay.querySelectorAll('[data-sf="page"]').forEach(b=>{const active=b.dataset.id===page;b.classList.toggle('active',active);b.setAttribute('aria-pressed',String(active));if(active)b.scrollIntoView({inline:'nearest',block:'nearest'});});
- overlay.querySelectorAll('[data-sf="tone"]').forEach(b=>{const active=b.dataset.id===previewTone;b.classList.toggle('active',active);b.setAttribute('aria-pressed',String(active));});
-}
+
 function checkboxes(selected,checked=selected){return '<fieldset class="sf-scopes"><legend>选择应用范围</legend>'+selected.map(s=>'<label><input type="checkbox" name="scope" value="'+s+'"'+(checked.includes(s)?' checked':'')+'> '+model.scopes[s]+'</label>').join('')+'</fieldset>';}
 const selected=()=>[...overlay.querySelectorAll('[name=scope]:checked')].map(x=>x.value);
 function getRecord(encoded){const [type,id]=encoded.split(':');if(!['outfits','creations'].includes(type))throw Error('记录类型无效');const item=model.read()[type].find(x=>x.id===id);if(!item)throw Error('记录已不存在');return {type,item};}
@@ -194,9 +153,7 @@ function askBubbleTarget(encoded,item){
 async function imageData(file){if(!file||!/^image\/(png|jpeg|webp)$/.test(file.type))throw Error('请选择 PNG、JPEG 或 WebP 图片');if(file.size>20*1024*1024)throw Error('请选择小于 20MB 的图片');const url=URL.createObjectURL(file);try{const img=new Image();img.src=url;await img.decode();const scale=Math.min(1,1600/Math.max(img.width,img.height));const canvas=document.createElement('canvas');canvas.width=Math.round(img.width*scale);canvas.height=Math.round(img.height*scale);canvas.getContext('2d').drawImage(img,0,0,canvas.width,canvas.height);return canvas.toDataURL('image/webp',.9);}finally{URL.revokeObjectURL(url);}}
 async function handle(action,id){
  if(action==='close')return close();
- if(action==='detail')return detail(id);
- if(action==='page')return showPage(id);
- if(action==='tone'){previewTone=id==='dark'?'dark':'light';return showPage(previewPage);}
+ if(action==='detail')return openRealPreview(id);
  if(action==='favorite'){
    model.favorite(id);
    // Keep the open detail's favorite button and screen reader state in sync.
@@ -209,12 +166,7 @@ async function handle(action,id){
    api.render();
    return;
  }
- if(action==='apply-theme'){
-   const theme=api.themes.find(item=>item.id===id);
-   if(!theme)throw Error('主题不存在');
-   modal('确认应用主题？','<p class="sf-caption">当前只是独立预览。确认后才会把「'+e(theme.name)+'」设为当前主题；聊天记录和头像保持不变。</p><footer>'+button('继续查看','detail',id)+button('确认应用','confirm-apply-theme',id,'sf-button primary')+'</footer>');
-   return;
- }
+ if(action==='apply-theme')return openApplyConfirm(id);
  if(action==='confirm-apply-theme'){if(!api.applyTheme(id))throw Error('主题未能保存，请检查存储空间');close();return;}
  if(action==='category'){if(['beauty','appearance','icons','studio'].includes(id))return api.market.route(id);api.navigate(id==='list'?'themes':id);if(id==='list')document.querySelector('.chat-list-theme-grid')?.scrollIntoView();return;}
  if(action==='mine-tab'){mineTab=id;api.render();return;}
@@ -262,5 +214,5 @@ function trackFeaturedAnimation(){
  animMO.observe(content,{childList:true});
 }
 function animWatchedCount(){return animWatched.size;}
-global.MAOMAOStorefront={init(adapter){api=adapter;trackFeaturedAnimation();},render(category){favCache=null;section=category;const nav=document.getElementById('categoryNav');nav.querySelectorAll('button').forEach(b=>{const active=b.dataset.category===(['bubbles','fonts','wallpapers','widgets'].includes(category)?'categories':category);b.classList.toggle('active',active);b.setAttribute('aria-current',active?'page':'false');});try{if(category==='discover')return discover();if(category==='themes')return themes();if(category==='categories')return categoryView();if(category==='mine')return mine();}catch(error){return '<p class="sf-error">'+e(error.message)+'</p>';}return null;},svg,_animWatchedCount:animWatchedCount};
+global.MAOMAOStorefront={init(adapter){api=adapter;trackFeaturedAnimation();},previewTheme:openRealPreview,render(category){favCache=null;section=category;const nav=document.getElementById('categoryNav');nav.querySelectorAll('button').forEach(b=>{const active=b.dataset.category===(['bubbles','fonts','wallpapers','widgets'].includes(category)?'categories':category);b.classList.toggle('active',active);b.setAttribute('aria-current',active?'page':'false');});try{if(category==='discover')return discover();if(category==='themes')return themes();if(category==='categories')return categoryView();if(category==='mine')return mine();}catch(error){return '<p class="sf-error">'+e(error.message)+'</p>';}return null;},svg,_animWatchedCount:animWatchedCount};
 })(window);
