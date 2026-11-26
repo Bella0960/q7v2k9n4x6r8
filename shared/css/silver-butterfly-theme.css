@@ -497,3 +497,33 @@
 }
 
 
+
+
+/* Moments toolbar belongs to the WeChat preset only.
+   Hide the WeChat-only header in other themes and keep its SVGs intrinsically compact. */
+.phone-mockup .wechat-moments-toolbar {
+  display: none;
+}
+.phone-mockup .wechat-moments-toolbar .wechat-moments-back,
+.phone-mockup .wechat-moments-toolbar button {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex: 0 0 34px;
+  width: 34px;
+  height: 34px;
+}
+.phone-mockup .wechat-moments-toolbar .wechat-moments-back svg {
+  display: block;
+  width: 20px;
+  height: 20px;
+  max-width: 20px;
+  max-height: 20px;
+}
+.phone-mockup .wechat-moments-toolbar button svg {
+  display: block;
+  width: 21px;
+  height: 21px;
+  max-width: 21px;
+  max-height: 21px;
+}
