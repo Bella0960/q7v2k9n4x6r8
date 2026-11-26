@@ -181,7 +181,7 @@ Choose by actual behavior and affected consumers, not by file extension alone.
 
 ### 10.7 Read-only file-ownership conflict scan
 
-- Before opening a task branch or assembling an integration candidate, run `npm run eng:conflicts` from the source checkout. It compares committed, staged, unstaged, and untracked paths with changed-file lists for all open PRs in the public source repository. For repositories with many open PRs, use an authenticated environment with `GH_TOKEN` or `GITHUB_TOKEN` to avoid exhausting the anonymous GitHub API quota.
+- Before opening a task branch or assembling an integration candidate, run `npm run eng:conflicts` from the source checkout. It compares committed, staged, unstaged, and untracked paths with all open PRs in the public source repository. Use a checkout with complete Git history. GitHub supplies the paginated open-PR list, and the command computes each PR’s paths from its listed base and head commits. Missing commits are fetched in one Git operation without moving branch refs.
 - An exact path overlap is a **BLOCK** until owners coordinate. Changes in the same shared runtime, Worker, workflow, build-config, release-core, or engineering-governance hotspot are **SHARED** warnings requiring one named owner. Different files in the same feature submodule are **REVIEW** warnings, not automatic blockers.
 - The scanner reads PR metadata and filenames only. It does not read PR bodies/source contents, write GitHub state, rebase, merge, close PRs, or dispatch QA.
 - An incomplete API scan exits non-zero and must never be interpreted as “no conflicts”. A zero-change branch reports that no ownership conclusion was made.

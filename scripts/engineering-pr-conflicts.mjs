@@ -5,6 +5,8 @@ import { resolve } from 'node:path';
 import { pathToFileURL } from 'node:url';
 
 const API='https://api.github.com';
+const SHA=/^[0-9a-f]{40}$/;
+const DIFF_PATHS=['diff','--name-only','-z','--no-renames','--no-ext-diff'];
 const HOTSPOTS=new Map([
  ['package.json','build-config'],['package-lock.json','build-config'],['vite.config.js','build-config'],
  ['vite.config.mjs','build-config'],['wrangler.jsonc','worker-config'],['wrangler.qa.jsonc','worker-config'],
@@ -80,8 +82,13 @@ export function buildConflictReport({repository='Bella0960/q7v2k9n4x6r8',current
   sharedHotspotCount:findings.reduce((n,x)=>n+x.sharedHotspots.length,0),
   moduleOverlapCount:findings.reduce((n,x)=>n+x.moduleOverlaps.length,0),findings};
 }
-function git(...args){return execFileSync('git',args,{encoding:'utf8',stdio:['ignore','pipe','pipe'],timeout:60000});}
-function nextLink(h){return String(h||'').match(/<([^>]+)>;\s*rel="next"/)?.[1]||null;}
+function runGit(args,{input,timeout=60000,env=process.env}={}){
+ return execFileSync('git',args,{input,encoding:'utf8',stdio:['pipe','pipe','pipe'],
+  env,timeout,maxBuffer:16*1024*1024});
+}
+function git(...args){return runGit(args);}
+function splitPaths(output){return output.split('\0').filter(Boolean);}
+function nextLink(header){return String(header||'').match(/<([^>]+)>;\s*rel="next"/)?.[1]||null;}
 async function getJson(url){
  const headers={accept:'application/vnd.github+json','x-github-api-version':'2022-11-28','user-agent':'maomao-engineering-conflict-audit'};
  const token=process.env.GITHUB_TOKEN||process.env.GH_TOKEN;if(token)headers.authorization='Bearer '+token;
@@ -93,48 +100,82 @@ async function getJson(url){
  if(!r.ok)throw new Error('GitHub API request failed ('+r.status+')');
  return {data:await r.json(),next:nextLink(r.headers.get('link'))};
 }
-async function pages(url){const out=[];while(url){const p=await getJson(url);if(!Array.isArray(p.data))throw new Error('GitHub API returned invalid list');out.push(...p.data);url=p.next;}return out;}
 async function openPrs(repo){
- const root=API+'/repos/'+repo,prs=await pages(root+'/pulls?state=open&per_page=100');
- const out=new Array(prs.length);
- let nextIndex=0;
- await Promise.all(Array.from({length:Math.min(4,prs.length)},async()=>{
-  while(nextIndex<prs.length){
-   const index=nextIndex++;
-   const pr=prs[index];
-   const files=await pages(root+'/pulls/'+pr.number+'/files?per_page=100');
-   // GitHub caps the PR files endpoint at 3,000 files.
-   if(files.length>=3000||files.some(file=>!normalizeRepoPath(file?.filename)||
-     (file.status==='renamed'&&!normalizeRepoPath(file.previous_filename)))){
-    throw new Error('GitHub returned an incomplete file list for PR #'+pr.number);
+ const endpoint=API+'/repos/'+repo+'/pulls?state=open&per_page=100';
+ const pullRequests=[];
+ const seen=new Set();
+ let url=endpoint;
+ let page=1;
+ while(url){
+  const response=await getJson(url);
+  if(!Array.isArray(response.data))throw new Error('GitHub API returned an invalid PR list');
+  for(const pr of response.data){
+   if(!Number.isSafeInteger(pr?.number)||seen.has(pr.number)||pr.state!=='open'||
+     !SHA.test(pr.base?.sha??'')||!SHA.test(pr.head?.sha??'')){
+    throw new Error('GitHub returned inconsistent open PR metadata');
    }
-   out[index]={...pr,files};
+   seen.add(pr.number);
+   pullRequests.push(pr);
   }
- }));
- return out;
+  if(!response.next)break;
+  const next=new URL(response.next);
+  if(next.origin!==API||next.searchParams.get('page')!==String(++page)){
+   throw new Error('GitHub returned an unexpected PR pagination link');
+  }
+  url=endpoint+'&page='+page;
+ }
+ return pullRequests;
 }
+
+function withGitPaths(repo,pullRequests){
+ const shas=[...new Set(pullRequests.flatMap(pr=>[pr.base.sha,pr.head.sha]))];
+ if(!shas.length)return pullRequests;
+ // Keep the checkout and its refs intact. Fetch only when the listed commits are absent.
+ const objects=runGit(['cat-file','--batch-check=%(objecttype)'],
+  {input:shas.join('\n')+'\n',env:{...process.env,GIT_NO_LAZY_FETCH:'1'}});
+ if(objects.trimEnd().split('\n').some(type=>type!=='commit')){
+  try{
+   runGit(['fetch','--quiet','--no-tags','--no-write-fetch-head','--filter=blob:none',
+    '--stdin','https://github.com/'+repo+'.git'],{input:shas.join('\n')+'\n',timeout:120000});
+  }catch{
+   throw new Error('Cannot fetch the exact GitHub PR commits');
+  }
+ }
+ return pullRequests.map(pr=>{
+  try{
+   const files=splitPaths(git(...DIFF_PATHS,pr.base.sha+'...'+pr.head.sha,'--'));
+   return {...pr,files};
+  }catch{
+   throw new Error('Cannot compare the pinned Git commits for PR #'+pr.number);
+  }
+ });
+}
+
 function changedPaths(base,head){
- const diffArgs=['diff','--name-only','-z','--no-renames'];
  let committed;
- try{committed=git(...diffArgs,base+'...'+head);}
+ try{committed=git(...DIFF_PATHS,base+'...'+head);}
  catch{
   if(base!=='origin/main')throw new Error('Base reference unavailable');
   try{
    git('fetch','--quiet','--no-tags','origin','main');
-   committed=git(...diffArgs,base+'...'+head);
+   committed=git(...DIFF_PATHS,base+'...'+head);
   }catch{throw new Error('Cannot compare with origin/main');}
  }
- const outputs=[committed,git(...diffArgs),git(...diffArgs,'--cached'),
+ const outputs=[committed,git(...DIFF_PATHS),git(...DIFF_PATHS,'--cached'),
   git('ls-files','-z','--others','--exclude-standard')];
- return [...new Set(outputs.flatMap(output=>output.split('\0')).filter(Boolean))].sort();
+ return [...new Set(outputs.flatMap(splitPaths))].sort();
 }
 export async function runConflictAudit({repo=process.env.GITHUB_REPOSITORY||'Bella0960/q7v2k9n4x6r8',base='origin/main',head='HEAD'}={}){
  if(!/^[A-Za-z0-9_.-]+\/[A-Za-z0-9_.-]+$/.test(repo))throw new Error('Repository must use owner/name form');
  const branch=git('branch','--show-current').trim(),sha=git('rev-parse',head).trim();
- if(!/^[0-9a-f]{40}$/.test(sha))throw new Error('Current Git SHA invalid');
+ if(!SHA.test(sha))throw new Error('Current Git SHA invalid');
  const mine=changedPaths(base,head);
  if(!mine.length)return buildConflictReport({repository:repo,currentBranch:branch,currentSha:sha,currentPaths:mine});
- return buildConflictReport({repository:repo,currentBranch:branch,currentSha:sha,currentPaths:mine,pullRequests:await openPrs(repo)});
+ if(git('rev-parse','--is-shallow-repository').trim()==='true'){
+  throw new Error('A complete Git history is required. Fetch the full history and retry.');
+ }
+ const pullRequests=withGitPaths(repo,await openPrs(repo));
+ return buildConflictReport({repository:repo,currentBranch:branch,currentSha:sha,currentPaths:mine,pullRequests});
 }
 function render(r){
  const displayPath=path=>/[\u0000-\u001f\u007f-\u009f]/.test(path)

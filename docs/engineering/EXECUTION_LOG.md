@@ -306,3 +306,9 @@ On the next turn/session, read this file and the current `AGENTS.md` first. Cont
 - The scanner stops with an incomplete result when the GitHub API quota is exhausted or the PR file list reaches GitHub's 3,000-file cap.
 - Node 24.22.3 syntax check and 10/10 focused tests passed. The CLI regression used real Git commits, staging, and working-tree changes with simulated paginated GitHub responses.
 - Ran `npm run eng:conflicts -- --json` from the GOV-006 checkout with a valid `origin/main` merge base. GitHub's anonymous rate limit prevented the full live scan. Its exit code was 1 and it returned no conflict report. Full authenticated scan remains NOT VERIFIED.
+
+### GOV-006 live repository scan
+
+- Eliminated per-PR API calls. The scanner reads paginated open PR metadata and derives changed paths from the pinned base and head commits in Git. It fetches missing commits without checking out another branch or changing local branch refs.
+- Ran the CLI against the live public source from the GOV-006 checkout with no token. The scan completed across 174 open PRs in two API pages, found 136 PR/path overlaps across six branch paths, and exited 2 as expected. Cross-checked exact findings for PRs #300 and #547 against GitHub’s changed-file lists.
+- Node syntax check, 10/10 focused tests, and `git diff --check` passed. The tests exercise paginated PR metadata, actual Git history, filenames and renames, and incomplete API responses.

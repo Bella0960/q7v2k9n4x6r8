@@ -68,7 +68,15 @@ test('command line scans exact Git paths across committed and working-tree chang
  git('add','.');
  git('commit','-qm','Base');
  git('update-ref','refs/remotes/origin/main','HEAD');
- git('switch','-qc','task');
+ const base=git('rev-parse','HEAD').toString().trim();
+ const expected=['原名称.txt','新名称.txt',' staged.txt ','unstaged.txt','untracked\nfile.txt'];
+ git('switch','-qc','other');
+ rmSync(join(directory,'原名称.txt'));
+ for(const path of expected.slice(1))write(path,'other branch');
+ git('add','-A');
+ git('commit','-qm','Other PR');
+ const head=git('rev-parse','HEAD').toString().trim();
+ git('switch','-qc','task','main');
  renameSync(join(directory,'原名称.txt'),join(directory,'新名称.txt'));
  git('add','-A');
  git('commit','-qm','Rename');
@@ -76,7 +84,6 @@ test('command line scans exact Git paths across committed and working-tree chang
  git('add','--',' staged.txt ');
  write('unstaged.txt','new content');
  write('untracked\nfile.txt');
- const expected=['原名称.txt','新名称.txt',' staged.txt ','unstaged.txt','untracked\nfile.txt'];
  const script=resolve('scripts/engineering-pr-conflicts.mjs');
  // The Git commands and CLI run normally. Only the external GitHub response is supplied by the test.
  const fetchStub=`globalThis.fetch=async url=>{
@@ -84,13 +91,9 @@ test('command line scans exact Git paths across committed and working-tree chang
   const response=(data,next)=>new Response(JSON.stringify(data),{
    headers:next?{link:'<'+next+'>; rel="next"'}:{}
   });
-  if(url.includes('/files?')){
-   const paths=${JSON.stringify(expected)};
-   return response((page?paths.slice(1):paths.slice(0,1)).map(filename=>({filename})),
-    page?null:url+'&page=2');
-  }
-  return response(page?[{number:12,state:'open',head:{ref:'other'}}]:[],
-   page?null:url+'&page=2');
+  if(!url.includes('/pulls?'))throw new Error('Unexpected per-PR API request');
+  const pr={number:12,state:'open',head:{ref:'other',sha:'${head}'},base:{sha:'${base}'}};
+  return response(page?[pr]:[],page?null:url+'&page=2');
  };`;
  const args=['--import','data:text/javascript,'+encodeURIComponent(fetchStub),script,'--json'];
  assert.throws(
