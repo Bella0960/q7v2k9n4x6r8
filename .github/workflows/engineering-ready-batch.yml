@@ -7,9 +7,14 @@ on:
         description: Exact source SHA from the latest successful QA-only release (verify runs do not count)
         type: string
         required: true
+      resume_run_id:
+        description: Previous failed batch workflow run ID containing the saved candidate artifact (leave empty for a new batch)
+        type: string
+        required: false
 
 permissions:
   contents: write
+  actions: read
   pull-requests: read
   checks: read
   statuses: read
@@ -32,11 +37,86 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: '22'
+      - name: Download saved candidate from a previous failed run
+        if: inputs.resume_run_id != ''
+        uses: actions/download-artifact@v4
+        with:
+          name: maomao-qa-batch-${{ inputs.qa_baseline_sha }}
+          run-id: ${{ inputs.resume_run_id }}
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          repository: ${{ github.repository }}
+          path: ${{ runner.temp }}/maomao-qa-batch-recovery
+      - name: Restore exact candidate bundle and immutable receipt
+        if: inputs.resume_run_id != ''
+        env:
+          QA_BASELINE: ${{ inputs.qa_baseline_sha }}
+          RECOVERY_DIR: ${{ runner.temp }}/maomao-qa-batch-recovery
+        run: |
+          node --input-type=module <<'NODE'
+          import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
+          import { execFileSync } from 'node:child_process';
+          import { join, resolve } from 'node:path';
+
+          const baseline = process.env.QA_BASELINE;
+          const recoveryDir = process.env.RECOVERY_DIR;
+          const receiptPath = join(recoveryDir, 'receipt.json');
+          const bundlePath = join(recoveryDir, 'candidate.bundle');
+          if (!/^[0-9a-f]{40}$/.test(baseline || '') || !existsSync(receiptPath) || !existsSync(bundlePath)) {
+            throw new Error('Recovery artifact is incomplete or does not match a full QA baseline SHA.');
+          }
+          const receipt = JSON.parse(readFileSync(receiptPath, 'utf8'));
+          const branch = 'integration/qa-batch-' + baseline.slice(0, 12);
+          if (receipt.version !== 1 || receipt.repository !== 'Bella0960/q7v2k9n4x6r8' ||
+              receipt.baseline !== baseline || receipt.branch !== branch ||
+              !/^[0-9a-f]{40}$/.test(receipt.candidate || '')) {
+            throw new Error('Recovery artifact receipt does not match the requested repository and QA baseline.');
+          }
+          execFileSync('git', ['bundle', 'verify', bundlePath], { stdio: 'inherit' });
+          const ref = 'refs/heads/' + branch;
+          let local = '';
+          try {
+            local = execFileSync('git', ['rev-parse', '--verify', ref], { encoding: 'utf8' }).trim();
+          } catch {}
+          if (local && local !== receipt.candidate) {
+            throw new Error('A different local candidate already exists; refusing to replace it.');
+          }
+          if (!local) execFileSync('git', ['fetch', bundlePath, ref + ':' + ref], { stdio: 'inherit' });
+          const restored = execFileSync('git', ['rev-parse', '--verify', ref], { encoding: 'utf8' }).trim();
+          if (restored !== receipt.candidate) throw new Error('Restored Git bundle SHA differs from the saved receipt.');
+          const gitPath = execFileSync('git', ['rev-parse', '--git-path', 'maomao-qa-batch-receipts'], { encoding: 'utf8' }).trim();
+          const receiptDir = resolve(gitPath);
+          mkdirSync(receiptDir, { recursive: true });
+          const target = join(receiptDir, 'qa-batch-' + baseline + '.json');
+          if (existsSync(target)) throw new Error('A local candidate receipt already exists; refusing to overwrite it.');
+          writeFileSync(target, readFileSync(receiptPath), { flag: 'wx' });
+          console.log('Restored immutable candidate ' + receipt.candidate + ' for ' + branch);
+          NODE
       - name: Discover, verify, assemble and push one immutable candidate
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           GITHUB_REPOSITORY: ${{ github.repository }}
           QA_BASELINE: ${{ inputs.qa_baseline_sha }}
         run: |
-          set -o pipefail
-          npm run --silent eng:batch:auto -- "$QA_BASELINE" --push | tee -a "$GITHUB_STEP_SUMMARY"
+          set +e
+          npm run --silent eng:batch:auto -- "$QA_BASELINE" --push 2>&1 | tee -a "$GITHUB_STEP_SUMMARY"
+          command_status=${PIPESTATUS[0]}
+          set -e
+          receipt_dir="$(git rev-parse --git-path maomao-qa-batch-receipts)"
+          receipt="$receipt_dir/qa-batch-$QA_BASELINE.json"
+          if [ -f "$receipt" ]; then
+            recovery_dir="$RUNNER_TEMP/maomao-qa-batch-recovery"
+            mkdir -p "$recovery_dir"
+            cp "$receipt" "$recovery_dir/receipt.json"
+            branch="integration/qa-batch-${QA_BASELINE:0:12}"
+            git bundle create "$recovery_dir/candidate.bundle" "refs/heads/$branch"
+            git bundle verify "$recovery_dir/candidate.bundle"
+          fi
+          exit "$command_status"
+      - name: Save candidate recovery artifact
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: maomao-qa-batch-${{ inputs.qa_baseline_sha }}
+          path: ${{ runner.temp }}/maomao-qa-batch-recovery/
+          if-no-files-found: ignore
+          retention-days: 30
