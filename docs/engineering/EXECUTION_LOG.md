@@ -299,7 +299,7 @@ On the next turn/session, read this file and the current `AGENTS.md` first. Cont
 
 
 **2026-11-26 · ROLE-MIND-001 验证补记：**
-- **本地 Node smoke：** 使用 Node.js 22 对提交中的 `chat-heart-policy.js` 逻辑执行隔离测试，7/7 检查通过（标记解析、双成员隔离、24 条上限、私聊旧键读取、写入失败、提示词边界）。
+- **本地 Node smoke：** 使用 Node.js 22 对提交中的 `chat-heart-policy.js` 逻辑执行隔离测试，9/9 检查通过（标记解析、双成员隔离、24 条上限、私聊旧键读取、写入失败、提示词边界）。
 - **完整仓库测试：** `npm run test:chat:contract`、`npm run build`、Chromium 和手机 PWA 尚未执行。当前容器无法解析 GitHub 主机，GitHub PR head 的 workflow/status 查询也没有返回运行记录；不能将 smoke 测试等同于完整回归。
 - **最新 PR head：** `da8491775932f810ee51e284c1fed242e2e22222`；当前 Actions runs=0，combined status=0 条。PR #545 继续保持 Draft、未合并、未部署。
 
