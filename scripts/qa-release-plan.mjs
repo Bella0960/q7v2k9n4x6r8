@@ -27,9 +27,60 @@ const git = (...args) => execFileSync('git', args, { encoding: 'utf8', stdio: ['
 function cssResources(css) {
   return (css.match(/url\s*\([^)]*\)|@import[^;]*;|@font-face\s*\{[^}]*\}|(?:expression|behavior|-moz-binding)\s*[:(][^;}]*|javascript\s*:/gi) || []).join('\n');
 }
+const CSS_BEHAVIOR_PROPERTIES = new Set([
+  'pointer-events', 'touch-action', 'user-select', '-webkit-user-select',
+  'cursor', 'display', 'visibility', 'position', 'z-index',
+  'overflow', 'overflow-x', 'overflow-y', 'overscroll-behavior',
+  'overscroll-behavior-x', 'overscroll-behavior-y', 'scroll-behavior',
+  'scroll-snap-type', 'scroll-snap-align', 'inset', 'inset-block',
+  'inset-inline', 'top', 'right', 'bottom', 'left', 'transform',
+  'clip', 'clip-path', 'mask', 'mask-image', 'content', 'opacity',
+  'animation', 'animation-name', 'animation-duration', 'animation-delay',
+  'animation-play-state', 'transition', 'transition-property',
+  'transition-duration', 'transition-delay', 'contain', 'isolation',
+  'will-change'
+]);
+function cssBehaviorSignature(css) {
+  const source = css.replace(/\\*[\\s\\S]*?\\*\\//g, '');
+  const rules = [...source.matchAll(/([^{}]+)\\{([^{}]*)\\}/g)].map(([, selector, body]) => {
+    const declarations = body.split(';').map(value => value.trim()).filter(Boolean);
+    return { selector: selector.trim(), declarations };
+  });
+  const behaviorRules = [];
+  const referencedVariables = new Set();
+  for (const rule of rules) {
+    const sensitive = rule.declarations.filter(declaration => {
+      const colon = declaration.indexOf(':');
+      if (colon < 1) return false;
+      const property = declaration.slice(0, colon).trim().toLowerCase();
+      if (!CSS_BEHAVIOR_PROPERTIES.has(property)) return false;
+      const value = declaration.slice(colon + 1);
+      for (const match of value.matchAll(/var\\(\\s*(--[a-zA-Z0-9_-]+)/g)) {
+        referencedVariables.add(match[1]);
+      }
+      return true;
+    });
+    if (sensitive.length) behaviorRules.push(rule.selector + '{' + sensitive.join(';') + '}');
+  }
+  const variableRules = [];
+  for (const rule of rules) {
+    for (const declaration of rule.declarations) {
+      const colon = declaration.indexOf(':');
+      if (colon < 1) continue;
+      const property = declaration.slice(0, colon).trim();
+      if (referencedVariables.has(property)) {
+        variableRules.push(rule.selector + '{' + declaration + '}');
+      }
+    }
+  }
+  const conditionalRules = [...source.matchAll(/@(media|supports|container|layer|scope|starting-style|keyframes|property)\\b[^{}]*\\{/gi)]
+    .map(match => match[0].replace(/\\s+/g, ' ').trim());
+  return JSON.stringify({ behaviorRules, variableRules, conditionalRules });
+}
 function cssCompatible(before, after) {
   return cssResources(before) === cssResources(after) &&
-    !/[\\\u0000]/.test(after.replace(/\/\*[\s\S]*?\*\//g, ''));
+    cssBehaviorSignature(before) === cssBehaviorSignature(after) &&
+    !/[\\\\\\u0000]/.test(after.replace(/\\/\\*[\\s\\S]*?\\*\\//g, ''));
 }
 function htmlShape(html) {
   const raw = [];
