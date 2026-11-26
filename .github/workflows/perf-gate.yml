@@ -17,9 +17,7 @@ on:
       - 'shared/js/phone/**'
       - 'perf/**'
       - 'tests/p0-02-page-load-perf.browser.mjs'
-      - 'package.json'
       - 'package-lock.json'
-      - '.github/workflows/perf-gate.yml'
   workflow_dispatch:
 
 permissions:
