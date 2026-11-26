@@ -127,10 +127,11 @@ function assemble(directory, qaSha, branch) {
     branch,
     baseline,
     candidate,
-    tasks: tasks.map(({ id, base, head }) => ({
+    tasks: tasks.map(({ id, base, head, dependsOn }) => ({
       id,
       base,
       head,
+      dependsOn: dependsOn ?? [],
       paths: pathsByTask.get(id)
     }))
   };

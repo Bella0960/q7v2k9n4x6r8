@@ -393,7 +393,8 @@ async function collectReadyTasks(repository, baseline, pullRequests) {
         head: manifest.head,
         paths: gitPaths,
         pr: latestOpenPrMetadata(pr),
-        risk: manifest.risk
+        risk: manifest.risk,
+        dependsOn: manifest.dependsOn
       });
     } catch (error) {
       blocked.push({ ...latestOpenPrMetadata(pr), state: 'blocked', reasons: [clean(error.message)] });

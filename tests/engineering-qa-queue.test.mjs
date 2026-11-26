@@ -249,3 +249,189 @@ globalThis.fetch = async (input, init = {}) => {
   assert.deepEqual(savedManifest.dependsOn, ['CHAT-BASE-001']);
   assert.equal(savedManifest.head, sha(2));
 });
+
+function runQueueAssembleCli(t, specs) {
+  const cwd = mkdtempSync(join(tmpdir(), 'maomao-qa-assemble-cli-'));
+  const stubDir = mkdtempSync(join(tmpdir(), 'maomao-qa-assemble-stub-'));
+  t.after(() => {
+    rmSync(cwd, { recursive: true, force: true });
+    rmSync(stubDir, { recursive: true, force: true });
+  });
+  const git = (...args) => {
+    const result = spawnSync('git', args, { cwd, encoding: 'utf8' });
+    assert.equal(result.status, 0, result.stderr || result.stdout);
+    return result.stdout.trim();
+  };
+  git('init', '-q', '-b', 'main');
+  git('config', 'user.name', 'QA Test');
+  git('config', 'user.email', 'qa@example.invalid');
+  writeFileSync(join(cwd, 'baseline.txt'), 'deployed QA baseline');
+  git('add', 'baseline.txt');
+  git('commit', '-qm', 'QA baseline');
+  const baseline = git('rev-parse', 'HEAD');
+  const repository = 'Bella0960/q7v2k9n4x6r8';
+  const remotePath = join(stubDir, 'origin.git');
+  const remoteInit = spawnSync('git', ['init', '--bare', '-q', remotePath], { encoding: 'utf8' });
+  assert.equal(remoteInit.status, 0, remoteInit.stderr || remoteInit.stdout);
+  git('remote', 'add', 'origin', remotePath);
+  const prs = [];
+  const evidence = {};
+
+  for (let index = 0; index < specs.length; index++) {
+    const spec = specs[index];
+    const branch = 'task-' + spec.id.toLowerCase();
+    const path = spec.path ?? branch + '.txt';
+    git('switch', '-qc', branch, baseline);
+    writeFileSync(join(cwd, path), spec.id);
+    git('add', path);
+    git('commit', '-qm', spec.id);
+    const head = git('rev-parse', 'HEAD');
+    const number = index + 1;
+    const taskManifest = manifest({
+      id: spec.id,
+      status: 'ready',
+      base: baseline,
+      head,
+      dependsOn: spec.dependsOn ?? []
+    });
+    prs.push({
+      number,
+      state: 'open',
+      draft: false,
+      title: spec.id,
+      html_url: 'https://github.com/' + repository + '/pull/' + number,
+      body: renderTaskManifest(taskManifest),
+      user: { login: 'author' },
+      head: { sha: head, ref: branch, repo: { full_name: repository } },
+      base: { sha: baseline, ref: 'main', repo: { full_name: repository } }
+    });
+    evidence[number] = {
+      head,
+      reviews: [{
+        user: { login: 'reviewer' },
+        state: 'APPROVED',
+        commit_id: head,
+        submitted_at: '2026-11-26T10:00:00Z'
+      }],
+      check_runs: [{
+        name: 'Node Tests',
+        head_sha: head,
+        status: 'completed',
+        conclusion: spec.ready === false ? 'failure' : 'success',
+        started_at: '2026-11-26T10:00:00Z'
+      }],
+      status: { state: 'success', total_count: 0, statuses: [] },
+      files: [{ filename: path }]
+    };
+    git('switch', '-q', 'main');
+  }
+
+  const stubPath = join(stubDir, 'github-api-stub.mjs');
+  const stub = `
+const fixture = ${JSON.stringify({ repository, prs, evidence })};
+const base = '/repos/' + fixture.repository;
+const json = value => new Response(JSON.stringify(value), {
+  status: 200,
+  headers: { 'content-type': 'application/json' }
+});
+globalThis.fetch = async (input, init = {}) => {
+  const url = new URL(String(input));
+  const method = init.method || 'GET';
+  if (method !== 'GET') throw new Error('Unexpected mocked GitHub method: ' + method);
+  const suffix = url.pathname.slice(base.length);
+  if (suffix === '/pulls') return json(fixture.prs);
+  let match = suffix.match(/^\\/pulls\\/(\\d+)$/);
+  if (match) return json(fixture.prs.find(pr => pr.number === Number(match[1])));
+  match = suffix.match(/^\\/pulls\\/(\\d+)\\/reviews$/);
+  if (match) return json(fixture.evidence[match[1]].reviews);
+  match = suffix.match(/^\\/pulls\\/(\\d+)\\/files$/);
+  if (match) return json(fixture.evidence[match[1]].files);
+  match = suffix.match(/^\\/commits\\/([0-9a-f]{40})\\/check-runs$/);
+  if (match) {
+    const item = Object.values(fixture.evidence).find(value => value.head === match[1]);
+    if (!item) throw new Error('Missing check-run fixture for ' + match[1]);
+    return json({ check_runs: item.check_runs });
+  }
+  match = suffix.match(/^\\/commits\\/([0-9a-f]{40})\\/status$/);
+  if (match) {
+    const item = Object.values(fixture.evidence).find(value => value.head === match[1]);
+    if (!item) throw new Error('Missing status fixture for ' + match[1]);
+    return json(item.status);
+  }
+  throw new Error('Unexpected mocked GitHub request: ' + method + ' ' + url.pathname);
+};
+`;
+  writeFileSync(stubPath, stub);
+  const result = spawnSync(process.execPath, [
+    '--import', stubPath, queueScript, 'assemble', baseline
+  ], {
+    cwd,
+    encoding: 'utf8',
+    env: {
+      ...process.env,
+      GH_TOKEN: 'test-token',
+      GITHUB_TOKEN: 'test-token',
+      GITHUB_REPOSITORY: repository
+    }
+  });
+  let receipt;
+  try { receipt = JSON.parse(result.stdout); }
+  catch { throw new Error('Queue CLI did not return JSON. stdout=' + result.stdout + '\\nstderr=' + result.stderr); }
+  return { result, receipt };
+}
+
+test('CLI assemble blocks a dependent task when its prerequisite is not ready and keeps independent work', t => {
+  const { result, receipt } = runQueueAssembleCli(t, [
+    { id: 'TASK-01', ready: false },
+    { id: 'TASK-02', dependsOn: ['TASK-01'] },
+    { id: 'TASK-10' }
+  ]);
+  assert.equal(result.status, 0, result.stderr);
+  assert.equal(receipt.status, 'assembled-local');
+  assert.deepEqual(receipt.includedTasks.map(task => task.id), ['TASK-10']);
+  assert.deepEqual(receipt.includedTasks[0].dependsOn, []);
+  assert.ok(receipt.blocked.some(item => item.number === 1));
+  assert.ok(receipt.blocked.some(item => item.number === 2 &&
+    item.reasons.some(reason => reason.includes('TASK-01'))));
+});
+
+test('CLI assemble topologically orders ready tasks and retains dependencies in the receipt', t => {
+  const { result, receipt } = runQueueAssembleCli(t, [
+    { id: 'TASK-02', dependsOn: ['TASK-01'] },
+    { id: 'TASK-01', dependsOn: ['TASK-10'] },
+    { id: 'TASK-10' }
+  ]);
+  assert.equal(result.status, 0, result.stderr);
+  assert.equal(receipt.status, 'assembled-local');
+  assert.deepEqual(receipt.includedTasks.map(task => task.id), ['TASK-10', 'TASK-01', 'TASK-02']);
+  assert.deepEqual(receipt.includedTasks.find(task => task.id === 'TASK-02').dependsOn, ['TASK-01']);
+});
+
+test('CLI assemble explicitly blocks a task whose prerequisite is absent', t => {
+  const { result, receipt } = runQueueAssembleCli(t, [
+    { id: 'TASK-02', dependsOn: ['TASK-01'] }
+  ]);
+  assert.equal(result.status, 0, result.stderr);
+  assert.equal(receipt.status, 'no-ready-tasks');
+  assert.deepEqual(receipt.includedTasks, []);
+  assert.ok(receipt.blocked.some(item => item.reasons.some(reason =>
+    reason.includes('dependency is not ready in this batch: TASK-01'))));
+});
+
+test('CLI assemble explicitly blocks dependency cycles before candidate creation', t => {
+  const { result, receipt } = runQueueAssembleCli(t, [
+    { id: 'TASK-01', dependsOn: ['TASK-02'] },
+    { id: 'TASK-02', dependsOn: ['TASK-01'] }
+  ]);
+  assert.equal(result.status, 2, result.stderr);
+  assert.equal(receipt.status, 'blocked');
+  assert.match(receipt.assemblyError, /cycle/i);
+});
+
+test('CLI assemble includes independent tasks with no dependencies', t => {
+  const { result, receipt } = runQueueAssembleCli(t, [{ id: 'TASK-10' }]);
+  assert.equal(result.status, 0, result.stderr);
+  assert.equal(receipt.status, 'assembled-local');
+  assert.deepEqual(receipt.includedTasks.map(task => task.id), ['TASK-10']);
+  assert.deepEqual(receipt.includedTasks[0].dependsOn, []);
+});

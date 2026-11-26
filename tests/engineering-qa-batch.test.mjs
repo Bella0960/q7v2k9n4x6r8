@@ -32,8 +32,8 @@ test('assembles separate ready tasks into an isolated create-only batch', t => {
     return { id, status: 'ready', base: baseline, head: git('rev-parse', 'HEAD'), paths: [file] };
   }
 
-  const first = task('TASK-01', 'one.txt');
-  const second = task('TASK-02', 'two.txt');
+  const first = { ...task('TASK-01', 'one.txt'), dependsOn: [] };
+  const second = { ...task('TASK-02', 'two.txt'), dependsOn: ['TASK-01'] };
   write('records/first.json', JSON.stringify(first));
   write('records/second.json', JSON.stringify(second));
   write('records/pending.json', JSON.stringify({ id: 'TASK-03', status: 'in-progress' }));
@@ -47,8 +47,8 @@ test('assembles separate ready tasks into an isolated create-only batch', t => {
   const receipt = JSON.parse(assembled.stdout);
   assert.equal(receipt.candidate, git('rev-parse', 'integration/batch-01'));
   assert.deepEqual(receipt.tasks, [
-    { id: 'TASK-01', base: baseline, head: first.head, paths: ['one.txt'] },
-    { id: 'TASK-02', base: baseline, head: second.head, paths: ['two.txt'] }
+    { id: 'TASK-01', base: baseline, head: first.head, dependsOn: [], paths: ['one.txt'] },
+    { id: 'TASK-02', base: baseline, head: second.head, dependsOn: ['TASK-01'], paths: ['two.txt'] }
   ]);
   assert.equal(git('show', receipt.candidate + ':one.txt'), first.id);
   assert.equal(git('show', receipt.candidate + ':two.txt'), second.id);
