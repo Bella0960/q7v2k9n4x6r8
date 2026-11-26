@@ -285,3 +285,17 @@ On the next turn/session, read this file and the current `AGENTS.md` first. Cont
 - **测试：** 新增 `tests/games-storage-trust.test.mjs`（9 项，VM 跑真实 `saveRaw/saveJSON/saveCaseProgress/selectRole/saveStat`），9/9 通过；7 段内联脚本全部 `vm.Script` 解析通过。
 - **登记未做（需产品决策）：** 游戏大厅只读角色卡 + 记忆无关；不产出世界事件（依赖 `ECO-LINK-002`）；侦探案件生成为付费调用，无次数限制或失败重试预算控制。
 - **未验证：** Vite 全站构建、Chromium 375/390/430、真机、真实配额场景。
+
+
+## 2026-11-26 · GOV-006 · Fast parallel delivery and batched QA release
+
+- **Status:** Governance implementation prepared on branch `GOV-006/fast-parallel-qa-delivery-20261126`; documentation-only, not merged to main and not deployed.
+- **Baseline:** source main `7f666f1d53c593d341b390442e0e4ff1d0a8f39d`. Read current `AGENTS.md`, `RELEASE_POLICY.md`, `DEVELOPMENT_GOVERNANCE.md`, `REMEDIATION_BACKLOG.md`, and the current QA reusable entry and runner.
+- **Verified workflow facts:** the reusable QA request has separate verify/release operations; both invoke `run-candidate.mjs`, which runs the candidate test plan, while release additionally performs QA-only deployment and post-upload checks. QA publication is serialized with `cancel-in-progress: false`; verification uses a separate concurrency group. A same-SHA verify followed by release repeats the test plan.
+- **Adaptive coverage boundary:** inspected candidate `6c61b0395705848dfa898073709a651869e87b90` includes an adaptive presentation classifier for only library, diary, music, travel, cafe, and games. Structural/script/attribute/resource changes and unmapped modules fall back to standard regression. PR #507 remains Draft/open; the active release policy still marks adaptive migration under acceptance.
+- **Latest failure evidence:** QA verify run [#45792397059](https://github.com/Bella0960/web-runtime-lab/actions/runs/45792397059) stopped at gate 27/51, mapped from the candidate test plan to `tests/travel-storage.browser.mjs`. Release was skipped. The available sanitized output does not identify the underlying assertion or prove a product defect; root cause is NOT VERIFIED. No blind rerun or QA request mutation was made.
+- **Changes in this task:** add the mandatory multi-window file-ownership protocol, risk lanes, narrow F1 criteria, one-coordinator batch release, verify/release deduplication, stage-specific failure handling, GOV-006 backlog acceptance, and this durable execution record.
+- **Safety boundary:** no product code, user data, QA request file, workflow, secrets, Worker, identity core, production target, or APK changed. No QA deployment requested.
+- **Checks:** documentation structure/anchor validation and exact repository SHA checks are the required scope; no product tests or deployment are applicable to this documentation-only task.
+- **Next:** review PR, merge only with owner authorization; separately diagnose the travel browser gate and complete PR #507 adaptive-path acceptance before claiming the fast selector is globally active.
+
