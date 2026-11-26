@@ -129,3 +129,36 @@ test('dependent tasks stay out of the batch when their prerequisite is not ready
   const missing = task.dependsOn.filter(id => ![...active].some(candidate => candidate.id === id));
   assert.deepEqual(missing, ['CHAT-001']);
 });
+
+
+test('a later successful rerun replaces an older failed check with the same name', () => {
+  const result = evaluateTaskEvidence({
+    pr: pr(),
+    manifest: manifest(),
+    reviews,
+    checkRuns: [
+      { name: 'Node Tests', head_sha: sha(2), status: 'completed', conclusion: 'failure', started_at: '2026-11-26T09:00:00Z' },
+      { name: 'Node Tests', head_sha: sha(2), status: 'completed', conclusion: 'success', started_at: '2026-11-26T10:00:00Z' },
+      checkRuns[1]
+    ],
+    status
+  });
+  assert.equal(result.ready, true);
+});
+test('a later successful status context replaces an older failure for that context', () => {
+  const result = evaluateTaskEvidence({
+    pr: pr(),
+    manifest: manifest(),
+    reviews,
+    checkRuns: [],
+    status: {
+      state: 'success',
+      statuses: [
+        { context: 'Node Tests', state: 'failure', updated_at: '2026-11-26T09:00:00Z' },
+        { context: 'Node Tests', state: 'success', updated_at: '2026-11-26T10:00:00Z' },
+        { context: 'Vite Build', state: 'success', updated_at: '2026-11-26T10:00:00Z' }
+      ]
+    }
+  });
+  assert.equal(result.ready, true);
+});

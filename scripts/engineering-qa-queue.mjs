@@ -147,8 +147,9 @@ export function evaluateTaskEvidence({ pr, manifest, reviews = [], checkRuns = [
     reasons.push('missing an approval on the exact current head from someone other than the PR author');
   }
 
-  for (const run of checkRuns) {
-    if (run?.head_sha && run.head_sha !== pr?.head?.sha) continue;
+  const currentChecks = checkRuns.filter(run => !run?.head_sha || run.head_sha === pr?.head?.sha);
+  const latestChecks = latestBy(currentChecks, 'name', 'started_at');
+  for (const run of latestChecks.values()) {
     if (run?.status !== 'completed') {
       reasons.push('check is not complete: ' + clean(run?.name ?? 'unnamed check'));
     } else if (!['success', 'neutral', 'skipped'].includes(run?.conclusion)) {
@@ -156,16 +157,16 @@ export function evaluateTaskEvidence({ pr, manifest, reviews = [], checkRuns = [
     }
   }
 
-  for (const context of status?.statuses ?? []) {
+  const latestStatuses = latestBy(statusContexts, 'context', 'updated_at');
+  for (const context of latestStatuses.values()) {
     if (context?.state !== 'success') {
       reasons.push('commit status is not successful: ' + clean(context?.context ?? 'unnamed status'));
     }
   }
 
   for (const required of manifest?.requiredChecks ?? []) {
-    const check = latestBy(checkRuns.filter(run => run?.name === required && (!run.head_sha || run.head_sha === pr?.head?.sha)),
-      'name', 'completed_at').get(required);
-    const context = latestBy(status?.statuses ?? [], 'context', 'updated_at').get(required);
+    const check = latestChecks.get(required);
+    const context = latestStatuses.get(required);
     const passed = (check?.status === 'completed' && check?.conclusion === 'success') ||
       context?.state === 'success';
     if (!passed) reasons.push('required check missing or not successful: ' + required);
@@ -304,7 +305,10 @@ async function registerTask(repository, args) {
   if (!files.length) fail('Cannot register an empty PR.');
   const body = replaceTaskManifest(pr.body ?? '', manifest);
   const latest = await api('/repos/' + repository + '/pulls/' + number);
-  if (latest.head?.sha !== manifest.head || latest.state !== 'open') fail('PR head changed during registration; rerun eng:register.');
+  if (latest.head?.sha !== manifest.head || latest.state !== 'open' ||
+      latest.body !== pr.body || latest.base?.ref !== pr.base?.ref) {
+    fail('PR body, base, or head changed during registration; no overwrite was made. Rerun eng:register.');
+  }
   const updated = await api('/repos/' + repository + '/pulls/' + number, { method: 'PATCH', body: { body } });
   console.log(JSON.stringify({
     status: 'submitted',
