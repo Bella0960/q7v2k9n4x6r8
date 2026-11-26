@@ -10,7 +10,14 @@ const branchPattern = /^integration\/[a-zA-Z0-9_/-]+$/;
 function git(args, context = 'Git operation') {
   const result = spawnSync('git', args, { encoding: 'utf8', timeout: 60000, maxBuffer: 16 * 1024 * 1024 });
   if (result.status !== 0 || result.error) {
-    throw new Error(context + ' failed (Git exit ' + (result.status ?? 'unknown') + ').');
+    const detail = [result.stdout, result.stderr, result.error?.message]
+      .filter(value => typeof value === 'string' && value.trim())
+      .join('\n')
+      .replace(/[\u0000-\u0008\u000b\u000c\u000e-\u001f\u007f-\u009f]/g, ' ')
+      .trim()
+      .slice(0, 1600);
+    throw new Error(context + ' failed (Git exit ' + (result.status ?? 'unknown') + ').' +
+      (detail ? '\n' + detail : ''));
   }
   return result.stdout;
 }
@@ -54,6 +61,7 @@ function assemble(directory, qaSha, branch) {
   if (!tasks.length) throw new Error('No ready tasks to assemble.');
 
   const owners = new Map();
+  const pathsByTask = new Map();
   for (const task of tasks) {
     const base = commit(task.base, task.id + ' base');
     const head = commit(task.head, task.id + ' head');
@@ -64,6 +72,7 @@ function assemble(directory, qaSha, branch) {
       JSON.stringify([...task.paths].sort()) !== JSON.stringify(paths)) {
       throw new Error(task.id + ' changed paths differ from its approved ownership.');
     }
+    pathsByTask.set(task.id, paths);
     for (const path of paths) {
       const owner = owners.get(path);
       if (owner) throw new Error(owner + ' and ' + task.id + ' both own ' + JSON.stringify(path) + '.');
@@ -86,7 +95,17 @@ function assemble(directory, qaSha, branch) {
   if (candidate === baseline) throw new Error('All ready changes are already in the QA baseline.');
   // A zero old value makes this a create-only update, including simultaneous runs.
   git(['update-ref', ref, candidate, '0'.repeat(40)], 'Create-only integration branch update');
-  return { branch, baseline, candidate, tasks: tasks.map(({ id, head }) => ({ id, head })) };
+  return {
+    branch,
+    baseline,
+    candidate,
+    tasks: tasks.map(({ id, base, head }) => ({
+      id,
+      base,
+      head,
+      paths: pathsByTask.get(id)
+    }))
+  };
 }
 
 try {

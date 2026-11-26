@@ -45,7 +45,10 @@ test('assembles separate ready tasks into an isolated create-only batch', t => {
   assert.equal(assembled.status, 0, assembled.stderr);
   const receipt = JSON.parse(assembled.stdout);
   assert.equal(receipt.candidate, git('rev-parse', 'integration/batch-01'));
-  assert.deepEqual(receipt.tasks.map(task => task.id), ['TASK-01', 'TASK-02']);
+  assert.deepEqual(receipt.tasks, [
+    { id: 'TASK-01', base: baseline, head: first.head, paths: ['one.txt'] },
+    { id: 'TASK-02', base: baseline, head: second.head, paths: ['two.txt'] }
+  ]);
   assert.equal(git('show', receipt.candidate + ':one.txt'), first.id);
   assert.equal(git('show', receipt.candidate + ':two.txt'), second.id);
   assert.equal(git('show', receipt.candidate + ':baseline.txt'), 'existing QA');
@@ -57,4 +60,52 @@ test('assembles separate ready tasks into an isolated create-only batch', t => {
   write('records/second.json', JSON.stringify({ ...first, id: 'TASK-02' }));
   assert.match(release('conflict').stderr, /both own "one.txt"/);
   assert.equal(git('branch', '--list', 'integration/conflict'), '');
+});
+
+
+test('reports file-directory merge conflicts and preserves all refs', t => {
+  const cwd = mkdtempSync(join(tmpdir(), 'maomao-qa-batch-conflict-'));
+  t.after(() => rmSync(cwd, { recursive: true, force: true }));
+  const run = (bin, args) => execFileSync(bin, args, { cwd, encoding: 'utf8', stdio: 'pipe' }).trim();
+  const git = (...args) => run('git', args);
+  const write = (path, contents) => writeFileSync(join(cwd, path), contents);
+  git('init', '-q', '-b', 'main');
+  git('config', 'user.name', 'QA Test');
+  git('config', 'user.email', 'qa@example.invalid');
+  write('baseline.txt', 'existing QA');
+  git('add', 'baseline.txt');
+  git('commit', '-qm', 'Baseline');
+  const baseline = git('rev-parse', 'HEAD');
+  mkdirSync(join(cwd, 'records'));
+
+  git('switch', '-qc', 'task-01', baseline);
+  write('collision', 'file');
+  git('add', '-A');
+  git('commit', '-qm', 'File path');
+  const first = {
+    id: 'TASK-01', status: 'ready', base: baseline,
+    head: git('rev-parse', 'HEAD'), paths: ['collision']
+  };
+
+  git('switch', '-qc', 'task-02', baseline);
+  mkdirSync(join(cwd, 'collision'));
+  write('collision/child.txt', 'nested file');
+  git('add', '-A');
+  git('commit', '-qm', 'Directory path');
+  const second = {
+    id: 'TASK-02', status: 'ready', base: baseline,
+    head: git('rev-parse', 'HEAD'), paths: ['collision/child.txt']
+  };
+
+  write('records/first.json', JSON.stringify(first));
+  write('records/second.json', JSON.stringify(second));
+  git('switch', '-q', 'main');
+  const result = spawnSync(process.execPath, [script, 'records', baseline, 'integration/conflict'],
+    { cwd, encoding: 'utf8' });
+
+  assert.equal(result.status, 1);
+  assert.match(result.stderr, /CONFLICT \(file\/directory\)/);
+  assert.match(result.stderr, /collision/);
+  assert.equal(git('branch', '--list', 'integration/conflict'), '');
+  assert.equal(git('rev-parse', 'HEAD'), baseline);
 });

@@ -173,7 +173,7 @@ Choose by actual behavior and affected consumers, not by file extension alone.
 
 The coordinator can assemble independent ready tasks with `npm run --silent eng:batch -- <task-directory> <deployed-qa-sha> <integration/branch>`. Give each task its own JSON record. A reviewed task has `id`, `status: "ready"`, full `base` and `head` commit SHAs, and an exact `paths` array matching its Git diff. Records marked `in-progress` or `blocked` stay out of the batch.
 
-Use the source SHA from the current QA receipt as the baseline. The command requires each reviewed task base to be in that baseline's history. It rejects overlapping paths or Git merge conflicts and creates a new local integration branch in one create-only update. The output records the baseline, candidate SHA, and included task SHAs. The coordinator uses that exact candidate with the fixed QA request, then records the deployed Worker version and live source receipt after a successful release.
+Use the source SHA from the current QA receipt as the baseline. The command requires each reviewed task base to be in that baseline's history. It rejects overlapping paths or Git merge conflicts and creates a new local integration branch in one create-only update. The receipt includes each task's ID, base SHA, head SHA, and exact owned paths, alongside the QA baseline and candidate SHA. If Git detects a tree-level conflict (including file-versus-directory collisions), the command prints bounded conflict details and creates no candidate ref. The coordinator pushes and publishes only the exact reviewed candidate through the fixed QA request, then records the deployed Worker version and live source receipt after a successful release.
 
 ### 10.5 Failure handling: diagnose once, repair the cause
 
