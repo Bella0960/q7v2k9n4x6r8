@@ -804,7 +804,7 @@ async function assembleReadyBatch(repository, baseline, { push = false } = {}) {
   try {
     for (let index = 0; index < ready.length; index++) {
       const task = ready[index];
-      const record = { id: task.id, status: 'ready', prMergeBase: task.base, head: task.head, paths: task.paths, dependsOn: task.dependsOn };
+      const record = { id: task.id, status: 'ready', prMergeBase: task.prMergeBase, head: task.head, paths: task.paths, dependsOn: task.dependsOn };
       writeFileSync(join(temp, String(index + 1).padStart(3, '0') + '.json'), JSON.stringify(record));
     }
     const result = spawnSync(process.execPath, [fileURLToPath(BATCH_SCRIPT), temp, baseline, branch, JSON.stringify(qaSourceReceipt)], {

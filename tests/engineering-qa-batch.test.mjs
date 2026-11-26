@@ -59,9 +59,11 @@ test('assembles separate ready tasks into an isolated create-only batch', t => {
   assert.equal(receipt.candidate, git('rev-parse', 'integration/batch-01'));
   assert.deepEqual(receipt.qaSourceReceipt, qaSourceReceipt);
   const candidateMessage = git('show', '-s', '--format=%B', receipt.candidate);
+  const candidateHistory = git('log', '--format=%B', receipt.candidate);
   assert.ok(candidateMessage.includes('QA-Source-SHA: ' + baseline));
   assert.ok(candidateMessage.includes('QA-Release-Run: ' + qaSourceReceipt.runId));
-  assert.match(candidateMessage, /\n\nTask-ID: TASK-01\nTask-PR-Merge-Base-SHA: [0-9a-f]{40}\nTask-PR-Head-SHA: [0-9a-f]{40}\nQA-Source-SHA: [0-9a-f]{40}\nQA-Release-Run: \d+\nQA-Release-Request-SHA: [0-9a-f]{40}/);
+  assert.match(candidateHistory, /\n\nTask-ID: TASK-01\nTask-PR-Merge-Base-SHA: [0-9a-f]{40}\nTask-PR-Head-SHA: [0-9a-f]{40}\nQA-Source-SHA: [0-9a-f]{40}\nQA-Release-Run: \d+\nQA-Release-Request-SHA: [0-9a-f]{40}/);
+  assert.match(candidateHistory, /\n\nTask-ID: TASK-02\nTask-PR-Merge-Base-SHA: [0-9a-f]{40}\nTask-PR-Head-SHA: [0-9a-f]{40}\nQA-Source-SHA: [0-9a-f]{40}\nQA-Release-Run: \d+\nQA-Release-Request-SHA: [0-9a-f]{40}/);
   assert.equal(git('rev-list', '--parents', '-n', '1', receipt.candidate).trim().split(/\s+/).length, 2);
   assert.deepEqual(receipt.tasks, [
     { id: 'TASK-01', prMergeBase: baseline, head: first.head, dependsOn: [], paths: ['one.txt'] },
@@ -200,7 +202,7 @@ test('transplants only the PR delta onto a diverged QA baseline and preserves bo
   assert.equal(git('show', candidate + ':shared.txt'), 'header\nqa-a\na1\na2\na3\na4\na5\na6\na7\ntask-b\nfooter');
   assert.equal(git('show', candidate + ':deployed-only.txt'), 'already deployed');
   assert.equal(git('show', candidate + ':task-only.txt'), 'approved task content');
-  assert.equal(spawnSync('git', ['cat-file', '-e', candidate + ':main-only.txt'], { cwd }).status, 1);
+  assert.notEqual(spawnSync('git', ['cat-file', '-e', candidate + ':main-only.txt'], { cwd }).status, 0);
   assert.deepEqual(receipt.tasks, [{
     id: 'GOV-006-P0-4',
     prMergeBase,
@@ -267,7 +269,7 @@ test('blocks a conflicting PR delta against deployed QA without creating a candi
 
   assert.equal(result.status, 1);
   assert.match(result.stderr, /GOV-006-P0-4 patch conflicts/);
-  assert.match(result.stderr, /shared\\.txt/);
+  assert.match(result.stderr, /shared\.txt/);
   assert.equal(git('branch', '--list', 'integration/conflicting-delta'), '');
   assert.equal(git('rev-parse', 'HEAD'), common);
 });
