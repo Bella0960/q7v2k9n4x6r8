@@ -255,6 +255,25 @@ Acceptance:
 - Settings gallery supports per-character and public/private filtering, and generation/persistence failures are visible.
 - Tests cover prompt construction, record persistence, privacy filtering, backup inclusion, and chat command/render contracts.
 
+### ROLE-MIND-001 — Complete role-scoped heart history and persona-aligned generation
+**Priority:** P1 · **Status:** IN PROGRESS
+
+Scope:
+- Extract heart marker parsing, prompt rules, and history persistence into a shared chat policy.
+- Store bounded heart history by conversation ID and actual speaker ID; group members must never share a history bucket.
+- Read legacy direct-chat `latest_heart_<roleId>` values without deleting them. Do not attribute the old shared group key to any member.
+- Commit heart history only after the visible AI reply has been successfully persisted; verify storage readback and surface failures.
+- Clicking a group member's avatar reads only that member's history. Legacy group messages without a member ID may resolve by a unique member name only.
+- Keep heart optional and consistent with the already-loaded persona, worldbook, memory, and relationship context.
+
+Acceptance:
+- Unit tests cover parsing, direct legacy compatibility, group isolation, bounded history, corrupt data, storage failure, and prompt constraints.
+- Chat detail keeps the existing message schema and role/group IDs; no history or user data is deleted.
+- PWA cache is advanced and the new policy is pre-cached.
+- Node contract tests and Vite build pass. Browser/real-device behavior is reported separately and is not inferred from static tests.
+
+Out of scope for this task: changing emotion scoring, proactive-contact scheduling, group governance permissions, or chat message schemas.
+
 ## Phase 3 — Shared architecture and feature safety
 
 ### ARCH-001 — Reduce chat-detail coupling
