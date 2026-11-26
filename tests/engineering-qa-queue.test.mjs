@@ -250,7 +250,7 @@ globalThis.fetch = async (input, init = {}) => {
   assert.equal(savedManifest.head, sha(2));
 });
 
-function runQueueAssembleCli(t, specs) {
+function runQueueAssembleCli(t, specs, options = {}) {
   const cwd = mkdtempSync(join(tmpdir(), 'maomao-qa-assemble-cli-'));
   const stubDir = mkdtempSync(join(tmpdir(), 'maomao-qa-assemble-stub-'));
   t.after(() => {
@@ -268,20 +268,35 @@ function runQueueAssembleCli(t, specs) {
   writeFileSync(join(cwd, 'baseline.txt'), 'deployed QA baseline');
   git('add', 'baseline.txt');
   git('commit', '-qm', 'QA baseline');
-  const baseline = git('rev-parse', 'HEAD');
+  const originalBaseline = git('rev-parse', 'HEAD');
   const repository = 'Bella0960/q7v2k9n4x6r8';
+  const qaRepository = 'Bella0960/web-runtime-lab';
   const remotePath = join(stubDir, 'origin.git');
   const remoteInit = spawnSync('git', ['init', '--bare', '-q', remotePath], { encoding: 'utf8' });
   assert.equal(remoteInit.status, 0, remoteInit.stderr || remoteInit.stdout);
   git('remote', 'add', 'origin', remotePath);
+
+  let latestQaSha = originalBaseline;
+  let baseline = originalBaseline;
+  if (options.advanceQaBaseline) {
+    git('switch', '-qc', 'qa-deployed-baseline', originalBaseline);
+    writeFileSync(join(cwd, 'deployed.txt'), 'already deployed to QA');
+    git('add', 'deployed.txt');
+    git('commit', '-qm', 'Deploy a later QA baseline');
+    latestQaSha = git('rev-parse', 'HEAD');
+    git('push', '-q', 'origin', 'qa-deployed-baseline:refs/heads/integration/qa-deployed-baseline');
+    git('switch', '-q', 'main');
+    if (options.useLatestAsInput) baseline = latestQaSha;
+  }
+
   const prs = [];
   const evidence = {};
-
+  const taskBase = baseline;
   for (let index = 0; index < specs.length; index++) {
     const spec = specs[index];
     const branch = 'task-' + spec.id.toLowerCase();
     const path = spec.path ?? branch + '.txt';
-    git('switch', '-qc', branch, baseline);
+    git('switch', '-qc', branch, taskBase);
     writeFileSync(join(cwd, path), spec.id);
     git('add', path);
     git('commit', '-qm', spec.id);
@@ -290,7 +305,7 @@ function runQueueAssembleCli(t, specs) {
     const taskManifest = manifest({
       id: spec.id,
       status: 'ready',
-      base: baseline,
+      base: taskBase,
       head,
       dependsOn: spec.dependsOn ?? []
     });
@@ -303,7 +318,7 @@ function runQueueAssembleCli(t, specs) {
       body: renderTaskManifest(taskManifest),
       user: { login: 'author' },
       head: { sha: head, ref: branch, repo: { full_name: repository } },
-      base: { sha: baseline, ref: 'main', repo: { full_name: repository } }
+      base: { sha: taskBase, ref: 'main', repo: { full_name: repository } }
     });
     evidence[number] = {
       head,
@@ -335,45 +350,78 @@ function runQueueAssembleCli(t, specs) {
     git('switch', '-q', 'main');
   }
 
+  const rawSequence = options.qaReleaseSequence ?? [{ source: 'latest' }];
+  const qaReleaseSequence = rawSequence.map(item => ({
+    ...item,
+    sourceSha: item.source === 'input' ? baseline : item.source === 'latest' ? latestQaSha : item.sourceSha
+  }));
+  if (options.qaReleaseEvent) qaReleaseSequence[0].event = options.qaReleaseEvent;
+
   const stubPath = join(stubDir, 'github-api-stub.mjs');
-  const stub = `
-const fixture = ${JSON.stringify({ repository, prs, evidence })};
-const base = '/repos/' + fixture.repository;
-const json = value => new Response(JSON.stringify(value), {
-  status: 200,
-  headers: { 'content-type': 'application/json' }
-});
-globalThis.fetch = async (input, init = {}) => {
-  const url = new URL(String(input));
-  const method = init.method || 'GET';
-  if (method !== 'GET') throw new Error('Unexpected mocked GitHub method: ' + method);
-  const suffix = url.pathname.slice(base.length);
-  if (suffix === '/pulls') return json(fixture.prs);
-  let match = suffix.match(/^\\/pulls\\/(\\d+)$/);
-  if (match) return json(fixture.prs.find(pr => pr.number === Number(match[1])));
-  match = suffix.match(/^\\/pulls\\/(\\d+)\\/reviews$/);
-  if (match) return json(fixture.evidence[match[1]].reviews);
-  match = suffix.match(/^\\/pulls\\/(\\d+)\\/files$/);
-  if (match) return json(fixture.evidence[match[1]].files);
-  match = suffix.match(/^\\/commits\\/([0-9a-f]{40})\\/check-runs$/);
-  if (match) {
-    const item = Object.values(fixture.evidence).find(value => value.head === match[1]);
-    if (!item) throw new Error('Missing check-run fixture for ' + match[1]);
-    return json({ check_runs: item.check_runs });
-  }
-  match = suffix.match(/^\\/commits\\/([0-9a-f]{40})\\/status$/);
-  if (match) {
-    const item = Object.values(fixture.evidence).find(value => value.head === match[1]);
-    if (!item) throw new Error('Missing status fixture for ' + match[1]);
-    return json(item.status);
-  }
-  throw new Error('Unexpected mocked GitHub request: ' + method + ' ' + url.pathname);
-};
-`;
+  const stub = [
+    'const fixture = ' + JSON.stringify({ repository, qaRepository, prs, evidence }) + ';',
+    'const json = value => new Response(JSON.stringify(value), { status: 200, headers: { "content-type": "application/json" } });',
+    'let qaRunListCalls = 0;',
+    'const releaseSequence = ' + JSON.stringify(qaReleaseSequence) + ';',
+    'const releaseForCall = call => releaseSequence[Math.min(call, releaseSequence.length - 1)];',
+    'const buildQaRuns = release => {',
+    '  const requestCommit = release.runHeadSha || String(release.runId || 91).padStart(40, "0");',
+    '  return [',
+    '    { id: 950, run_number: 95, workflow_id: 428897690, path: ".github/workflows/reusable-qa-request.yml", event: "push", head_branch: "main", status: "completed", conclusion: "success", head_sha: "e".repeat(40), created_at: "2026-11-26T15:17:19Z" },',
+    '    { id: 949, run_number: 94, workflow_id: 428897690, path: ".github/workflows/reusable-qa-request.yml", event: "pull_request", head_branch: "GOV-007/test", status: "completed", conclusion: "success", head_sha: "f".repeat(40), created_at: "2026-11-26T10:04:44Z" },',
+    '    { id: 948, run_number: 93, workflow_id: 428897690, path: ".github/workflows/reusable-qa-request.yml", event: "pull_request", head_branch: "GOV-007/test", status: "completed", conclusion: "failure", head_sha: "a".repeat(40), created_at: "2026-11-26T10:03:47Z" },',
+    '    { id: 952, run_number: 92, workflow_id: 428897690, path: ".github/workflows/reusable-qa-request.yml", event: "push", head_branch: "main", status: "completed", conclusion: "failure", head_sha: "d".repeat(40), created_at: "2026-11-26T09:29:11Z" },',
+    '    { id: release.runId || 45785677703, run_number: release.runNumber || 91, workflow_id: 428897690, path: ".github/workflows/reusable-qa-request.yml", event: release.event || "push", head_branch: "main", status: "completed", conclusion: "success", head_sha: requestCommit, created_at: release.createdAt || "2026-11-26T08:44:11Z" }',
+    '  ];',
+    '};',
+    'globalThis.fetch = async (input, init = {}) => {',
+    '  const url = new URL(String(input));',
+    '  const method = init.method || "GET";',
+    '  if (method !== "GET") throw new Error("Unexpected mocked GitHub method: " + method);',
+    '  const path = url.pathname;',
+    '  const sourceBase = "/repos/" + fixture.repository;',
+    '  const qaBase = "/repos/" + fixture.qaRepository;',
+    '  const suffix = path.startsWith(sourceBase) ? path.slice(sourceBase.length) : "";',
+    '  if (path === qaBase + "/actions/workflows/reusable-qa-request.yml/runs") {',
+    '    const release = releaseForCall(qaRunListCalls++);',
+    '    return json({ workflow_runs: buildQaRuns(release) });',
+    '  }',
+    '  const qaJobs = path.match(/^\\/repos\\/Bella0960\\/web-runtime-lab\\/actions\\/runs\\/(\\d+)\\/jobs$/);',
+    '  if (qaJobs) {',
+    '    const id = Number(qaJobs[1]);',
+    '    const release = releaseForCall(Math.max(0, qaRunListCalls - 1));',
+    '    if (id !== (release.runId || 45785677703)) throw new Error("Unexpected QA jobs request: " + id);',
+    '    return json({ jobs: [{ id: 91001, name: "request", conclusion: "success", steps: [{ name: "Automatically select scope, validate and publish QA once", conclusion: "success" }] }] });',
+    '  }',
+    '  if (path === qaBase + "/contents/.github/qa-release-request.json") {',
+    '    const ref = url.searchParams.get("ref");',
+    '    const release = releaseForCall(Math.max(0, qaRunListCalls - 1));',
+    '    const requestCommit = release.runHeadSha || String(release.runId || 91).padStart(40, "0");',
+    '    let request;',
+    '    if (ref === "e".repeat(40)) request = { operation: "verify", candidate: "4b49c0a95ea8cfedc8aa2007c061a1f6f6771431", confirmation: "qa-only" };',
+    '    else if (ref === "d".repeat(40)) request = { operation: "verify", candidate: "6c61b0395705848dfa898073709a651869e87b90", confirmation: "qa-only" };',
+    '    else if (ref === requestCommit) request = { operation: "release", candidate: release.sourceSha, confirmation: "qa-only" };',
+    '    else throw new Error("Unexpected QA receipt ref: " + ref);',
+    '    return json({ encoding: "base64", content: Buffer.from(JSON.stringify(request), "utf8").toString("base64") });',
+    '  }',
+    '  if (suffix === "/pulls") return json(fixture.prs);',
+    '  let match = suffix.match(/^\\/pulls\\/(\\d+)$/);',
+    '  if (match) return json(fixture.prs.find(pr => pr.number === Number(match[1])));',
+    '  match = suffix.match(/^\\/pulls\\/(\\d+)\\/reviews$/);',
+    '  if (match) return json(fixture.evidence[match[1]].reviews);',
+    '  match = suffix.match(/^\\/pulls\\/(\\d+)\\/files$/);',
+    '  if (match) return json(fixture.evidence[match[1]].files);',
+    '  match = suffix.match(/^\\/commits\\/([0-9a-f]{40})\\/check-runs$/);',
+    '  if (match) { const item = Object.values(fixture.evidence).find(value => value.head === match[1]); if (!item) throw new Error("Missing check-run fixture for " + match[1]); return json({ check_runs: item.check_runs }); }',
+    '  match = suffix.match(/^\\/commits\\/([0-9a-f]{40})\\/status$/);',
+    '  if (match) { const item = Object.values(fixture.evidence).find(value => value.head === match[1]); if (!item) throw new Error("Missing status fixture for " + match[1]); return json(item.status); }',
+    '  throw new Error("Unexpected mocked GitHub request: " + method + " " + path);',
+    '};'
+  ].join('\n');
   writeFileSync(stubPath, stub);
-  const result = spawnSync(process.execPath, [
-    '--import', stubPath, queueScript, 'assemble', baseline
-  ], {
+
+  const command = options.command ?? 'assemble';
+  const result = spawnSync(process.execPath, ['--import', stubPath, queueScript, command, baseline], {
     cwd,
     encoding: 'utf8',
     env: {
@@ -383,10 +431,19 @@ globalThis.fetch = async (input, init = {}) => {
       GITHUB_REPOSITORY: repository
     }
   });
-  let receipt;
-  try { receipt = JSON.parse(result.stdout); }
-  catch { throw new Error('Queue CLI did not return JSON. stdout=' + result.stdout + '\\nstderr=' + result.stderr); }
-  return { result, receipt };
+  let receipt = null;
+  if (result.stdout.trim()) {
+    try { receipt = JSON.parse(result.stdout); }
+    catch { throw new Error('Queue CLI did not return JSON. stdout=' + result.stdout + '\nstderr=' + result.stderr); }
+  }
+  const candidateRef = 'refs/heads/integration/qa-batch-' + baseline.slice(0, 12);
+  const candidateExists = spawnSync('git', ['show-ref', '--verify', '--quiet', candidateRef], { cwd }).status === 0;
+  let candidateDeployedFile = null;
+  if (receipt?.candidate) {
+    const deployed = spawnSync('git', ['show', receipt.candidate + ':deployed.txt'], { cwd, encoding: 'utf8' });
+    if (deployed.status === 0) candidateDeployedFile = deployed.stdout.trim();
+  }
+  return { result, receipt, baseline, originalBaseline, latestQaSha, candidateExists, candidateDeployedFile };
 }
 
 test('CLI assemble blocks a dependent task when its prerequisite is not ready and keeps independent work', t => {
@@ -443,4 +500,53 @@ test('CLI assemble includes independent tasks with no dependencies', t => {
   assert.equal(receipt.status, 'assembled-local');
   assert.deepEqual(receipt.includedTasks.map(task => task.id), ['TASK-10']);
   assert.deepEqual(receipt.includedTasks[0].dependsOn, []);
+});
+
+
+test('rejects an older QA SHA even when the commit is valid and task branches descend from it', t => {
+  const { result, receipt, baseline, latestQaSha, candidateExists } = runQueueAssembleCli(
+    t, [{ id: 'TASK-10' }], { advanceQaBaseline: true }
+  );
+  assert.equal(result.status, 1);
+  assert.equal(receipt, null);
+  assert.match(result.stderr, /stale QA baseline/i);
+  assert.ok(result.stderr.includes(latestQaSha));
+  assert.notEqual(baseline, latestQaSha);
+  assert.equal(candidateExists, false);
+});
+
+test('accepts the latest successful release SHA, ignores newer verify-only runs, and retains deployed files', t => {
+  const { result, receipt, baseline, candidateDeployedFile } = runQueueAssembleCli(
+    t, [{ id: 'TASK-10' }], { advanceQaBaseline: true, useLatestAsInput: true }
+  );
+  assert.equal(result.status, 0, result.stderr);
+  assert.equal(receipt.status, 'assembled-local');
+  assert.equal(receipt.baseline, baseline);
+  assert.equal(receipt.qaSourceReceipt.sourceSha, baseline);
+  assert.equal(receipt.qaSourceReceipt.runNumber, 91);
+  assert.equal(candidateDeployedFile, 'already deployed to QA');
+});
+
+test('removes a local candidate when the successful QA release baseline changes during assembly', t => {
+  const { result, receipt, baseline, latestQaSha, candidateExists } = runQueueAssembleCli(
+    t, [{ id: 'TASK-10' }], {
+      advanceQaBaseline: true,
+      qaReleaseSequence: [{ source: 'input' }, { source: 'latest', runId: 960, runNumber: 96, createdAt: '2026-11-27T10:00:00Z' }]
+    }
+  );
+  assert.equal(result.status, 1);
+  assert.equal(receipt, null);
+  assert.match(result.stderr, /stale QA baseline/i);
+  assert.ok(result.stderr.includes(latestQaSha));
+  assert.equal(candidateExists, false);
+});
+
+test('fails closed when the newest successful QA release used workflow_dispatch without an immutable receipt', t => {
+  const { result, receipt } = runQueueAssembleCli(
+    t, [{ id: 'TASK-10' }], { qaReleaseEvent: 'workflow_dispatch' }
+  );
+  assert.equal(result.status, 1);
+  assert.equal(receipt, null);
+  assert.match(result.stderr, /workflow_dispatch/i);
+  assert.match(result.stderr, /refusing to guess/i);
 });
