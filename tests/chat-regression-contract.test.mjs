@@ -84,7 +84,7 @@ test('contacts page keeps the neutral background continuous through the bottom s
   assert.match(stageRule, /background:\s*#FAFAFA/i, 'contact content stage should retain its neutral canvas');
   assert.match(silverTheme, /\.phone-mockup\[data-chat-theme-preset="silver-butterfly"\][\s\S]*?background:\s*linear-gradient/i);
   assert.match(wechatThemeCss, /\.phone-mockup\[data-chat-theme-preset="wechat"\][\s\S]*?background:\s*var\(--wechat-page\)\s*!important/i);
-});;
+});
 
 test('synthetic fixture set covers the compatibility-critical message families', () => {
   const ids = fixtures.cases.map((item) => item.id);
