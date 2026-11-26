@@ -1,6 +1,7 @@
 // Assemble approved task commits on the recorded QA baseline in a new local ref.
 import { spawnSync } from 'node:child_process';
-import { readFileSync, readdirSync } from 'node:fs';
+import { mkdtempSync, readFileSync, readdirSync, rmSync, writeFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 import { pathToFileURL } from 'node:url';
 
@@ -8,8 +9,8 @@ const shaPattern = /^[0-9a-f]{40}$/;
 const taskPattern = /^[A-Z][A-Z0-9-]{1,63}$/;
 const branchPattern = /^integration\/[a-zA-Z0-9_/-]+$/;
 
-function git(args, context = 'Git operation') {
-  const result = spawnSync('git', args, { encoding: 'utf8', timeout: 60000, maxBuffer: 16 * 1024 * 1024 });
+function git(args, context = 'Git operation', cwd = process.cwd()) {
+  const result = spawnSync('git', args, { cwd, encoding: 'utf8', timeout: 120000, maxBuffer: 16 * 1024 * 1024 });
   if (result.status !== 0 || result.error) {
     const detail = [result.stdout, result.stderr, result.error?.message]
       .filter(value => typeof value === 'string' && value.trim())
@@ -34,6 +35,63 @@ function commit(sha, label) {
 function changedPaths(base, head) {
   return git(['diff', '--name-only', '-z', '--no-renames', '--no-ext-diff', base, head, '--'])
     .split('\0').filter(Boolean).sort();
+}
+
+function safePath(path) {
+  return typeof path === 'string' && path.length > 0 && !path.startsWith('/') &&
+    !path.includes('\0') && !path.split('/').some(part => !part || part === '.' || part === '..');
+}
+
+// Apply only the reviewed PR delta (PR merge-base -> PR head) to the deployed QA tree.
+// A normal branch merge would also import every unrelated commit on the PR base
+// side when the QA and source histories have diverged.
+function applyTaskDelta(candidate, prMergeBase, taskHead, paths, taskId, tempRoot, index) {
+  const patch = git([
+    '--literal-pathspecs', 'diff', '--binary', '--full-index', '--no-renames',
+    '--no-ext-diff', prMergeBase, taskHead, '--', ...paths
+  ], taskId + ' approved PR delta');
+  if (!patch) throw new Error(taskId + ' approved PR diff is empty.');
+
+  const patchPath = join(tempRoot, 'task-' + index + '.patch');
+  const worktreePath = join(tempRoot, 'worktree-' + index);
+  writeFileSync(patchPath, patch, { flag: 'wx' });
+  let worktreeAdded = false;
+  try {
+    git(['worktree', 'add', '--detach', worktreePath, candidate], taskId + ' temporary worktree');
+    worktreeAdded = true;
+    const applied = spawnSync('git', ['apply', '--3way', '--index', patchPath], {
+      cwd: worktreePath,
+      encoding: 'utf8',
+      timeout: 120000,
+      maxBuffer: 16 * 1024 * 1024
+    });
+    if (applied.status !== 0 || applied.error) {
+      const detail = [applied.stderr, applied.stdout, applied.error?.message]
+        .filter(value => typeof value === 'string' && value.trim())
+        .join('\n')
+        .replace(/[\u0000-\u0008\u000b\u000c\u000e-\u001f\u007f-\u009f]/g, ' ')
+        .trim()
+        .slice(0, 1600);
+      throw new Error(taskId + ' patch conflicts with the deployed QA baseline or an earlier batch task; candidate assembly stopped.' +
+        (detail ? '\n' + detail : ''));
+    }
+    const tree = git(['write-tree'], taskId + ' merged index tree', worktreePath).trim();
+    const changed = changedPaths(candidate, tree);
+    if (changed.some(path => !paths.includes(path))) {
+      throw new Error(taskId + ' patch changed a path outside its approved PR diff.');
+    }
+    return tree;
+  } finally {
+    if (worktreeAdded) {
+      spawnSync('git', ['worktree', 'remove', '--force', worktreePath], {
+        cwd: process.cwd(), encoding: 'utf8', timeout: 30000
+      });
+    }
+    rmSync(worktreePath, { recursive: true, force: true });
+    spawnSync('git', ['worktree', 'prune'], {
+      cwd: process.cwd(), encoding: 'utf8', timeout: 30000
+    });
+  }
 }
 
 export function orderReadyTasks(tasks) {
@@ -70,7 +128,8 @@ function readReadyTasks(directory) {
   const ids = new Set();
   for (const task of records) {
     if (typeof task?.id !== 'string' || !taskPattern.test(task.id) ||
-      ids.has(task.id) || !['in-progress', 'blocked', 'ready'].includes(task.status)) {
+      ids.has(task.id) || !['in-progress', 'blocked', 'ready'].includes(task.status) ||
+      (task.status === 'ready' && (!Array.isArray(task.paths) || task.paths.some(path => !safePath(path))))) {
       throw new Error('Task records must have unique task IDs and valid statuses.');
     }
     ids.add(task.id);
@@ -112,17 +171,18 @@ function assemble(directory, qaSha, branch, receipt) {
 
   const owners = new Map();
   const pathsByTask = new Map();
+  const prMergeBasesByTask = new Map();
   for (const task of tasks) {
-    const base = commit(task.base, task.id + ' base');
+    const prMergeBase = commit(task.prMergeBase ?? task.prBase ?? task.base, task.id + ' PR merge base');
     const head = commit(task.head, task.id + ' head');
-    git(['merge-base', '--is-ancestor', base, head], task.id + ' task ancestry');
-    git(['merge-base', '--is-ancestor', base, baseline], task.id + ' reviewed base in deployed QA');
-    const paths = changedPaths(base, head);
+    git(['merge-base', '--is-ancestor', prMergeBase, head], task.id + ' PR merge-base-to-head ancestry');
+    const paths = changedPaths(prMergeBase, head);
     if (!paths.length || !Array.isArray(task.paths) ||
       JSON.stringify([...task.paths].sort()) !== JSON.stringify(paths)) {
       throw new Error(task.id + ' changed paths differ from its approved ownership.');
     }
     pathsByTask.set(task.id, paths);
+    prMergeBasesByTask.set(task.id, prMergeBase);
     for (const path of paths) {
       const owner = owners.get(path);
       if (owner) throw new Error(owner + ' and ' + task.id + ' both own ' + JSON.stringify(path) + '.');
@@ -131,22 +191,40 @@ function assemble(directory, qaSha, branch, receipt) {
   }
 
   let candidate = baseline;
-  for (const task of tasks) {
-    const tree = git(['merge-tree', '--write-tree', candidate, task.head], task.id + ' candidate merge').trim();
-    if (!shaPattern.test(tree)) throw new Error(task.id + ' returned an unexpected merge tree.');
-    const paths = changedPaths(candidate, tree);
-    if (paths.some(path => owners.get(path) !== task.id)) {
-      throw new Error(task.id + ' would change paths outside its approved ownership.');
+  let anyTaskChangedTree = false;
+  const worktreeRoot = mkdtempSync(join(tmpdir(), 'maomao-qa-task-delta-'));
+  try {
+    for (let index = 0; index < tasks.length; index++) {
+      const task = tasks[index];
+      const prMergeBase = prMergeBasesByTask.get(task.id);
+      const previousTree = git(['rev-parse', candidate + '^{tree}'], task.id + ' previous candidate tree').trim();
+      const tree = applyTaskDelta(candidate, prMergeBase, task.head, pathsByTask.get(task.id),
+        task.id, worktreeRoot, index);
+      if (!shaPattern.test(tree)) throw new Error(task.id + ' returned an unexpected merged tree.');
+      const changed = changedPaths(candidate, tree);
+      if (changed.some(path => owners.get(path) !== task.id)) {
+        throw new Error(task.id + ' would change paths outside its approved ownership.');
+      }
+      if (tree !== previousTree) anyTaskChangedTree = true;
+
+      // Keep the candidate history rooted only in the deployed QA baseline.
+      // PR provenance is recorded in immutable commit trailers, not as a merge
+      // parent whose unrelated source-branch tree was intentionally not imported.
+      const message = 'Integrate ' + task.id + ' into ' + branch + '\n\n' +
+        'Task-ID: ' + task.id + '\n' +
+        'Task-PR-Merge-Base-SHA: ' + prMergeBase + '\n' +
+        'Task-PR-Head-SHA: ' + task.head + '\n' +
+        'QA-Source-SHA: ' + qaSourceReceipt.sourceSha + '\n' +
+        'QA-Release-Run: ' + qaSourceReceipt.runId + '\n' +
+        'QA-Release-Request-SHA: ' + qaSourceReceipt.runHeadSha;
+      candidate = git(['-c', 'commit.gpgSign=false', 'commit-tree', tree, '-p', candidate,
+        '-m', message], task.id + ' candidate commit').trim();
     }
-    if (!paths.length) continue;
-    const message = 'Integrate ' + task.id + ' into ' + branch + '\n\n' +
-      'QA-Source-SHA: ' + qaSourceReceipt.sourceSha + '\n' +
-      'QA-Release-Run: ' + qaSourceReceipt.runId + '\n' +
-      'QA-Release-Request-SHA: ' + qaSourceReceipt.runHeadSha;
-    candidate = git(['-c', 'commit.gpgSign=false', 'commit-tree', tree, '-p', candidate, '-p', task.head,
-      '-m', message], task.id + ' candidate commit').trim();
+  } finally {
+    rmSync(worktreeRoot, { recursive: true, force: true });
+    spawnSync('git', ['worktree', 'prune'], { encoding: 'utf8', timeout: 30000 });
   }
-  if (candidate === baseline) throw new Error('All ready changes are already in the QA baseline.');
+  if (!anyTaskChangedTree) throw new Error('All ready task diffs are already present in the deployed QA baseline; no candidate was created.');
   // A zero old value makes this a create-only update, including simultaneous runs.
   git(['update-ref', ref, candidate, '0'.repeat(40)], 'Create-only integration branch update');
   return {
@@ -154,9 +232,9 @@ function assemble(directory, qaSha, branch, receipt) {
     baseline,
     candidate,
     qaSourceReceipt,
-    tasks: tasks.map(({ id, base, head, dependsOn }) => ({
+    tasks: tasks.map(({ id, head, dependsOn }) => ({
       id,
-      base,
+      prMergeBase: prMergeBasesByTask.get(id),
       head,
       dependsOn: dependsOn ?? [],
       paths: pathsByTask.get(id)

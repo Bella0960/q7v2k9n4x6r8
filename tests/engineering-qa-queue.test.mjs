@@ -33,7 +33,8 @@ const pr = (overrides = {}) => ({
   draft: false,
   user: { login: 'author' },
   head: { sha: sha(2), ref: 'CHAT-FIX-001/fix', repo: { full_name: 'Bella0960/q7v2k9n4x6r8' } },
-  base: { ref: 'main', repo: { full_name: 'Bella0960/q7v2k9n4x6r8' } },
+  base: { sha: sha(4), ref: 'main', repo: { full_name: 'Bella0960/q7v2k9n4x6r8' } },
+  merge_base_sha: sha(1),
   ...overrides
 });
 const reviews = [{ user: { login: 'reviewer' }, state: 'APPROVED', commit_id: sha(2), submitted_at: '2026-11-26T10:00:00Z' }];
@@ -72,6 +73,15 @@ test('ready evidence requires current-head approval and every named test/build c
   const result = evaluateTaskEvidence({ pr: pr(), manifest: manifest(), reviews, checkRuns, status });
   assert.deepEqual(result, { ready: true, reasons: [] });
 });
+test('a changed PR merge-base SHA blocks readiness until the task is re-registered', () => {
+  const result = evaluateTaskEvidence({
+    pr: pr({ merge_base_sha: sha(3) }),
+    manifest: manifest(), reviews, checkRuns, status
+  });
+  assert.equal(result.ready, false);
+  assert.ok(result.reasons.some(reason => reason.includes('PR merge-base SHA')));
+});
+
 test('stale approvals, draft PRs, pending statuses, and failed checks block integration', () => {
   const cases = [
     { pr: pr({ draft: true }), reviews, checkRuns, status },
@@ -183,7 +193,7 @@ test('registers a task from the current PR and persists exact checks and depende
     body: 'Task summary',
     html_url: 'https://github.com/Bella0960/q7v2k9n4x6r8/pull/10',
     head: { sha: sha(2), repo: { full_name: repository } },
-    base: { ref: 'main', repo: { full_name: repository } }
+    base: { sha: sha(4), ref: 'main', repo: { full_name: repository } }
   };
   const stub = `
 import { writeFileSync } from 'node:fs';
@@ -197,8 +207,8 @@ globalThis.fetch = async (input, init = {}) => {
   let payload;
   if (method === 'GET' && path === '/repos/' + repository + '/pulls/10') {
     payload = currentPr;
-  } else if (method === 'GET' && path === '/repos/' + repository + '/compare/' + '${sha(1)}' + '...' + '${sha(2)}') {
-    payload = { status: 'ahead', ahead_by: 1 };
+  } else if (method === 'GET' && path === '/repos/' + repository + '/compare/' + '${sha(4)}' + '...' + '${sha(2)}') {
+    payload = { status: 'diverged', ahead_by: 2, merge_base_commit: { sha: '${sha(1)}' } };
   } else if (method === 'GET' && path === '/repos/' + repository + '/pulls/10/files') {
     payload = [{ filename: 'chat/chat/detail.html' }];
   } else if (method === 'PATCH' && path === '/repos/' + repository + '/pulls/10') {
@@ -218,7 +228,7 @@ globalThis.fetch = async (input, init = {}) => {
   writeFileSync(stubPath, stub);
   const result = spawnSync(process.execPath, [
     '--import', stubPath, queueScript,
-    'register', '10', 'CHAT-FIX-001', sha(1), 'F2',
+    'register', '10', 'CHAT-FIX-001', 'F2',
     'Node Tests', 'Vite Build', '--depends-on=CHAT-BASE-001'
   ], {
     cwd,
@@ -235,6 +245,7 @@ globalThis.fetch = async (input, init = {}) => {
   assert.equal(receipt.status, 'submitted');
   assert.equal(receipt.pr, 10);
   assert.equal(receipt.task, 'CHAT-FIX-001');
+  assert.equal(receipt.prMergeBase, sha(1));
   assert.deepEqual(receipt.requiredChecks, ['Node Tests', 'Vite Build']);
   assert.deepEqual(receipt.dependsOn, ['CHAT-BASE-001']);
   assert.deepEqual(receipt.changedFiles, ['chat/chat/detail.html']);
@@ -248,6 +259,7 @@ globalThis.fetch = async (input, init = {}) => {
   assert.deepEqual(savedManifest.requiredChecks, ['Node Tests', 'Vite Build']);
   assert.deepEqual(savedManifest.dependsOn, ['CHAT-BASE-001']);
   assert.equal(savedManifest.head, sha(2));
+  assert.equal(savedManifest.base, sha(1));
 });
 
 function runQueueAssembleCli(t, specs, options = {}) {
@@ -334,7 +346,14 @@ function runQueueAssembleCli(t, specs, options = {}) {
 
   const prs = [];
   const evidence = {};
-  const taskBase = baseline;
+  let taskBase = baseline;
+  if (options.prBaseDiverged) {
+    git('switch', '-q', 'main');
+    writeFileSync(join(cwd, 'main-only.txt'), 'source-main-only change');
+    git('add', 'main-only.txt');
+    git('commit', '-qm', 'Source main advances independently of deployed QA');
+    taskBase = git('rev-parse', 'HEAD');
+  }
   for (let index = 0; index < specs.length; index++) {
     const spec = specs[index];
     const branch = 'task-' + spec.id.toLowerCase();
@@ -498,9 +517,12 @@ function runQueueAssembleCli(t, specs, options = {}) {
   }
   const candidateExists = spawnSync('git', ['show-ref', '--verify', '--quiet', candidateRef], { cwd }).status === 0;
   let candidateDeployedFile = null;
+  let candidateMainOnlyFile = null;
   if (receipt?.candidate) {
     const deployed = spawnSync('git', ['show', receipt.candidate + ':deployed.txt'], { cwd, encoding: 'utf8' });
     if (deployed.status === 0) candidateDeployedFile = deployed.stdout.trim();
+    const mainOnly = spawnSync('git', ['show', receipt.candidate + ':main-only.txt'], { cwd, encoding: 'utf8' });
+    if (mainOnly.status === 0) candidateMainOnlyFile = mainOnly.stdout.trim();
   }
   const gitCommand = (...args) => {
     const commandResult = spawnSync('git', args, { cwd, encoding: 'utf8' });
@@ -509,7 +531,7 @@ function runQueueAssembleCli(t, specs, options = {}) {
   };
   return {
     result, receipt, baseline, originalBaseline, latestQaSha, candidateExists,
-    candidateDeployedFile, cwd, candidateRef, receiptPath, remotePath, remoteSha, runQueue, git: gitCommand
+    candidateDeployedFile, candidateMainOnlyFile, cwd, candidateRef, receiptPath, remotePath, remoteSha, runQueue, git: gitCommand
   };
 }
 
@@ -592,6 +614,18 @@ test('accepts the latest successful release SHA, ignores newer verify-only runs,
   assert.equal(receipt.qaSourceReceipt.sourceSha, baseline);
   assert.equal(receipt.qaSourceReceipt.runNumber, 91);
   assert.equal(candidateDeployedFile, 'already deployed to QA');
+});
+
+test('applies a main-based PR delta onto the deployed QA baseline without importing unrelated main changes', t => {
+  const { result, receipt, latestQaSha, candidateDeployedFile, candidateMainOnlyFile } = runQueueAssembleCli(
+    t, [{ id: 'TASK-10' }], { advanceQaBaseline: true, useLatestAsInput: true, prBaseDiverged: true }
+  );
+  assert.equal(result.status, 0, result.stderr);
+  assert.equal(receipt.status, 'assembled-local');
+  assert.equal(receipt.baseline, latestQaSha);
+  assert.equal(candidateDeployedFile, 'already deployed to QA');
+  assert.equal(candidateMainOnlyFile, null);
+  assert.notEqual(receipt.includedTasks[0].prMergeBase, latestQaSha);
 });
 
 test('removes a local candidate when the successful QA release baseline changes during assembly', t => {
