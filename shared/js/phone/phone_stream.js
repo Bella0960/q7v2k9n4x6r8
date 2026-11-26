@@ -32,6 +32,7 @@
      *   connectMs   {Number?=15000}   连接超时：等待响应头的最长时间
      *   watchdogMs  {Number?=30000}   流式无数据看门狗：每收到一个 chunk 重置
      *   totalMs     {Number?=120000}  流式硬性总上限（防无限流挂死页面）
+     *   signal      {AbortSignal?}   调用方主动取消（可选，不影响普通调用）
      *   onPaint     {Function?}       渲染回调 onPaint(fullText)：
      *                                 requestAnimationFrame 节流（每帧最多一次），
      *                                 流结束时同步补调一次，保证最后一段增量上屏
@@ -41,10 +42,11 @@
      *   fullText String       累计正文（失败时 = 中断前已收到的部分）
      *   error    Object|null  { kind:'http'|'abort'|'network'|'stream'|'config',
      *                           status?, detail?, reason? }
-     *   abort.reason ∈ 'connect'(连接超时) | 'watchdog'(无数据) | 'total'(总上限)
+     *   abort.reason ∈ 'connect'(连接超时) | 'watchdog'(无数据) | 'total'(总上限) | 'caller'(主动取消)
      */
     NS.chat = async function (opts) {
         opts = opts || {};
+        if (opts.signal?.aborted) return callerCancelled();
         var fallbackModels = Array.isArray(opts.fallbackModels) ? opts.fallbackModels : [];
         var primary = String(opts.model || 'gpt-3.5-turbo');
         var models = [primary];
@@ -60,6 +62,7 @@
             // Capture the complete validated payload before the first network await.
             if (models.length > 1) messages = JSON.parse(JSON.stringify(messages));
             var result = await chatOnce({ ...opts, messages: messages });
+            if (opts.signal?.aborted) return callerCancelled(result.fullText);
             if (!isCapacityError(result)) return result;
 
             // Once a response has started, never splice a different model into it.
@@ -74,6 +77,7 @@
             var deadline = Date.now() + (opts.totalMs ?? 120000);
             for (var model of models.slice(1)) {
                 var remaining = deadline - Date.now();
+                if (opts.signal?.aborted) return callerCancelled();
                 if (remaining <= 0) break;
                 // Buffer a backup response until it is complete so a failed backup
                 // cannot leave a provisional character bubble in the conversation.
@@ -82,6 +86,7 @@
                     connectMs: Math.min(opts.connectMs ?? 15000, remaining),
                     totalMs: remaining
                 });
+                if (opts.signal?.aborted) return callerCancelled(result.fullText);
                 if (result.ok) return result;
             }
             return { ok: false, fullText: '', error: { kind: 'capacity' } };
@@ -89,6 +94,10 @@
             return { ok: false, fullText: '', error: { kind: 'network', detail: error && error.message } };
         }
     };
+
+    function callerCancelled(text) {
+        return { ok: false, fullText: text || '', error: { kind: 'abort', reason: 'caller' } };
+    }
 
     function isCapacityError(result) {
         var error = result.error;
@@ -115,6 +124,7 @@
             function finish(err) {
                 if (settled) return;
                 settled = true;
+                if (opts.signal) opts.signal.removeEventListener('abort', onCallerAbort);
                 result.ok = !err;
                 result.fullText = fullText;
                 result.error = err || null;
@@ -160,6 +170,7 @@
                 controller.abort();
             }, CONNECT_MS);
             function armWatchdog() {
+                if (settled) return;
                 if (watchdogId) clearTimeout(watchdogId);
                 watchdogId = setTimeout(function () {
                     abortReason = 'watchdog';
@@ -167,6 +178,7 @@
                 }, WATCHDOG_MS);
             }
             function enterStreamMode() {
+                if (settled) return;
                 clearTimeout(connectTimer);
                 armWatchdog();
                 totalTimerId = setTimeout(function () {
@@ -178,6 +190,15 @@
                 clearTimeout(connectTimer);
                 if (watchdogId) clearTimeout(watchdogId);
                 if (totalTimerId) clearTimeout(totalTimerId);
+            }
+
+            function onCallerAbort() {
+                if (settled) return;
+                abortReason = 'caller';
+                streamDone = true;
+                clearAllTimers();
+                controller.abort();
+                finish({ kind: 'abort', reason: 'caller' });
             }
 
             /* ---------- 渲染节流（R4）：onPaint 每帧最多一次 ----------
@@ -199,6 +220,10 @@
             }
 
             /* ---------- 主流程 ---------- */
+            if (opts.signal) {
+                opts.signal.addEventListener('abort', onCallerAbort, { once: true });
+                if (opts.signal.aborted) { onCallerAbort(); return; }
+            }
             var requestUrl = baseUrl + '/chat/completions';
             try {
                 monitor = global.PhoneApiMonitor;
@@ -213,6 +238,7 @@
                 signal: controller.signal,
                 body: JSON.stringify(body)
             }).then(function (response) {
+                if (settled) return;
 
                 /* -- HTTP 层错误（401/404/429/5xx 等）：读 body 提取详情，不进入流解析 -- */
                 if (!response.ok || !response.body) {
@@ -277,7 +303,7 @@
                 // 尾段（可能不完整）留在 buffer，等下一个 chunk 拼接
                 function pump() {
                     return reader.read().then(function (chunk) {
-                        if (chunk.done) return;
+                        if (settled || chunk.done) return;
                         armWatchdog();   // 收到新数据：重置 30s 无数据看门狗
                         buffer += decoder.decode(chunk.value, { stream: true });
                         var lines = buffer.split('\n');
@@ -292,6 +318,7 @@
                 }
 
                 return pump().then(function () {
+                    if (settled) return;
                     clearAllTimers();
                     // R5：残留 buffer 收尾——服务器最后一条 data 行可能不带换行，
                     // 不补处理会静默丢字
@@ -331,6 +358,7 @@
             }).then(function () {
                 finish(null);
             }).catch(function (err) {
+                if (settled) return;
                 clearAllTimers();
                 streamDone = true;
                 var e;

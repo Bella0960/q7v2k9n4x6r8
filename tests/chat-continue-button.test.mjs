@@ -23,7 +23,7 @@ test('CHAT-MIC-001: direct and group continuation reuse sendMsg without saving a
   assert.match(main, /const text = isManualContinue \? '' : sendState\.text/);
   assert.match(main, /sendState\.isGroupFollowup \|\| \(isManualContinue && isGroupChat\)/);
   assert.match(main, /buildReplyMessages\(fullText, getActiveReplyBubbleMode\(\),/);
-  assert.match(main, /manualContinue: isManualContinue/);
+  assert.match(main, /manualContinue:\s*isManualContinue/);
   assert.match(main, /const continuationCue = isGroupChat/);
   assert.match(main, /isManualContinue && isBlocked\(aliasRoleId\)/);
   assert.match(main, /isManualContinue && isGroupChat && \(!currentGroup \|\| !getAvailableGroupMembers\(\)\.length\)/);

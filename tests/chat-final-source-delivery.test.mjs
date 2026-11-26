@@ -66,7 +66,12 @@ test('group member uses group book mounts plus OWN bound local lore, not other m
   const chosen=policy.selectWorldbooksForGroupSpeaker(books,['group-bound'],speaker);
   assert.deepEqual(Array.from(chosen.map(x=>x.id)),['group-bound','speaker-local']);
   assert.deepEqual(Array.from(policy.selectWorldbooksForGroupSpeaker(books,[],null).map(x=>x.id)),[]);
-  assert.match(detail,/selectWorldbooksForGroupSpeaker\(/);
+  assert.match(detail, /const speakerSelection = bindingBridge\.read\(speakerId, speakerRole\)/);
+  assert.match(detail, /const groupSelection = bindingBridge\.read\(aliasRoleId\)/);
+  assert.match(detail, /if \(!speakerSelection\.ok \|\| !groupSelection\.ok\) \{[\s\S]*?throw new Error\('group role-worldbook binding read failed'\)/);
+  assert.match(detail, /const allowed = new Set\(speakerSelection\.ids\.concat\(groupSelection\.ids\)\.map\(String\)\)/);
+  assert.match(detail, /wbList = wbList\.filter\(book=>book&&allowed\.has\(String\(book\.id\)\)\)/);
+  assert.match(detail, /groupLoreCurrent\(\)/);
   assert.match(detail,/groupReplyPick && getRoleById\(groupReplyPick\.id\)/);
 });
 
@@ -74,7 +79,12 @@ test('chat always verifies last assembled apiMessages before PhoneStream.chat an
   const audit=detail.indexOf('const finalPayloadAudit =');
   const send=detail.indexOf('streamResult = await PhoneStream.chat(',audit);
   assert.ok(audit>0&&send>audit,'final audit must precede transport');
-  assert.match(detail.slice(audit,send),/messages: apiMessages/);
+  assert.match(detail.slice(0,audit),/validateFinalApiMessages\(\{[\s\S]*?messages: messages/);
+  assert.match(detail.slice(audit,send),/const finalPayloadAudit = auditFinalMessages\(apiMessages\)/);
+  assert.match(detail.slice(audit,send),/const outboundPayloadAudit = auditFinalMessages\(outboundApiMessages\)/);
+  assert.match(detail.slice(audit,send),/if \(!outboundPayloadAudit\.ok \|\| outboundMissingRegex\)\s*\{[\s\S]*?stopForMissingRoleSource\('final-source-audit'[\s\S]*?return;/);
+  assert.match(detail.slice(send),/PhoneStream\.chat\(\{[\s\S]*?messages: outboundApiMessages,/);
+  assert.ok(detail.indexOf('const outboundPayloadAudit =',audit)>detail.indexOf('await window.MAOMAOPromptDiagnostic.beforeSend(outboundApiMessages)',audit));
   assert.match(detail.slice(audit,send),/if \(!finalPayloadAudit\.ok \|\| missingRegex\)\s*\{/);
   assert.match(detail.slice(audit,send),/stopForMissingRoleSource\('final-source-audit'/);
   assert.match(detail.slice(audit,send),/return;/);

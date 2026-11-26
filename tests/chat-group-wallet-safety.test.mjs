@@ -1,0 +1,11 @@
+import test from 'node:test';
+import assert from 'node:assert/strict';
+import {readFileSync} from 'node:fs';
+const detail=readFileSync(new URL('../chat/chat/chat-detail.html',import.meta.url),'utf8');
+const extras=readFileSync(new URL('../chat/chat/js/chat-extras.js',import.meta.url),'utf8');
+const slice=(s,a,b)=>{const i=s.indexOf(a),j=s.indexOf(b,i+a.length);assert.ok(i>=0&&j>i);return s.slice(i,j)};
+const wallet=slice(detail,'        const WORK_DATA_KEY =','        // ========== 红包/转账结果弹窗');
+const cards=slice(detail,'        function handlePayCardClickLocked(','        // ===== 群投票');
+test('corrupt virtual wallet never falls back to a new balance',()=>{for(const raw of ['{broken','{}','{"balance":"1000"}','{"balance":1000,"history":{}}']){const api=new Function('localStorage','showToast',wallet+'return {getWorkData,saveWorkData}')( {getItem:()=>raw},()=>{});assert.equal(api.getWorkData(),null);}});
+test('stale or duplicate payment ID never touches virtual wallet',()=>{for(const rows of [[{mid:'other',type:'redpacket',role:'assistant',amount:10}],[{mid:'same',type:'redpacket'},{mid:'same',type:'redpacket'}]]){let reads=0;const fn=new Function('loadMessages','showToast','getWorkData',cards+'return handlePayCardClickLocked;')(()=>rows,()=>{},()=>{reads++;throw Error('unexpected');});fn('same','redpacket');assert.equal(reads,0);}});
+test('send and receive share wallet lock; payment card keeps tracked history',()=>{assert.match(detail,/locks\.request\('maomao-wallet-workData-v1'/);assert.match(extras,/'maomao-wallet-workData-v1'/);assert.match(extras,/history\.push\(specialMsg\);\s*cardSaved = saveMessages\(history\)/);assert.doesNotMatch(extras,/saveMessages\(history\.concat\(\[specialMsg\]\)\)/);});

@@ -111,3 +111,61 @@ test('source guard: retained player and new rollback both survive integration', 
   assert.ok(source.includes("Playback count not persisted"));
   assert.ok(source.includes("Favorites count not persisted"));
 });
+
+const catalogFn = block('function readLocalTracksMeta() {', '  // 合并本地曲目');
+const toastFn = block('let musicToastTimer = null;', '  function musicSafeText(');
+const editFn = block('function saveProfileEdit() {', '  // Android/SAF');
+test('catalog: empty corrupt bytes and non-array values are preserved', () => {
+ for (const old of ['', 'null', '{}', 'false']) {
+  const s=storage({music_local_tracks:old});
+  const {sb}=ctx(s);sb.LOCAL_TRACKS_KEY='music_local_tracks';sb.musicMetaReadFailure=null;
+  vm.runInContext(catalogFn,sb);
+  assert.equal(sb.readLocalTracksMeta().length,0);
+  assert.throws(()=>sb.saveLocalTracksMeta([{id:'new'}]),/禁止覆盖/);
+  assert.equal(s.raw.music_local_tracks,old);
+ }
+});
+test('catalog: an absent key still allows first import and readback', () => {
+ const s=storage();const {sb}=ctx(s);sb.LOCAL_TRACKS_KEY='music_local_tracks';sb.musicMetaReadFailure=null;
+ vm.runInContext(catalogFn,sb);
+ assert.equal(sb.readLocalTracksMeta().length,0);
+ sb.saveLocalTracksMeta([{id:'first'}]);
+ assert.equal(s.raw.music_local_tracks,'[{"id":"first"}]');
+});
+test('playback state: empty corrupt bytes and non-object values stay unchanged', () => {
+ for (const old of ['', '[]', 'false', '7', '"bad"']) {
+  const s=storage({music_state:old});const {sb}=ctx(s);vm.runInContext(stateFn,sb);
+  assert.equal(sb.saveState(),false);
+  assert.equal(s.raw.music_state,old);
+ }
+});
+test('playback state: legacy null sentinel can initialize', () => {
+ const s=storage({music_state:'null'});const {sb}=ctx(s);vm.runInContext(stateFn,sb);
+ assert.equal(sb.saveState(),true);assert.equal(JSON.parse(s.raw.music_state).id,'example');
+});
+test('toast: create once, reuse, replace deadline, dismiss, and throttle per failure key', () => {
+ const nodes=new Map(),timers=new Map();let sequence=0;
+ const sb={document:{getElementById:id=>nodes.get(id)||null,querySelector:()=>null,
+  createElement(){return {textContent:'',classList:new Set(),setAttribute(){}};},
+  body:{appendChild(node){nodes.set(node.id,node);}}},
+  setTimeout(fn){timers.set(++sequence,fn);return sequence;},clearTimeout(id){timers.delete(id);}};
+ // Native DOMTokenList uses remove, not Set.delete.
+ const create=sb.document.createElement;
+ sb.document.createElement=()=>{const n=create();n.classList.remove=n.classList.delete.bind(n.classList);return n;};
+ vm.createContext(sb);vm.runInContext(toastFn,sb);
+ sb.toast('第一条');const node=nodes.get('musicToast');
+ assert.equal(node.textContent,'第一条');assert.equal(node.classList.has('show'),true);
+ sb.toast('第二条');assert.equal(nodes.size,1);assert.equal(node.textContent,'第二条');assert.equal(timers.size,1);
+ [...timers.values()][0]();assert.equal(node.classList.has('show'),false);
+ sb.musicWarnOnce('write','失败');sb.musicWarnOnce('write','不应重复');
+ assert.equal(node.textContent,'失败');sb.musicWarnOnce('read','另一个问题');assert.equal(node.textContent,'另一个问题');
+});
+test('profile editor remains open after rejected persistence and closes only on success', () => {
+ const s=storage();const {sb}=ctx(s);let rendered=0,closed=0;
+ sb.document={getElementById:id=>({value:{editName:' 新昵称 ',editHandle:'mao',editBgCustom:'#eeeeee'}[id]})};
+ sb.BG_PRESETS=[{css:'#111'}];sb.selectedBg=0;sb.renderProfile=()=>rendered++;sb.closeProfileEdit=()=>closed++;
+ vm.runInContext(profileFn+'\n'+editFn,sb);
+ s.failOnce('music_profile_bg');sb.saveProfileEdit();assert.equal(rendered,0);assert.equal(closed,0);assert.deepEqual(s.raw,{});
+ sb.saveProfileEdit();assert.equal(rendered,1);assert.equal(closed,1);
+ assert.equal(s.raw.music_profile_name,'新昵称');assert.equal(s.raw.music_profile_handle,'@mao');
+});

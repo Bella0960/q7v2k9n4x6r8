@@ -47,3 +47,15 @@ test('search fallback also excludes arrival and legacy voice placeholders', () =
   assert.match(searchPage, /t\.indexOf\('\[语音消息\]'\)\s*!==\s*0/);
   assert.match(searchPage, /ChatMessagePolicy\.isOnlineSearchIndexVisible/);
 });
+
+
+test('group search retains timeline indices but filters private and cross-group hits',()=>{
+  const contextSource=readFileSync(new URL('../shared/js/phone/chat-context-policy.js',import.meta.url),'utf8');
+  runInNewContext(contextSource,{window:scope});
+  const start=searchPage.indexOf('  function searchMessageAllowed('),end=searchPage.indexOf('\n  // ================= 搜索结果样式',start);
+  assert.ok(start>=0&&end>start);
+  const allowed=new Function('groupSearch','searchGroupCurrent','window','roleId',searchPage.slice(start,end)+'\nreturn searchMessageAllowed;')(true,()=>true,scope,'g1');
+  const messages=[{mid:'a',role:'user',text:'public'},{mid:'b',role:'assistant',type:'group_game_private',text:'PRIVATE_FIXTURE'},{mid:'c',role:'assistant',fromGroupId:'g2',text:'CROSS_FIXTURE'},{mid:'d',role:'assistant',text:'public'}];
+  assert.deepEqual(messages.map((m,i)=>allowed(m)?i:null).filter(i=>i!==null),[0,3]);
+  assert.match(searchPage,/localStorage.getItem\('chat_history_'\+roleId\)!==rawHistory/);
+});

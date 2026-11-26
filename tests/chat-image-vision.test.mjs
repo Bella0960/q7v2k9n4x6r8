@@ -282,7 +282,9 @@ test('PWA shell and package contracts include the chat vision runtime', () => {
   const currentCacheVersion = Number(serviceWorkerSource.match(/^const CACHE_NAME = 'phone-app-pwa-v(\d+)'/m)?.[1] || 0);
   assert.ok(currentCacheVersion >= 203, 'PWA app shell must not regress below feature minimum v203');
   assert.ok(serviceWorkerSource.includes('chat-image-vision.js?v=20261113v1'));
-  assert.ok(serviceWorkerSource.includes('chat-context-policy.js?v=20261118historybudget1'));
+  const contextVersion = chatDetailSource.match(/src="[^"]*\/(chat-context-policy\.js\?v=[^"]+)"/)?.[1];
+  assert.ok(contextVersion, 'chat context policy must be versioned');
+  assert.ok(serviceWorkerSource.includes(contextVersion), 'PWA must cache the exact current context policy');
   const extrasVersion = chatDetailSource.match(/src="js\/(chat-extras\.js\?t=[^"]+)"/)?.[1];
   assert.ok(extrasVersion, 'chat details load versioned extras');
   assert.ok(serviceWorkerSource.includes("'./chat/chat/js/" + extrasVersion + "'"),
@@ -301,7 +303,7 @@ test('forwarding an asset-backed chat image adds a destination chat reference', 
   // A previous test required 'var msg' to be the first statement and broke
   // when forwarding was made safe against missing/corrupt target history.
   const storageGuard = forwardBody.indexOf("typeof historyStorage.appendChatHistory !== 'function'");
-  const messageRead = forwardBody.indexOf('var msg = resolved.message;');
+  const messageRead = forwardBody.indexOf('var msg = resolved&&resolved.message;');
   const imageRef = forwardBody.indexOf("_chatImageMediaRepo.addRef(fwd.assetId, 'chat-message', String(fwd.mid))");
   const append = forwardBody.indexOf('historyStorage.appendChatHistory(targetId, fwd)');
   assert.ok(storageGuard >= 0 && messageRead > storageGuard,

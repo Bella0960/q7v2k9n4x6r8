@@ -5,6 +5,8 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0" />
 <title>音乐 · Music</title>
 <script src="../shared/js/phone/phone_storage.js"></script>
+<script src="../shared/js/phone/group-write-guard.js?v=20261125g10"></script>
+<script src="../shared/js/phone/music-playback-controller.js?v=20261126m04c1"></script>
 <script src="../shared/js/phone/storage/repository.js"></script>
 <script src="../shared/js/phone/storage/media-repository.js"></script>
 <script src="../shared/js/statusbar-control.js"></script>
@@ -973,6 +975,15 @@
         <span class="sr-label">导入音乐</span>
         <span class="sr-val">›</span>
       </div>
+      <details class="music-source-settings" style="padding:10px 0;border-bottom:1px solid #f0f0f3;">
+        <summary style="font-size:14px;color:#333;cursor:pointer;">音乐来源</summary>
+        <p style="font-size:12px;color:#666;line-height:1.6;margin:10px 0;">网易云音乐、QQ音乐：粘贴官方歌曲或歌单的完整网页链接。当前在官方页面播放，不导入音频、不支持群内同步。</p>
+        <form id="musicSourceForm" onsubmit="return openMusicSource(event)" style="display:flex;flex-direction:column;gap:8px;">
+          <input id="musicSourceLink" type="url" inputmode="url" autocomplete="off" maxlength="2048" required aria-label="官方歌曲或歌单链接" placeholder="粘贴完整网页链接" style="box-sizing:border-box;width:100%;border:1px solid #e5e5e5;border-radius:10px;padding:10px;font:inherit;font-size:13px;background:#fff;color:#333;">
+          <button type="submit" class="music-extra-action">在官方音乐页面打开</button>
+          <p id="musicSourceStatus" role="status" aria-live="polite" style="font-size:12px;color:#666;line-height:1.5;margin:0;"></p>
+        </form>
+      </details>
       <div class="setting-row" onclick="closeSetting();showTimer()">
         <span class="sr-label">睡眠定时</span>
         <span class="sr-val" id="settingTimer">未开启 ›</span>
@@ -1071,7 +1082,6 @@
   let musicMetaReadFailure = null;
   let currentCoverUrl = null;
   let coverRevision = 0;
-  let playbackRevision = 0;
   let musicToastTimer = null;
   const musicWarnedStorage = new Set();
   let musicRecentReadError = null;
@@ -1197,16 +1207,19 @@
     window.lastLyricLine = -1;
   }
   function musicEmitPlayback(type) {
+    if (!musicController.isScopeCurrent()) return;
     var t = tracks[currentIdx];
     if (!t) return;
+    var confirmed = musicHasConfirmedSource(t);
     var state = { version: 1, type: type, trackId: t.id, title: t.name,
-      artist: t.artist, currentTime: window.audio.currentTime || 0,
-      duration: Number.isFinite(window.audio.duration) ? window.audio.duration : 0,
-      playing: !window.audio.paused && !window.audio.ended,
+      artist: t.artist, currentTime: confirmed ? window.audio.currentTime || 0 : 0,
+      duration: confirmed && Number.isFinite(window.audio.duration) ? window.audio.duration : 0,
+      playing: confirmed && musicController.hasLease() && !window.audio.paused && !window.audio.ended,
       source: t.source === 'local' ? 'local' : 'remote', updatedAt: Date.now(),
       origin: 'native-audio-player', roleJoined: false };
     // 数据源只表示本机真实音频播放；不会对角色/好友宣称已经听到或同步。
-    try {
+    // Non-owners may notify their own UI, never overwrite the active tab's state.
+    if (musicController.hasLease()) try {
       var raw = JSON.stringify(state);
       localStorage.setItem(MUSIC_PLAYBACK_STATE_KEY, raw);
       if (localStorage.getItem(MUSIC_PLAYBACK_STATE_KEY) !== raw)
@@ -1217,10 +1230,12 @@
   // 事件只反映浏览器真实播放状态；订阅方必须自己完成角色/多人权限和送达 ACK。
   window.MAOMAOMusicPlayback = Object.freeze({
     getState: function () {
+      if (!musicController.isScopeCurrent()) return null;
       var t = tracks[currentIdx];
+      var confirmed = musicHasConfirmedSource(t);
       return t ? { trackId: t.id, title: t.name, artist: t.artist,
-        playing: !window.audio.paused && !window.audio.ended,
-        currentTime: window.audio.currentTime || 0 } : null;
+        playing: confirmed && musicController.hasLease() && !window.audio.paused && !window.audio.ended,
+        currentTime: confirmed ? window.audio.currentTime || 0 : 0 } : null;
     },
     subscribe: function (handler) {
       var listener = function (event) { handler(event.detail); };
@@ -1256,12 +1271,49 @@
   }
 
   // 当前持有的 Blob URL（每次换歌 revoke）
-  let currentBlobUrl = null;
-  function revokeCurrentUrl() {
-    if (currentBlobUrl) {
-      try { URL.revokeObjectURL(currentBlobUrl); } catch (e) {}
-      currentBlobUrl = null;
+  const musicController = window.MAOMusicPlaybackController.create({
+    audio: window.audio, getTrack: getTrackById,
+    getScope: function () { return window.MAOGroupWriteGuard.account(); },
+    resolveSource: async function (t) {
+      if (t.source !== 'local') return {kind:'url',url:t.url};
+      const blob = await getAudioBlob(t.id);
+      return blob ? {kind:'blob',blob:blob} : null;
     }
+  });
+  function musicHasConfirmedSource(track) {
+    return !!(track && musicController.getState().trackId === track.id);
+  }
+  // A legacy index is usable only when the record has no stable track ID.
+  function musicSavedTrack(saved) {
+    if (!saved || typeof saved !== 'object') return null;
+    if (saved.id != null && saved.id !== '') return getTrackById(saved.id);
+    return Number.isInteger(saved.idx) && saved.idx >= 0 ? tracks[saved.idx] || null : null;
+  }
+  function musicSaveOwnedState() {
+    if (!musicController.isScopeCurrent() || !musicController.hasLease() || !musicHasConfirmedSource(tracks[currentIdx])) return false;
+    return saveState();
+  }
+  function musicDiscardAudioSource() { musicController.release(); }
+  function musicPauseNative() {
+    musicController.pause();
+    playing = false;
+    updatePlayIcon();
+  }
+  musicController.subscribe(function (event) {
+    if (['switching','error','scope-lost','pause','ended','release'].includes(event.type)) {
+      playing = event.playing;
+      updatePlayIcon();
+      if(event.type !== 'scope-lost')musicEmitPlayback(event.type);
+    }
+  });
+  function musicPlaybackMessage(code) {
+    if(code==='SOURCE_MISSING')return '本地音频暂时无法读取，请保留原文件并检查存储或备份；收藏不会删除';
+    if(code==='SCOPE_CHANGED')return '账号已变化或暂不可用，请重新进入音乐';
+    if(code==='PLAY_REJECTED')return '无法开始播放，请检查音频来源或手机播放权限';
+    if(code==='TRACK_NOT_FOUND')return '曲目不存在';
+    if(code==='PLAYBACK_BUSY')return '另一个窗口正在播放，请先暂停后重试';
+    if(code==='LOCK_UNAVAILABLE')return '当前浏览器无法安全协调音乐播放，请使用支持此功能的浏览器';
+    return '音频加载失败';
   }
 
   // ===== IndexedDB：audio store（{id, name, mimeType, size, blob}） =====
@@ -1337,7 +1389,7 @@
   function readLocalTracksMeta() {
     try {
       var raw = localStorage.getItem(LOCAL_TRACKS_KEY);
-      var value = raw ? JSON.parse(raw) : [];
+      var value = raw === null ? [] : JSON.parse(raw);
       if (!Array.isArray(value)) throw new Error('music_local_tracks must be an array');
       return value;
     } catch (e) {
@@ -1641,40 +1693,13 @@
 
   async function playTrack(trackId) {
     var t = getTrackById(trackId);
-    if (!t) { toast('曲目不存在'); return; }
-    // 源文件可用且真正开始播放之后再更新 UI/currentIdx；
-    // 否则保持原曲与旧收藏/进度，不显示假成功。
-    // 等待真实音频拿到后才切换，失败不移除旧收藏或历史
-    var playRequest = ++playbackRevision;
-    if (t.source === 'local') {
-      try {
-        var blob = await getAudioBlob(t.id);
-        if (!blob) {
-          toast('本地音频暂时无法读取，请保留原文件并检查存储或备份；收藏不会删除');
-          return;
-        }
-        if (playRequest !== playbackRevision) return;
-        var url = URL.createObjectURL(blob);
-        revokeCurrentUrl();
-        currentBlobUrl = url;
-        window.audio.src = url;
-      } catch (e) {
-        toast('音频加载失败');
-        return;
-      }
-    } else {
-      revokeCurrentUrl();
-      window.audio.src = t.url;
+    if (!t) { toast('曲目不存在'); return false; }
+    const result = await musicController.play(trackId);
+    if (!result.ok) {
+      if(result.code!=='STALE')toast(musicPlaybackMessage(result.code));
+      return false;
     }
-    if (playRequest !== playbackRevision) return;
-    try { await window.audio.play(); }
-    catch (e) {
-      playing = false;
-      updatePlayIcon();
-      toast('无法开始播放，请检查音频来源或手机播放权限');
-      return;
-    }
-    if (playRequest !== playbackRevision) return; // 前一个异步切歌不得覆盖新请求
+    if (!musicController.isCurrent(result.revision) || !musicHasConfirmedSource(t)) return false;
     currentIdx = tracks.indexOf(t);
     document.getElementById('miniName').textContent = t.name;
     document.getElementById('miniArtist').textContent = musicDisplayArtist(t);
@@ -1698,10 +1723,11 @@
       if(localStorage.getItem('music_played_count')!==String(played))throw new Error('Playback count not persisted'); }
     catch (err) { musicWarnOnce('music-played-count','播放已开始，播放次数暂未保存'); }
     // 保存断点
-    saveState();
+    musicSaveOwnedState();
     showNP();
     musicApplyCurrentCover().catch(function () { toast('封面读取失败'); });
     musicEmitPlayback('play');
+    return true;
   }
 
   function prevTrack() {
@@ -1722,31 +1748,34 @@
   }
 
   async function togglePlay() {
-    if (!window.audio.paused) {
-      window.audio.pause(); playing = false;
+    if (musicController.getState().pending || !window.audio.paused) {
+      musicPauseNative();
       musicEmitPlayback('pause');
     } else {
       // 刷新后本地曲仅恢复元数据，Blob URL 必须重新从 IndexedDB 创建。
       // 默认示例曲没有 src 时也走同一真实 playTrack 流程。
       var selected = tracks[currentIdx];
-      if (selected && (!window.audio.src || (selected.source === 'local' && !currentBlobUrl))) {
+      if (selected && !musicHasConfirmedSource(selected)) {
         var resumeTime = 0;
         try {
           var saved = JSON.parse(localStorage.getItem('music_state') || 'null');
-          if (saved && String(saved.id) === String(selected.id))
-            resumeTime = Math.max(0, Number(saved.time) || 0);
+          if (musicSavedTrack(saved) === selected && Number.isFinite(Number(saved.time)))
+            resumeTime = Math.max(0, Number(saved.time));
         } catch (err) {}
-        await playTrack(selected.id);
-        if (!window.audio.paused && resumeTime > 0 && Number.isFinite(window.audio.duration)) {
+        const started = await playTrack(selected.id);
+        if (started && musicHasConfirmedSource(selected) && !musicController.getState().pending && !window.audio.paused && resumeTime > 0 && Number.isFinite(window.audio.duration)) {
           try {
-            window.audio.currentTime = Math.min(resumeTime, Math.max(0, window.audio.duration - 0.1));
-            saveState();
+            if (musicController.seek(Math.min(resumeTime, Math.max(0, window.audio.duration - 0.1))).ok) {
+              musicSaveOwnedState();
+              musicEmitPlayback('seek');
+            }
           } catch (err) { toast('当前音频无法恢复原播放进度'); }
         }
         return;
       }
-      try { await window.audio.play(); }
-      catch (err) { toast('音频未能继续播放'); playing = false; updatePlayIcon(); return; }
+      const result = await musicController.resume();
+      if(!result.ok){if(result.code!=='STALE')toast(musicPlaybackMessage(result.code));return;}
+      if(!musicController.isCurrent(result.revision))return;
       playing = !window.audio.paused;
       musicEmitPlayback('resume');
     }
@@ -1759,7 +1788,7 @@
 
   // 音频事件：进度更新
   window.audio.addEventListener('timeupdate', () => {
-    if (!window.audio.duration) return;
+    if (musicController.getState().pending || !musicHasConfirmedSource(tracks[currentIdx]) || !window.audio.duration) return;
     const pct = window.audio.currentTime / window.audio.duration;
     const m = Math.floor(window.audio.currentTime/60), s = Math.floor(window.audio.currentTime%60);
     const tm = Math.floor(window.audio.duration/60), ts = Math.floor(window.audio.duration%60);
@@ -1791,7 +1820,7 @@
       }
     }
     // 保存断点（每 5 秒存一次）
-    if (Math.floor(window.audio.currentTime) % 5 === 0) saveState();
+    if (Math.floor(window.audio.currentTime) % 5 === 0) musicSaveOwnedState();
   });
 
   // 点击"词"按钮切换歌词显示
@@ -1806,14 +1835,15 @@
   document.getElementById('progressBar').addEventListener('click', function(e) {
     const rect = this.getBoundingClientRect();
     const pct = (e.clientX - rect.left) / rect.width;
-    if (window.audio.duration) window.audio.currentTime = pct * window.audio.duration;
+    if (musicHasConfirmedSource(tracks[currentIdx]) && musicController.seek(pct * window.audio.duration).ok) musicEmitPlayback('seek');
   });
 
   // 播完自动切下一首
   window.audio.addEventListener('ended', () => {
+    if (musicController.getState().pending || !musicHasConfirmedSource(tracks[currentIdx])) return;
     playing = false;
     musicEmitPlayback('ended');
-    if (window.loopState === 2) { window.audio.currentTime = 0; window.audio.play().catch(function () {}); }
+    if (window.loopState === 2) { musicController.seek(0); void togglePlay(); }
     else nextTrack();
   });
 
@@ -2595,7 +2625,12 @@
   function saveState() {
     try {
       var oldState = localStorage.getItem('music_state');
-      if (oldState) JSON.parse(oldState); // 损坏的旧播放进度不准静默覆盖
+      if (oldState !== null) {
+        var previous = JSON.parse(oldState);
+        // Only a missing key or a valid legacy empty sentinel may initialize.
+        if (previous !== null && (typeof previous !== 'object' || Array.isArray(previous)))
+          throw new Error('Invalid playback progress');
+      } // 损坏的旧播放进度不准静默覆盖
       var currentT = tracks[currentIdx];
       var payload = JSON.stringify({
         id: currentT ? currentT.id : null,
@@ -2616,10 +2651,8 @@
     try {
       var s = JSON.parse(localStorage.getItem('music_state') || 'null');
       if (!s) return;
-      // 按 id 找（新格式优先），找不到再 fallback 到 idx（旧格式）
-      var t = null;
-      if (s.id) t = getTrackById(s.id);
-      if (!t && typeof s.idx === 'number' && tracks[s.idx]) t = tracks[s.idx];
+      // Stable IDs never fall back to an unrelated current index.
+      var t = musicSavedTrack(s);
       if (!t) return;
       currentIdx = tracks.indexOf(t);
       document.getElementById('miniName').textContent = t.name;
@@ -2627,17 +2660,18 @@
       document.getElementById('npTitle').textContent = t.name;
       document.getElementById('npArtist').textContent = musicDisplayArtist(t);
       renderTrackLyrics(t);
-      // 本地曲的 audio.src 延迟到用户点击播放时再走 playTrack 的 async 分支
-      if (t.source !== 'local') {
-        window.audio.src = t.url;
-        if (s.time) window.audio.currentTime = s.time;
-      }
+      // Reload restores metadata only; both source kinds reopen on explicit play.
       updateHeartIcon();
       renderAlbum();
-      // 立即把旧格式升级成新格式（存 id）
-      if (!s.id) saveState();
+      // Read-only restore. Upgrade the old record only after confirmed playback.
     } catch(e) {}
   }
+
+  window.addEventListener('pagehide', function() {
+    musicPauseNative();
+    musicEmitPlayback('pause');
+    musicDiscardAudioSource();
+  });
 
   // ===== Now Playing 三点菜单 =====
   function toggleNPMenu(e) {
@@ -2710,7 +2744,8 @@
       remaining--;
       if (remaining <= 0) {
         clearInterval(timerCountdown);
-        window.audio.pause(); playing = false; updatePlayIcon();
+        musicPauseNative();
+        musicEmitPlayback('pause');
         status.textContent = '已停止播放';
         document.getElementById('settingTimer').textContent = '未开启 ›';
         document.querySelectorAll('#timerOpts .timer-opt').forEach(el => el.classList.remove('active'));
@@ -2724,6 +2759,56 @@
     closeProfile();
     document.getElementById('settingMask').classList.add('show');
     document.getElementById('settingSheet').classList.add('show');
+  }
+
+  // GROUP-MUSIC-001: official-link handoff, not an audio provider or a new catalog.
+  function parseMusicSourceLink(value) {
+    if (typeof value !== 'string' || value.length > 2048) return null;
+    const raw = value.trim();
+    if (!/^https:\/\//i.test(raw) || /[\s\\\u0000-\u001f\u007f]/.test(raw)) return null;
+    let url;
+    try { url = new URL(raw); } catch { return null; }
+    if (url.protocol !== 'https:' || url.username || url.password || url.port) return null;
+    const host = url.hostname;
+    if (host === 'music.163.com' || host === 'y.music.163.com') {
+      let path = url.pathname, params = url.searchParams;
+      if (url.hash.startsWith('#/')) {
+        if (path !== '/' || url.search || url.hash.startsWith('#//')) return null;
+        let fragment;
+        try { fragment = new URL(url.hash.slice(1), 'https://music.163.com'); } catch { return null; }
+        path = fragment.pathname; params = fragment.searchParams;
+      }
+      const match = /^\/(?:m\/)?(song|playlist)\/?$/.exec(path);
+      const ids = params.getAll('id');
+      if (!match || ids.length !== 1 || !/^[1-9][0-9]{0,19}$/.test(ids[0])) return null;
+      return { provider: 'netease', kind: match[1], id: ids[0], url: 'https://music.163.com/#/' + match[1] + '?id=' + ids[0], playback: 'external' };
+    }
+    if (host === 'y.qq.com' || host === 'i2.y.qq.com') {
+      const song = /^\/(?:n\/ryqq\/songDetail|a\/song)\/([A-Za-z0-9]{1,40})\/?$/.exec(url.pathname);
+      const list = /^\/n\/ryqq\/playlist\/([1-9][0-9]{0,19})\/?$/.exec(url.pathname);
+      if (song) return { provider: 'qq', kind: 'song', id: song[1], url: 'https://i2.y.qq.com/a/song/' + song[1], playback: 'external' };
+      if (list) return { provider: 'qq', kind: 'playlist', id: list[1], url: 'https://y.qq.com/n/ryqq/playlist/' + list[1], playback: 'external' };
+    }
+    return null;
+  }
+  function openMusicSource(event) {
+    event.preventDefault();
+    var input = document.getElementById('musicSourceLink');
+    var status = document.getElementById('musicSourceStatus');
+    var source = parseMusicSourceLink(input.value);
+    if (!source) {
+      status.textContent = '暂不支持此链接。请复制网易云音乐或QQ音乐的完整歌曲、歌单网页链接。';
+      return false;
+    }
+    var link = document.createElement('a');
+    link.href = source.url;
+    link.target = '_blank';
+    link.rel = 'noopener noreferrer';
+    document.body.appendChild(link);
+    try { link.click(); status.textContent = '已请求打开官方页面，未导入歌曲。'; }
+    catch (error) { status.textContent = '无法打开，请在浏览器中打开官方链接。'; }
+    finally { link.remove(); }
+    return false;
   }
   function openMusicImportFromSettings() {
     // 复用原有多文件导入与 IndexedDB 持久化，保持手机浏览器的同步用户手势。
@@ -2749,12 +2834,13 @@
     if (!window.confirm('这会清除本设备的本地歌曲和音乐设置。请先完成包含音频原文件的完整备份。确定继续？')) return;
     try {
       // 首先清除音频库；如果失败，绝不抢先丢掉曲目目录。
+      musicPauseNative();
+      musicDiscardAudioSource();
       await clearAudioStore();
       ['music_profile_avatar','music_profile_name','music_profile_handle','music_profile_bg',
        'music_fav_list','music_fav_count','music_played_count','music_recent','music_state',
        LOCAL_TRACKS_KEY, MUSIC_LYRICS_KEY, MUSIC_PLAYLISTS_KEY
       ].forEach(function (k) { localStorage.removeItem(k); });
-      revokeCurrentUrl();
       location.reload();
     } catch (err) { toast('清除未完成，请检查音乐目录与音频库：' + err.message); }
   }

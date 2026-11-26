@@ -65,9 +65,8 @@
 
   function readGroupData(groupId) {
     try {
-      var groups = JSON.parse(global.localStorage.getItem('phone_groups') || '[]');
-      if (!Array.isArray(groups)) return null;
-      return groups.find(function (group) { return group && String(group.id) === String(groupId); }) || null;
+      var snapshot=global.MAOGroupWriteGuard?.read(String(groupId));
+      return snapshot&&global.GroupGovernance?.userIsInGroup(snapshot.group)?snapshot.group:null;
     } catch (error) {
       return null;
     }
@@ -101,12 +100,25 @@
     var isGroupCall = mode === 'group' || mode === 'group-video';
     var type = mode === 'video' || mode === 'group-video' ? 'video' : 'voice';
     if (!character || !character.id) return false;
+    if (activeSession) {
+      if(activeSession.contactId!==String(character.id)||activeSession.isGroupCall!==isGroupCall)return false;
+      return activeSession.open()===true;
+    }
+    var groupRoster=null,groupTurn=null,groupCallMids=new Set();
     var groupData = isGroupCall ? readGroupData(character.id) : null;
     var groupParticipants = isGroupCall ? resolveGroupParticipants(groupData) : [];
-
-    if (activeSession) {
-      activeSession.open();
-      return true;
+    if(isGroupCall){
+      if(!groupData||!global.MAOGroupCallRoster||!global.MAOGroupCallTurn||typeof global.sendGroupCallMessage!=='function')return false;
+      groupRoster=global.MAOGroupCallRoster.create({
+        getGroupId:function(){return typeof readGroupScope==='function'&&typeof currentRoleId!=='undefined'&&String(currentRoleId)===String(character.id)&&readGroupScope()?String(currentRoleId):null;},
+        hasRole:function(id){var role=typeof getRoleById==='function'&&getRoleById(id);return !!(role&&String(role.persona||role.prompt||'').trim());}
+      });
+      if(!groupRoster)return false;
+      var snapshot=groupRoster.getSnapshot();
+      if(!snapshot){groupRoster.close();return false;}
+      groupParticipants=groupParticipants.filter(function(p){return snapshot.participants.includes(p.id);});
+      groupTurn=global.MAOGroupCallTurn.create({roster:groupRoster});
+      if(!groupTurn){groupRoster.close();return false;}
     }
     // An explicit outgoing call supersedes an unanswered incoming invitation.
     if (activeInvitation) activeInvitation.close();
@@ -122,6 +134,7 @@
     var connected = false;
     var finished = false;
     var sending = false;
+    var groupRequestController = null;
     var hiddenSelfView = false;
     var flippedSelfView = false;
     var startedAt = Date.now();
@@ -167,7 +180,7 @@
           '</div>',
         '</div>',
         '<div class="maomao-call-group-view" data-group-view hidden>',
-          '<div class="maomao-call-group-head"><span>GROUP / PARTICIPANTS</span><strong data-group-count></strong></div>',
+          '<div class="maomao-call-group-head"><span>通话成员</span><strong data-group-count></strong></div>',
           '<div class="maomao-call-group-grid" data-group-grid></div>',
           '<div class="maomao-call-group-state" data-group-state>正在邀请群成员…</div>',
         '</div>',
@@ -256,6 +269,7 @@
     }
 
     mini.addEventListener('mousedown', function(e) {
+      if(finished||e.target.closest?.('[data-call-action]'))return;
       isDragging = true;
       hasMoved = false;
       dragStartX = e.clientX;
@@ -267,8 +281,8 @@
       e.preventDefault();
     });
 
-    document.addEventListener('mousemove', function(e) {
-      if (!isDragging) return;
+    function onMiniMouseMove(e) {
+      if (finished||!isDragging||!mini.parentElement) return;
       var dx = e.clientX - dragStartX;
       var dy = e.clientY - dragStartY;
       if (Math.abs(dx) > 3 || Math.abs(dy) > 3) hasMoved = true;
@@ -282,19 +296,21 @@
       mini.style.left = newLeft + 'px';
       mini.style.top = newTop + 'px';
       mini.style.right = 'auto';
-    });
-
-    document.addEventListener('mouseup', function() {
+    }
+    function onMiniMouseUp() {
       if (!isDragging) return;
       isDragging = false;
       if (!hasMoved) {
         var openBtn = mini.querySelector('[data-call-action="open"]');
         if (openBtn) openBtn.click();
       }
-    });
+    }
+    document.addEventListener('mousemove',onMiniMouseMove);
+    document.addEventListener('mouseup',onMiniMouseUp);
 
     // 触屏拖动
     mini.addEventListener('touchstart', function(e) {
+      if(finished||e.target.closest?.('[data-call-action]')||!e.touches.length)return;
       isDragging = true;
       hasMoved = false;
       var touch = e.touches[0];
@@ -307,7 +323,7 @@
     }, { passive: true });
 
     mini.addEventListener('touchmove', function(e) {
-      if (!isDragging) return;
+      if(finished||!isDragging||!mini.parentElement||!e.touches.length)return;
       var touch = e.touches[0];
       var dx = touch.clientX - dragStartX;
       var dy = touch.clientY - dragStartY;
@@ -325,12 +341,20 @@
     }, { passive: false });
 
     mini.addEventListener('touchend', function() {
+      if(!isDragging||finished)return;
       isDragging = false;
       if (!hasMoved) {
         var openBtn = mini.querySelector('[data-call-action="open"]');
         if (openBtn) openBtn.click();
       }
     });
+
+    mini.addEventListener('touchcancel',function(){isDragging=false;});
+    function clearMiniDrag(){
+      isDragging=false;
+      document.removeEventListener('mousemove',onMiniMouseMove);
+      document.removeEventListener('mouseup',onMiniMouseUp);
+    }
 
     roleNameEl.textContent = displayName;
     videoCaptionEl.textContent = displayName;
@@ -340,7 +364,7 @@
     createAvatar(layer.querySelector('[data-self-avatar]'), myAvatar, myName);
     if (isGroupCall) {
       titleEl.textContent = type === 'video' ? '群视频通话' : '群语音通话';
-      layer.querySelector('.maomao-call-kicker').textContent = 'MAOMAO / GROUP CALL';
+      layer.querySelector('.maomao-call-kicker').textContent = '群聊';
       groupView.hidden = false;
       groupCount.textContent = groupParticipants.length + ' 位角色';
       var roster = groupParticipants.concat([{ id: '__self__', name: myName, avatar: safeImageSource(myAvatar), title: '你' }]);
@@ -369,6 +393,13 @@
     }
 
     function currentMessages() {
+      if(isGroupCall){
+        if(!groupRoster.isCurrent())return [];
+        var rows=readHistory(),counts=new Map();
+        rows.forEach(function(m){if(m&&groupCallMids.has(m.mid))counts.set(m.mid,(counts.get(m.mid)||0)+1);});
+        return rows.filter(function(m){return m&&groupCallMids.has(m.mid)&&counts.get(m.mid)===1&&!m.silent&&!m.isError&&(!m.type||m.type==='text')&&
+          (m.role==='user'||m.role==='sent'||groupRoster.speakerFor(m));});
+      }
       return readHistory().slice(historyStart).filter(function (item) {
         return item && !item.silent && item.type !== 'call';
       });
@@ -415,13 +446,14 @@
           latestSpeaker = latest;
           break;
         }
-        var latestSpeakerId = latestSpeaker && latestSpeaker.memberId != null ? String(latestSpeaker.memberId) : '';
-        var latestSpeakerName = String(latestSpeaker && latestSpeaker.name || '');
+        var latestSpeakerId = latestSpeaker ? groupRoster.speakerFor(latestSpeaker) : null;
+        var speakerTile = groupParticipants.find(function(p){return p.id===latestSpeakerId;});
+        var latestSpeakerName = speakerTile ? speakerTile.name : '';
         Array.prototype.forEach.call(groupGrid.querySelectorAll('[data-participant-id]'), function (tile) {
           tile.classList.remove('is-speaking');
           var id = tile.getAttribute('data-participant-id');
           var match = groupParticipants.find(function (participant) { return participant.id === id; });
-          var isSpeaker = !!latestSpeaker && ((latestSpeakerId && id === latestSpeakerId) || (latestSpeakerName && match && match.name === latestSpeakerName));
+          var isSpeaker = !!latestSpeakerId && id === latestSpeakerId;
           var role = tile.querySelector('.maomao-call-group-role');
           if (isSpeaker) {
             tile.classList.add('is-speaking');
@@ -451,6 +483,7 @@
     }
 
     function updateTimer() {
+      if(isGroupCall&&!groupRoster.isCurrent()){finish(false);return;}
       if (connectedAt) duration = Math.max(0, Math.floor((Date.now() - connectedAt) / 1000));
       var shown = formatTime(duration);
       timerEl.textContent = shown;
@@ -458,18 +491,35 @@
     }
 
     function open() {
-      if (finished) return;
+      if (finished) return false;
+      if(isGroupCall&&!groupRoster.isCurrent()){finish(false);return false;}
       layer.hidden = false;
       mini.hidden = true;
       if (connected) {
         try { input.focus({ preventScroll: true }); } catch (error) { input.focus(); }
       }
+      return true;
     }
 
     function minimize() {
       if (finished) return;
       layer.hidden = true;
       mini.hidden = false;
+    }
+
+    async function saveGroupCallRecord(record) {
+      try{
+        var atomic=global.ChatHistoryAtomic;
+        if(!groupRoster.isCurrent()||!atomic||typeof atomic.appendIf!=='function'||typeof ensureMid!=='function')throw Error('group call storage unavailable');
+        ensureMid(record);
+        var saved=await atomic.appendIf(String(character.id),record,function(){return groupRoster.isCurrent();});
+        if(!saved?.ok||!groupRoster.isCurrent())throw Error('group call record not confirmed');
+        global.dispatchEvent(new CustomEvent('maomao:followup-message',{detail:{contactId:String(character.id)}}));
+        return true;
+      }catch(error){
+        if(groupRoster.isCurrent()&&typeof showToast==='function')showToast('通话已结束，但通话记录保存失败');
+        return false;
+      }
     }
 
     function addCallRecord() {
@@ -492,6 +542,7 @@
             : '已取消'
         }
       };
+      if(isGroupCall)return saveGroupCallRecord(record);
       try {
         var history = readHistory();
         // Never mutate a potentially shared history array before persistence succeeds.
@@ -516,17 +567,67 @@
       }
     }
 
-    function finish() {
+    function finish(saveRecord) {
       if (finished) return;
       finished = true;
+      if(groupTurn)groupTurn.close();
+      if(groupRequestController){groupRequestController.abort();groupRequestController=null;}
+      clearMiniDrag();
       if (connectTimer) global.clearTimeout(connectTimer);
       if (tickTimer) global.clearInterval(tickTimer);
       duration = connected ? Math.max(0, Math.floor((Date.now() - connectedAt) / 1000)) : 0;
-      addCallRecord();
+      var saving=saveRecord===false?null:addCallRecord();
       layer.remove();
       mini.remove();
       global.document.removeEventListener('keydown', onKeydown);
-      activeSession = null;
+      if(isGroupCall){
+        global.removeEventListener('storage',onScopeChange);
+        global.removeEventListener('pagehide',onPageExit);
+        Promise.resolve(saving).finally(function(){groupRoster.close();if(activeSession?.element===layer)activeSession=null;});
+      }else activeSession = null;
+    }
+    function onScopeChange(){if(isGroupCall&&!groupRoster.isCurrent())finish(false);}
+    function onPageExit(){if(groupRoster)groupRoster.close();finish(false);}
+
+    async function sendGroupText(text){
+      var admission=groupTurn.begin(text);
+      if(!admission.ok){stateEl.textContent='当前通话暂不可发送';if(!groupRoster.isCurrent())finish(false);return;}
+      var token=admission.token,confirmedUser=false;
+      var controller=typeof global.AbortController==='function'?new global.AbortController():null;
+      groupRequestController=controller;
+      sending=true;sendButton.disabled=true;input.disabled=true;stateEl.textContent='群成员正在回复…';
+      function showConfirmed(result){
+        if(!result?.ok||finished)return;
+        confirmedUser=true;
+        groupCallMids.add(result.userMid);
+        result.replies.forEach(function(reply){groupCallMids.add(reply.mid);});
+        input.value='';input.style.height='auto';renderTranscript();
+      }
+      try{
+        var receipt=await global.sendGroupCallMessage(text,token,groupTurn.canContinue,function(progress){
+          if(!finished)showConfirmed(groupTurn.inspect(token,progress));
+        },controller?.signal);
+        if(finished)return;
+        var verified=groupTurn.settle(token,receipt);
+        if(!groupRoster.isCurrent()){finish(false);return;}
+        if(verified.ok){
+          showConfirmed(verified);
+          var sent=currentMessages().find(function(m){return m.mid===verified.userMid;});
+          stateEl.textContent=verified.replies.length?'已连接 · 文字交流':sent?.sendFailed?'消息已保存，回复失败，请在聊天中重试':'消息已保存 · 暂无回复';
+        }else if(confirmedUser){
+          stateEl.textContent='本轮部分消息已保存，请在聊天中确认';
+        }else{
+          stateEl.textContent='发送未确认，请检查聊天记录后重试';
+          input.value=text;
+        }
+      }catch(error){
+        groupTurn.abandon(token);
+        if(!finished)stateEl.textContent='发送未确认，请检查聊天记录后重试';
+      }finally{
+        if(groupRequestController===controller)groupRequestController=null;
+        sending=false;
+        if(!finished&&connected){input.disabled=false;sendButton.disabled=!input.value.trim();try{input.focus();}catch(error){}}
+      }
     }
 
     function onKeydown(event) {
@@ -559,6 +660,7 @@
       event.preventDefault();
       var text = input.value.trim();
       if (!connected || !text || sending || finished) return;
+      if(isGroupCall){void sendGroupText(text);return;}
       if (typeof global.sendMsg !== 'function') {
         stateEl.textContent = '聊天服务暂不可用';
         return;
@@ -637,16 +739,18 @@
     });
 
     global.document.addEventListener('keydown', onKeydown);
-    activeSession = { open: open, minimize: minimize, finish: finish, element: layer };
+    activeSession = { open: open, minimize: minimize, finish: finish, element: layer,contactId:String(character.id),isGroupCall:isGroupCall };
+    if(isGroupCall){global.addEventListener('storage',onScopeChange);global.addEventListener('pagehide',onPageExit);}
 
     connectTimer = global.setTimeout(function () {
       if (finished) return;
+      if(isGroupCall&&!groupRoster.isCurrent()){finish(false);return;}
       connected = true;
       connectedAt = Date.now();
       layer.classList.add('is-connected');
       stateEl.textContent = '已连接 · 文字交流';
       input.disabled = false;
-      input.placeholder = '输入消息，和 TA 继续聊…';
+      input.placeholder = isGroupCall?'输入消息，和群成员交流…':'输入消息，和 TA 继续聊…';
       sendButton.disabled = !input.value.trim();
       updateTimer();
       try { input.focus({ preventScroll: true }); } catch (error) {}

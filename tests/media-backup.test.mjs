@@ -312,6 +312,7 @@ function buildCtxFull(opts) {
         'base64ToBlob', 'blobToBase64', 'idbOpen',
         'dumpStore', 'dumpDatabase',
         'restoreStore', 'restoreDatabase',
+        'musicBackupBlobEncoded', 'backupMissingGroupPortraits', 'groupPortraitBackupAccount',
         'doExport'
     ];
     const fnSrcs = fnNames.map(n => extractFunction(backupSrc, n));
@@ -859,6 +860,8 @@ test('10 生产 doExport：localStorage 有数据 + atomicExportFailed 的 DB �
     assert.ok(parsed.__backup, '应有 __backup 元信息');
     assert.equal(parsed.__backup.app, 'phone-app');
     assert.equal(parsed.__backup.schema, 2);
+    assert.equal(parsed.__backup.complete, false, 'a skipped database cannot be reported complete');
+    assert.equal(parsed.__backup.warnings.missingGroupPortraits, false, 'no group portrait references in fixture');
     assert.ok(parsed.data && typeof parsed.data === 'object', '应有 data 段（localStorage 快照）');
     assert.ok(parsed.indexedDB && typeof parsed.indexedDB === 'object', '应有 indexedDB 段');
 

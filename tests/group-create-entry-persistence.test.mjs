@@ -12,11 +12,14 @@ test('聊天列表所有创建群入口都通向真实创建弹窗',()=>{
   assert.match(chat,/function openModal\(\)[\s\S]*?backdrop\.classList\.add\('show'\)/);
 });
 test('新群不覆盖损坏记录；需要成员；存储读回后才提示成功',()=>{
-  assert.match(chat,/if \(!members\.length\)/);
-  assert.match(chat,/groups = raw === null \? \[\] : JSON\.parse\(raw\)/);
-  assert.match(chat,/if \(!Array\.isArray\(groups\)\) throw new Error/);
-  assert.match(chat,/localStorage\.setItem\('phone_groups', JSON\.stringify\(updatedGroups\)\)/);
-  assert.match(chat,/var saved = JSON\.parse\(localStorage\.getItem\('phone_groups'\)/);
+  const guard = readFileSync(path.join(root,'shared/js/phone/group-write-guard.js'),'utf8');
+  assert.match(chat,/if\(!memberIds\.length\)/);
+  assert.match(chat,/return guard\.create\(account,/);
+  assert.match(guard,/groups=JSON\.parse\(raw===null\?'\[\]':raw\)/);
+  assert.match(guard,/if\(!Array\.isArray\(groups\)\)return \{ok:false/);
+  assert.match(guard,/global\.localStorage\.setItem\('phone_groups',encoded\)/);
+  assert.match(guard,/global\.localStorage\.getItem\('phone_groups'\)!==encoded/);
+  assert.match(chat,/if\(!result\.ok\)\{[\s\S]*?return;[\s\S]*?showToast\('群聊已创建'\)/);
   assert.match(chat,/showToast\('群聊已创建'\)/);
 });
 
@@ -45,7 +48,8 @@ function simulateCreate(scenario) {
       },
       classList: {
         add(c) { if (c === 'show') item.visible = true; },
-        remove(c) { if (c === 'show') item.visible = false; }
+        remove(c) { if (c === 'show') item.visible = false; },
+        contains(c) { return c === 'show' && item.visible; }
       },
       focus() {},
       querySelectorAll() { return rows; }
@@ -70,7 +74,7 @@ function simulateCreate(scenario) {
       }
     }
   });
-  const fakeDocument = { getElementById(id) { return elements[id] || null; } };
+  const fakeDocument = { getElementById(id) { return elements[id] || null; }, querySelector() { return null; } };
   const storage = {
     getItem(key) { return store.has(key) ? store.get(key) : null; },
     setItem(key, value) {
@@ -89,15 +93,18 @@ function simulateCreate(scenario) {
   assert.ok(helpersStart > 0 && helpersEnd > helpersStart);
   const helpers = new Function(chat.slice(helpersStart, helpersEnd) +
     '\nreturn { escapeHtml, safeImgSrc };')();
-  new Function('document', 'localStorage', 'setTimeout', 'renderChatList', 'showToast',
+  const win = {document:fakeDocument, localStorage:storage, location:{hostname:'127.0.0.1'}};
+  new Function('window',readFileSync(path.join(root,'shared/js/phone/group-write-guard.js'),'utf8'))(win);
+  new Function('window', 'document', 'localStorage', 'setTimeout', 'renderChatList', 'showToast',
     'escapeHtml', 'safeImgSrc', creationScript)(
-    fakeDocument, storage, () => 0, () => { renderCount++; }, text => notices.push(text),
+    win, fakeDocument, storage, () => 0, () => { renderCount++; }, text => notices.push(text),
     helpers.escapeHtml, helpers.safeImgSrc
   );
   elements.silverGroupEntryBtn.fire();
   assert.equal(elements.groupModalBackdrop.visible, true, '点击入口应出现创建弹窗');
   elements.groupNameInput.value = '周末聊天群';
   rows[0].fire();
+  if (scenario === 'account-changed') win.location.hostname = 'group-settings.invalid';
   elements.groupModalCreate.fire();
   let saved = null;
   try { saved = JSON.parse(store.get('phone_groups')); } catch { /* 原记录被保护 */ }
@@ -118,7 +125,7 @@ test('模拟旧群数据损坏，不覆盖原始记录也不假报创建成功',
   assert.equal(result.saved, null);
   assert.equal(result.renderCount, 0);
   assert.equal(result.visible, true);
-  assert.match(result.notices.join(' '), /保护数据/);
+  assert.match(result.notices.join(' '), /群聊保存失败/);
 });
 test('模拟浏览器存储空间不足，保持弹窗与成员选择', () => {
   const result = simulateCreate('quota');
@@ -142,4 +149,12 @@ test('导入角色含引号、HTML 或非法头像 URL 不应破坏成员选择�
 test('群名缺失时显示清楚的错误，而不是点击无响应', () => {
   assert.match(chat, /if \(!name\) \{\s*showToast\('请输入群聊名称'\)/);
   assert.match(chat, /selected = Object\.create\(null\)/);
+});
+
+test('创建期间账号作用域失效时拒绝写入',()=>{
+  const result=simulateCreate('account-changed');
+  assert.deepEqual(result.saved,[]);
+  assert.equal(result.renderCount,0);
+  assert.equal(result.visible,true);
+  assert.match(result.notices.join(' '),/账号已变化/);
 });

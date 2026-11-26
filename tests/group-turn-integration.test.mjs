@@ -73,7 +73,8 @@ function harness(options = {}) {
   new Function('window',gameSource)(window);
   const environment = {
     window, currentGroup:group, currentRoleId:'g1', isGroupChat:true,
-    contextOnly:false, localStorage:storage,
+    contextOnly:false, localStorage:storage, groupPageExited:false,
+    currentGroupSpeaker(id){return id!=='__user'&&id!=='g1'&&group.members.filter(m=>String(m.id)===id).length===1;},
     getGroupSettings(){return group.settings;},
     ensureMid(message) {
       if (options.failChain && message.mid === 'c1') throw Error('Injected parser failure');

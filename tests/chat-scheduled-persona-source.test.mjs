@@ -135,3 +135,18 @@ test('notifier uses one scheduled source for proactive and follow-up, validating
   assert.doesNotMatch(presence,/persona[^\n]*\.slice\(0, 5000\)/);
   assert.doesNotMatch(followup,/persona[^\n]*\.slice\(0, 1200\)/);
 });
+
+
+test('scheduled group context filters private rows and opts in to direct memories explicitly',()=>{
+  const h=harness();
+  const role={...roles[0],memory:'PRIVATE_ROLE_MEMORY_FIXTURE'};
+  const input={role,storage:h.store,groupId:'g1',groupMembers:[role,roles[1]],roleLoader:id=>id==='a'?role:roles[1],history:[{role:'user',text:'PUBLIC_FIXTURE'},{role:'assistant',memberId:'a',text:'PRIVATE_ROW_FIXTURE',privateFromGroup:true},{role:'assistant',text:'CROSS_GROUP_FIXTURE',fromGroupId:'g2'}],memories:[{status:'fixed',content:'PRIVATE_LONG_MEMORY_FIXTURE'}],currentText:'PUBLIC_FIXTURE'};
+  const result=h.window.ChatScheduledRoleContext.build(input);
+  assert.equal(result.ok,true,result.code);
+  assert.doesNotMatch(JSON.stringify(result.history),/PRIVATE_ROW_FIXTURE|CROSS_GROUP_FIXTURE/);
+  assert.doesNotMatch(result.system,/PRIVATE_ROLE_MEMORY_FIXTURE|PRIVATE_LONG_MEMORY_FIXTURE/);
+  const allowed=h.window.ChatScheduledRoleContext.build({...input,groupMemorySharing:true});
+  assert.equal(allowed.ok,true,allowed.code);
+  assert.match(allowed.system,/PRIVATE_ROLE_MEMORY_FIXTURE/);
+  assert.match(allowed.system,/PRIVATE_LONG_MEMORY_FIXTURE/);
+});

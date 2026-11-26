@@ -30,6 +30,9 @@ async function scenario(savedResult, opts = {}) {
     }
   };
   const context = {
+    window:{},
+    captureForwardTarget:()=>({kind:'role',account:'fixture',serialized:'role-a'}),
+    forwardTargetCurrent:()=>!opts.targetChanged,
     _storage: { result: historyStorage },
     _chatImageMediaRepo: media,
     aliasRoleId: 'B',
@@ -43,7 +46,7 @@ async function scenario(savedResult, opts = {}) {
   };
   runInNewContext(implementation + '\nthis.runForward = forwardMessage;', context, { timeout: 2000 });
   await context.runForward({
-    message: { type: 'image', assetId: 'synthetic-asset', desc: 'synthetic' },
+    message: { type: 'image', assetId: 'synthetic-asset', desc: 'synthetic', ...(opts.messageFlags||{}) },
     count: 1, text: ''
   }, 'A', 'Synthetic A');
   return events;
@@ -79,4 +82,17 @@ test('media add failure never appends to destination history', async () => {
 test('successful forward preserves linked media reference', async () => {
   const events = await scenario({ ok: true });
   assert.deepEqual(events.map((event) => event[0]), ['add', 'append', 'toast']);
+});
+
+
+test('stale forward destination after media await does not append and releases its exact reference', async()=>{
+  const events=await scenario({ok:true},{targetChanged:true});
+  assert.deepEqual(events.map(e=>e[0]),['add','remove','toast']);
+  assert.equal(events[0][3],events[1][3]);
+});
+test('private group-marked source never forwards or writes media',async()=>{
+  for(const messageFlags of [{privateFromGroup:true},{visibility:'role_only'},{type:'group_game_private'},{privateGroupReceiptV1:{id:'fixture'}}]){
+    const events=await scenario({ok:true},{messageFlags});
+    assert.deepEqual(events.map(e=>e[0]),['toast']);
+  }
 });

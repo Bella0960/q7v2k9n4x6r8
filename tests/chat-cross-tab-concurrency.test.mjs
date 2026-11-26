@@ -21,12 +21,12 @@ function makeShared(existing) {
 function openTab(area) {
   const notices=[];
   const create=new Function('localStorage','storageKey','currentCharacter','_storage',
-    'showToast','getInitialMessages','console',
+    'showToast','getInitialMessages','console','isGroupChat',
     code+'\nreturn {loadMessages,saveMessages,_inheritChatBaseline,removeLegacyStickerCaptions};');
   const instance=create(area,'chat_history_role1',{id:'role1'},null,
     message=>notices.push(message),
     ()=>[{role:'received',mid:'welcome',text:'欢迎'}],
-    {warn(){}});
+    {warn(){}},false);
   return {...instance,notices};
 }
 const msg=(mid,text)=>({role:'user',mid,time:Number(mid.replace(/\D/g,''))||1,text});

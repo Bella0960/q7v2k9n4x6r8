@@ -33,11 +33,11 @@ function setup(options={}) {
   };
   let feedback=[];
   const fn=new Function('localStorage','storageKey','currentCharacter','_storage',
-    '_chatHistoryUnreadable','showToast','_shouldWarnAgain','_resetWarnCooldown','console',
+    '_chatHistoryUnreadable','showToast','_shouldWarnAgain','_resetWarnCooldown','console','isGroupChat',
     block+'\nreturn {saveMessages,_verifyHistoryRoundTrip,_messageIdentity,_rememberChatBaseline,_inheritChatBaseline};');
   const svc=fn(storage,options.storageKey||'chat_history_role1',
     {id:'role1'},null,false,text=>feedback.push(text),
-    ()=>true,()=>{},{warn(){}});
+    ()=>true,()=>{},{warn(){}},false);
   // The real chat loader attaches an exact snapshot version to each array.
   const version=list=>svc._rememberChatBaseline(list,options.existing===undefined?null:options.existing);
   return {svc,storage,data,feedback,version};

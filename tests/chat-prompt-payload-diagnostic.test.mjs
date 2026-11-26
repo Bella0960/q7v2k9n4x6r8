@@ -42,9 +42,11 @@ test('prompt keeps the saved protocol before output-format rules and preserves r
   assert.ok(detail.indexOf('let systemPrompt = applyProtocolVars(rpProtocol);') < detail.indexOf('const outputFormat = ['));
   assert.match(detail,/if \(regexSystemHead\) systemPrompt = regexSystemHead \+ '\\n\\n' \+ systemPrompt;/);
   assert.match(detail,/const apiMessages = \[[\s\S]*?role: 'system', content: systemPrompt/);
-  assert.match(detail,/validateFinalApiMessages\(\{[\s\S]*?messages: apiMessages/);
-  assert.match(detail,/messages: apiMessages,/);
-  assert.match(detail,/await window\.MAOMAOPromptDiagnostic\.beforeSend\(apiMessages\)/);
+  assert.match(detail,/validateFinalApiMessages\(\{[\s\S]*?messages: messages/);
+  assert.match(detail,/const finalPayloadAudit = auditFinalMessages\(apiMessages\)/);
+  assert.match(detail,/auditFinalMessages\(candidate\)\.ok/);
+  assert.match(detail,/PhoneStream\.chat\(\{[\s\S]*?messages: outboundApiMessages,/);
+  assert.match(detail,/await window\.MAOMAOPromptDiagnostic\.beforeSend\(outboundApiMessages\)/);
   assert.doesNotMatch(detail,/【发送前的角色一致性核对】|【群聊口吻纠偏】|【本轮普通群聊的说话方式】/);
   for(const marker of ['【最终设定优先级】','【世界书 / 角色生活背景】',
     '【群聊模式：线下共同场景】','[发起语音通话]','[群私聊:'])
@@ -147,4 +149,28 @@ test('private prompt diagnostic remains disabled on production origin',async()=>
   assert.equal(f.api.isEnabled(),false);
   assert.equal(f.logs.length,0);
   assert.equal(f.body.children.length,0);
+});
+
+test('actual outbound boundary previews exactly what it sends; changed music cancels before network',async()=>{
+  const start=detail.indexOf('            // Compose the exact outbound payload');
+  const end=detail.indexOf('            const chatResponseTimeoutMs',start);
+  assert.ok(start>=0&&end>start);
+  const execute=new Function('env','return (async()=>{const {apiMessages,isGroupChat,groupReplyPick,groupListeningView,window,currentRoleId,getRoleById,auditFinalMessages,regexSystemHead,roleIdentityHead,groupTurnCurrent,discardStaleGroupTurn,stopForMissingRoleSource}=env;let aiSending=false;\n'+detail.slice(start,end)+'\nreturn outboundApiMessages;})()');
+  async function scenario(change,group=true,enabled=true,valid=true){
+    const original=[{role:'system',content:'identity\n\nregex\npersona'},{role:'user',content:'hello'}];
+    let state='playing',reviewed=null,reads=0,cancelled=0,reason=null,current=true,auditCount=0;
+    const env={apiMessages:original,isGroupChat:group,groupReplyPick:{id:'r1'},groupListeningView:{getSnapshot:()=>state},currentRoleId:'g1',getRoleById:()=>({id:'r1'}),
+      auditFinalMessages:m=>{auditCount++;return {ok:(m===original||valid)&&!(change==='final-audit'&&auditCount>=3),missing:['test-source']};},regexSystemHead:'regex',roleIdentityHead:'identity',groupTurnCurrent:()=>current,discardStaleGroupTurn:()=>cancelled++,stopForMissingRoleSource:r=>{reason=r;},
+      window:{MAOGroupListeningContext:{appendToMessages(m,o){reads++;const value=o.readSnapshot();return value?[{...m[0],content:m[0].content+'\n'+value},m[1]]:m;}},
+        MAOMAOPromptDiagnostic:{isEnabled:()=>enabled,async beforeSend(m){reviewed=JSON.stringify(m);if(change==='pause')state='paused';if(change==='leave')state=null;if(change==='group')current=false;if(change==='mutate')m[0].content+='changed';}}}};
+    const sent=await execute(env);
+    return {sent,original,reviewed,reads,cancelled,reason};
+  }
+  const stable=await scenario();assert.equal(JSON.stringify(stable.sent),stable.reviewed);assert.equal(stable.reads,2);
+  for(const change of ['pause','leave','mutate']){const v=await scenario(change);assert.equal(v.sent,undefined);assert.equal(v.cancelled,1);assert.equal(v.reason,'music-context-updated');}
+  const stale=await scenario('group');assert.equal(stale.sent,undefined);assert.equal(stale.cancelled,1);
+  const single=await scenario(null,false);assert.equal(single.sent,single.original);assert.equal(single.reads,0);assert.equal(JSON.stringify(single.sent),single.reviewed);
+  const disabled=await scenario(null,true,false);assert.equal(disabled.reads,1);assert.equal(disabled.reviewed,null);
+  const rejected=await scenario(null,true,true,false);assert.equal(rejected.sent,rejected.original);assert.equal(JSON.stringify(rejected.sent),rejected.reviewed);
+  const refused=await scenario('final-audit');assert.equal(refused.sent,undefined);assert.equal(refused.reason,'final-source-audit');assert.equal(refused.cancelled,1);
 });

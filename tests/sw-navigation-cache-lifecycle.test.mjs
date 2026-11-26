@@ -109,8 +109,8 @@ function createHarness({ cachedResponse = null, fetchImpl, putImpl, matchImpl } 
 
   assert.equal(typeof listeners.fetch, 'function', 'sw.js 必须注册 fetch 监听');
 
-  function dispatchNavigation() {
-    const request = { method: 'GET', mode: 'navigate', url: NAV_URL };
+  function dispatchNavigation(url = NAV_URL, mode = 'navigate') {
+    const request = { method: 'GET', mode, url };
     const event = {
       request,
       responsePromise: null,
@@ -338,4 +338,27 @@ test('场景8：离线时不能从旧缓存显示非 HTML 的 200 数据，应�
   assert.equal(harness.putCalls.length, 0);
   await flushAsync();
   assert.equal(state.value, 'fulfilled');
+});
+
+
+test('admin documents, versioned admin assets and all API routes bypass service-worker cache', () => {
+  const h = createHarness({
+    cachedResponse: htmlResponse('old restricted data'),
+    fetchImpl: () => { throw new Error('Service Worker must not intercept'); }
+  });
+  for (const [path, mode] of [
+    ['/admin/index.html','navigate'],
+    ['/admin/admin.js?mao_rev=0123456789abcdef01234567','cors'],
+    ['/api/admin/cloud','cors'],
+    ['/api/admin/cloud/diagnostics','cors'],
+    ['/api/accounts/me','cors'],
+    ['/api','cors']
+  ]) {
+    const event=h.dispatchNavigation(ORIGIN+path,mode);
+    assert.equal(event.responsePromise,null,path);
+    assert.equal(event.lifecycle.length,0,path);
+  }
+  assert.deepEqual(h.openCalls,[]);
+  assert.deepEqual(h.putCalls,[]);
+  assert.deepEqual(h.fetchCalls,[]);
 });

@@ -109,7 +109,7 @@ test('different contact IDs remain isolated', async () => {
 });
 
 test('notifier loads the helper and routes both async automatic writers through it', () => {
-    assert.match(notifierSource, /chat-history-atomic\.js\?v=20261118v3/);
+    assert.match(notifierSource, /chat-history-atomic\.js\?v=20261125scope1/);
     assert.equal((notifierSource.match(/ChatHistoryAtomic\.appendIf\(/g) || []).length, 2);
     assert.doesNotMatch(notifierSource, /saveFollowUpHistory/);
 });
@@ -397,4 +397,25 @@ test('automatic AI preflight rejects accounts whose scoped storage is not ready'
     assert.equal(ready('MAO-ACCOUNT000001', { ready: true, accountId: 'MAO-ACCOUNT000002' }), false);
     assert.equal(ready('MAO-ACCOUNT000001', { ready: true, accountId: 'MAO-ACCOUNT000001' }), true);
     assert.equal(ready('', null, false), false);
+});
+
+
+test('queued shared history writes recheck account scope and exact raw baseline',async()=>{
+  const A="MAO-AAAAAAAAAAAA",B="MAO-BBBBBBBBBBBB";
+  function harness(source,opts={}){
+ const state={id:A,scope:{ready:true,accountId:A,role:"member"},reads:0,writes:0,lockNames:[],...opts},key="chat_history_g1",initial=JSON.stringify([{mid:"u1",role:"user",text:"sample",poll:{votes:{}}}]),map=new Map([[key,initial],["chat_history_r1","[]"],["chat_history_g2","[]"]]);
+ let tail=Promise.resolve();
+ const lock={request(name,options,fn){state.lockNames.push(name);const p=tail.then(()=>{state.beforeLock?.();return fn()});tail=p.catch(()=>{});return p}};
+ const w={document:{querySelector:()=>state.id?{content:state.id}:null},get __MAO_ACCOUNT_SCOPE__(){return state.scope},navigator:{locks:lock},localStorage:{getItem(k){state.reads++;state.onRead?.(k);return map.get(k)??null},setItem(k,v){state.writes++;if(state.quota){const e=Error("full");e.name="QuotaExceededError";throw e;}map.set(k,v);state.onWrite?.();}}};
+ new Function("window",source)(w);
+ return {state,map,key,initial,api:w.ChatHistoryAtomic,swap(){state.id=B;state.scope={ready:true,accountId:B,role:"member"}}};
+}
+  {const h=harness(source);h.state.beforeLock=()=>h.swap();const x=await h.api.appendManyIf('g1',[{mid:'a'}]);assert.equal(x.error.code,'ACCOUNT_SCOPE_UNAVAILABLE');assert.equal(h.state.reads,0);assert.equal(h.state.writes,0);}
+  {const h=harness(source);h.state.onRead=()=>{if(h.state.reads===2)h.swap();};assert.equal((await h.api.replaceRawIfUnchanged('g1',h.initial,[])).ok,false);assert.equal(h.state.writes,0);}
+  {const h=harness(source),next=JSON.parse(h.initial);next[0].poll.votes.r1=1;next.push({mid:'a1',memberId:'r1'},{mid:'a2',memberId:'r1'});assert.equal((await h.api.replaceRawIfUnchanged('g1',h.initial,next,()=>true)).ok,true);assert.equal(h.state.writes,1);assert.equal(JSON.parse(h.map.get(h.key))[0].poll.votes.r1,1);assert.equal(JSON.parse(h.map.get(h.key)).length,3);assert.equal(h.map.get('chat_history_g2'),'[]');assert.equal(h.map.get('chat_history_r1'),'[]');}
+  {const h=harness(source);await h.api.appendIf('g1',{mid:'a'});assert.equal((await h.api.replaceRawIfUnchanged('g1',h.initial,[])).error.code,'CONFLICT');}
+  {const h=harness(source);const newer='[{"mid":"new"}]';const x=await h.api.replaceRawIfUnchanged('g1',h.initial,[],()=>{h.map.set(h.key,newer);return true;});assert.equal(x.error.code,'CONFLICT');assert.equal(h.state.writes,0);assert.equal(h.map.get(h.key),newer);}
+  {const h=harness(source);h.state.onWrite=()=>h.swap();const x=await h.api.appendIf('g1',{mid:'a'});assert.equal(x.ok,false);assert.equal(x.meta.writeMayHavePersisted,true);assert.equal(h.state.reads,2);}
+  {const h=harness(source);const next=[{mid:'a'}];h.state.beforeLock=()=>next.push({mid:'unexpected'});assert.equal((await h.api.replaceRawIfUnchanged('g1',h.initial,next)).ok,true);assert.equal(JSON.parse(h.map.get(h.key)).length,1);}
+  {const h=harness(source);const [a,b]=await Promise.all([h.api.replaceRawIfUnchanged('g1',h.initial,[{mid:'a'}]),h.api.replaceRawIfUnchanged('g1',h.initial,[{mid:'b'}])]);assert.equal(a.ok,true);assert.equal(b.ok,false);assert.equal(h.state.writes,1);}
 });

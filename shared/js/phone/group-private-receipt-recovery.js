@@ -12,11 +12,13 @@
   function reconcile(req) {
     req=req||{};
     var group=req.group, gid=str(group&&group.id);
-    if(!validId(gid)||!group||group.userMembership==='left'||
+    if(!validId(gid)||!group||(group.userMembership==='left'||group.userMembership==='declined')||
        !Array.isArray(group.members)||group.members.length>100||
        typeof req.readGroupHistory!=='function'||
        typeof req.readRoleHistory!=='function'||
        typeof req.saveGroupHistory!=='function') return fail('INVALID_SCOPE');
+    var ids=group.members.map(function(m){return str(m&&m.id);});
+    if(ids.some(function(id){return !validId(id)||id==='__user'||id===gid;})||new Set(ids).size!==ids.length)return fail('INVALID_SCOPE');
     var history;
     try { history=req.readGroupHistory(); } catch(e) { return fail('GROUP_READ_FAILED'); }
     if(!Array.isArray(history))return fail('GROUP_READ_FAILED');

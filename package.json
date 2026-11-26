@@ -10,7 +10,7 @@
     "build": "vite build",
     "preview": "vite preview --host 0.0.0.0 --port 3000",
     "lint": "node -e 'console.log(\"Lint passed\")'",
-    "test:chat:contract": "node --test tests/chat-regression-contract.test.mjs tests/chat-unsent-draft-context.test.mjs tests/chat-role-sticker-library.test.mjs tests/role-avatar-library.test.mjs tests/chat-image-vision.test.mjs tests/role-gallery-image-autonomy.test.mjs tests/chat-fanwai.test.mjs tests/chat-fanwai-ui.test.mjs tests/chat-fanwai-extension.test.mjs tests/phone-api-abort.test.mjs tests/chat-history-corruption-guard.test.mjs tests/chat-phone-storage-primary-guard.test.mjs tests/chat-forward-media-rollback.test.mjs tests/role-worldbook-bindings.test.mjs tests/chat-history-atomic.test.mjs tests/chat-primary-send-lock.test.mjs tests/chat-selection-delete-atomic.test.mjs tests/chat-direct-online-identity-guard.test.mjs tests/offline-worldbook-binding-parity.test.mjs tests/chat-scheduled-persona-source.test.mjs tests/ai-response-parser.test.mjs tests/date-reply-options-parser.test.mjs tests/chat-required-source-retry.test.mjs tests/chat-prompt-payload-diagnostic.test.mjs tests/chat-strict-role-isolation.test.mjs tests/role-avatar-choice.test.mjs tests/chat-avatar-manager.test.mjs",
+    "test:chat:contract": "node --test tests/chat-regression-contract.test.mjs tests/chat-unsent-draft-context.test.mjs tests/chat-role-sticker-library.test.mjs tests/role-avatar-library.test.mjs tests/chat-image-vision.test.mjs tests/role-gallery-image-autonomy.test.mjs tests/chat-fanwai.test.mjs tests/chat-fanwai-ui.test.mjs tests/chat-fanwai-extension.test.mjs tests/phone-api-abort.test.mjs tests/chat-history-corruption-guard.test.mjs tests/chat-phone-storage-primary-guard.test.mjs tests/chat-forward-media-rollback.test.mjs tests/role-worldbook-bindings.test.mjs tests/chat-history-atomic.test.mjs tests/chat-primary-send-lock.test.mjs tests/chat-selection-delete-atomic.test.mjs tests/chat-direct-online-identity-guard.test.mjs tests/offline-worldbook-binding-parity.test.mjs tests/chat-scheduled-persona-source.test.mjs tests/ai-response-parser.test.mjs tests/date-reply-options-parser.test.mjs tests/chat-required-source-retry.test.mjs tests/chat-prompt-payload-diagnostic.test.mjs tests/chat-strict-role-isolation.test.mjs tests/role-avatar-choice.test.mjs tests/chat-avatar-manager.test.mjs tests/storage-quota-reliability.test.mjs",
     "test:chat:selection-delete": "node --test tests/chat-selection-delete-atomic.test.mjs",
     "test:chat:reply": "node --test tests/chat-reply-bubble-mode.test.mjs",
     "test:chat:isolation": "node --test tests/chat-data-isolation.test.mjs",
@@ -42,8 +42,10 @@
     "test:forum:seed": "node --test tests/forum-seed-comments.test.mjs",
     "test:forum:mobile": "node tests/forum-media-mobile.mjs",
     "test:group:ui": "node --test tests/group-ui-collapse-invite.test.mjs",
-    "test:group:governance": "node --test tests/group-governance.test.mjs tests/group-social-settings-contract.test.mjs tests/group-game-boundary.test.mjs tests/group-game-chat-receipts.test.mjs tests/group-turn-effects.test.mjs tests/group-turn-integration.test.mjs tests/group-private-receipt-recovery.test.mjs",
+    "test:group:governance": "node --test tests/group-governance.test.mjs tests/group-social-settings-contract.test.mjs tests/group-game-boundary.test.mjs tests/group-game-chat-receipts.test.mjs tests/group-turn-effects.test.mjs tests/group-turn-integration.test.mjs tests/group-private-receipt-recovery.test.mjs tests/group-history-scope-concurrency.test.mjs",
     "test:group:invite-e2e": "node --test tests/group-chat-invite-e2e.test.mjs",
+    "test:group:music-catalog": "node --test tests/group-listening-catalog.test.mjs",
+    "test:group:music-catalog:browser": "node tests/group-listening-catalog.browser.mjs",
     "test:wechat:browser": "node tests/wechat-theme-browser.mjs",
     "test:clock:palette": "node tests/clock-palette-longpress.test.mjs",
     "test:chat:isolation:browser": "node tests/chat-data-isolation-browser.mjs",
@@ -81,7 +83,8 @@
     "test:admin:cloud": "node --test tests/admin-cloud-api.test.mjs tests/admin-cloud-sanitize.test.mjs tests/admin-cloud-contract.test.mjs tests/admin-cloud-ui-core.test.mjs",
     "test:admin:cloud:delegated": "node --test tests/admin-cloud-delegated-authority.test.mjs",
     "test:admin:cloud:browser": "node tests/admin-cloud-mobile.browser.mjs",
-    "test:pwa:release": "node --test tests/pwa-release-stamp.test.mjs tests/pwa-navigation-cache.test.mjs"
+    "test:pwa:release": "node --test tests/pwa-release-stamp.test.mjs tests/pwa-navigation-cache.test.mjs",
+    "test:group:listening": "node --test tests/group-listening-session.test.mjs tests/group-listening-context.test.mjs tests/group-listening-view-queue.test.mjs tests/group-listening-catalog.test.mjs tests/music-playback-source-ownership.test.mjs"
   },
   "devDependencies": {
     "playwright": "^1.64.1",

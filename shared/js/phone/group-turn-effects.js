@@ -6,7 +6,7 @@
 (function (root) {
   'use strict';
   if (root.GroupTurnEffects) return;
-  function create() {
+  function create(canRun) {
     var undos = [], after = [], finalized = false;
     function registerUndo(fn) {
       if (finalized || typeof fn !== 'function') return false;
@@ -32,6 +32,7 @@
       var failed = 0, committed = 0;
       after.forEach(function (action) {
         try {
+          if(typeof canRun==='function'&&canRun()!==true){failed++;return;}
           var result = action();
           // Every handler must explicitly confirm success. An undefined, empty,
           // or malformed return value is NOT proof that storage committed.
