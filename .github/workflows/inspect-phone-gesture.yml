@@ -17,6 +17,7 @@ on:
       - 'tests/inspect-feature-contract.test.mjs'
       - 'tests/inspect-phone-gesture.test.mjs'
       - 'package-lock.json'
+      - '.github/workflows/inspect-phone-gesture.yml'
   pull_request:
     paths:
       - 'inspect-phone/phone.html'
