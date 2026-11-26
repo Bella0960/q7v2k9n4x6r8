@@ -61,7 +61,7 @@ test('assembles separate ready tasks into an isolated create-only batch', t => {
   const candidateMessage = git('show', '-s', '--format=%B', receipt.candidate);
   assert.ok(candidateMessage.includes('QA-Source-SHA: ' + baseline));
   assert.ok(candidateMessage.includes('QA-Release-Run: ' + qaSourceReceipt.runId));
-  assert.match(candidateMessage, /\\n\\nQA-Source-SHA: [0-9a-f]{40}\\nQA-Release-Run: \\d+\\nQA-Release-Request-SHA: [0-9a-f]{40}/);
+  assert.match(candidateMessage, /\n\nQA-Source-SHA: [0-9a-f]{40}\nQA-Release-Run: \d+\nQA-Release-Request-SHA: [0-9a-f]{40}/);
   assert.deepEqual(receipt.tasks, [
     { id: 'TASK-01', base: baseline, head: first.head, dependsOn: [], paths: ['one.txt'] },
     { id: 'TASK-02', base: baseline, head: second.head, dependsOn: ['TASK-01'], paths: ['two.txt'] }
