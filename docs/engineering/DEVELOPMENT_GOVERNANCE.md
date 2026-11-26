@@ -128,7 +128,7 @@ Do not publish npm packages. Follow RELEASE_POLICY.md for QA and production rele
 Before a significant migration release: full backup test, migration canary, regression checks, production deploy check, and rollback instructions.
 
 
-## 10. Fast delivery, multi-window coordination and batched QA
+## 10. Fast delivery, multi-window coordination and batched QA (GOV-006)
 
 **Owner requirement (2026-11-26):** Optimize elapsed delivery time without weakening correctness, data safety, or the current `RELEASE_POLICY.md`. This section adds execution discipline; it does not replace release authorization or QA safety gates.
 
