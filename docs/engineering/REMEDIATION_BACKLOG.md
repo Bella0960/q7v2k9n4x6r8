@@ -254,7 +254,7 @@ Acceptance:
 - Tests cover prompt construction, record persistence, privacy filtering, backup inclusion, and chat command/render contracts.
 
 ### THEME-PREVIEW-005 — 六套主题 × 五场景真实预览
-**Priority:** P1 · **Status:** IN PROGRESS (2026-11-26; isolated worktree retired the old static scene preview behind `real-scene-preview`; targeted Node/Chromium/Vite headless green locally, pending push to Draft PR #547, owner re-review and real-device verification — device NOT VERIFIED. Branch `THEME-PREVIEW-005/real-scene-previews`)
+**Priority:** P1 · **Status:** IN PROGRESS (2026-11-26; 总控复核 7196284933 五项返修在原分支完成本地隔离验证：五场景真实结构骨架、atmosphere/iMessage 等价属性、逐场景 CSS 映射、30 组合持久 Chromium 矩阵（结构/属性/规则解析/稳定 computed 命中/回退清理）；RP Node 14/14、相邻 Node 49/49、相邻浏览器全过、`npm run build` 0 / 隔离门 3/3。待推送 Draft PR #547、总控独立复核与真机验收 — device NOT VERIFIED. Branch `THEME-PREVIEW-005/real-scene-previews`)
 
 **Base:** latest QA-published candidate `bc7d062f333d29c3623a660193c171f094550eb5` (stage04 integration plus subsequent admin-context follow-up). Do not branch from stale #531 head `49e6267f`.
 

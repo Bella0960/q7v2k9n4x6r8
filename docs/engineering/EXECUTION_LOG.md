@@ -797,3 +797,25 @@ On the next turn/session, read this file and the current `AGENTS.md` first. Cont
 - **Tracking:** Draft PR #547 https://github.com/Bella0960/q7v2k9n4x6r8/pull/547 is the sole stage05 code-delivery entry. PR #531 is not the stage05 work branch. No merge or deployment authorized.
 - **Owner workflow:** no external handoff documents, ZIPs, patch bundles, or screenshot bundles; implementation and test evidence stay in this repository/PR.
 - **Pushed (2026-11-26):** fast-forward `9f2ee9d4..d6d4e767` to `THEME-PREVIEW-005/real-scene-previews` (no force push). Commits: `f7ecaced08643d287b3a04a00215f6a3c1907ffa` (feat, 21 files, +1841/-1195) and `d6d4e767c25918406a10ff70ccdb58a7609ec7eb` (backlog status). Remote head verified as `d6d4e767c25918406a10ff70ccdb58a7609ec7eb`. Pre-push re-check on the clean worktree: targeted Node 202/202 pass, `npm run build` exit 0 with postbuild production-assets-isolation 3/3; Chromium scenarios as listed above were last run in this batch and code was unchanged since. Still pending owner re-review and real-device verification — device NOT VERIFIED.
+
+### 2026-11-26 · 总控复核返修（评论 7196284933，基于 head `163a8d3d`）
+
+总控独立复核判定上一批尚不能验收为“五场景真实预览”，提出五项；本批在原任务分支继续修复，未合并、未部署、保持 Draft。
+
+- **① 真实结构对齐：** 五个场景 builder 对照 `chat/chat/chat.html`、`chat/chat/chat-detail.html`、`chat/moments/moments.html`、`profile/profile.html`、`chat/moments/my-moments.html` 重建静态骨架，补齐列表 `.main-stage`/封面渐变横幅/白色资料区/拱桥头像/用户 ID/四级浮动流；详情 `.chat-header`/`.chat-stage`/收发气泡/输入坞；动态 `.space-stage`/微信动态工具栏/封面块/封面名/主面板；我的 `.profile-content`/`.info-row`/`.profile-edit-btn`/`.profile-cover`/菜单卡；我的主页 `.page-wallpaper`/`.wallpaper-veil`/`.cover-nav-btn`/`.profile-hero`/`.stats-row`/`.feed`。仅抽取无业务副作用的静态结构，替换为合成 fixtures；未加载生产业务脚本、存储、AI/MCP、真实联系人或媒体。`real-scene-preview.css` 为新增真实 class 补兜底排版，壳层补 `position:relative`。
+- **② 补齐主题属性：** 隔离控制器按场景显式复刻壳层 `data-chat-theme-preset` 双写（rootEl 与向上 `.phone-mockup`）；详情舞台 `.chat-stage` 同步同一 preset，命中 `chat-beauty-runtime.css` 舞台级气泡选择器；atmosphere 等价 surface 属性按场景设置/清除——list→`chats`、detail→`detail`、moments→`moments`、mine→`profile`，home→`data-at-home-surface=personal-home`；非 atmosphere 主题显式删除这两类属性，无残留。预览不加载 `atmosphere-pages.js` / `atmosphere-my-home.js` 生产脚本。
+- **③ 补齐 CSS 映射：** 新增 `SCENE_CSS` 五场景生产样式表组（逐页对照真实 `<link>` 清单审计），`cssFor(preset, sceneId)` 合并场景组与主题层并去重；我的场景纳入 `profile-chat-themes.css`，动态/列表/详情纳入 `chat-light-surfaces.css`、`atmosphere-theme.css`、`atmosphere-pages.css`，主页纳入 `atmosphere-my-home.css`。剔除通话浮层、编辑器运行时、独立列表主题（`messages-editorial`）等无关层。覆盖边界沿用既有口径：home 仅 atmosphere；imessage 仅 detail；其余 list/detail/moments/mine 由 default/wechat/qq/silver-butterfly/atmosphere 覆盖；未覆盖组合落 default 并标注“「X」不受此主题修改，保留现有默认样式。”
+- **④ 30 组合持久浏览器验收：** `real-scene-preview-browser.mjs` 新增六主题 × 五场景矩阵（同一持久 context 复用），逐组合断言：壳层 preset 落有效主题/未覆盖诚实回退、场景关键骨架节点存在、详情舞台 preset 同步、atmosphere surface 属性设置或清除、场景样式表 link 注入、场景组样式表已被浏览器真实解析且规则非空（非空挂 link）、关键计算样式命中、关闭后 overlay 移除。computed 断言仅固化两轮 headless 探测稳定的差异化落点：imessage/detail 壳层 `rgb(242,242,247)` 且右气泡非白；qq/detail 右气泡 `rgb(176,176,176)`；atmosphere/home 壳层非白。其余主题气泡在 headless 下落兜底白/透明，未写死颜色断言，留真机复核。既有隔离口径保留：存储只读（剔除收藏业务键 `maomao_market_collection_v1`）、收藏双向同步、应用二次确认、Esc/遮罩/焦点/滚动锁、50 次开关清理。
+- **⑤ check 状态如实记录（推送前基线 head `163a8d3d`）：** Cloudflare `Workers Builds: mao` check run `139993410998`，status=`completed`、conclusion=`failure`，完成于 2026-11-26T14:57:24Z；bot 评论记 `build_outcome=Skipped`，无初始化/运行时间、无日志、无 preview URL；combined status state=`pending`，无 statuses。这不是一次已证实的编译失败，也不能标记为构建成功或部署成功；未手动部署、未触发生产发布。
+
+**本批本地验证（隔离 worktree，headless；推送前尚未由总控独立重跑）：**
+- Node 定向：`real-scene-preview.test.mjs` **14/14 pass**（新增真实结构 class、场景 CSS 映射审计、cssFor 去重三例）；相邻 Node `chat-beauty-blank-vars`/`market-preview-scene`/`theme-store-expansion`/`market-collection` **49/49 pass**。
+- Chromium：`real-scene-preview-browser.mjs` 四视口（320/375/390/430）+ API sanity + 30 组合矩阵全过；`market-storefront-browser` 6 场景；`atmosphere-theme-browser` 375/390/430/1280；`stage04-market-integration-browser` 27；`market-outfit-scope-browser` 3；`theme-store-perf-browser` 3。
+- `npm run build` 退出 **0**；postbuild production-assets-isolation **3/3**。
+
+**诚实边界与 NOT VERIFIED：**
+- 真机（Android/PWA）验收未做；以上均为本地 headless Chromium/Node 结果，不替代真机复核。
+- qq 在 list/moments 无专属规则表（规则仅落在 runtime 详情气泡/头部与 `profile-chat-themes.css` 我的资料页）；该既有覆盖边界本批未擅自缩小。
+- wechat/silver-butterfly/atmosphere 的气泡背景在 headless 无素材/变量缺失时落兜底，computed 命中未固化；需真机与完整素材环境复核。
+- 未改 schema、备份、SW、账号、钱包、桌面布局、生产环境；未合并、未部署；未发送外部文档/ZIP/补丁包/截图包。基线来源文件 `worker/lib/account-auth.js`、`tests/account-qa-admin-proxy.test.mjs` 来自基线 `bc7d062f`（ADMIN-CORE-001 QA 候选），本批未删除或重写。
+
