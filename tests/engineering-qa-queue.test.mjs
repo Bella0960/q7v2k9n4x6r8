@@ -275,7 +275,6 @@ function runQueueAssembleCli(t, specs, options = {}) {
   const remoteInit = spawnSync('git', ['init', '--bare', '-q', remotePath], { encoding: 'utf8' });
   assert.equal(remoteInit.status, 0, remoteInit.stderr || remoteInit.stdout);
   git('remote', 'add', 'origin', remotePath);
-  const candidateBranch = 'integration/qa-batch-' + originalBaseline.slice(0, 12);
   const binDir = join(stubDir, 'bin');
   mkdirSync(binDir, { recursive: true });
   const realGit = process.env.PATH.split(delimiter)
@@ -286,7 +285,7 @@ function runQueueAssembleCli(t, specs, options = {}) {
   const wrapperScript = [
     '#!/bin/sh',
     'if [ "$1" = "remote" ] && [ "$2" = "get-url" ] && [ "$3" = "origin" ]; then',
-    '  printf "%s\\\\n" "https://github.com/"' + repository + '"',
+    '  printf "%s\\n" "https://github.com/"' + repository + '"',
     '  exit 0',
     'fi',
     'if [ "$1" = "ls-remote" ] && [ "$2" = "--heads" ] && [ "$3" = "origin" ]; then',
@@ -653,4 +652,110 @@ test('recognizes a rerun of an older release as the latest actual QA deployment'
   assert.equal(receipt.qaSourceReceipt.runNumber, 90);
   assert.equal(receipt.qaSourceReceipt.sourceSha, baseline);
   assert.equal(candidateDeployedFile, 'already deployed to QA');
+});
+
+test('CLI assemble persists an immutable candidate receipt and resumes the same SHA after a failed push', t => {
+  const fixture = runQueueAssembleCli(t, [{ id: 'TASK-10' }], {
+    push: true,
+    failFirstPush: true
+  });
+  assert.notEqual(fixture.result.status, 0);
+  assert.match(fixture.result.stderr, /Create-only candidate push failed/);
+  assert.ok(fixture.candidateExists);
+  assert.ok(existsSync(fixture.receiptPath));
+  const saved = JSON.parse(readFileSync(fixture.receiptPath, 'utf8'));
+  assert.equal(saved.version, 1);
+  assert.equal(saved.baseline, fixture.baseline);
+  assert.equal(saved.branch, 'integration/qa-batch-' + fixture.baseline.slice(0, 12));
+  assert.equal(saved.candidate, fixture.git('rev-parse', fixture.candidateRef));
+  assert.deepEqual(saved.taskIds, ['TASK-10']);
+  assert.equal(saved.tasks[0].prNumber, 1);
+  assert.equal(fixture.remoteSha(), null);
+
+  const retry = fixture.runQueue(['assemble', fixture.baseline, '--push']);
+  assert.equal(retry.status, 0, retry.stderr);
+  const resumed = JSON.parse(retry.stdout);
+  assert.equal(resumed.status, 'pushed');
+  assert.equal(resumed.resumed, true);
+  assert.equal(resumed.pushStatus, 'created');
+  assert.equal(resumed.candidate, saved.candidate);
+  assert.equal(fixture.remoteSha(), saved.candidate);
+
+  const idempotent = fixture.runQueue(['assemble', fixture.baseline, '--push']);
+  assert.equal(idempotent.status, 0, idempotent.stderr);
+  const repeated = JSON.parse(idempotent.stdout);
+  assert.equal(repeated.candidate, saved.candidate);
+  assert.equal(repeated.pushStatus, 'already-present');
+  assert.equal(fixture.remoteSha(), saved.candidate);
+
+  fixture.git('update-ref', '-d', fixture.candidateRef, saved.candidate);
+  const remoteOnly = fixture.runQueue(['assemble', fixture.baseline, '--push']);
+  assert.equal(remoteOnly.status, 0, remoteOnly.stderr);
+  assert.equal(JSON.parse(remoteOnly.stdout).candidate, saved.candidate);
+  assert.equal(JSON.parse(remoteOnly.stdout).status, 'pushed');
+});
+
+test('CLI assemble refuses to overwrite a remote candidate with a different SHA', t => {
+  const fixture = runQueueAssembleCli(t, [{ id: 'TASK-10' }]);
+  assert.equal(fixture.result.status, 0, fixture.result.stderr);
+  const saved = JSON.parse(readFileSync(fixture.receiptPath, 'utf8'));
+  fixture.git('switch', '-qc', 'other-window', fixture.baseline);
+  writeFileSync(join(fixture.cwd ?? '', 'other-window.txt'), 'other window candidate');
+  fixture.git('add', 'other-window.txt');
+  fixture.git('commit', '-qm', 'Other window candidate');
+  const otherSha = fixture.git('rev-parse', 'HEAD');
+  fixture.git('push', '--force-with-lease=refs/heads/' + saved.branch + ':',
+    fixture.remotePath, otherSha + ':refs/heads/' + saved.branch);
+  fixture.git('switch', '-q', 'main');
+
+  const retry = fixture.runQueue(['assemble', fixture.baseline, '--push']);
+  assert.notEqual(retry.status, 0);
+  assert.match(retry.stderr, /Remote candidate branch exists at a different SHA/);
+  assert.equal(fixture.remoteSha(), otherSha);
+  assert.equal(fixture.git('rev-parse', fixture.candidateRef), saved.candidate);
+  assert.ok(existsSync(fixture.receiptPath));
+});
+
+test('CLI assemble only invalidates a local candidate after exact coordinator confirmation', t => {
+  const fixture = runQueueAssembleCli(t, [{ id: 'TASK-10' }]);
+  assert.equal(fixture.result.status, 0, fixture.result.stderr);
+  const saved = JSON.parse(readFileSync(fixture.receiptPath, 'utf8'));
+
+  const wrong = fixture.runQueue([
+    'invalidate', fixture.baseline, '--confirm-candidate=' + '9'.repeat(40)
+  ]);
+  assert.notEqual(wrong.status, 0);
+  assert.match(wrong.stderr, /Confirmation SHA does not match/);
+  assert.ok(existsSync(fixture.receiptPath));
+  assert.equal(fixture.git('rev-parse', fixture.candidateRef), saved.candidate);
+
+  const invalidated = fixture.runQueue([
+    'invalidate', fixture.baseline, '--confirm-candidate=' + saved.candidate
+  ]);
+  assert.equal(invalidated.status, 0, invalidated.stderr);
+  assert.equal(JSON.parse(invalidated.stdout).status, 'invalidated-local-candidate');
+  assert.equal(existsSync(fixture.receiptPath), false);
+  assert.equal(spawnSync('git', ['show-ref', '--verify', '--quiet', fixture.candidateRef], { cwd: fixture.cwd }).status, 1);
+
+  const reassembled = fixture.runQueue(['assemble', fixture.baseline]);
+  assert.equal(reassembled.status, 0, reassembled.stderr);
+  assert.equal(JSON.parse(reassembled.stdout).status, 'assembled-local');
+  assert.ok(existsSync(fixture.receiptPath));
+});
+
+test('CLI invalidate refuses to delete a candidate that already exists remotely', t => {
+  const fixture = runQueueAssembleCli(t, [{ id: 'TASK-10' }]);
+  assert.equal(fixture.result.status, 0, fixture.result.stderr);
+  const saved = JSON.parse(readFileSync(fixture.receiptPath, 'utf8'));
+  fixture.git('push', '--force-with-lease=refs/heads/' + saved.branch + ':',
+    fixture.remotePath, saved.candidate + ':refs/heads/' + saved.branch);
+
+  const invalidated = fixture.runQueue([
+    'invalidate', fixture.baseline, '--confirm-candidate=' + saved.candidate
+  ]);
+  assert.notEqual(invalidated.status, 0);
+  assert.match(invalidated.stderr, /Remote candidate ref exists/);
+  assert.equal(fixture.remoteSha(), saved.candidate);
+  assert.equal(fixture.git('rev-parse', fixture.candidateRef), saved.candidate);
+  assert.ok(existsSync(fixture.receiptPath));
 });
