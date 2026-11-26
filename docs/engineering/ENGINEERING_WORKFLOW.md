@@ -19,7 +19,7 @@
 以下不再作为当前执行方式：
 
 - 每个窗口自行维护一份互不共享的手工任务清单，再由总控人工逐条抄录。
-- 使用本地临时 JSON 任务目录，通过旧的 `npm run eng:batch -- <task-directory> ...` 手工组批。该 npm 入口已移除；底层 `engineering-qa-batch.mjs` 仅作为新队列的内部组装器保留。
+- 使用本地临时 JSON 任务目录，通过旧的 `npm run eng:batch -- <task-directory> ...` 手工组批。该 npm 入口已弃用，禁止作为当前流程使用；其 alias 暂时保留在 `package.json`，因为已打开的 PR #545 正在修改该共享文件。待该 PR 解决后，再通过独立、无冲突的清理 PR 移除 alias。底层 `engineering-qa-batch.mjs` 仅作为新队列的内部组装器保留。
 - 每个开发窗口各自请求 QA、各自发布，或对同一个未变化 SHA 先 verify 再 release 重复跑完整测试。
 - 把旧版本号、旧 QA SHA、旧 integration 分支名或历史聊天交接文本当作当前基线。
 - 用“严格串行”限制所有应用开发。现在允许不同模块、不同文件所有权的任务并行；冲突文件和共享契约仍必须单一负责人。
