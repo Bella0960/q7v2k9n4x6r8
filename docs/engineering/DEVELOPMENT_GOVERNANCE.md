@@ -175,6 +175,8 @@ The coordinator can assemble independent ready tasks with `npm run --silent eng:
 
 Use the source SHA from the current QA receipt as the baseline. The command requires each reviewed task base to be in that baseline's history. It rejects overlapping paths or Git merge conflicts and creates a new local integration branch in one create-only update. The receipt includes each task's ID, base SHA, head SHA, and exact owned paths, alongside the QA baseline and candidate SHA. If Git detects a tree-level conflict (including file-versus-directory collisions), the command prints bounded conflict details and creates no candidate ref. The coordinator pushes and publishes only the exact reviewed candidate through the fixed QA request, then records the deployed Worker version and live source receipt after a successful release.
 
+**Current implementation boundary:** `eng:batch` currently consumes a coordinator-local task directory. It does not yet discover ready task manifests across separate agent workspaces or verify PR review/check-run evidence automatically. It creates a local candidate ref; pushing that ref and submitting the one fixed QA release request remain separate coordinator actions. Until those follow-ups are implemented, do not describe cross-window discovery or QA dispatch as automatic.
+
 ### 10.5 Failure handling: diagnose once, repair the cause
 
 - Read the actual failed job and sanitized stage summary before retrying. Identify whether the failure is candidate/baseline preflight, a specific Node test, browser test, build, post-test safety guard, upload, or post-deployment readiness.

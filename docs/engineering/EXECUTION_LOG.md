@@ -318,3 +318,15 @@ On the next turn/session, read this file and the current `AGENTS.md` first. Cont
 - Added `npm run eng:batch` to collect ready task records and assemble their reviewed commits on the recorded QA baseline. The Git ref is created only after every ownership, ancestry, and merge check passes.
 - The isolated Git test verified two independent tasks, preservation of existing baseline content and dirty working files, exclusion of an unfinished task, exact overlap rejection, and rejection of an existing integration ref. Together with the scanner, 11/11 focused tests passed.
 - The current fixed QA workflow was inspected. A QA release, adaptive coverage expansion, and the live version/source receipt remain outside this local assembly verification. Source PR #507 is still open in draft and the active release policy keeps adaptive migration in acceptance.
+
+
+### GOV-006 batch assembly hardening — 2026-11-26
+
+- **Commit:** `e224abdd52955ce6257dc1ee37a028517df7656a` on the existing GOV-006 branch.
+- **Changes:** batch receipts now include each task ID, base SHA, head SHA, and exact owned paths. Git failures include bounded diagnostic output; file-versus-directory merge conflicts expose the conflict type/path and abort before creating the candidate ref.
+- **Tests:** the previous 11/11 focused checks are recorded above. One additional file/directory-conflict regression test was added in this commit. The updated 12-test combined suite has **NOT VERIFIED** status until it is rerun against this commit; do not carry forward the earlier pass as evidence for the new test.
+- **GitHub status:** PR #546 remains open and unmerged. The current commit has two successful Netlify deploy-preview statuses, but no GitHub Actions workflow runs; these are not test results.
+- **Automation boundary:** `eng:batch` still reads a coordinator-local task directory and creates only a local integration ref. Cross-window PR discovery, automated review/check evidence collection, remote candidate push, and one-shot QA request dispatch remain OPEN.
+- **QA dependency:** the fixed reusable QA workflow requires the candidate source to contain the adaptive-release marker. The current #507 base branch's `scripts/qa-direct-release.mjs` lacks that marker; PR #507 head contains it. The live deployed QA source receipt was not read in this checkpoint, so whether the deployed baseline already includes #507 is **NOT VERIFIED**. Confirm this before attempting a batch release.
+- **Safety:** no QA request, QA deployment, production deployment, Worker change, APK action, secret change, or user-data operation was performed.
+- **Next:** implement a durable PR-backed task registry with explicit ready/review/test evidence; then add a safe remote-candidate handoff. Keep QA dispatch as a single coordinator-controlled action under the current release policy.
