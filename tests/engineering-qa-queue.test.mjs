@@ -698,7 +698,7 @@ test('CLI assemble persists an immutable candidate receipt and resumes the same 
   assert.ok(fixture.candidateExists);
   assert.ok(existsSync(fixture.receiptPath));
   const saved = JSON.parse(readFileSync(fixture.receiptPath, 'utf8'));
-  assert.equal(saved.version, 1);
+  assert.equal(saved.version, 2);
   assert.equal(saved.baseline, fixture.baseline);
   assert.equal(saved.branch, 'integration/qa-batch-' + fixture.baseline.slice(0, 12));
   assert.equal(saved.candidate, fixture.git('rev-parse', fixture.candidateRef));
