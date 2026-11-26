@@ -50,7 +50,7 @@ function validateManifest(value) {
     base: value.base,
     head: value.head,
     risk: value.risk,
-    requiredChecks: manifest.requiredChecks,
+    requiredChecks: checks,
     dependsOn: [...new Set(value.dependsOn ?? [])]
   };
 }
@@ -330,7 +330,7 @@ async function registerTask(repository, args) {
     baseline: base,
     head: manifest.head,
     risk,
-    requiredChecks: checks,
+    requiredChecks: manifest.requiredChecks,
     dependsOn: manifest.dependsOn,
     changedFiles: pathSetFromPrFiles(files)
   }, null, 2));
