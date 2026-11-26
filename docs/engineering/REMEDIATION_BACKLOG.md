@@ -254,7 +254,7 @@ Acceptance:
 - Tests cover prompt construction, record persistence, privacy filtering, backup inclusion, and chat command/render contracts.
 
 ### THEME-PREVIEW-005 — 六套主题 × 五场景真实预览
-**Priority:** P1 · **Status:** IN PROGRESS (2026-11-26; assigned to Doubao on branch `THEME-PREVIEW-005/real-scene-previews`)
+**Priority:** P1 · **Status:** IN PROGRESS (2026-11-26; isolated worktree retired the old static scene preview behind `real-scene-preview`; targeted Node/Chromium/Vite headless green locally, pending push to Draft PR #547, owner re-review and real-device verification — device NOT VERIFIED. Branch `THEME-PREVIEW-005/real-scene-previews`)
 
 **Base:** latest QA-published candidate `bc7d062f333d29c3623a660193c171f094550eb5` (stage04 integration plus subsequent admin-context follow-up). Do not branch from stale #531 head `49e6267f`.
 
