@@ -773,7 +773,7 @@ test('ready-batch workflow archives a candidate before pushing and restores it b
   assert.match(workflow, /resume_run_id:/);
   assert.match(workflow, /actions: read/);
   assert.match(workflow, /git bundle create/);
-  assert.match(workflow, /retention-days: 30/);
+  assert.match(workflow, /retention-days: 90/);
   assert.match(workflow, /cancel-in-progress: false/);
 });
 
