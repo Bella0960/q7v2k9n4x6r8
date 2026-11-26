@@ -241,7 +241,7 @@ Acceptance before implementation:
 ## Feature implementation
 
 ### UI-CONTACT-001 — Unify contacts page shell background
-**Priority:** P2 · **Status:** IN PROGRESS
+**Priority:** P2 · **Status:** QA DEPLOYED — OWNER VISUAL CONFIRMATION PENDING
 
 Scope: make the base contacts shell background match the neutral contact content stage, removing the white strip exposed below the list without changing the page's white surfaces.
 
@@ -252,6 +252,7 @@ Acceptance:
 - Bottom navigation geometry and Home Indicator appearance/behavior remain unchanged.
 
 
+Release receipt: QA Worker v178 deployed from candidate `8abeaf52923ebcb39d5270dbe066b089d33b7faf`; verify run `45784272072` and release run `45785677703` succeeded. No main merge or production deployment.
 ### AI-IMG-001 — Complete role-based image generation and gallery
 **Priority:** P1 · **Status:** IN PROGRESS
 
