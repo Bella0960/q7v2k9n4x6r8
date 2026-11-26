@@ -285,3 +285,19 @@ On the next turn/session, read this file and the current `AGENTS.md` first. Cont
 - **测试：** 新增 `tests/games-storage-trust.test.mjs`（9 项，VM 跑真实 `saveRaw/saveJSON/saveCaseProgress/selectRole/saveStat`），9/9 通过；7 段内联脚本全部 `vm.Script` 解析通过。
 - **登记未做（需产品决策）：** 游戏大厅只读角色卡 + 记忆无关；不产出世界事件（依赖 `ECO-LINK-002`）；侦探案件生成为付费调用，无次数限制或失败重试预算控制。
 - **未验证：** Vite 全站构建、Chromium 375/390/430、真机、真实配额场景。
+
+
+## 2026-11-26 · UI-CONTACT-001 · Contacts neutral background continuity
+
+- **Owner request:** Make the entire default contacts page background visually continuous. The Home Indicator is the return-to-desktop control and is intentionally unchanged.
+- **Base:** main `7f666f1d53c593d341b390442e0e4ff1d0a8f39d`.
+- **Working branch:** `UI-CONTACT-001-unify-contacts-background`.
+- **Implementation:** changed only the default `.phone-mockup` background in `chat/contacts/contacts.html` from `#FFFFFF` to `#FAFAFA`, matching the existing `.contact-stage`. White search/list surfaces remain unchanged. Silver Butterfly and WeChat theme-specific shell backgrounds continue to override the base rule.
+- **Regression coverage:** added a focused assertion to `tests/chat-regression-contract.test.mjs` (already included by `npm run test:chat:contract`) for the matching shell/stage colors and preservation of the two theme overrides.
+- **Protected behavior:** `shared/js/nav.js` and `shared/js/home-indicator.js` are byte-for-byte unchanged. No navigation geometry, Home Indicator color/size/position, storage, or data behavior was changed.
+- **Concurrent PR review:** existing contact/theme PRs #199, #205, #273 and #531 were inspected. Their current patches affect separate feature/script/theme-asset areas; this change is limited to the base shell background rule and the dedicated contact-background assertion.
+- **QA baseline:** Cloudflare QA Worker `maomao-aw-qa-20261114` was at version **177** (active deployment `4023db99-793e-4f64-8804-3841f3d44843`, created 2026-11-26 07:50:15 UTC). The Worker version metadata does not expose a source commit SHA. The QA repository's current request is `verify` for candidate `5bbfca11ad37c671f85aa40cf02236ce2b618347`; no release request or deployment was made for this task.
+- **Source checks:** shell/stage color match, Silver Butterfly override, WeChat override, and unchanged navigation/Home Indicator source hashes all passed.
+- **Runtime validation:** Node test execution, Vite build, and 375/390/430 browser screenshots are **NOT RUN / NOT VERIFIED** in this environment (the repository could not be cloned because GitHub DNS was unavailable). PR CI/browser results are still required before marking the task complete.
+- **Release boundary:** no merge to `main`, no QA deployment, no production deployment, and no APK update.
+- **Status:** IMPLEMENTED ON BRANCH; runtime validation and owner-authorized QA release remain pending.
