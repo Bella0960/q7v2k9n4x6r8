@@ -6,17 +6,16 @@ on:
     paths:
       - 'sw.js'
       - 'vite.config.js'
-      - 'package.json'
+      - 'package-lock.json'
       - 'tests/pwa-navigation-cache.test.mjs'
       - 'tests/sw-navigation-cache-lifecycle.test.mjs'
       - 'tests/desktop-app-navigation.browser.mjs'
-      - '.github/workflows/pwa-navigation-regression.yml'
   push:
     branches: [main]
     paths:
       - 'sw.js'
       - 'vite.config.js'
-      - 'package.json'
+      - 'package-lock.json'
       - 'tests/pwa-navigation-cache.test.mjs'
       - 'tests/sw-navigation-cache-lifecycle.test.mjs'
       - 'tests/desktop-app-navigation.browser.mjs'
