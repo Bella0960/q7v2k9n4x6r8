@@ -42,15 +42,61 @@ function safePath(path) {
     !path.includes('\0') && !path.split('/').some(part => !part || part === '.' || part === '..');
 }
 
+
+function findDeployedTask(candidate, taskId) {
+  const matches = git([
+    'log', '--format=%H', '--fixed-strings', '--grep=Task-ID: ' + taskId, candidate
+  ], taskId + ' deployed-task history').trim().split(/\r?\n/).filter(Boolean);
+  for (const commitSha of matches) {
+    const message = git(['show', '-s', '--format=%B', commitSha], taskId + ' deployment provenance');
+    if (!message.startsWith('Integrate ' + taskId + ' into integration/')) continue;
+    const lines = new Set(message.split(/\r?\n/).map(line => line.trim()));
+    if (!lines.has('Task-ID: ' + taskId)) continue;
+    const baseLine = [...lines].find(line => line.startsWith('Task-PR-Merge-Base-SHA: '));
+    const headLine = [...lines].find(line => line.startsWith('Task-PR-Head-SHA: '));
+    const prMergeBase = baseLine?.slice('Task-PR-Merge-Base-SHA: '.length);
+    const head = headLine?.slice('Task-PR-Head-SHA: '.length);
+    if (!shaPattern.test(prMergeBase ?? '') || !shaPattern.test(head ?? '')) {
+      throw new Error(taskId + ' has incomplete prior deployment provenance in QA history; candidate assembly stopped.');
+    }
+    return { commit: commitSha, prMergeBase, head };
+  }
+  return null;
+}
+
+function ensureCommitAvailable(sha, label) {
+  if (!shaPattern.test(sha ?? '')) throw new Error(label + ' is not a full commit SHA.');
+  const existing = spawnSync('git', ['cat-file', '-e', sha + '^{commit}'], {
+    encoding: 'utf8', timeout: 30000, maxBuffer: 1024 * 1024
+  });
+  if (existing.status !== 0 || existing.error) {
+    git(['fetch', '--quiet', '--no-tags', 'origin', sha], label + ' fetch');
+  }
+  return commit(sha, label);
+}
+
+function isAncestorCommit(base, head, label) {
+  const result = spawnSync('git', ['merge-base', '--is-ancestor', base, head], {
+    encoding: 'utf8', timeout: 60000, maxBuffer: 1024 * 1024
+  });
+  if (result.status === 0) return true;
+  if (result.status === 1) return false;
+  const detail = String(result.stderr || result.error?.message || 'unknown Git error')
+    .replace(/[\u0000-\u0008\u000b\u000c\u000e-\u001f\u007f-\u009f]/g, ' ')
+    .trim().slice(0, 1000);
+  throw new Error(label + ' failed.' + (detail ? '\n' + detail : ''));
+}
+
+
 // Apply only the reviewed PR delta (PR merge-base -> PR head) to the deployed QA tree.
 // A normal branch merge would also import every unrelated commit on the PR base
 // side when the QA and source histories have diverged.
-function applyTaskDelta(candidate, prMergeBase, taskHead, paths, taskId, tempRoot, index) {
+function applyTaskDelta(candidate, patchBase, taskHead, paths, taskId, tempRoot, index) {
   const patch = git([
     '--literal-pathspecs', 'diff', '--binary', '--full-index', '--no-renames',
-    '--no-ext-diff', prMergeBase, taskHead, '--', ...paths
+    '--no-ext-diff', patchBase, taskHead, '--', ...paths
   ], taskId + ' approved PR delta');
-  if (!patch) throw new Error(taskId + ' approved PR diff is empty.');
+  if (!patch) return git(['rev-parse', candidate + '^{tree}'], taskId + ' unchanged incremental PR delta').trim();
 
   const patchPath = join(tempRoot, 'task-' + index + '.patch');
   const worktreePath = join(tempRoot, 'worktree-' + index);
@@ -198,20 +244,33 @@ function assemble(directory, qaSha, branch, receipt) {
       const task = tasks[index];
       const prMergeBase = prMergeBasesByTask.get(task.id);
       const previousTree = git(['rev-parse', candidate + '^{tree}'], task.id + ' previous candidate tree').trim();
-      // A PR head already in the deployed QA history is already integrated.
-      // Do not re-apply its patch: git apply --3way treats an already-applied
-      // hunk as a conflict. Still write a provenance-only commit when another
-      // task contributes a real tree change.
-      const alreadyDeployed = spawnSync('git', ['merge-base', '--is-ancestor', task.head, candidate], {
-        encoding: 'utf8', timeout: 60000, maxBuffer: 1024 * 1024
-      });
-      if (alreadyDeployed.status !== 0 && alreadyDeployed.status !== 1) {
-        throw new Error(task.id + ' already-deployed ancestry check failed: ' +
-          String(alreadyDeployed.stderr || alreadyDeployed.error?.message || 'unknown Git error').slice(0, 1000));
+      // QA candidates are single-parent commits, so the source PR head is not
+      // necessarily in their ancestry. Prefer the immutable task trailers already
+      // deployed in QA; when a PR advances, apply only the delta after that head.
+      const priorDeployment = findDeployedTask(candidate, task.id);
+      let patchBase = prMergeBase;
+      let alreadyDeployed = false;
+      if (priorDeployment) {
+        if (priorDeployment.head === task.head || isAncestorCommit(task.head, candidate,
+          task.id + ' current PR head in deployed QA history')) {
+          alreadyDeployed = true;
+        } else {
+          ensureCommitAvailable(priorDeployment.head, task.id + ' previously deployed PR head');
+          if (!isAncestorCommit(priorDeployment.head, task.head,
+            task.id + ' current PR head must descend from its previously deployed head')) {
+            throw new Error(task.id + ' was previously deployed at PR head ' + priorDeployment.head +
+              ', but current head ' + task.head + ' does not descend from it. Refusing to reapply the full PR delta; ' +
+              'restore the deployed head as an ancestor or register a new Task ID.');
+          }
+          patchBase = priorDeployment.head;
+        }
+      } else {
+        alreadyDeployed = isAncestorCommit(task.head, candidate,
+          task.id + ' legacy deployed-head ancestry');
       }
-      const tree = alreadyDeployed.status === 0
+      const tree = alreadyDeployed
         ? git(['rev-parse', candidate + '^{tree}'], task.id + ' already-deployed QA tree').trim()
-        : applyTaskDelta(candidate, prMergeBase, task.head, pathsByTask.get(task.id),
+        : applyTaskDelta(candidate, patchBase, task.head, pathsByTask.get(task.id),
           task.id, worktreeRoot, index);
       if (!shaPattern.test(tree)) throw new Error(task.id + ' returned an unexpected merged tree.');
       const changed = changedPaths(candidate, tree);
