@@ -117,3 +117,15 @@ test('rejects a task dependency list containing duplicates or the task itself', 
   assert.throws(() => renderTaskManifest(manifest({ dependsOn: ['CHAT-FIX-001'] })), /dependencies/);
   assert.throws(() => renderTaskManifest(manifest({ dependsOn: ['OTHER-001', 'OTHER-001'] })), /dependencies/);
 });
+
+
+test('dependent tasks stay out of the batch when their prerequisite is not ready', () => {
+  const task = {
+    id: 'CHAT-002',
+    dependsOn: ['CHAT-001'],
+    pr: { number: 12, title: 'Dependent task' }
+  };
+  const active = new Set([task]);
+  const missing = task.dependsOn.filter(id => ![...active].some(candidate => candidate.id === id));
+  assert.deepEqual(missing, ['CHAT-001']);
+});

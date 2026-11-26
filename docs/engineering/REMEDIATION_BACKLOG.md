@@ -90,9 +90,9 @@ Acceptance:
 - Release evidence records exact SHA, workflow run, deployed Worker version, and actual QA source receipt.
 
 Current blockers / follow-up:
-- Complete public validation of the shared PR-backed registry, evidence collector, and create-only candidate push.
+- Re-run the new engineering tooling suites on the PR head after the PR is integrated into the default branch; the new workflow file cannot run from a pull request before it exists on the base branch.
+- Cloudflare's production Worker check for the latest tooling commit reports a skipped build (build outcome `skipped`, no build log), not a compiler diagnostic. The check remains NOT VERIFIED and is not treated as a test pass.
 - Complete public validation and owner acceptance of QA infrastructure PR #507 before treating adaptive selection as generally active.
-- Diagnose the cause of run #45792397059 at `tests/travel-storage.browser.mjs`; the available sanitized log does not establish whether it is code or environment.
 - Release receipt, current QA baseline, and actual QA-only deployment remain separate acceptance evidence; no source-tooling test can substitute for them.
 
 ## Phase 1 — GitHub and build governance

@@ -340,3 +340,12 @@ On the next turn/session, read this file and the current `AGENTS.md` first. Cont
 - Added a second ownership scan against non-selected open PRs. Exact path overlap and shared-core hotspot overlap reject the candidate; incomplete scans also reject it.
 - Added owner-only workflow-dispatch entry and focused engineering-tooling CI. The workflow requires the exact current QA source SHA from the latest successful receipt; it does not guess a baseline or deploy QA.
 - **Not yet verified:** run the newly added Node test suite on the current PR head and inspect the GitHub Actions result. No QA request, QA deployment, production deployment, Worker change, secret change, or APK action was performed.
+
+
+### GOV-006 queue hardening follow-up — 2026-11-26
+
+- Fixed the PR base-branch classifier for `integration/*` and `qa/*` task PRs.
+- Commit-status handling now allows a pending legacy combined status only when it has no status contexts; named successful check-runs remain mandatory. A pending/failing context still blocks.
+- Added optional task dependencies and topological ordering. Tasks whose prerequisite is not ready are excluded while independent ready tasks can continue; dependency cycles fail before candidate creation.
+- Candidate push now uses an empty expected remote ref lease, preventing a race from updating a branch created by another run.
+- **Validation status:** focused test additions are committed but not executed in this environment. The current branch has successful Netlify previews; Cloudflare Workers Builds for the production Worker reports `build_outcome: skipped` with no log lines. This is NOT VERIFIED, not a successful build.

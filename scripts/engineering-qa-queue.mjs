@@ -284,7 +284,7 @@ async function registerTask(repository, args) {
   const number = Number(numberText);
   if (!Number.isSafeInteger(number) || number < 1) fail('PR number must be a positive integer.');
   if (!TASK_ID.test(id ?? '') || !SHA.test(base ?? '') || !RISK.test(risk ?? '') || !requiredChecks.length) {
-    fail('Usage: npm run eng:register -- <PR-number> <TASK-ID> <QA-baseline-SHA> <F1|F2|F3|F4> "<exact test check name>" [...]');
+    fail('Usage: npm run eng:register -- <PR-number> <TASK-ID> <QA-baseline-SHA> <F1|F2|F3|F4> "<exact test check name>" [...] [--depends-on=TASK-ID,TASK-ID]');
   }
   const manifest = validateManifest({
     version: 1, id, status: 'submitted', base,
@@ -382,11 +382,27 @@ async function collectReadyTasks(repository, baseline, pullRequests) {
   const idCounts = new Map();
   for (const task of registered) idCounts.set(task.id, (idCounts.get(task.id) ?? 0) + 1);
   const duplicateIds = new Set([...idCounts].filter(([, count]) => count > 1).map(([id]) => id));
-  const ready = registered.filter(task => !duplicateIds.has(task.id));
+  const active = new Set(registered.filter(task => !duplicateIds.has(task.id)));
   for (const task of registered.filter(task => duplicateIds.has(task.id))) {
     blocked.push({ ...task.pr, state: 'blocked', reasons: ['duplicate Task ID ' + task.id + ' appears in multiple open PRs'] });
   }
-  return { ready, blocked };
+  let changed = true;
+  while (changed) {
+    changed = false;
+    for (const task of [...active]) {
+      const missing = (task.dependsOn ?? []).filter(id => ![...active].some(candidate => candidate.id === id));
+      if (missing.length) {
+        active.delete(task);
+        blocked.push({
+          ...task.pr,
+          state: 'blocked',
+          reasons: ['dependency is not ready in this batch: ' + missing.join(', ')]
+        });
+        changed = true;
+      }
+    }
+  }
+  return { ready: [...active], blocked };
 }
 
 function remoteBranchExists(branch) {
