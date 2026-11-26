@@ -67,7 +67,7 @@ Recommended lanes:
 - B. Storage/backup audit: storage registry, backup.js, MediaRepository and database tests. Must not start chat cutover until backup gaps are closed.
 - C. Chat callers and compatibility inventory: read-only at first; produce a call-site matrix. Do not edit conversation storage until Lane B and the user approve migration design.
 - D. Asset optimization: assets/games/assets/music only, with before/after image QA and original preservation.
-- E. Feature fixes: one App at a time, scoped to its own files; no storage architecture changes without coordination.
+- E. Feature fixes: different Apps or disjoint file sets may run in parallel under separate Task IDs/branches/PRs. Overlapping files and shared contracts remain single-owner; storage architecture changes require explicit coordination.
 
 File ownership:
 - Each agent claims exact paths before modifying.
@@ -160,22 +160,57 @@ Choose by actual behavior and affected consumers, not by file extension alone.
 | F4 | Identity, account/session, permissions, chat/storage schemas, backup/restore, payment, cloud data, Worker/Cron/push, shared core, security, or release infrastructure | Full relevant safety, compatibility, backup/restore, integration, and release-infrastructure gates. No fast-lane downgrade. |
 
 - F1 is deliberately narrow. A structural HTML change, changed event/attribute, selector that changes behavior, new resource, shared stylesheet, or ambiguous diff is not F1.
-- The adaptive selector is not yet a universal project-wide fast lane. The currently inspected candidate selector maps presentation-only changes only for `library`, `diary`, `music`, `travel`, `cafe`, and `games`; other modules and unsupported diffs must use the standard plan until they have dedicated browser coverage and an accepted classifier mapping.
-- As of 2026-11-26, QA infrastructure PR #507 remains Draft/open and the release policy still marks adaptive migration as under acceptance. Do not report the adaptive path as globally activated or use it to bypass the standard plan before the current candidate and release receipt prove it works.
+- The adaptive selector is not a universal project-wide fast lane. Its currently verified module/diff coverage must be checked in the current `RELEASE_POLICY.md` and QA candidate code. Unsupported modules or ambiguous diffs use the standard test plan. GOV-006 task batching does not itself expand adaptive coverage or bypass release gates.
+- QA infrastructure migration (including PR #507) is a separate workstream. Do not treat GOV-006 delivery as approval to lower or bypass the adaptive selector's fallback or security gates.
 
-### 10.4 One QA candidate for a ready batch, one release coordinator
+### 10.4 PR-backed task registry and immutable candidate handoff (GOV-006)
 
-- Keep bug fixes isolated in their own task branches/PRs. Once several independent tasks are READY FOR INTEGRATION, the coordinator may combine them in dependency order on one approved `integration/` or `qa/` candidate. Do not include unfinished work, unresolved conflicts, or unrelated high-risk changes merely to make a larger batch.
-- The integration candidate must include the exact currently deployed QA source and all accepted changes. Freeze its SHA for the release; later commits belong to the next batch.
-- One coordinator owns the QA queue and the single release lock. Never let several windows dispatch separate releases for the same target. Never cancel an active release. A P0 issue may be released alone when waiting for a batch would create material user impact.
-- The current reusable runner executes the candidate test plan in both `verify` and `release`; `release` then performs the QA-only deployment and post-deployment checks. Therefore, for a ready candidate that is explicitly authorized for QA publication, use one `release` operation rather than running `verify` and then `release` on the same unchanged SHA. Use `verify` when a no-deploy validation is actually required or when diagnosing a candidate that is not yet ready to publish.
-- A release request is not a deployment receipt. Record the exact tested SHA, successful run, deployed Worker version, and `preview.mao520.com` source receipt separately.
+GitHub open PRs are the shared task registry across development windows. The registry is the machine-readable `MAOMAO_TASK_V1` block in each task PR; there is no separate task database and no coordinator-local JSON directory.
 
-The coordinator can assemble independent ready tasks with `npm run --silent eng:batch -- <task-directory> <deployed-qa-sha> <integration/branch>`. Give each task its own JSON record. A reviewed task has `id`, `status: "ready"`, full `base` and `head` commit SHAs, and an exact `paths` array matching its Git diff. Records marked `in-progress` or `blocked` stay out of the batch.
+**Task registration**
 
-Use the source SHA from the current QA receipt as the baseline. The command requires each reviewed task base to be in that baseline's history. It rejects overlapping paths or Git merge conflicts and creates a new local integration branch in one create-only update. The receipt includes each task's ID, base SHA, head SHA, and exact owned paths, alongside the QA baseline and candidate SHA. If Git detects a tree-level conflict (including file-versus-directory collisions), the command prints bounded conflict details and creates no candidate ref. The coordinator pushes and publishes only the exact reviewed candidate through the fixed QA request, then records the deployed Worker version and live source receipt after a successful release.
+- Each implementation task has one Task ID, one dedicated branch, one PR, an explicit risk lane (`F1`–`F4`), exact owned paths, non-goals, named required checks, and optional Task ID dependencies.
+- Read the latest successful QA-only release receipt at `preview.mao520.com/qa-build-receipt.json` and use its exact 40-character source SHA as the task baseline. Never assume `main` is the deployed QA baseline; the two histories may diverge.
+- The task PR base must be `main`, `integration/*`, or `qa/*`. For QA-based work, use an approved `integration/` or `qa/` branch that points to the same deployed QA baseline recorded in the manifest. The PR's changed-file list must match the manifest-baseline-to-head Git diff; a stale or mismatched base is blocked.
+- After opening the PR, register it with:
 
-**Current implementation boundary:** `eng:batch` currently consumes a coordinator-local task directory. It does not yet discover ready task manifests across separate agent workspaces or verify PR review/check-run evidence automatically. It creates a local candidate ref; pushing that ref and submitting the one fixed QA release request remain separate coordinator actions. Until those follow-ups are implemented, do not describe cross-window discovery or QA dispatch as automatic.
+```sh
+npm run eng:register -- <PR-number> <TASK-ID> <QA-baseline-SHA> <F1|F2|F3|F4> "<exact GitHub check name>" ["<another exact check name>"] [--depends-on=TASK-ID,TASK-ID]
+```
+
+- Registration adds exactly one `MAOMAO_TASK_V1` block to the PR description and records the exact PR head SHA, QA baseline, risk, named checks, and dependencies. It does not approve, merge, or deploy the PR.
+- Re-run `eng:register` after every new commit. The registered head SHA is immutable evidence; an older manifest must never be treated as current.
+- Registration starts with `status: "submitted"`. The coordinator computes readiness from the live evidence; do not mark a task ready manually to bypass review or checks.
+- A PR is eligible only when it is open, non-draft, in this repository, based on an allowed branch, approved on its exact current head by a reviewer other than its author, has every named required check successful, has no other failing/pending check or status, has complete file pagination, and its changed-file list exactly matches the pinned Git diff. Duplicate Task IDs, missing dependencies, dependency cycles, stale heads, and incomplete scans fail closed.
+- Documentation-only `D0` changes do not enter the QA release batch and do not use the `F1`–`F4` manifest. They still require a narrow PR, ownership review, and documentation checks.
+
+**Conflict scan**
+
+- After a task has changes and before opening/updating its PR or assembling a batch, run `npm run eng:conflicts` from a complete source checkout with `origin/main` available. Run it again before candidate assembly when the working tree or PR set has changed.
+- The scanner compares committed, staged, unstaged, and untracked paths against all paginated open PRs using their pinned base/head commits. An exact file overlap is **BLOCK**; a shared runtime/Worker/workflow/build/release/governance hotspot is **SHARED** and needs one named owner; same-module overlap is **REVIEW**.
+- A zero-change checkout makes no ownership conclusion. An incomplete API/Git scan exits non-zero and must never be treated as conflict-free. `GH_TOKEN` or `GITHUB_TOKEN` may be supplied for a reliable authenticated scan; never put credentials in files or logs.
+- The scanner is read-only. It does not edit branches, rebase, merge, close PRs, or dispatch QA.
+
+**One immutable candidate**
+
+- Only the integration coordinator runs the owner-only workflow `.github/workflows/engineering-ready-batch.yml` via `workflow_dispatch`. Supply `qa_baseline_sha` from the latest successful QA-only release receipt. Supply `resume_run_id` only to restore the exact saved candidate artifact from a previous failed batch run.
+- The workflow scans all open PRs, collects only evidence-complete registered tasks, verifies exact head/review/check/path/dependency evidence, orders dependencies, performs a second ownership scan, and assembles one candidate from the exact deployed QA baseline plus only ready tasks.
+- One baseline maps to one create-only branch: `integration/qa-batch-<first-12-baseline-sha>`. The candidate ref cannot overwrite an existing different SHA. The workflow archives the exact Git bundle and receipt for 90 days before pushing; a failed runner can resume the same candidate using its saved artifact.
+- The local equivalent is `npm run eng:batch:auto -- <current-deployed-QA-source-SHA> [--push]`. It requires a complete checkout, the correct source `origin`, and GitHub API access. Prefer the owner-only workflow for the shared coordinator run.
+- The old public `npm run eng:batch -- <task-directory> ...` entry point is retired. `scripts/engineering-qa-batch.mjs` remains an internal assembly helper called by the PR-backed queue; do not invoke it as a separate manual task-directory workflow.
+- Candidate assembly/push is **not** a QA deployment. The batch workflow does not release, merge task PRs, deploy production, or update APKs.
+
+**Single QA release coordinator**
+
+- After the exact candidate is pushed, only the coordinator uses the fixed QA request path in `Bella0960/web-runtime-lab` and the current `RELEASE_POLICY.md`. A release request must name the exact candidate SHA and confirm `qa-only`.
+- Do not run `verify` and then `release` on the same unchanged candidate when QA publication is already authorized: the release runner executes the candidate gates itself. Use `verify` for a genuine no-deploy check or diagnosis.
+- The release queue remains serialized and non-cancelling. No individual development window may dispatch its own QA release. A P0 issue may be batched alone by the coordinator when waiting would materially harm the user.
+- After release, separately verify the successful fixed-workflow run, deployed QA Worker version, and live source receipt. A candidate push, green unit tests, or request-file commit is not a deployment receipt.
+
+**Existing work migration**
+
+- Existing open PRs, branches, code, and historical logs are not automatically deleted or included. Do not force-push, mass-close, or rebase old work blindly.
+- A legacy PR becomes batch-eligible only after its owner safely aligns it with the current deployed QA baseline, declares exact paths, registers the current head, and obtains the required current-head review/check evidence. Stale version labels or old QA SHAs are not current release authority.
 
 ### 10.5 Failure handling: diagnose once, repair the cause
 
@@ -187,7 +222,7 @@ Use the source SHA from the current QA receipt as the baseline. The command requ
 
 ### 10.7 Read-only file-ownership conflict scan
 
-- Before opening a task branch or assembling an integration candidate, run `npm run eng:conflicts` from the source checkout. It compares committed, staged, unstaged, and untracked paths with all open PRs in the public source repository. Use a checkout with complete Git history. GitHub supplies the paginated open-PR list, and the command computes each PR’s paths from its listed base and head commits. Missing commits are fetched in one Git operation without moving branch refs.
+- After a task branch has changes and before opening/updating its PR or assembling an integration candidate, run `npm run eng:conflicts` from the source checkout. It compares committed, staged, unstaged, and untracked paths with all open PRs in the public source repository. Use a checkout with complete Git history and an up-to-date `origin/main`. GitHub supplies the paginated open-PR list, and the command computes each PR’s paths from its pinned base and head commits. Missing commits are fetched in one Git operation without moving branch refs. A zero-change checkout makes no ownership conclusion.
 - An exact path overlap is a **BLOCK** until owners coordinate. Changes in the same shared runtime, Worker, workflow, build-config, release-core, or engineering-governance hotspot are **SHARED** warnings requiring one named owner. Different files in the same feature submodule are **REVIEW** warnings, not automatic blockers.
 - The scanner reads PR metadata and filenames only. It does not read PR bodies/source contents, write GitHub state, rebase, merge, close PRs, or dispatch QA.
 - An incomplete API scan exits non-zero and must never be interpreted as “no conflicts”. A zero-change branch reports that no ownership conclusion was made.
@@ -198,15 +233,3 @@ Use the source SHA from the current QA receipt as the baseline. The command requ
 - Do not ask the owner to repeat "continue" for work already authorized. Complete the bounded work package and keep independent work moving.
 - Progress messages are reserved for durable milestones or real blockers. The final report is concise: Task ID, root cause, files changed, focused checks and exact results, branch/PR, exact candidate SHA, and the actual QA receipt/version/link if deployed.
 - If QA is queued or blocked, state the exact queue/blocker and continue other independent tasks. Never present a historical QA version as the result of the current change.
-
-
-### 10.8 Shared PR-backed ready-task registry and immutable candidate handoff
-
-- GitHub open PRs are the shared registry across development windows; no separate database or external service is required.
-- Each task PR registers one machine-readable `MAOMAO_TASK_V1` block using `npm run eng:register -- <PR> <TASK-ID> <QA-baseline-SHA> <risk> "<exact test check>" [...]`. Re-run registration after every new commit so the recorded head SHA cannot silently go stale.
-- Registration records task ID, exact QA baseline, exact PR head SHA, risk lane, named GitHub checks, and optional Task ID dependencies via `--depends-on=ID,ID`. It does not set approval, merge, or deployment state.
-- The coordinator runs `npm run eng:batch:auto -- <current-deployed-QA-source-SHA> [--push]`. The collector scans every open PR page, then checks current PR head, draft/open state, same-repository ownership, latest review per reviewer, approval on the exact head by someone other than the author, every named check, other check/status failures, complete PR file pagination, and exact agreement between GitHub's changed-file list and the pinned Git diff.
-- Only submitted PRs with current-head approval and successful named test/build evidence are ready. Missing/stale approvals, pending/failed checks, incomplete API results, stale manifests, mismatched paths, missing dependencies, or a task base not contained in the current QA baseline fail closed. Ready dependencies are topologically ordered; cycles block candidate creation.
-- The batch uses one immutable branch name per QA baseline: `integration/qa-batch-<first-12-baseline-sha>`. Candidate creation is create-only locally and uses a remote create-only lease; a second run for the same baseline cannot overwrite or silently create a second candidate. The coordinator performs a second ownership scan against all other open PRs, excluding only PRs deliberately selected for this batch. Exact path and shared-core hotspot conflicts block the candidate.
-- With `--push`, the exact candidate SHA is pushed to the matching source repository's `origin` using an empty expected-ref lease (the remote branch must not exist) and then read back with `ls-remote`. The push is not a QA deployment. The owner still submits one QA-only `release` request to the existing fixed runner; do not run a same-SHA `verify` first because the release runner already executes the candidate gates.
-- The source workflow `engineering-ready-batch.yml` provides one owner-only, non-cancelling coordinator action. It requires the exact current QA source SHA from the latest successful receipt; it has no schedule and cannot infer or invent a deployed baseline. Production and APK actions remain outside this workflow.
