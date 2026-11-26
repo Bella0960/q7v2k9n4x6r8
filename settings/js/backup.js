@@ -1561,8 +1561,118 @@
     // affected stores may be only a subset of the device's media databases.
     function sameRecoveryPoint(a,b) {
         return !!(a && b && a.role === b.role && a.createdAt === b.createdAt &&
-            a.media === b.media && JSON.stringify(a.snap) === JSON.stringify(b.snap));
+            a.media === b.media && JSON.stringify(a.snap) === JSON.stringify(b.snap) &&
+            JSON.stringify(a.journal) === JSON.stringify(b.journal));
     }
+    // Import intent journal, attached to the existing recovery point. Do not
+    // store another copy of imported content or include credential fingerprints.
+    function journalEligibleKey(k) {
+        return !neverBackupKey(k) && SECRET_KEYS.indexOf(k)<0 &&
+            !['__proto__','constructor','prototype'].includes(k) &&
+            !/^__mao_account_v1__/.test(k);
+    }
+    async function journalFingerprint(value) {
+        if(value===null)return null;
+        if(typeof value!=='string')throw new Error('invalid-journal-value');
+        var crypto=window.crypto;
+        if(!crypto || !crypto.subtle || typeof crypto.subtle.digest!=='function')
+            throw new Error('journal-crypto-unavailable');
+        // Hash exact JS UTF-16 code units (including unpaired surrogates).
+        var bytes=new Uint8Array(value.length*2);
+        for(var i=0;i<value.length;i++){var n=value.charCodeAt(i);bytes[2*i]=n>>>8;bytes[2*i+1]=n&255;}
+        var digest=new Uint8Array(await crypto.subtle.digest('SHA-256',bytes));
+        if(digest.length!==32)throw new Error('journal-fingerprint-failed');
+        return Array.from(digest,function(n){return n.toString(16).padStart(2,'0');}).join('');
+    }
+    async function prepareRestoreJournal(current,incoming,scope,obj,isCurrent) {
+        var registry=scope?backupRegistry():null;
+        if(scope&&!registry)throw new Error('unknown-scope');
+        var keys=new Set(Object.keys(current).concat(Object.keys(incoming)));
+        if(keys.size>10000)throw new Error('journal-key-limit');
+        var entries=[],chars=0;
+        for(var k of keys){
+            if(!isCurrent())throw new Error('account-or-baseline-changed');
+            if(!journalEligibleKey(k)||(scope&&!registry.belongsTo(scope,k)))continue;
+            var before=Object.hasOwn(current,k)?current[k]:null;
+            var expected=Object.hasOwn(incoming,k)?incoming[k]:null;
+            if(before===expected)continue;
+            chars+=k.length+(expected===null?0:expected.length);
+            if(chars>16*1024*1024)throw new Error('journal-size-limit');
+            entries.push({key:k,expected:await journalFingerprint(expected)});
+        }
+        if(!isCurrent())throw new Error('account-or-baseline-changed');
+        var dbs=[];
+        for(var target of backupTargets(scope)){
+            if(!obj.indexedDB||!Object.hasOwn(obj.indexedDB,target.db))continue;
+            var stores=obj.indexedDB[target.db];
+            var count=Object.values(stores).reduce(function(n,rows){return n+rows.length;},0);
+            dbs.push({name:target.db,state:'not-started',expectedCount:count});
+        }
+        return {format:1,scope:scope,local:{state:'not-started',entries:entries},databases:dbs};
+    }
+    // Compare-and-set against the exact recovery point, including its journal.
+    // No business writes can begin before the preceding intent checkpoint commits.
+    async function checkpointRestoreJournal(expected,journal,isCurrent) {
+        if(!isCurrent())throw new Error('account-changed');
+        var next=Object.assign({},expected,{journal:journal});
+        var db=await rpOpen();
+        try {
+            await new Promise(function(resolve,reject){
+                var tx=db.transaction(RP_STORE_NAME,'readwrite'),store=tx.objectStore(RP_STORE_NAME);
+                tx.oncomplete=function(){resolve();};
+                tx.onabort=function(){reject(new Error('journal-checkpoint-aborted'));};
+                tx.onerror=function(){reject(new Error('journal-checkpoint-failed'));};
+                var req=store.get(RP_ROLE_PRE);
+                req.onsuccess=function(){
+                    try{
+                        if(!isCurrent()||!sameRecoveryPoint(req.result,expected)){tx.abort();return;}
+                        store.put(next);
+                    }catch(_){try{tx.abort();}catch(e){reject(e);}}
+                };
+            });
+        }finally{db.close();}
+        if(!isCurrent()||!sameRecoveryPoint(await rpReadSnapshot(RP_ROLE_PRE),next))
+            throw new Error('journal-readback-failed');
+        return next;
+    }
+    function journalWithState(record,kind,name,state,written) {
+        var journal=JSON.parse(JSON.stringify(record.journal));
+        var item=kind==='local'?journal.local:journal.databases.find(function(d){return d.name===name;});
+        if(!item)throw new Error('journal-target-missing');
+        var allowed={'not-started':['writing'],writing:['verified','reported-committed','uncertain']};
+        if(!allowed[item.state]||!allowed[item.state].includes(state)||
+            (kind==='local'&&state==='reported-committed')||(kind!=='local'&&state==='verified'))
+            throw new Error('invalid-journal-transition');
+        item.state=state;
+        if(Number.isInteger(written)&&written>=0)item.written=written;
+        return journal;
+    }
+    // Read-only classification; "matches intent" is not proof of exclusive
+    // authorship and never grants permission to overwrite a current value.
+    async function inspectRecoveryJournal(record,isCurrent) {
+        var j=record.journal;
+        if(!j||j.format!==1||!j.local||!Array.isArray(j.local.entries)||!Array.isArray(j.databases))
+            return null;
+        var result={localState:j.local.state,original:0,matchesIntent:0,changed:0,
+            unverified:0,databases:j.databases.map(function(d){return {state:d.state};})};
+        for(var entry of j.local.entries){
+            if(!isCurrent())throw new Error('account-changed');
+            if(!entry||typeof entry.key!=='string'||!journalEligibleKey(entry.key)||
+                (entry.expected!==null&&!/^[0-9a-f]{64}$/.test(entry.expected)))
+                throw new Error('invalid-journal-entry');
+            var key=entry.key,current=localStorage.getItem(key);
+            var before=Object.hasOwn(record.snap,key)?record.snap[key]:null;
+            if(current===before){result.original++;continue;}
+            if(j.local.state!=='verified'){result.unverified++;continue;}
+            var fingerprint=await journalFingerprint(current);
+            if(!isCurrent())throw new Error('account-changed');
+            if(localStorage.getItem(key)!==current){result.changed++;continue;}
+            if(fingerprint===entry.expected)result.matchesIntent++;
+            else result.changed++;
+        }
+        return result;
+    }
+
     function recoveryScope() {
         var account = window.__MAO_ACCOUNT_SCOPE__;
         var meta = document.querySelector('meta[name="mao-account-id"]');
@@ -1774,7 +1884,7 @@
             if (action==='view') {
                 var archive=makeRecoveryArchive(rec);
                 return {state:'available',createdAt:rec.createdAt,counts:archive.counts,
-                    mediaCaptured:archive.__recovery.mediaCaptured};
+                    mediaCaptured:archive.__recovery.mediaCaptured,progress:await inspectRecoveryJournal(rec,isCurrent)};
             }
             if (action==='export') {
                 var archive=makeRecoveryArchive(rec);
@@ -1940,6 +2050,19 @@
             }
 
             if (!stillCurrent()) { toast('本机数据已变化，本次恢复已停止，恢复点保留'); return; }
+            // Persist the planned and started states before any business mutation.
+            var journalAccountCurrent=function(){return window.__MAO_ACCOUNT_SCOPE__===account;};
+            var journalRecord=rpRec;
+            async function markJournal(kind,name,state,written){
+                journalRecord=await checkpointRestoreJournal(journalRecord,
+                    journalWithState(journalRecord,kind,name,state,written),journalAccountCurrent);
+            }
+            try{
+                var journal=await prepareRestoreJournal(current,incoming,scope,obj,stillCurrent);
+                journalRecord=await checkpointRestoreJournal(journalRecord,journal,journalAccountCurrent);
+                await markJournal('local',null,'writing');
+            }catch(_){toast('恢复状态记录无法保存，已停止导入，原恢复点保留');return;}
+            if(!stillCurrent()){toast('本机数据已变化，本次恢复已停止，恢复点保留');return;}
             // 2. localStorage 覆盖写入；失败则从恢复点回滚后结束（IndexedDB 还没动）
             var ok = scope ? restoreScoped(incoming, scope) : restore(incoming);
             if (!ok) {
@@ -1969,7 +2092,8 @@
                         + (verify.mismatched && verify.mismatched.length ? '，值不等 ' + verify.mismatched.length + ' 项' : '')
                         + '）。当前数据可能不完整');
                 }
-                return;  // 失败路径：不清理恢复点（让它留着便于排查或下次覆盖）
+                try{await markJournal('local',null,'uncertain');}catch(_){}
+                return;  // 失败路径：保留原恢复点
             }
             // 3. 保留本机 API 凭据（备份未携带时），避免导入他人备份后丢失配置
             var secretRes = scope ? { written: 0, failed: 0, failedKeys: [] } :
@@ -1988,6 +2112,12 @@
                 }
             });
 
+            var localVerified=journalAccountCurrent() &&
+                restoreOutcomeComplete(incoming,current,scope,{}, {},secretRes,[],0);
+            try{await markJournal('local',null,localVerified?'verified':'uncertain');}
+            catch(_){alert('文字恢复状态未能记录，已停止媒体恢复，原恢复点保留');return;}
+            if(!localVerified){alert('文字恢复未完整完成，已停止媒体恢复，原恢复点保留');return;}
+
             // 4. IndexedDB 恢复：schema < 2 的旧备份跳过并提示
             var dbRestored = 0;
             var dbSkippedBlob = 0;  // blob 解码失败被跳过的记录数
@@ -2003,11 +2133,17 @@
                     expectedCounts[tgt.db] = Object.values(incomingDb).reduce(function(n,rows) { return n + rows.length; },0);
                     if (window.__MAO_ACCOUNT_SCOPE__ !== account) { dbFailed.push('账号已变化'); break; }
                     try {
+                        await markJournal('database',tgt.db,'writing');
+                        if(!journalAccountCurrent())throw new Error('account-changed');
                         var res = await restoreDatabase(tgt.db, tgt.version, tgt.stores, incomingDb, !!scope);
                         dbOutcomes[tgt.db] = {written:res.written,skipped:res.skipped};
                         dbRestored += res.written;
                         dbSkippedBlob += res.skipped;
+                        var reported=res.written===expectedCounts[tgt.db]&&res.skipped===0;
+                        await markJournal('database',tgt.db,reported?'reported-committed':'uncertain',res.written);
+                        if(!reported){dbFailed.push(tgt.db+'（写入数量未核对）');break;}
                     } catch (e) {
+                        try{await markJournal('database',tgt.db,'uncertain');}catch(_){}
                         dbFailed.push(tgt.db + '（恢复失败）');
                         break; // Do not modify subsequent databases after a failure.
                     }
@@ -2028,7 +2164,7 @@
 
             // 5. 成功路径：清掉本机恢复点（已无需保留）
             if (window.__MAO_ACCOUNT_SCOPE__ !== account) { alert('账号状态已变化，恢复点保留'); return; }
-            var recoveryCleaned = await rpDeleteRole(RP_ROLE_PRE);
+            var recoveryCleaned = await deleteExactRecoveryPoint(journalRecord,journalAccountCurrent).catch(function(){return false;});
             if (recoveryCleaned !== true) { alert('数据恢复已完成，但恢复点未能清理。请保留该恢复点并检查本机存储。'); return; }
 
             // 6. 组装最终提示
@@ -2096,6 +2232,7 @@
             if (result.state==='available') {
                 recoveryStatus.textContent='建立于 '+new Date(result.createdAt).toLocaleString()+
                     ' · 文字 '+result.counts.local+' 项 · '+(result.mediaCaptured?'媒体 '+result.counts.media+' 条':'旧恢复点未记录媒体');
+                if(result.progress){var p=result.progress;recoveryStatus.textContent+='。文字差异：原值 '+p.original+' 项，符合导入预期 '+p.matchesIntent+' 项，变化 '+p.changed+' 项，未核验 '+p.unverified+' 项；媒体事务报告已提交 '+p.databases.filter(function(d){return d.state==='reported-committed';}).length+' 个库。';}
             } else if (result.state==='missing') {recoveryStatus.textContent='当前没有待处理的恢复点';}
             else if (result.state==='export-requested') {recoveryStatus.textContent='已请求导出。释放时请重新选择已保存的档案，核对一致后才可释放';}
             else if (result.state==='export-required') {recoveryStatus.textContent='请先导出并选择当前恢复点档案';}
