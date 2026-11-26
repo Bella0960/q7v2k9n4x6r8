@@ -97,7 +97,7 @@ test('rollback exceptions cannot accidentally commit deferred actions', () => {
 test('chat detail commits group effects only beyond verified reply save barrier', () => {
   const detail = read('chat/chat/chat-detail.html');
   const parse = detail.indexOf('fullText = processGroupInteractionMarkers(');
-  const save = detail.indexOf('var replySaved = saveMessages(historyList);', parse);
+  const save = detail.indexOf('var replySaved = isGroupChat ? await saveGroupReplyLocked(historyList,groupTurnCurrent) : saveMessages(historyList);', parse);
   const finalize = detail.indexOf('groupTurnEffects.finalize(replySaved && streamResult.ok)', save);
   const privateGame = detail.indexOf('GroupGameSessions.sendWhisper(pendingGameWhisper)', parse);
   assert.ok(parse > 0 && save > parse);
@@ -108,7 +108,15 @@ test('chat detail commits group effects only beyond verified reply save barrier'
   assert.match(detail, /turnEffects\.registerUndo\(function \(\) \{/);
   assert.match(detail, /if \(!turnEffects \|\| typeof turnEffects\.afterSave !== 'function'/);
   assert.match(detail, /turnEffects\.afterSave\(function \(\) \{/);
-  assert.match(detail, /storedGroupRaw = JSON\.stringify\(groups\)/);
+  const groupSaveStart = detail.indexOf('function saveCurrentGroupObject(){');
+  const groupSaveEnd = detail.indexOf('function groupRelationshipKey(', groupSaveStart);
+  assert.ok(groupSaveStart >= 0 && groupSaveEnd > groupSaveStart);
+  const groupSave = detail.slice(groupSaveStart, groupSaveEnd);
+  assert.match(groupSave, /groupObjectBaselines\.get\(currentGroup\)/);
+  assert.match(groupSave, /groupGuard\.account\(\)!==groupPageAccount\|\|!groupGuard\.matches\(expected\)/);
+  assert.match(groupSave, /groupGuard\.commit\(expected,currentGroup\)/);
+  assert.match(groupSave, /if\(!result\.ok\)return false/);
+  assert.match(groupSave, /groupObjectBaselines\.set\(currentGroup,result\.expected\)/);
   assert.match(detail, /msg\.privateMessageId \|\| ''/, 'receipt ID is verified during history round-trip');
   assert.match(detail, /let userMemoryText = isGroupChat/);
   assert.match(detail, /if \(replySaved && streamResult\.ok\) \{[\s\S]*?if \(parsedMem\.memories\.length && !isGroupChat\)/);
@@ -126,7 +134,7 @@ test('chat detail commits group effects only beyond verified reply save barrier'
 
 test('PWA precaches the same group turn module version used by the chat page', () => {
   const sw = read('sw.js'), detail = read('chat/chat/chat-detail.html');
-  const asset = 'group-turn-effects.js?v=20261115gte2';
+  const asset = 'group-turn-effects.js?v=20261125scope1';
   const cacheVersion = Number((sw.match(/phone-app-pwa-v(\d+)/) || [])[1]) || 0;
   assert.ok(cacheVersion >= 215);
   assert.ok(sw.includes(asset));
@@ -141,7 +149,7 @@ test('role-DM old/new group invitations are deferred until the AI reply save is 
   const end = detail.indexOf('// 角色表情是现有回复的一部分', start);
   assert.ok(start >= 0 && end > start, 'the chat reply must stage invitations');
   const source = detail.slice(start, end);
-  const save = detail.indexOf('var replySaved = saveMessages(historyList);', end);
+  const save = detail.indexOf('var replySaved = isGroupChat ? await saveGroupReplyLocked(historyList,groupTurnCurrent) : saveMessages(historyList);', end);
   const commit = detail.indexOf('groupTurnEffects.finalize(replySaved && streamResult.ok)', save);
   assert.ok(save > end && commit > save, 'finalization must follow verified reply save');
   assert.match(source, /groupTurnEffects\.afterSave\(function \(\) \{[\s\S]*?GroupGovernance\.offerInvitation/);

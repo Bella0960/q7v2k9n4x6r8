@@ -136,7 +136,12 @@ test('worldbook activation settings still decide which entries enter an AI turn'
   assert.ok(!initial.includes('地铁终点') && !initial.includes('不能出现在群里'));
   assert.ok(triggered.includes('地铁终点'));
   assert.ok(!triggered.includes('隐藏的怪物'));
-  assert.match(detail, /roleBookPolicy\.selectWorldbooksForGroupSpeaker\(/);
+  assert.match(detail, /const speakerSelection = bindingBridge\.read\(speakerId, speakerRole\)/);
+  assert.match(detail, /const groupSelection = bindingBridge\.read\(aliasRoleId\)/);
+  assert.match(detail, /if \(!speakerSelection\.ok \|\| !groupSelection\.ok\) \{[\s\S]*?throw new Error\('group role-worldbook binding read failed'\)/);
+  assert.match(detail, /const allowed = new Set\(speakerSelection\.ids\.concat\(groupSelection\.ids\)\.map\(String\)\)/);
+  assert.match(detail, /wbList = wbList\.filter\(book=>book&&allowed\.has\(String\(book\.id\)\)\)/);
+  assert.match(detail, /groupLoreCurrent\(\)/);
   assert.match(detail, /roleBookPolicy\.selectWorldbooksForRole\([\s\S]*?selected\.books, roleForTurn, mountedBookIds/);
 });
 

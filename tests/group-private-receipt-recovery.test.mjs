@@ -142,7 +142,7 @@ test('one unavailable role history never authorizes invented cards', () => {
 test('recovery wiring only runs in existing group page and never reads private text into public cards', () => {
   const detail=fs.readFileSync(path.join(root,'chat/chat/chat-detail.html'),'utf8');
   const sw=fs.readFileSync(path.join(root,'sw.js'),'utf8');
-  const asset='group-private-receipt-recovery.js?v=20261115gpr1';
+  const asset='group-private-receipt-recovery.js?v=20261125scope1';
   assert.ok(detail.includes(asset));
   assert.ok(sw.includes(asset));
   assert.match(detail,/privateGroupReceiptV1: true/);

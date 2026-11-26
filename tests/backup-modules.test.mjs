@@ -40,7 +40,9 @@ test('settings preserve the existing full backup UI and load modular registry fi
   assert.ok(html.includes('id="rowImportData"'));
   assert.ok(html.includes('id="rowExportModule"'));
   assert.ok(html.includes('id="rowImportModule"'));
-  assert.ok(html.indexOf('src="js/backup-modules.js"')<html.indexOf('src="js/backup.js"'));
+  const registryScript = html.search(/src="js\/backup-modules\.js(?:\?[^"]*)?"/);
+  const backupScript = html.search(/src="js\/backup\.js(?:\?[^"]*)?"/);
+  assert.ok(registryScript >= 0 && backupScript > registryScript, 'both scripts must load in dependency order');
   assert.ok(html.includes('非常非常机密，一定要妥善保存'));
 });
 test('each built-in category owns keys and IndexedDB while cloud identity remains outside browser backup',()=>{

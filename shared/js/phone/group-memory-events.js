@@ -67,7 +67,8 @@
       var matched=history.filter(function(m) {
         return m&&m.type==='group_chain'&&id(m.mid)===mid&&m.chain&&m.chain.closed===true;
       });
-      return matched.length===1?matched[0]:null;
+      if(matched.length!==1||!root.ChatContextPolicy||typeof root.ChatContextPolicy.groupPublicHistory!=='function')return null;
+      return root.ChatContextPolicy.groupPublicHistory(matched,gid).length===1?matched[0]:null;
     } catch(e){return null;}
   }
   function recordChainClosure(req){
@@ -134,7 +135,7 @@
     var allowed={group_game_public:true,group_chain_public:true,group_manual:true};
     var maxChars=Math.max(120,Math.min(750,Number(req.maxChars)||420));
     var recent=list.filter(function(m){
-      return m&&allowed[m.source]===true&&['fixed','confirmed'].indexOf(m.status)!==-1;
+      return m&&allowed[m.source]===true&&['fixed','confirmed'].indexOf(m.status)!==-1&&(!m.visibility||m.visibility==='public')&&!m.privateFromGroup&&!m.privateGroupReceiptV1&&(!m.groupId||id(m.groupId)===gid)&&(!m.sourceRoleId);
     }).sort(function(a,b){return (Number(b.lastReinforcedAt)||Number(b.createdAt)||0)-
       (Number(a.lastReinforcedAt)||Number(a.createdAt)||0);}).slice(0,8);
     var lines=[],count=0;

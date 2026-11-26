@@ -28,20 +28,30 @@
         // account identity in the lock name so two users with the same role
         // ID cannot block each other's browser tabs. Legacy pages keep the
         // original lock name for backward compatibility.
-        var accountScope = global.__MAO_ACCOUNT_SCOPE__;
-        var identityMeta = global.document && typeof global.document.querySelector === 'function'
-            ? global.document.querySelector('meta[name="mao-account-id"]') : null;
-        var declaredAccount = identityMeta && String(identityMeta.content || '').trim();
-        if (declaredAccount && (!accountScope || accountScope.ready !== true ||
-            accountScope.accountId !== declaredAccount)) return fail('ACCOUNT_SCOPE_UNAVAILABLE');
-        var lockScope = accountScope && accountScope.ready === true && accountScope.accountId
-            ? encodeURIComponent(String(accountScope.accountId)) + ':' : '';
+        function captureScope(){
+            try{
+                var scope=global.__MAO_ACCOUNT_SCOPE__;
+                var meta=global.document&&typeof global.document.querySelector==='function'
+                    ?global.document.querySelector('meta[name="mao-account-id"]'):null;
+                var declared=meta?String(meta.content||'').trim():'';
+                if(declared&&(!scope||scope.ready!==true||scope.accountId!==declared))return null;
+                if(scope&&(scope.ready!==true||!scope.accountId))return null;
+                return JSON.stringify([declared,scope?String(scope.accountId):'',scope?String(scope.role||''):'']);
+            }catch(error){return null;}
+        }
+        var captured=captureScope();
+        if(captured===null)return fail('ACCOUNT_SCOPE_UNAVAILABLE');
+        function sameScope(){return captureScope()===captured;}
+        var lockAccount=JSON.parse(captured)[1];
+        var lockScope=lockAccount?encodeURIComponent(lockAccount)+':':'';
         var key = 'chat_history_' + id;
         try {
             return await lockManager.request('maomao:chat-history:' + lockScope + id, { mode: 'exclusive' }, function () {
+                if(!sameScope())return fail('ACCOUNT_SCOPE_UNAVAILABLE');
                 var raw;
                 try { raw = global.localStorage.getItem(key); }
                 catch (e) { return fail('DB_UNAVAILABLE'); }
+                if(!sameScope())return fail('ACCOUNT_SCOPE_UNAVAILABLE');
                 // Do not overwrite a missing primary: it may still have a
                 // legacy phone_data_v2 copy or have just been deleted.
                 if (raw === null) return fail('NOT_FOUND');
@@ -51,7 +61,7 @@
                 if (!Array.isArray(latest)) return fail('CORRUPT_DATA');
 
                 var decision;
-                try { decision = operation(latest); }
+                try { decision = operation(latest, raw); }
                 catch (e) { return fail('VALIDATION_FAILED'); }
                 if (!decision || decision.ok !== true) return decision || fail('VALIDATION_FAILED');
 
@@ -61,6 +71,7 @@
                 // Replays with an already-persisted mid must not rewrite the
                 // entire history, which would also risk clobbering metadata.
                 if (decision.alreadyPersisted && decision.value === latest) {
+                    if(!sameScope())return fail('ACCOUNT_SCOPE_UNAVAILABLE');
                     return { ok: true, value: decision.output, meta: meta };
                 }
                 var updated;
@@ -73,16 +84,22 @@
                 // unless we know the write did not persist.
                 var writeAttempted = false;
                 try {
+                    if(!sameScope())return fail('ACCOUNT_SCOPE_UNAVAILABLE');
+                    if(global.localStorage.getItem(key)!==raw)return fail('CONFLICT');
+                    if(!sameScope())return fail('ACCOUNT_SCOPE_UNAVAILABLE');
                     writeAttempted = true;
                     global.localStorage.setItem(key, updated);
-                    if (global.localStorage.getItem(key) !== updated) {
+                    if(!sameScope())return fail('ACCOUNT_SCOPE_UNAVAILABLE',{writeMayHavePersisted:true});
+                    if (global.localStorage.getItem(key) !== updated||!sameScope()) {
                         return fail('VERIFY_FAILED', { writeMayHavePersisted: true });
                     }
                 } catch (e) {
                     var failure = e && (e.name === 'QuotaExceededError' ||
                         e.name === 'NS_ERROR_DOM_QUOTA_REACHED') ? 'QUOTA_EXCEEDED' : 'DB_UNAVAILABLE';
+                    if(!sameScope())return fail('ACCOUNT_SCOPE_UNAVAILABLE',writeAttempted?{writeMayHavePersisted:true}:null);
                     try {
                         var found = global.localStorage.getItem(key);
+                        if(!sameScope())return fail('ACCOUNT_SCOPE_UNAVAILABLE',writeAttempted?{writeMayHavePersisted:true}:null);
                         if (found === updated) {
                             meta.verifiedAfterWriteError = true;
                             return { ok: true, value: decision.output, meta: meta };
@@ -164,17 +181,34 @@
         // For edits, removals or regenerated replies: reject changes when
         // any other tab has modified this conversation since it was read.
         // Do not silently merge destructive operations with newer messages.
-        replaceIfUnchanged: async function (contactId, expected, replacement) {
-            if (!Array.isArray(expected) || !Array.isArray(replacement)) {
+        replaceIfUnchanged: async function (contactId, expected, replacement, guard) {
+            if (!Array.isArray(expected) || !Array.isArray(replacement) || (guard!=null&&typeof guard!=='function')) {
                 return fail('VALIDATION_FAILED');
             }
             return withLatest(contactId, function (latest) {
                 if (JSON.stringify(latest) !== JSON.stringify(expected)) {
                     return fail('CONFLICT');
                 }
-                return { ok: true, value: replacement, output: {
-                    replaced: true
-                } };
+                var allowed=guardAllows(guard,latest);
+                if(allowed===null)return fail('GUARD_FAILED');
+                if(!allowed)return fail('STALE_CONTEXT');
+                return { ok: true, value: replacement, output: { replaced: true } };
+            });
+        },
+        // A model reply can contain edits to existing poll/chain cards and new bubbles.
+        // Commit that entire result under the existing lock using its exact raw baseline.
+        replaceRawIfUnchanged: async function(contactId,expectedRaw,replacement,guard){
+            if(typeof expectedRaw!=='string'||!Array.isArray(replacement)||!replacement.every(validMessage)||
+               (guard!=null&&typeof guard!=='function'))return fail('VALIDATION_FAILED');
+            var encoded;
+            try{encoded=JSON.stringify(replacement);}catch(error){return fail('VALIDATION_FAILED');}
+            return withLatest(contactId,function(latest,raw){
+                if(raw!==expectedRaw)return fail('CONFLICT');
+                var allowed=guardAllows(guard,latest);
+                if(allowed===null)return fail('GUARD_FAILED');
+                if(!allowed)return fail('STALE_CONTEXT');
+                // Use the captured replacement, not a mutable caller array after the lock wait.
+                return {ok:true,value:JSON.parse(encoded),output:{replaced:true}};
             });
         }
     };

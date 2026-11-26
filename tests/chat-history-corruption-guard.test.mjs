@@ -25,6 +25,7 @@ function fixture(raw, options = {}) {
   const toasts = [];
   const sandbox = {
     _storage: options.storage || null,
+    isGroupChat: false,
     currentCharacter: { id: 'role-A' },
     storageKey: 'chat_history_role-A',
     localStorage: {
@@ -193,6 +194,10 @@ test('normal per-role write succeeds with the real readback helper', () => {
 
 const storageSource = fs.readFileSync('shared/js/phone/phone_storage.js', 'utf8');
 const forwardStart = detail.indexOf('        async function forwardMessage(');
+const targetStart = detail.indexOf('        function captureForwardTarget(');
+const targetEnd = detail.indexOf('        function getForwardTargets(', targetStart);
+const groupGuardSource = fs.readFileSync('shared/js/phone/group-write-guard.js', 'utf8');
+assert.ok(targetStart >= 0 && targetEnd > targetStart);
 const forwardEnd = detail.indexOf('        // 点 AI 头像', forwardStart);
 assert.ok(forwardStart >= 0 && forwardEnd > forwardStart, 'real forwarding handler is required');
 
@@ -200,7 +205,7 @@ function forwardFixture({ primary, legacy, getItem, setItem, addRef, removeRef }
   const targetKey = 'chat_history_role-B';
   const sourceKey = 'chat_history_role-A';
   const sourceBytes = '[{"mid":"source","text":"keep the source"}]';
-  const stored = new Map([[sourceKey, sourceBytes]]);
+  const stored = new Map([[sourceKey, sourceBytes], ['ai_custom_characters', JSON.stringify([{id:'role-A'},{id:'role-B'}])]]);
   if (primary !== undefined) stored.set(targetKey, primary);
   if (legacy !== undefined) stored.set('phone_data_v2', JSON.stringify(legacy));
   const toasts = [];
@@ -212,6 +217,8 @@ function forwardFixture({ primary, legacy, getItem, setItem, addRef, removeRef }
       setItem: (key, value) => setItem ? setItem(key, value, stored) : stored.set(key, value)
     },
     console: { warn: () => {} },
+    location: { hostname: 'localhost' },
+    document: { querySelector: () => null },
     aliasRoleId: 'role-A',
     chatTitle: { textContent: 'Source alias' },
     contactName: 'Source',
@@ -227,7 +234,8 @@ function forwardFixture({ primary, legacy, getItem, setItem, addRef, removeRef }
   vm.createContext(sandbox);
   vm.runInContext(storageSource, sandbox);
   sandbox._storage = sandbox.PhoneStorage;
-  vm.runInContext(detail.slice(forwardStart, forwardEnd), sandbox);
+  vm.runInContext(groupGuardSource, sandbox);
+  vm.runInContext(detail.slice(targetStart, targetEnd) + '\n' + detail.slice(forwardStart, forwardEnd), sandbox);
   return {
     forward: (message = { text: 'hello' }) =>
       sandbox.forwardMessage({ message, count: 1, text: message.text }, 'role-B', 'Target'),
@@ -280,7 +288,7 @@ test('forwarding appends to legacy only when the primary key is missing', async 
 test('forwarding refuses unreadable data and rolls back a linked image on quota or a dropped write', async () => {
   const unreadable = forwardFixture({
     primary: '[]',
-    getItem() { throw new Error('storage is unavailable'); }
+    getItem(key, stored) { if (key === 'chat_history_role-B') throw new Error('storage is unavailable'); return stored.get(key) ?? null; }
   });
   await unreadable.forward();
   assert.equal(unreadable.primary(), '[]');
@@ -343,4 +351,17 @@ test('image forwarding reads history after linking and keeps a possibly persiste
   assert.equal(uncertain.removed.length, 0);
   assert.match(uncertain.toasts.at(-1), /无法确认/);
   uncertain.sourceUnchanged();
+});
+
+test('forwarding rejects a deleted destination role before linking media or appending', async () => {
+  const fixture = forwardFixture({
+    primary: '[]',
+    getItem(key, stored) { return key === 'ai_custom_characters' ? '[]' : stored.get(key) ?? null; },
+    addRef() { throw Error('must not link inaccessible target'); }
+  });
+  await fixture.forward({ type:'image', assetId:'test-asset', text:'' });
+  assert.equal(fixture.primary(), '[]');
+  assert.deepEqual(fixture.removed, []);
+  assert.match(fixture.toasts.at(-1), /不可安全转发/);
+  fixture.sourceUnchanged();
 });

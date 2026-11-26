@@ -9,7 +9,8 @@
 <script src="../../shared/js/chat-beauty.js?v=20261102v3"></script>
 <script src="../../shared/js/phone/phone_storage.js"></script>
 <script src="../../shared/js/phone/storage/media-repository.js?v=20261121theme2"></script>
-<script src="../../shared/js/group-governance.js?v=20261121group1"></script>
+<script src="../../shared/js/group-governance.js?v=20261125scope3"></script>
+<script src="../../shared/js/phone/group-write-guard.js?v=20261125g10"></script>
 <script src="../../shared/js/social-chat-list.js?v=20261124restore1"></script>
 <style>
   * {
@@ -1412,6 +1413,7 @@
         return pinned(b) - pinned(a) || cachedMeta(b.id,b.name||'群聊').time - cachedMeta(a.id,a.name||'群聊').time;
       });
 
+      var inviteAccount = window.MAOGroupWriteGuard ? window.MAOGroupWriteGuard.account() : null;
       var groupInvites = window.GroupGovernance ? window.GroupGovernance.pendingInvitations() : [];
       var realChats = window.MAOMAORealChatList ? window.MAOMAORealChatList.getRows() : [];
       var realReady = !!(window.MAOMAORealChatList && window.MAOMAORealChatList.owner());
@@ -1524,7 +1526,7 @@
           var decline = event.target.closest('.group-invite-decline');
           if (!accept && !decline) return;
           var result = window.GroupGovernance.resolveInvitation({
-            id: card.getAttribute('data-invitation-id'), accept: !!accept
+            id: card.getAttribute('data-invitation-id'), accept: !!accept, expectedAccount: inviteAccount
           });
           if (!result.ok) { showToast(result.message || '邀请处理失败'); return; }
           if (result.accepted) location.href = 'chat-detail.html?id=' + encodeURIComponent(result.groupId);
@@ -1597,22 +1599,44 @@
       var backdrop = document.getElementById('groupModalBackdrop');
       var nameInput = document.getElementById('groupNameInput');
       var membersList = document.getElementById('groupMembersList');
-      var selected = Object.create(null);
+      var selected = Object.create(null),modalAccount=null,modalRoles=[];
 
-      function loadCharacters() {
-        try {
-          var raw = localStorage.getItem('ai_custom_characters');
-          var arr = raw ? JSON.parse(raw) : [];
-          return Array.isArray(arr) ? arr : [];
-        } catch (e) { return []; }
+      function creationRoles(account){
+        var guard=window.MAOGroupWriteGuard;
+        if(!guard||account===null||guard.account()!==account)return null;
+        try{
+          var raw=localStorage.getItem('ai_custom_characters'),roles=JSON.parse(raw===null?'[]':raw);
+          if(!Array.isArray(roles)||guard.account()!==account)return null;
+          return roles;
+        }catch(error){return null;}
+      }
+      function uniqueCreationRoles(roles){
+        if(!Array.isArray(roles))return [];
+        var ids=new Map();
+        roles.forEach(function(r){if(r&&r.id!=null){var id=String(r.id);ids.set(id,(ids.get(id)||0)+1);}});
+        return roles.filter(function(r){return r&&r.id!=null&&String(r.id).trim()===String(r.id)&&String(r.id)&&String(r.id)!=='__user'&&ids.get(String(r.id))===1;});
+      }
+      function createSelectedGroup(account,shown,ids,name,now){
+        var guard=window.MAOGroupWriteGuard;
+        if(!guard||account===null||guard.account()!==account)return {ok:false,reason:'scope'};
+        if(!Array.isArray(ids)||!ids.length||new Set(ids).size!==ids.length||typeof name!=='string'||!name.trim())return {ok:false,reason:'invalid'};
+        var current=creationRoles(account);
+        if(!current)return {ok:false,reason:'roles'};
+        var before=uniqueCreationRoles(shown),after=uniqueCreationRoles(current),members=[];
+        for(var id of ids){
+          var old=before.find(function(r){return String(r.id)===id;}),next=after.find(function(r){return String(r.id)===id;});
+          if(!old||!next||JSON.stringify(old)!==JSON.stringify(next))return {ok:false,reason:'roles'};
+          members.push({id:id,name:next.name,avatar:next.avatar||''});
+        }
+        var groupId='g'+now;
+        if(current.some(function(r){return r&&String(r.id)===groupId;}))return {ok:false,reason:'duplicate'};
+        return guard.create(account,{id:groupId,name:name.trim(),members:members,createdAt:now});
       }
 
       function renderMembers() {
         // Imported role records may contain nulls, quotes or untrusted URLs.
         // Select only valid IDs, and escape every dynamic attribute and label.
-        var roles = loadCharacters().filter(function (r) {
-          return r && r.id != null && String(r.id).trim();
-        });
+        var roles = uniqueCreationRoles(modalRoles);
         if (!roles.length) {
           membersList.innerHTML = '<div style="text-align:center;color:#999;font-size:13px;padding:14px 0;">暂无角色，先去通讯录添加</div>';
           return;
@@ -1639,6 +1663,10 @@
       }
 
       function openModal() {
+        var guard=window.MAOGroupWriteGuard;
+        modalAccount=guard?guard.account():null;
+        modalRoles=creationRoles(modalAccount);
+        if(!modalRoles){modalAccount=null;showToast('账号或角色资料暂不可用，请重新进入');return;}
         selected = Object.create(null);
         if (nameInput) nameInput.value = '';
         renderMembers();
@@ -1647,6 +1675,7 @@
       }
 
       function closeModal() {
+        modalAccount=null;modalRoles=[];selected=Object.create(null);
         backdrop.classList.remove('show');
       }
 
@@ -1681,46 +1710,13 @@
           setTimeout(function(){ nameInput.style.boxShadow = ''; }, 800);
           return;
         }
-        var roles = loadCharacters().filter(function (r) {
-          return r && r.id != null && String(r.id).trim();
-        });
-        var memberIds = Object.keys(selected);
-        var members = roles.filter(function(r) { return memberIds.indexOf(String(r.id)) !== -1; });
-        if (!members.length) {
-          showToast('请先选择至少一位角色');
-          return;
-        }
-        // 旧数据损坏时严禁用新群覆盖已有群。保存失败要留在弹窗内供重试。
-        var groups;
-        try {
-          var raw = localStorage.getItem('phone_groups');
-          groups = raw === null ? [] : JSON.parse(raw);
-          if (!Array.isArray(groups)) throw new Error('invalid group list');
-        } catch(e) {
-          showToast('现有群聊记录读取异常，已停止创建以保护数据');
-          return;
-        }
-        var now = Date.now();
-        var groupId = 'g' + now;
-        while (groups.some(function(g) { return g && String(g.id) === groupId; })) {
-          now += 1;
-          groupId = 'g' + now;
-        }
-        var group = {
-          id: groupId,
-          name: name,
-          members: members.map(function(m) { return { id: String(m.id), name: m.name, avatar: m.avatar || '' }; }),
-          createdAt: now
-        };
-        try {
-          var updatedGroups = groups.concat([group]);
-          localStorage.setItem('phone_groups', JSON.stringify(updatedGroups));
-          var saved = JSON.parse(localStorage.getItem('phone_groups') || 'null');
-          if (!Array.isArray(saved) || !saved.some(function(g) { return g && g.id === groupId; })) {
-            throw new Error('group write not confirmed');
-          }
-        } catch(e) {
-          showToast('群聊保存失败，请检查存储空间后重试');
+        if(!backdrop.classList.contains('show'))return;
+        var memberIds=Object.keys(selected);
+        if(!memberIds.length){showToast('请先选择至少一位角色');return;}
+        var result=createSelectedGroup(modalAccount,modalRoles,memberIds,name,Date.now());
+        if(!result.ok){
+          showToast(result.reason==='roles'?'角色资料已变化，请重新打开创建群聊':result.reason==='scope'?'账号已变化，请重新进入':result.reason==='unconfirmed'?'群聊保存结果待确认，请刷新列表': '群聊保存失败，请检查现有群资料或存储空间');
+          if(result.reason==='unconfirmed'){closeModal();renderChatList();}
           return;
         }
         closeModal();

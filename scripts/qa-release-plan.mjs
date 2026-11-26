@@ -71,7 +71,15 @@ export function getReleasePlan(base, head) {
   try {
     try { git('cat-file', '-e', base + '^{commit}'); }
     catch { git('fetch', '--quiet', '--no-tags', 'origin', base); }
-    git('merge-base', '--is-ancestor', base, head);
+    try { git('merge-base', '--is-ancestor', base, head); }
+    catch (error) {
+      // Fetching the baseline object alone does not connect a shallow history.
+      // Resolve the missing history before deciding a candidate is unrelated.
+      // This only obtains evidence; never bypass the ancestry assertion.
+      if (git('rev-parse', '--is-shallow-repository').trim() !== 'true') throw error;
+      git('fetch', '--quiet', '--unshallow', '--no-tags', 'origin', head);
+      git('merge-base', '--is-ancestor', base, head);
+    }
   }
   catch { throw new Error('Candidate must include the currently deployed QA source'); }
   const changes = git('diff','--name-status','--no-renames',base,head).split('\n').filter(Boolean).map(line => {

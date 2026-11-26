@@ -6,12 +6,12 @@
     <script src="../../shared/js/font-loader.js?v=20261022v1"></script>
     <script src="../../shared/js/native-feel.js"></script>
     <script src="../../shared/js/custom-css.js"></script>
-    <script src="../../shared/js/wallpaper-store.js?v=20261026v2"></script>
+    <script src="../../shared/js/wallpaper-store.js?v=20261125group2"></script>
     <script src="../../shared/js/chat-beauty.js?v=20261102v3"></script>
     <link rel="stylesheet" href="../../shared/css/chat-beauty-runtime.css?v=20261031v1">
     <link rel="stylesheet" href="../call/call-overlay.css?v=20261121call1">
     <script src="../../shared/js/phone/phone_storage.js?v=20261121memory1"></script>
-    <script src="../../shared/js/phone/chat-history-atomic.js?v=20261118v3"></script>
+    <script src="../../shared/js/phone/chat-history-atomic.js?v=20261125scope1"></script>
     <script src="../../shared/js/phone/chat-regex-policy.js?v=20261120prompt1"></script>
     <script src="../../shared/js/phone/prompt-diagnostic.js?v=20261120qa1"></script>
     <script src="../../shared/js/phone/storage/repository.js"></script>
@@ -33,21 +33,31 @@
     <script src="../../shared/js/phone/role-gallery-image-autonomy.js?v=20261111v2"></script>
     <script src="../../shared/js/phone/role_family_cards.js?v=20261028v3"></script>
     <script src="../../shared/js/phone/memory_recall.js?v=20261118groupmemory1"></script>
-    <script src="../../shared/js/phone/phone_stream.js?v=20261121global2"></script>
+    <script src="../../shared/js/phone/phone_stream.js?v=20261126c06"></script>
     <script src="../../shared/js/phone/chat-message-policy.js?v=20261029v5"></script>
     <script src="../../shared/js/phone/chat-send-policy.js?v=20261122-draftfix1"></script>
-    <script src="../../shared/js/phone/chat-context-policy.js?v=20261118historybudget1"></script>
+    <script src="../../shared/js/phone/chat-context-policy.js?v=20261125public1"></script>
     <script src="../../shared/js/phone/chat-presence-policy.js?v=20261119scheduled1"></script>
     <script src="../../shared/js/phone/role-public-timeline.js?v=20261102v1"></script>
     <script src="../../shared/js/phone/moments-chat-action.js?v=20261124v4"></script>
     <script src="../../shared/js/phone/world-events.js?v=20261123-eco2"></script>
     <script src="../../shared/js/phone/world-events-memory.js?v=20261123-eco6"></script>
     <script src="../../shared/js/phone/group-chat-policy.js?v=20261118groupvoice1"></script>
-    <script src="../../shared/js/group-governance.js?v=20261121group1"></script>
+    <script src="../../shared/js/phone/group-write-guard.js?v=20261125g10"></script>
+    <script src="../../shared/js/phone/group-call-roster.js?v=20261126c04"></script>
+    <script src="../../shared/js/phone/group-call-turn.js?v=20261126c04"></script>
+    <script src="../../shared/js/group-governance.js?v=20261125scope3"></script>
+    <script src="../../shared/js/phone/music-catalog-adapter.js?v=20261126m03"></script>
+    <script src="../../shared/js/phone/music-playback-controller.js?v=20261126m04c1"></script>
+    <script src="../../shared/js/phone/group-listening-session.js?v=20261126m09c"></script>
+    <script src="../../shared/js/phone/group-listening-view.js?v=20261126m09b"></script>
+    <script src="../../shared/js/phone/group-listening-context.js?v=20261126m07"></script>
+    <link rel="stylesheet" href="../../shared/css/group-listening-view.css?v=20261126m06">
+    <script src="../../shared/js/phone/group-portraits.js?v=20261125scope1"></script>
     <script src="../../shared/js/phone/group-game-session.js?v=20261116game11"></script>
-    <script src="../../shared/js/phone/group-turn-effects.js?v=20261115gte2"></script>
-    <script src="../../shared/js/phone/group-private-receipt-recovery.js?v=20261115gpr1"></script>
-    <script src="../../shared/js/phone/group-memory-events.js?v=20261116gme4"></script>
+    <script src="../../shared/js/phone/group-turn-effects.js?v=20261125scope1"></script>
+    <script src="../../shared/js/phone/group-private-receipt-recovery.js?v=20261125scope1"></script>
+    <script src="../../shared/js/phone/group-memory-events.js?v=20261125public2"></script>
     <script src="../../shared/js/phone/group-game-chat-receipts.js?v=20261116receipt2"></script>
     <script src="../../shared/js/chat-notifier.js?v=20261119scheduled1"></script>
     <style>
@@ -2427,8 +2437,8 @@
                 if (raw) {
                     const roles = JSON.parse(raw);
                     if (Array.isArray(roles)) {
-                        const target = roles.find(r => String(r.id) === String(roleId));
-                        if (target) return target;
+                        const matches = roles.filter(r => r&&String(r.id)===String(roleId));
+                        if(matches.length===1)return matches[0];
                     }
                 }
             } catch (e) {
@@ -2441,25 +2451,37 @@
         const currentRoleId = params.get('id');
         const isGroupChat = !!currentRoleId && String(currentRoleId).indexOf('g') === 0;
 
-        function loadGroupById(gid) {
-            if (!gid) return null;
-            try {
-                const raw = localStorage.getItem('phone_groups');
-                if (raw) {
-                    const groups = JSON.parse(raw);
-                    if (Array.isArray(groups)) {
-                        const target = groups.find(g => String(g.id) === String(gid));
-                        if (target) return target;
-                    }
-                }
-            } catch (e) {}
-            return null;
+        const groupGuard=window.MAOGroupWriteGuard;
+        const groupPageAccount=isGroupChat&&groupGuard?groupGuard.account():null;
+        const groupObjectBaselines=new WeakMap();
+        let groupPageExited=false;
+        function readGroupScope(allowExit){
+            if((groupPageExited&&allowExit!==true)||!isGroupChat||!groupGuard||groupPageAccount===null||groupGuard.account()!==groupPageAccount)return null;
+            const snap=groupGuard.read(String(currentRoleId));
+            if(!snap||snap.account!==groupPageAccount||!window.GroupGovernance?.userIsInGroup(snap.group)||!Array.isArray(snap.group.members))return null;
+            const ids=snap.group.members.map(m=>m&&m.id!=null?String(m.id):'');
+            if(ids.some(id=>!id||id==='__user'||id===String(currentRoleId))||new Set(ids).size!==ids.length)return null;
+            return snap;
+        }
+        function loadGroupById(gid){
+            if(String(gid)!==String(currentRoleId))return null;
+            const snap=readGroupScope();
+            if(!snap)return null;
+            groupObjectBaselines.set(snap.group,snap);
+            return snap.group;
+        }
+        function currentGroupSpeaker(id,allowExit){
+            if(typeof id!=='string'||!id||id==='__user'||id===String(currentRoleId))return false;
+            const snap=readGroupScope(allowExit===true);
+            if(!snap)return false;
+            const members=snap.group.members.filter(m=>String(m.id)===id);
+            return members.length===1&&!window.GroupGovernance.isMuted(members[0])&&!!getRoleById(id);
         }
 
         let currentGroup = null;
         if (isGroupChat) {
             currentGroup = loadGroupById(currentRoleId);
-            if (currentGroup && window.GroupGovernance && !window.GroupGovernance.userIsInGroup(currentGroup)) {
+            if (!currentGroup || !window.GroupGovernance || !window.GroupGovernance.userIsInGroup(currentGroup)) {
                 currentGroup = null;
                 location.replace('chat.html');
             }
@@ -2467,7 +2489,7 @@
 
         if (isGroupChat && currentGroup) {
             const markGroupRead = function () {
-                if (document.visibilityState === 'hidden') return;
+                if (document.visibilityState === 'hidden'||!readGroupScope()) return;
                 try { localStorage.setItem('chat_group_read_' + currentRoleId, String(Date.now())); } catch (error) {}
             };
             markGroupRead();
@@ -2486,9 +2508,8 @@
             if (!isGroupChat || !currentGroup || !message) return null;
             var members = Array.isArray(currentGroup.members) ? currentGroup.members : [];
             if (message.memberId != null && String(message.memberId).trim()) {
-                return members.find(function (m) {
-                    return m && String(m.id) === String(message.memberId);
-                }) || null;
+                var exact=members.filter(function(m){return m&&String(m.id)===String(message.memberId)&&String(m.id)!=='__user';});
+                return exact.length===1?exact[0]:null;
             }
             var oldName = String(message.name || message.senderName || '').trim();
             if (!oldName) return null;
@@ -2506,6 +2527,20 @@
             var latestRole = getRoleById(speaker.id);
             return (latestRole && (latestRole.avatar || latestRole.avatarUrl)) ||
                 speaker.avatar || speaker.avatarUrl || '';
+        }
+        const groupPortraitPageAccount=isGroupChat&&window.MAOGroupWriteGuard?window.MAOGroupWriteGuard.account():null;
+        const groupPortraitPaintTokens=new WeakMap();
+        function fillGroupPortrait(el,fallback,memberId){
+            fillAvatar(el,fallback,USER_SVG);
+            if(!isGroupChat||!memberId||groupPortraitPageAccount===null||!window.MAOGroupPortraits||!window.MAOGroupWriteGuard)return;
+            const guard=window.MAOGroupWriteGuard;
+            if(guard.account()!==groupPortraitPageAccount)return;
+            const snapshot=guard.read(String(currentRoleId));
+            if(!snapshot||snapshot.account!==groupPortraitPageAccount||!window.GroupGovernance.userIsInGroup(snapshot.group))return;
+            const token={};groupPortraitPaintTokens.set(el,token);
+            window.MAOGroupPortraits.resolve(snapshot.group,String(memberId)).then(function(url){
+                if(url&&el.isConnected&&groupPortraitPaintTokens.get(el)===token&&guard.account()===groupPortraitPageAccount)fillAvatar(el,url,USER_SVG);
+            }).catch(function(){});
         }
         function getGroupSettings() {
             return (currentGroup && currentGroup.settings && typeof currentGroup.settings === 'object') ? currentGroup.settings : {};
@@ -2547,27 +2582,14 @@
                 ? policy.getPendingMentionIds(history, members, members, '')
                 : policy.extractMentionedMemberIds(text, members);
         }
-        function saveCurrentGroupObject() {
-            if (!currentGroup || !currentGroup.id) return false;
-            try {
-                var groups = JSON.parse(localStorage.getItem('phone_groups') || '[]');
-                if (!Array.isArray(groups)) groups = [];
-                var found = false;
-                for (var i = 0; i < groups.length; i++) {
-                    if (String(groups[i] && groups[i].id) === String(currentGroup.id)) {
-                        groups[i] = currentGroup;
-                        found = true;
-                        break;
-                    }
-                }
-                if (!found) return false;
-                var storedGroupRaw = JSON.stringify(groups);
-                localStorage.setItem('phone_groups', storedGroupRaw);
-                if (localStorage.getItem('phone_groups') !== storedGroupRaw) return false;
-                // Group membership changes update the compact header count, not a secondary status box.
-                refreshChatTitle();
-                return true;
-            } catch (e) { return false; }
+        function saveCurrentGroupObject(){
+            const expected=currentGroup&&groupObjectBaselines.get(currentGroup);
+            if(!expected||groupGuard.account()!==groupPageAccount||!groupGuard.matches(expected))return false;
+            const result=groupGuard.commit(expected,currentGroup);
+            if(!result.ok)return false;
+            groupObjectBaselines.set(currentGroup,result.expected);
+            refreshChatTitle();
+            return true;
         }
         function groupRelationshipKey(idA, idB) {
             return JSON.stringify([String(idA), String(idB)].sort());
@@ -3043,6 +3065,7 @@
         // Keep its raw bytes for explicit backup/recovery rather than "repairing" on read.
         var _chatHistoryUnreadable = false;
         function loadMessages() {
+            if(isGroupChat&&!readGroupScope()){_chatHistoryUnreadable=true;return [];}
             // A conversation's storage key must not change when global/current role state changes.
             if (storageKey !== 'chat_history_' + currentCharacter.id) {
                 _chatHistoryUnreadable = true;
@@ -3217,7 +3240,9 @@
                 if (typeof showToast === 'function') showToast('浏览器暂不支持安全保存聊天，请更新浏览器');
                 return false;
             }
-            var saved = await atomic.appendManyIf(currentCharacter.id, messages, guard);
+            const groupScope=isGroupChat?readGroupScope():null;
+            if(isGroupChat&&!groupScope)return false;
+            var saved = await atomic.appendManyIf(currentCharacter.id, messages, isGroupChat?function(latest){return !groupPageExited&&groupGuard.matches(groupScope)&&groupGuard.account()===groupPageAccount&&(!guard||guard(latest)===true);}:guard);
             if (!saved || !saved.ok) {
                 if (typeof showToast === 'function') showToast('消息未能安全保存，请检查存储空间或刷新后重试');
                 return false;
@@ -3225,12 +3250,16 @@
             return true;
         }
         async function replaceChatSafely(expected, next) {
+            const groupScope=isGroupChat?readGroupScope():null;
+            if(isGroupChat&&!groupScope)return false;
             if (_chatHistoryUnreadable || storageKey !== 'chat_history_' + currentCharacter.id ||
                 !window.ChatHistoryAtomic || typeof window.ChatHistoryAtomic.replaceIfUnchanged !== 'function') {
                 if (typeof showToast === 'function') showToast('会话记录不可安全写入，请刷新后重试');
                 return false;
             }
-            var saved = await window.ChatHistoryAtomic.replaceIfUnchanged(currentCharacter.id, expected, next);
+            var saved = isGroupChat
+                ? await window.ChatHistoryAtomic.replaceIfUnchanged(currentCharacter.id,expected,next,function(){return !groupPageExited&&groupGuard.matches(groupScope)&&groupGuard.account()===groupPageAccount;})
+                : await window.ChatHistoryAtomic.replaceIfUnchanged(currentCharacter.id, expected, next);
             if (!saved || !saved.ok) {
                 if (typeof showToast === 'function') showToast(
                     saved && saved.error && saved.error.code === 'CONFLICT'
@@ -3242,7 +3271,22 @@
             return true;
         }
 
+        async function saveGroupReplyLocked(list,validate){
+            if(!isGroupChat||!readGroupScope()||!_chatHistoryBaselines.has(list)||!window.ChatHistoryAtomic||typeof window.ChatHistoryAtomic.replaceRawIfUnchanged!=='function')return false;
+            const raw=_chatHistoryBaselines.get(list);
+            if(typeof raw!=='string'||storageKey!=='chat_history_'+currentCharacter.id)return false;
+            const encoded=JSON.stringify(list);
+            const saved=await window.ChatHistoryAtomic.replaceRawIfUnchanged(currentCharacter.id,raw,JSON.parse(encoded),validate);
+            if(!saved||!saved.ok||!readGroupScope()){
+                if(typeof showToast==='function')showToast(saved&&saved.meta&&saved.meta.writeMayHavePersisted?'回复保存结果待确认，请重新进入聊天':'群回复未安全保存，请刷新后重试');
+                return false;
+            }
+            _rememberChatBaseline(list,encoded);
+            return true;
+        }
+
         function saveMessages(list) {
+            if(isGroupChat&&!readGroupScope())return false;
             if (_chatHistoryUnreadable) {
                 if (typeof showToast === 'function' && _shouldWarnAgain('chat-corrupt')) {
                     showToast('聊天记录异常，未覆盖原始数据；请先备份并修复存储');
@@ -4319,7 +4363,8 @@
                             }
                             var extraAv = document.createElement('div');
                             extraAv.className = 'msg-avatar';
-                            fillAvatar(extraAv, groupSpeakerAvatarForMessage(msg), USER_SVG);
+                            var extraSpeaker=groupSpeakerForMessage(msg);
+                            fillGroupPortrait(extraAv,groupSpeakerAvatarForMessage(msg,extraSpeaker),extraSpeaker&&String(extraSpeaker.id));
                             extraRow.appendChild(extraAv);
                             extraRow.appendChild(extraBubble);
                             _pendingExtras.push(extraRow);
@@ -4368,7 +4413,7 @@
             avatar.className = 'msg-avatar';
             let groupSender = null;
             if (isSent) {
-                fillAvatar(avatar, getMyAvatar(), USER_SVG);
+                fillGroupPortrait(avatar,getMyAvatar(),'__user');
             } else if (isError) {
                 avatar.textContent = '!';
                 avatar.style.backgroundColor = '#E5E5EA';
@@ -4376,7 +4421,7 @@
             } else {
                 // Group replies show the speaking member's own avatar, not the group cover.
                 groupSender = groupSpeakerForMessage(msg);
-                fillAvatar(avatar, groupSpeakerAvatarForMessage(msg, groupSender), USER_SVG);
+                fillGroupPortrait(avatar,groupSpeakerAvatarForMessage(msg,groupSender),groupSender&&String(groupSender.id));
             }
 
             // 群聊：AI 成员回复在气泡上方显示成员名（逐条落库的后续气泡不重复显示）
@@ -5247,7 +5292,7 @@
             } catch(e) {}
         }
         // 命中红包/转账标记：在 AI 侧插入对应卡片并落库，role='assistant' 可被用户领取
-        function insertPayCards(historyList, items) {
+        function insertPayCards(historyList, items, speaker) {
             if (!items || !items.length) return;
             var previousLength = historyList.length;
             var previousTransferStates = [];
@@ -5277,6 +5322,8 @@
                     status: 'unopened',
                     timestamp: Date.now()
                 };
+                if(speaker){payMsg.memberId=String(speaker.id);payMsg.name=String(speaker.name||'群成员');}
+                ensureMid(payMsg);
                 historyList.push(payMsg);
             });
             if (!saveMessages(historyList)) {
@@ -5583,6 +5630,8 @@
         // R3 防重入锁：AI 回复期间（含流式）忽略重复发送，防止并发请求交错写坏聊天记录
         let aiSending = false;
         let singleChatSendPending = false;
+        window.addEventListener('pagehide',function(){if(isGroupChat){groupPageExited=true;groupAutoFollowupToken++;}});
+        window.addEventListener('pageshow',function(event){if(isGroupChat&&event.persisted)location.reload();});
         let singleChatPartialSaved = false;
         let lastGroupUserSend = { text: '', time: 0 };
         let groupAutoFollowupToken = 0;
@@ -5632,12 +5681,44 @@
         // 在 pagehide 里把它落库为一条 assistant 消息，从而变成未读 + 顶部弹窗，
         // 还原 QQ/微信里"你切出去对方消息照到"的真实感。
         let inflightSnapshot = null;
+        let groupInterruptedSave = null;
 
-        // 页面被切走（返回列表/刷空间/发动态）时：如果 AI 还在说话，
-        // 把已经流出来的那半截消息立刻落库。localStorage 写入是同步的，
-        // 在页面卸载前一定完成，下一页轮询时就能读到未读 + 弹窗。
+        // An interrupted response is public prose only. Never parse actions or
+        // save an unfinished private/unknown marker as a visible group message.
+        function buildInterruptedGroupHistory(raw,received,meta){
+            if(typeof raw!=='string'||!meta||!meta.memberId||meta.memberId==='__user')return null;
+            let history;
+            try{history=JSON.parse(raw);}catch(error){return null;}
+            if(!Array.isArray(history))return null;
+            let clean=meta.allowText===false?'':stripInternalReasoning(String(received||''))
+                .replace(/<narratage\b[^>]*>[\s\S]*?(?:<\/narratage\s*>|$)/gi,'');
+            // Conservatively keep only the plain prefix before any remaining
+            // bracket/tag. In a broken stream a nested delimiter is ambiguous.
+            clean=clean.split(/[\[<【［]/,1)[0].trim();
+            if(clean&&typeof meta.validate==='function'&&!meta.validate(clean))clean='';
+            const at=Date.now();
+            if(clean){
+                const message={role:'assistant',text:clean,time:at,voiceMode:meta.voiceMode||'online',name:meta.name,memberId:meta.memberId};
+                ensureMid(message);
+                history.push(message);
+            }
+            const tip={role:'system_error',isError:true,text:clean?'连接中断，以上为已收到的回复':String(meta.emptyTip||'连接中断，未收到可安全保存的回复'),time:at+1};
+            ensureMid(tip);
+            history.push(tip);
+            return {history:history,hasText:!!clean};
+        }
+
+        // 页面退出时，单聊保留既有同步处理；群聊只允许受共享锁保护的
+        // 最佳努力写入。浏览器终止文档时不保证异步操作完成。
         window.addEventListener('pagehide', function () {
             try {
+                // Best effort only: a browser may terminate the document before
+                // the asynchronous shared lock runs. Never fall back to a sync write.
+                if(isGroupChat){
+                    const save=groupInterruptedSave;groupInterruptedSave=null;inflightSnapshot=null;
+                    if(aiSending&&save)void save();
+                    return;
+                }
                 if (!aiSending || !inflightSnapshot || singleChatPartialSaved) return;
                 var raw = String(inflightSnapshot.text || '').trim();
                 if (!raw) return;
@@ -5663,7 +5744,7 @@
 
         // 3. 核心真实 AI 聊天发送逻辑 (含历史记录、人设构造与 15 秒超时控制)
         async function sendMsg(opts) {
-            if (isGroupChat) return sendMsgTurn(opts);
+            if (isGroupChat&&(groupPageExited||!readGroupScope())){showToast('群聊或账号已变化，请重新进入');return;}
             if (singleChatSendPending) {
                 if (typeof showToast === 'function') showToast('TA 正在回复中，稍等一下');
                 return;
@@ -5676,10 +5757,17 @@
                 singleChatSendPending = false;
                 inflightSnapshot = null;
                 singleChatPartialSaved = false;
+                groupInterruptedSave = null;
             }
         }
 
         async function sendMsgTurn(opts) {
+            const callTurn=opts&&groupCallReceiptBindings.get(opts);
+            const callCurrent=()=>!callTurn||callTurn.current();
+            if(!callCurrent())return;
+            const turnGroup=isGroupChat?readGroupScope():null;
+            if(isGroupChat&&!turnGroup)return;
+            if(turnGroup){currentGroup=turnGroup.group;groupObjectBaselines.set(currentGroup,turnGroup);}
             const input = document.getElementById('chat-input');
             const sendState = (window.ChatSendPolicy && typeof window.ChatSendPolicy.normalizeOptions === 'function')
                 ? window.ChatSendPolicy.normalizeOptions(opts, input.value)
@@ -5802,7 +5890,7 @@
                     return;
                 }
                 let blockedHistory = loadMessages();
-                const blockedQuote = pendingQuote ? {
+                const blockedQuote = !callTurn && pendingQuote ? {
                     mid: pendingQuote.mid, text: pendingQuote.text,
                     fromRole: pendingQuote.fromRole, authorName: pendingQuote.authorName
                 } : null;
@@ -5810,17 +5898,16 @@
                 ensureMid(blockedMsg);
                 blockedHistory.push(blockedMsg);
                 // P0：用户消息必须真正落库后才生效；写失败就终止，保留输入与引用。
-                if (!await appendChatSafely([blockedMsg])) {
+                if (!await appendChatSafely([blockedMsg],callTurn?callCurrent:undefined)) {
                     if (previousGroupUserSend) lastGroupUserSend = previousGroupUserSend;
                     groupAutoFollowupToken = previousGroupAutoFollowupToken;
                     return;
                 }
+                if(callTurn){callTurn.userMid=blockedMsg.mid;if(!callCurrent())return;callTurn.progress();}
                 if (isGroupChat && !silent) groupAutoFollowupToken += 1;
                 if (blockedQuote && typeof window.clearQuote === 'function') window.clearQuote();
                 if (_vl) vlRefresh(); else appendMessageToDOM(blockedMsg);
-                input.value = '';
-                input.style.height = 'auto';
-                updateSendBtnState();
+                if(!callTurn){input.value = '';input.style.height = 'auto';updateSendBtnState();}
                 if (typeof SoundSystem !== 'undefined') SoundSystem.play('send');
                 scrollToBottom(true);
                 return;
@@ -5845,7 +5932,7 @@
                         if (typeof showToast === 'function') showToast('这条群消息刚刚发送过了');
                         return;
                     }
-                    const quoteSnapshot = (!silent && pendingQuote) ? {
+                    const quoteSnapshot = (!callTurn && !silent && pendingQuote) ? {
                         mid: pendingQuote.mid, text: pendingQuote.text,
                         fromRole: pendingQuote.fromRole, authorName: pendingQuote.authorName
                     } : null;
@@ -5858,7 +5945,7 @@
                     historyList.push(userMsg);
 
                     // 先单独确认用户消息已落库；只有成功后才清空输入与引用。
-                    userSaved = await appendChatSafely([userMsg]);
+                    userSaved = await appendChatSafely([userMsg],callTurn?callCurrent:undefined);
                     if (!userSaved) {
                         // P0：用户消息没有真正落库 → 立即终止本次发送。
                         // 不写 system_error、不渲染任何气泡，输入框原文与引用状态保持原样。
@@ -5867,12 +5954,11 @@
                         groupAutoFollowupToken = previousGroupAutoFollowupToken;
                         return;
                     }
+                    if(callTurn){callTurn.userMid=userMsg.mid;if(!callCurrent())return;callTurn.progress();}
                     if (isGroupChat && !silent) groupAutoFollowupToken += 1;
                     if (quoteSnapshot && typeof window.clearQuote === 'function') window.clearQuote();
                     if (!silent) {
-                        input.value = '';
-                        input.style.height = 'auto';
-                        updateSendBtnState();
+                        if(!callTurn){input.value = '';input.style.height = 'auto';updateSendBtnState();}
                         if (typeof SoundSystem !== 'undefined') SoundSystem.play('send');
                     }
                 }
@@ -5886,7 +5972,7 @@
                 if (!_isRepeatedSystemError(historyList, errMsg.text)) {
                     historyList.push(errMsg);
                     // 第二次写入同样以读回结果为准；失败则不保留、不渲染无名错误记录。
-                    const errSaved = await appendChatSafely([errMsg]);
+                    const errSaved = await appendChatSafely([errMsg],callTurn?callCurrent:undefined);
                     if (!errSaved) historyList.pop();
                     if (_vl) {
                         vlRefresh();
@@ -5907,6 +5993,7 @@
             // 重玩模式：不新增用户消息，直接基于现有历史重新请求
             let historyList = loadMessages();
             function stopForMissingRoleSource(reason, message) {
+                if(!callCurrent())return;
                 var marked = !!(sourceGateUser && _markUserSendFailed(
                     historyList, sourceGateUser.mid, sourceGateUser.time, reason
                 ));
@@ -5936,7 +6023,7 @@
             if (!isRegen) {
                 if (!contextOnly) {
                     const blockedNow = isBlocked(aliasRoleId);
-                    const quoteSnapshot = (!silent && pendingQuote) ? {
+                    const quoteSnapshot = (!callTurn && !silent && pendingQuote) ? {
                         mid: pendingQuote.mid, text: pendingQuote.text,
                         fromRole: pendingQuote.fromRole, authorName: pendingQuote.authorName
                     } : null;
@@ -5955,7 +6042,7 @@
                     if (blockedNow) userMsg.sendFailed = true;
                     historyList.push(userMsg);
                     // P0: append under the shared conversation lock, preserving another tab's new messages.
-                    if (!await appendChatSafely([userMsg])) {
+                    if (!await appendChatSafely([userMsg],callTurn?callCurrent:undefined)) {
                         historyList.pop();
                         if (previousGroupUserSend) lastGroupUserSend = previousGroupUserSend;
                         groupAutoFollowupToken = previousGroupAutoFollowupToken;
@@ -5970,14 +6057,13 @@
                         if (typeof showToast === 'function') showToast('消息已保存，但会话更新未确认，请重新进入聊天');
                         return;
                     }
+                    if(callTurn){callTurn.userMid=userMsg.mid;if(!callCurrent())return;callTurn.progress();}
                     sourceGateUser = { mid: userMsg.mid, time: userMsg.time };
                     if (isGroupChat && !silent) groupAutoFollowupToken += 1;
                     if (quoteSnapshot && typeof window.clearQuote === 'function') window.clearQuote();
                     if (!silent) {
                         if (_vl) vlRefresh(); else appendMessageToDOM(userMsg);
-                        input.value = '';
-                        input.style.height = 'auto';
-                        updateSendBtnState();
+                        if(!callTurn){input.value = '';input.style.height = 'auto';updateSendBtnState();}
                         if (typeof SoundSystem !== 'undefined') SoundSystem.play('send');
                     }
                     // 拉黑状态下：消息已显示为红色感叹号，不调用 API，直接结束
@@ -6016,6 +6102,14 @@
             if (!modelHistoryList) {
                 if (typeof showToast === 'function') showToast('原失败消息已变更，重试已停止，记录未被修改');
                 return;
+            }
+
+            // Prepare a single public model view before any group context consumer.
+            if(isGroupChat){
+                if(!window.ChatContextPolicy||typeof window.ChatContextPolicy.groupPublicHistory!=='function'){
+                    showToast('群聊公开上下文过滤未加载，本轮已停止');return;
+                }
+                modelHistoryList=window.ChatContextPolicy.groupPublicHistory(modelHistoryList,String(currentRoleId));
             }
 
             // 单聊每轮从同一角色 ID 只读最新档案；不沿用页面打开时的旧快照。
@@ -6057,7 +6151,7 @@
             let groupContextPrompt = '';
             if (isGroupChat && currentGroup) {
                 const members = currentGroup.members || [];
-                const turnWakeIds = isGroupFollowup ? getGroupWakeMentionIds('', historyList) : wakeMentionIds;
+                const turnWakeIds = isGroupFollowup ? getGroupWakeMentionIds('', modelHistoryList) : wakeMentionIds;
                 const availableMembers = getAvailableGroupMembers(turnWakeIds);
                 // Only public group identities belong in the shared roster.
                 // Do not flood this member's request with all other roles' private
@@ -6078,11 +6172,11 @@
                     '」的公开成员目录（不是任何人的完整人设）：\n' +
                     (personaLines.join('\n') || '暂无成员');
                 if (availableMembers.length) {
-                    var previousSpeaker = findGroupSpeakerInHistory(historyList);
+                    var previousSpeaker = findGroupSpeakerInHistory(modelHistoryList);
                     var selectionText = String(text || '');
                     if (!selectionText && isGroupFollowup) {
-                        for (var userIndex = historyList.length - 1; userIndex >= 0; userIndex--) {
-                            var userEntry = historyList[userIndex];
+                        for (var userIndex = modelHistoryList.length - 1; userIndex >= 0; userIndex--) {
+                            var userEntry = modelHistoryList[userIndex];
                             if (userEntry && (userEntry.role === 'user' || userEntry.role === 'sent')) {
                                 selectionText = String(userEntry.text || userEntry.content || '');
                                 break;
@@ -6099,13 +6193,13 @@
                     }
                     if (groupPolicy && typeof groupPolicy.selectSpeaker === 'function') {
                         var mentionQueue = wakeMentionIds.length ? wakeMentionIds : typeof groupPolicy.getPendingMentionIds === 'function'
-                            ? groupPolicy.getPendingMentionIds(historyList, members, availableMembers, selectionText)
+                            ? groupPolicy.getPendingMentionIds(modelHistoryList, members, availableMembers, selectionText)
                             : (typeof groupPolicy.extractMentionedMemberIds === 'function'
                                 ? groupPolicy.extractMentionedMemberIds(selectionText, members)
                                 : []);
                         var recentSpeakerIds = [];
-                        for (var recentIndex = historyList.length - 1; recentIndex >= 0 && recentSpeakerIds.length < 5; recentIndex--) {
-                            var recentMessage = historyList[recentIndex];
+                        for (var recentIndex = modelHistoryList.length - 1; recentIndex >= 0 && recentSpeakerIds.length < 5; recentIndex--) {
+                            var recentMessage = modelHistoryList[recentIndex];
                             if (!recentMessage || recentMessage.type || (recentMessage.role !== 'assistant' && recentMessage.role !== 'received')) continue;
                             var recentId = recentMessage.memberId != null ? String(recentMessage.memberId) : '';
                             if (!recentId && recentMessage.name) {
@@ -6211,6 +6305,7 @@
                     modelHistoryList, currentGroup && currentGroup.members, getRoleById
                 );
             }
+            if(isGroupChat&&(!groupReplyPick||!currentGroupSpeaker(String(groupReplyPick.id)))){showToast('无法确认本轮发言成员');return;}
             if (groupContextPrompt) rolePersona += '\n' + groupContextPrompt;
             // Full saved persona remains authoritative for the active speaker.
             // Only the auxiliary group roster is limited.
@@ -6406,6 +6501,7 @@
             // 世界书：召回当前话题相关条目；兼容旧版只有 content 的整本设定
             let worldbookText = '';
             let worldbookReadError = null;
+            let groupLoreBaseline=null;
             try {
               const rawWB = localStorage.getItem('phone_worldbooks');
               let wbList = rawWB === null ? [] : JSON.parse(rawWB);
@@ -6453,14 +6549,13 @@
                     if (!speakerSelection.ok || !groupSelection.ok) {
                         throw new Error('group role-worldbook binding read failed');
                     }
-                    const allowed = speakerSelection.ids.concat(groupSelection.ids);
-                    wbList = wbList.filter(function (book) {
-                        return book && allowed.indexOf(String(book.id)) !== -1;
-                    });
-                    mountedBookIds = groupSelection.ids;
-                    wbList = roleBookPolicy.selectWorldbooksForGroupSpeaker(
-                        wbList, mountedBookIds, speakerRole
-                    );
+                    const allowed = new Set(speakerSelection.ids.concat(groupSelection.ids).map(String));
+                    // The bridge has already resolved explicit clear/disable and legacy mounts.
+                    // Do not re-filter by a potentially stale character field.
+                    wbList = wbList.filter(book=>book&&allowed.has(String(book.id)));
+                    if(new Set(wbList.map(book=>String(book.id))).size!==wbList.length)throw new Error('duplicate mounted worldbook ID');
+                    mountedBookIds=groupSelection.ids;
+                    groupLoreBaseline={books:rawWB,speakerId:speakerId,speakerIds:JSON.stringify(speakerSelection.ids),groupIds:JSON.stringify(groupSelection.ids)};
                 } else {
                     const selected = bindingBridge.filterBooks(
                         String(roleForTurn && roleForTurn.id || aliasRoleId),
@@ -6476,10 +6571,7 @@
                     typeof window.ChatContextPolicy.buildWorldbookInjectionText === 'function') {
                   worldbookText = window.ChatContextPolicy.buildWorldbookInjectionText(wbList, {
                     currentText: text,
-                    recentMessages: (isGroupChat ? historyList.filter(function (m) {
-                        return m && m.type !== 'group_private' && m.type !== 'group_game_private' &&
-                            m.visibility !== 'private' && m.visibility !== 'role_only';
-                    }) : roleModelHistory).slice(-8),
+                    recentMessages: roleModelHistory.slice(-8),
                     // Collect all triggered entries; never silently send a partial lore entry.
                     maxEntries: Math.max(1, wbList.reduce(function (count, book) {
                         return count + (Array.isArray(book.entries) && book.entries.length ? book.entries.length : 1);
@@ -6494,6 +6586,7 @@
               }
             } catch(e) { worldbookReadError = e; }
             if (worldbookReadError) {
+                if(!callCurrent())return;
                 console.error('[ChatPersonaSources] worldbook read/activation failed:', worldbookReadError);
                 // The user's bubble was already persisted before prompt construction.
                 // Reuse the existing failed-message/retry path; do not duplicate
@@ -6682,14 +6775,14 @@
                 if (groupSettings.allowPrivateMessages !== false && !groupGameActiveForPrompt) {
                     systemPrompt += '\n\n[群成员私聊能力]\n你可以偶尔向用户发起私聊，但不要每轮都触发，仅在出现适合单独说的话、想补充秘密或想私下安慰用户时使用。仅允许给自己发私聊：在本轮正常群聊回复末尾另起一行写 [群私聊:你的准确角色ID:私聊内容]。角色ID必须从群成员名单中选择，并且应当是本轮发言者自己的ID；私聊内容控制在1-3句，不要解释标记。标记会保存到你的单聊历史，并在群聊里弹出私聊小窗。每轮最多一条。';
                 }
-                const activePolls = historyList.filter(function (item) { return item && item.type === 'group_poll' && item.poll && !item.poll.closed; }).slice(-3);
+                const activePolls = modelHistoryList.filter(function (item) { return item && item.type === 'group_poll' && item.poll && !item.poll.closed; }).slice(-3);
                 if (activePolls.length) {
                     systemPrompt += '\n\n[当前群投票]\n' + activePolls.map(function (item) {
                         return '投票ID=' + ensureMid(item) + '；问题：' + String(item.poll.question || '') + '；选项：' + (item.poll.options || []).map(function (option, index) { return (index + 1) + '. ' + option; }).join('；');
                     }).join('\n');
                     systemPrompt += '\n如果你本轮想投票，请在台词末尾附加 [群投票:投票ID:选项序号]，序号从1开始。按你自己的立场选择，不要伪造其他成员的投票。';
                 }
-                const activeChains = historyList.filter(function (item) { return item && item.type === 'group_chain' && item.chain && !item.chain.closed; }).slice(-3);
+                const activeChains = modelHistoryList.filter(function (item) { return item && item.type === 'group_chain' && item.chain && !item.chain.closed; }).slice(-3);
                 if (activeChains.length) {
                     systemPrompt += '\n\n[当前群接龙]\n' + activeChains.map(function (item) {
                         return '接龙ID=' + ensureMid(item) + '；主题：' + String(item.chain.title || '') + '；已有内容：' + (item.chain.entries || []).map(function (entry) { return String(entry.name || '成员') + '：' + String(entry.text || ''); }).join('；');
@@ -7240,6 +7333,8 @@
             if (window.ChatContextPolicy && typeof window.ChatContextPolicy.mapHistoryToApiMessages === 'function') {
                 apiMessages.push.apply(apiMessages, window.ChatContextPolicy.mapHistoryToApiMessages(recentHistory, stripInternalReasoning, {
                     isGroupChat: isGroupChat,
+                    publicHistoryPrepared:isGroupChat,
+                    groupId:isGroupChat?String(currentRoleId):'',
                     groupMode: currentGroup && currentGroup.settings && currentGroup.settings.chatMode === 'offline' ? 'offline' : 'online',
                     groupMembers: currentGroup && Array.isArray(currentGroup.members) ? currentGroup.members : [],
                     speakerId: isGroupChat && groupReplyPick ? String(groupReplyPick.id) : '',
@@ -7347,6 +7442,13 @@
             const latestSpeaker = isGroupChat
                 ? (groupReplyPick && getRoleById(groupReplyPick.id))
                 : getRoleById(roleForTurn.id);
+            const groupSpeakerBaseline=isGroupChat&&relationshipRole?JSON.stringify(relationshipRole):null;
+            function groupLoreCurrent(){
+                try{if(!groupLoreBaseline||!window.RoleWorldbookBindings)return false;
+                    const a=window.RoleWorldbookBindings.read(groupLoreBaseline.speakerId,getRoleById(groupLoreBaseline.speakerId)),b=window.RoleWorldbookBindings.read(aliasRoleId);
+                    return a.ok&&b.ok&&JSON.stringify(a.ids)===groupLoreBaseline.speakerIds&&JSON.stringify(b.ids)===groupLoreBaseline.groupIds&&localStorage.getItem('phone_worldbooks')===groupLoreBaseline.books;
+                }catch(error){return false;}
+            }
             let storedProtocolAtSend = '';
             try { storedProtocolAtSend = localStorage.getItem('chat_rp_protocol_') || ''; }
             catch (protocolReadErr) {
@@ -7360,7 +7462,7 @@
                 return;
             }
             const finalRoleContract = window.MAOMAOChatRoleContext;
-            const finalPayloadAudit = finalRoleContract &&
+            const auditFinalMessages = messages => finalRoleContract &&
                 typeof finalRoleContract.validateFinalApiMessages === 'function'
                 ? finalRoleContract.validateFinalApiMessages({
                     role: latestSpeaker,
@@ -7372,10 +7474,11 @@
                     worldbook: worldbookText,
                     worldbookPolicyReady: !!(window.ChatContextPolicy &&
                         typeof window.ChatContextPolicy.buildWorldbookInjectionText === 'function'),
-                    messages: apiMessages
+                    messages: messages
                 }) : {ok:false,missing:['final-verifier']};
-            // The last barrier checks the actual messages passed to PhoneStream,
-            // not only a preliminary systemPrompt assembled before other features.
+            const finalPayloadAudit = auditFinalMessages(apiMessages);
+            // Verify mandatory canonical sources before any optional extension.
+            // The actual transport payload is checked again after the preview.
             const missingRegex = regexSystemHead &&
                 (!apiMessages[0] || apiMessages[0].role !== 'system' ||
                     !String(apiMessages[0].content || '').startsWith(roleIdentityHead + '\n\n' + regexSystemHead));
@@ -7403,6 +7506,43 @@
             // 意外异常时，用最后一次收到并尝试渲染的原始累计文本做保文兜底。
             let lastPaintedStreamText = '';
             let groupReplyVisible = false;
+            function groupTurnCurrent(allowExit){
+                if(!isGroupChat)return true;
+                try{return callCurrent()&&(!groupPageExited||allowExit===true)&&!!turnGroup&&groupGuard.account()===groupPageAccount&&groupGuard.matches(turnGroup)&&!!groupReplyPick&&currentGroupSpeaker(String(groupReplyPick.id),allowExit===true)&&groupSpeakerBaseline!==null&&JSON.stringify(getRoleById(groupReplyPick.id))===groupSpeakerBaseline&&groupLoreCurrent()&&_chatHistoryBaselines.has(historyList)&&localStorage.getItem(storageKey)===_chatHistoryBaselines.get(historyList)&&groupGuard.account()===groupPageAccount;}catch(error){return false;}
+            }
+            async function persistInterruptedGroupReply(received,allowExit,emptyTip){
+                // The only permitted post-pagehide write is this captured public
+                // prefix, with the original account, speaker and exact history.
+                if(!groupTurnCurrent(allowExit===true)||!window.ChatHistoryAtomic)return false;
+                const baseline=_chatHistoryBaselines.get(historyList);
+                const speakerId=String(groupReplyPick.id);
+                const result=buildInterruptedGroupHistory(baseline,received,{
+                    memberId:speakerId,name:groupReplyPick.name,voiceMode:presenceMode||'online',
+                    allowText:!isManualContinue&&!isRegen&&!momentsAction,
+                    emptyTip:emptyTip,
+                    validate:function(clean){
+                        if(currentGroup.settings&&currentGroup.settings.chatMode==='offline')return true;
+                        const policy=window.MAOMAOChatRoleContext;
+                        return !!(policy&&typeof policy.validateGroupOnlineReply==='function'&&
+                            policy.validateGroupOnlineReply({role:getRoleById(speakerId),text:clean,latestUserText:text}).ok);
+                    }
+                });
+                if(!result||(allowExit===true&&!result.hasText))return false;
+                const saved=await window.ChatHistoryAtomic.replaceRawIfUnchanged(
+                    currentRoleId,baseline,result.history,function(){
+                        return groupTurnCurrent(allowExit===true||result.hasText===true);
+                    });
+                return !!(saved&&saved.ok);
+            }
+            function discardStaleGroupTurn(notify){
+                inflightSnapshot=null;
+                const loading=document.getElementById(statusId);if(loading)loading.remove();
+                streamNodes.forEach(node=>{if(node&&node.parentNode)node.parentNode.removeChild(node);});streamNodes=[];
+                if(_vl)_vl.streaming=false;
+                if(chatTitleEl)chatTitleEl.textContent=originalTitleText;
+                aiSending=false;
+                if(!groupPageExited&&notify!==false&&callCurrent())showToast('群资料或聊天记录已变化，本轮回复已取消，请重新发送');
+            }
 
             // R4 渲染回调：交给 PhoneStream 每帧节流调用（正则清洗 + DOM 写入 + 滚动）
             // 引擎已抽离至 shared/js/phone/phone_stream.js（三段式超时/SSE 解析/残留收尾）
@@ -7416,6 +7556,11 @@
                     .replace(/\[(?:游|游戏|游戏私|游戏私聊|游戏猜|游戏猜测|游戏揭|游戏揭晓|群|群私|群私聊)[^\]\r\n]{0,1000}$/g, '');
             }
             function paintStreamLive(text) {
+                // A hung-up or invalidated call must not flash late text in the
+                // ordinary chat. The original scope and history guard still
+                // governs final persistence, including interrupted streams.
+                if(callTurn&&!callCurrent()){discardStaleGroupTurn(false);return;}
+                if(isGroupChat&&(groupPageExited||groupGuard.account()!==groupPageAccount)){inflightSnapshot=null;return;}
                 // Do not display a draft post or an unverified success claim during streaming.
                 if (momentsAction) {
                     lastPaintedStreamText = typeof text === 'string' ? text : '';
@@ -7536,25 +7681,68 @@
                 pinToBottom();
             }
 
-            // QA owner-opt-in: inspect EXACT final messages before the HTTP POST.
-            // Lock the send during the preview, so no second user bubble is added.
+            // Compose the exact outbound payload before the opt-in preview.
+            // If music changes during that asynchronous preview, cancel rather
+            // than silently send a payload the user has not inspected.
+            function buildOutboundApiMessages() {
+                if (isGroupChat && groupReplyPick && groupListeningView && window.MAOGroupListeningContext) {
+                    const candidate = window.MAOGroupListeningContext.appendToMessages(apiMessages, {
+                        groupId: String(currentRoleId), roleId: String(groupReplyPick.id),
+                        readSnapshot: () => groupListeningView.getSnapshot(),
+                        hasRole: id => !!getRoleById(id)
+                    });
+                    if (candidate !== apiMessages && auditFinalMessages(candidate).ok &&
+                        (!regexSystemHead || String(candidate[0].content).startsWith(roleIdentityHead + '\n\n' + regexSystemHead))) {
+                        return candidate;
+                    }
+                }
+                return apiMessages;
+            }
             aiSending = true;
+            if(!groupTurnCurrent()){discardStaleGroupTurn();return;}
+            const outboundApiMessages = buildOutboundApiMessages();
+            if(!groupTurnCurrent()){discardStaleGroupTurn();return;}
             if (window.MAOMAOPromptDiagnostic &&
                 window.MAOMAOPromptDiagnostic.isEnabled()) {
-                await window.MAOMAOPromptDiagnostic.beforeSend(apiMessages);
+                const reviewedPayload = JSON.stringify(outboundApiMessages);
+                await window.MAOMAOPromptDiagnostic.beforeSend(outboundApiMessages);
+                if(!groupTurnCurrent()){discardStaleGroupTurn();return;}
+                if (JSON.stringify(buildOutboundApiMessages()) !== reviewedPayload ||
+                    JSON.stringify(outboundApiMessages) !== reviewedPayload) {
+                    discardStaleGroupTurn(false);
+                    stopForMissingRoleSource('music-context-updated', '诊断期间听歌状态已变化，本轮未发送');
+                    return;
+                }
             }
-
-            // 流式请求：核心引擎已抽离至 shared/js/phone/phone_stream.js
-            //（三段式超时 / SSE 半包解析 / 残留收尾 / rAF 节流 / 中断保文，全部内聚在模块内）
-            // 永不 reject：结果对象 { ok, fullText, error }，fullText 中断时 = 已收到的部分
+            // Final fail-closed check of the exact array passed to transport,
+            // even when an optional extension was rejected or diagnostics disabled.
+            const outboundPayloadAudit = auditFinalMessages(outboundApiMessages);
+            const outboundMissingRegex = regexSystemHead &&
+                (!outboundApiMessages[0] || outboundApiMessages[0].role !== 'system' ||
+                    !String(outboundApiMessages[0].content || '').startsWith(roleIdentityHead + '\n\n' + regexSystemHead));
+            if (!outboundPayloadAudit.ok || outboundMissingRegex) {
+                const missingSources = (outboundPayloadAudit.missing || []).concat(
+                    outboundMissingRegex ? ['enabled-regex-system'] : []
+                );
+                discardStaleGroupTurn(false);
+                stopForMissingRoleSource('final-source-audit',
+                    '聊天资料未完整进入请求（' + missingSources.join('、') + '），本轮已停止');
+                return;
+            }
+            if(!groupTurnCurrent()){discardStaleGroupTurn();return;}
             const chatResponseTimeoutMs = 60000;
+            if(isGroupChat&&!callTurn&&!isRegen&&!isManualContinue&&!momentsAction){
+                groupInterruptedSave=function(){
+                    return persistInterruptedGroupReply(lastPaintedStreamText,true).catch(function(){return false;});
+                };
+            }
             let streamResult;
             try {
                 streamResult = await PhoneStream.chat({
                     baseUrl: baseUrl,
                     apiKey: apiKey,
                     model: apiModel,
-                    messages: apiMessages,
+                    messages: outboundApiMessages,
                     fallbackModels: Array.isArray(config.fallbackModels) ? config.fallbackModels
                         : (apiModel === 'gemini-3-flash' ? ['gemini-2.5-flash'] : []),
                     temperature: config.temperature != null ? config.temperature : 0.7,
@@ -7562,6 +7750,7 @@
                     topP: config.topP,
                     connectMs: chatResponseTimeoutMs,
                     watchdogMs: chatResponseTimeoutMs,
+                    signal: callTurn?.signal,
                     onPaint: paintStreamLive
                 });
                 if (!streamResult || typeof streamResult !== 'object') {
@@ -7580,6 +7769,8 @@
                     }
                 };
             }
+            groupInterruptedSave=null;
+            if(!groupTurnCurrent()){discardStaleGroupTurn();return;}
             fullText = typeof streamResult.fullText === 'string'
                 ? streamResult.fullText
                 : lastPaintedStreamText;
@@ -7641,6 +7832,33 @@
                 logApiCall(apiModel, 'error', apiCallStart, errText);
             } else {
                 logApiCall(apiModel, 'success', apiCallStart);
+            }
+
+            // Failed group streams bypass every action parser and secondary
+            // state mutation. The public prefix and error are one locked write.
+            if(isGroupChat&&!streamResult.ok){
+                if(isRegen){restoreFailedRegeneration();return;}
+                inflightSnapshot=null;
+                streamNodes.forEach(node=>{if(node&&node.parentNode)node.parentNode.removeChild(node);});streamNodes=[];
+                if(_vl)_vl.streaming=false;
+                if(chatTitleEl)chatTitleEl.textContent=originalTitleText;
+                let saved=false;
+                try{
+                    if(streamResult.error&&streamResult.error.kind==='capacity'&&!fullText){
+                        showToast('服务器开小差了，请稍后重试');
+                    }else{
+                        saved=await persistInterruptedGroupReply(fullText,false,'连接中断，未收到可安全保存的回复');
+                        if(!saved&&!groupPageExited)showToast('群回复未能安全保存，请重新进入聊天核对');
+                    }
+                }catch(error){
+                    if(!groupPageExited)showToast('群回复未能安全保存，请重新进入聊天核对');
+                }finally{
+                    if(!groupPageExited&&readGroupScope()){
+                        if(_vl)vlRefresh();else renderAllMessages();
+                        scrollToBottom(true);
+                    }
+                }
+                return;
             }
 
             // A valid provider response can still be a generic AI service menu
@@ -7742,7 +7960,7 @@
             // An invitation may only appear after the AI reply has actually persisted.
             // If the helper is unavailable, hidden actions fail closed.
             var groupTurnEffects = window.GroupTurnEffects
-                ? window.GroupTurnEffects.create() : null;
+                ? window.GroupTurnEffects.create(isGroupChat?function(){return callCurrent()&&!groupPageExited&&currentGroupSpeaker(String(groupReplyPick&&groupReplyPick.id||''));}:undefined) : null;
             var groupTurnFinalized = false;
             var groupAutoRevealReceipt = null;
             try {
@@ -7787,7 +8005,7 @@
                         groupAutoRevealReceipt = receipt;
                         if (receipt && !historyList.some(function(m){return m && m.mid === receipt.mid;}))
                             historyList.push(receipt);
-                    });
+                    }, contextOnly);
                     // Game-only whisper is an ordinary deferred effect: it must
                     // share the same verified reply barrier as every other action.
                     if (pendingGameWhisper && groupTurnEffects && window.GroupGameSessions) {
@@ -7968,7 +8186,7 @@
                         (parsedTransferDecision.amounts && parsedTransferDecision.amounts.length)) {
                         // 正文按角色气泡偏好拆分；表情与图库图片仍保留在同一回复回合中。
                         groupReplyVisible = !!fullText || aiStickerMessages.length > 0 || aiRoleGalleryMessages.length > 0;
-                        replyMessages.forEach(function (message) { historyList.push(message); });
+                        replyMessages.forEach(function (message) { if(callTurn)ensureMid(message);historyList.push(message); });
                         aiStickerMessages.forEach(function (stickerMessage) { historyList.push(stickerMessage); });
                         aiRoleGalleryMessages.forEach(function (galleryMessage) { historyList.push(galleryMessage); });
                         window.__groupPrivateCardPending = false;
@@ -7990,7 +8208,8 @@
                                 delete retryResolved.message.sendFailedReason;
                             }
                         }
-                        var replySaved = saveMessages(historyList);
+                        var replySaved = isGroupChat ? await saveGroupReplyLocked(historyList,groupTurnCurrent) : saveMessages(historyList);
+                        if(isGroupChat&&!replySaved)groupReplyVisible=false;
                         // No secondary state change from a failed/partial/unpersisted turn.
                         if (replySaved && streamResult.ok) {
                             if (parsedMem.memories.length && !isGroupChat)
@@ -8035,6 +8254,8 @@
                                     : '群邀请未成功保存，请检查本地存储');
                             }
                         }
+                        if(callTurn&&replySaved&&callCurrent())replyMessages.forEach(function(message){if(message.mid&&!message.silent&&!message.isError&&(!message.type||message.type==='text'))callTurn.replyMids.push(message.mid);});
+                        if(callTurn&&replySaved&&callCurrent())callTurn.progress();
                         var replySaveFailed = !replySaved;
                         if (replySaved && autoMomentContent && momentTurnCurrent(autoMomentsRoleId) &&
                             String(currentCharacter.id) === autoMomentsRoleId &&
@@ -8163,7 +8384,7 @@
                             aiRoleGalleryMessages = [];
                             // Regeneration never deleted the saved old turn, so a
                             // failed replacement write must not retry a filtered history.
-                            if (!isRegen) {
+                            if (!isRegen && !isGroupChat) {
                                 try { saveMessages(historyList); } catch (rollbackError) {}
                             }
                             if (streamBubble && fullText) streamBubble.textContent = fullText;
@@ -8260,7 +8481,8 @@
                     }
                     if (streamResult.ok && replySaved && parsedPay.items.length) {
                         // AI 侧插入红包/转账卡片并落库，role='assistant' 可被用户点击领取
-                        insertPayCards(historyList, parsedPay.items);
+                        if(!isGroupChat||(groupReplyPick&&currentGroupSpeaker(String(groupReplyPick.id))))
+                            insertPayCards(historyList, parsedPay.items,isGroupChat?groupReplyPick:null);
                     }
                     if (streamResult.ok && replySaved && parsedRoleFamilyCard.cards.length) {
                         insertRoleFamilyCardInvitations(historyList, parsedRoleFamilyCard.cards);
@@ -8361,24 +8583,48 @@
                 !isBlocked(aliasRoleId)
             );
             window.__groupAutoStopRequested = false;
-            if (canContinueGroupTalk) {
-                var followupToken = ++groupAutoFollowupToken;
-                var followupDelay = getGroupReplyDelayMs();
-                await new Promise(function (resolve) { setTimeout(resolve, followupDelay); });
-                // A new user message during the pause takes priority and cancels this queued turn.
-                if (followupToken !== groupAutoFollowupToken) return;
-                await sendMsg({
-                    contextOnly: true,
-                    silent: true,
-                    groupFollowup: true,
-                    groupAutoDepth: groupAutoDepth + 1,
-                    manualContinue: isManualContinue
-                });
+            if (canContinueGroupTalk && !groupPageExited && readGroupScope()) {
+                var followupToken=++groupAutoFollowupToken, followupDelay=getGroupReplyDelayMs();
+                var followupScope=readGroupScope(),followupRaw=localStorage.getItem(storageKey);
+                // Calls retain the existing sender mutex through their bounded
+                // follow-ups, so every committed bubble belongs to the same receipt.
+                if(callTurn){
+                    if(groupAutoDepth>=callTurn.maxFollowups||!callCurrent())return;
+                    await new Promise(resolve=>setTimeout(resolve,followupDelay));
+                    if(!callCurrent()||followupToken!==groupAutoFollowupToken||groupPageExited||!groupGuard.matches(followupScope)||groupGuard.account()!==groupPageAccount||localStorage.getItem(storageKey)!==followupRaw)return;
+                    const next={contextOnly:true,silent:true,groupFollowup:true,groupAutoDepth:groupAutoDepth+1,manualContinue:isManualContinue};
+                    groupCallReceiptBindings.set(next,callTurn);
+                    await sendMsgTurn(next);
+                    return;
+                }
+                // Release the send mutex before a queued ordinary follow-up begins.
+                setTimeout(function(){
+                    if(followupToken!==groupAutoFollowupToken||groupPageExited||singleChatSendPending||!groupGuard.matches(followupScope)||groupGuard.account()!==groupPageAccount||localStorage.getItem(storageKey)!==followupRaw)return;
+                    void sendMsg({contextOnly:true,silent:true,groupFollowup:true,groupAutoDepth:groupAutoDepth+1,manualContinue:isManualContinue});
+                },followupDelay);
             }
         }
 
         // 暴露给 chat-extras.js：重玩/重新生成
         window.sendMsg = sendMsg;
+        // Private binding: a normal sendMsg options object cannot opt into the
+        // group-call path by adding fields. The overlay uses this dedicated API.
+        const groupCallReceiptBindings=new WeakMap();
+        window.sendGroupCallMessage=async function(text,token,isCurrent,onProgress,signal){
+            if(!isGroupChat||!token||typeof isCurrent!=='function'||typeof text!=='string'||!text.trim())return null;
+            const scope=readGroupScope();
+            if(!scope||token.accountId!==scope.account||token.groupId!==String(currentRoleId))return null;
+            const callTurn={userMid:'',replyMids:[],signal:signal,maxFollowups:scope.group.members.length+2,
+                current:function(){try{return !signal?.aborted&&!groupPageExited&&groupGuard.account()===scope.account&&groupGuard.matches(scope)&&String(currentRoleId)===token.groupId&&isCurrent(token)===true;}catch{return false;}}};
+            function receipt(){return Object.freeze({accountId:scope.account,groupId:token.groupId,userMid:callTurn.userMid,replyMids:Object.freeze(callTurn.replyMids.slice())});}
+            callTurn.progress=function(){if(callTurn.current()&&callTurn.userMid&&typeof onProgress==='function'){try{onProgress(receipt());}catch(error){/* view errors do not affect the sender */}}};
+            if(!callTurn.current())return null;
+            const options={text:text.trim()};
+            groupCallReceiptBindings.set(options,callTurn);
+            try{await sendMsg(options);}catch(error){/* only confirmed saved IDs are returned */}
+            if(!callTurn.current()||!callTurn.userMid)return null;
+            return receipt();
+        };
         window.addEventListener('maomao:followup-message', function (event) {
             var detail = event && event.detail ? event.detail : null;
             if (!detail || String(detail.contactId) !== String(currentRoleId)) return;
@@ -8824,6 +9070,33 @@
         }
 
         // 可选会话：角色列表（排除当前会话与已隐藏会话）+ 群聊列表
+        function captureForwardTarget(id) {
+            try {
+                id=String(id||'');
+                const guard=window.MAOGroupWriteGuard,account=guard&&guard.account();
+                if(!id||id==='__user'||account===null||account===undefined)return null;
+                const roles=JSON.parse(localStorage.getItem('ai_custom_characters')||'[]');
+                const groups=JSON.parse(localStorage.getItem('phone_groups')||'[]');
+                if(!Array.isArray(roles)||!Array.isArray(groups))return null;
+                const roleRows=roles.filter(r=>r&&String(r.id)===id);
+                const groupRows=groups.filter(g=>g&&String(g.id)===id);
+                if(id.charAt(0)==='g'){
+                    if(roleRows.length||groupRows.length!==1)return null;
+                    const snapshot=guard.read(id);
+                    if(!snapshot||snapshot.account!==account||!window.GroupGovernance||
+                        !window.GroupGovernance.userIsInGroup(snapshot.group))return null;
+                    return {kind:'group',account:account,serialized:snapshot.serialized};
+                }
+                if(groupRows.length||roleRows.length!==1||guard.account()!==account)return null;
+                return {kind:'role',account:account,serialized:JSON.stringify(roleRows[0])};
+            }catch(error){return null;}
+        }
+
+        function forwardTargetCurrent(id,expected){
+            const fresh=captureForwardTarget(id);
+            return !!(expected&&fresh&&fresh.kind===expected.kind&&fresh.account===expected.account&&fresh.serialized===expected.serialized);
+        }
+
         function getForwardTargets() {
             var out = [];
             try {
@@ -8833,7 +9106,7 @@
                     roles.forEach(function (r) {
                         if (!r || r.id == null) return;
                         if (String(r.id) === String(aliasRoleId)) return;
-                        if (hidden.indexOf(String(r.id)) !== -1) return;
+                        if (hidden.indexOf(String(r.id)) !== -1 || !captureForwardTarget(String(r.id))) return;
                         out.push({ id: String(r.id), name: r.name || '角色', avatar: r.avatar || '' });
                     });
                 }
@@ -8843,7 +9116,7 @@
                 if (Array.isArray(groups)) {
                     groups.forEach(function (g) {
                         if (!g || !g.id) return;
-                        if (String(g.id) === String(aliasRoleId)) return;
+                        if (String(g.id) === String(aliasRoleId) || !captureForwardTarget(String(g.id))) return;
                         out.push({ id: String(g.id), name: g.name || '群聊', avatar: '' });
                     });
                 }
@@ -8911,7 +9184,29 @@
                 if (typeof showToast === 'function') showToast('目标会话或存储不可用，转发未完成');
                 return;
             }
-            var msg = resolved.message;
+            var msg = resolved&&resolved.message;
+            const targetSnapshot=captureForwardTarget(targetId);
+            const fromGroup=String(aliasRoleId||'').charAt(0)==='g';
+            const sourceGroup=fromGroup?readGroupScope():null;
+            const privateMarked=msg&&(msg.privateFromGroup||msg.privateGroupReceiptV1||msg.privateMessageId||msg.privateRoleId||msg.type==='group_private'||msg.type==='group_game_private'||(msg.visibility!=null&&msg.visibility!==''&&msg.visibility!=='public'));
+            const policy=window.ChatContextPolicy;
+            if(!msg||!targetSnapshot||String(targetId)===String(aliasRoleId)||privateMarked||
+               msg.type==='redpacket'||msg.type==='transfer'||
+               (fromGroup&&(!sourceGroup||!policy||typeof policy.groupPublicHistory!=='function'||policy.groupPublicHistory([msg],String(aliasRoleId)).length!==1))){
+                if(typeof showToast==='function')showToast('消息或目标会话不可安全转发');return;
+            }
+            let sourceRaw=null;
+            if(fromGroup){
+                try{
+                    sourceRaw=localStorage.getItem('chat_history_'+String(aliasRoleId));
+                    const rows=JSON.parse(sourceRaw);
+                    const matches=Array.isArray(rows)?rows.filter(row=>row&&msg.mid!=null&&String(row.mid)===String(msg.mid)):[];
+                    if(matches.length!==1||JSON.stringify(matches[0])!==JSON.stringify(msg))throw Error('stale');
+                }catch(error){if(typeof showToast==='function')showToast('原群消息已变化，请重新选择');return;}
+            }
+            function forwardCurrent(){
+                try{return forwardTargetCurrent(targetId,targetSnapshot)&&(!fromGroup||(!groupPageExited&&groupGuard.matches(sourceGroup)&&localStorage.getItem('chat_history_'+String(aliasRoleId))===sourceRaw));}catch(error){return false;}
+            }
             var fwd = {
                 role: 'user',
                 time: Date.now(),
@@ -8956,7 +9251,7 @@
             }
             ensureMid(fwd);
             // Read the target only after any media await, so intervening messages are included.
-            var saved = historyStorage.appendChatHistory(targetId, fwd);
+            var saved = forwardCurrent()?historyStorage.appendChatHistory(targetId, fwd):{ok:false,error:{code:'STALE_CONTEXT'}};
             if (!saved.ok) {
                 var unverified = saved.meta && saved.meta.writeMayHavePersisted;
                 if (linkedImageRef && !unverified) {
@@ -9157,7 +9452,7 @@
         // Repair a metadata-only group entry if a previous private DM survived
         // but its companion public card failed to save. Never copy DM body.
         if (isGroupChat && currentGroup && window.GroupPrivateReceiptRecovery &&
-            !window.__groupPrivateReceiptRecoveryRunning) {
+            !window.__groupPrivateReceiptRecoveryRunning && readGroupScope()) {
             window.__groupPrivateReceiptRecoveryRunning = true;
             try {
                 var receiptOriginalGroupHistory = null;
@@ -9172,10 +9467,11 @@
                         return versioned;
                     },
                     saveGroupHistory: function (messages) {
-                        if (!receiptOriginalGroupHistory || !Array.isArray(messages)) return false;
+                        if (!readGroupScope()||!receiptOriginalGroupHistory || !Array.isArray(messages)) return false;
                         return saveMessages(_inheritChatBaseline(messages, receiptOriginalGroupHistory));
                     },
                     readRoleHistory: function (roleId) {
+                        if(!readGroupScope()||roleId==='__user'||String(roleId)===String(currentRoleId))return null;
                         try {
                             if (window.PhoneStorage && typeof window.PhoneStorage.getChatHistory === 'function') {
                                 var roleItems = window.PhoneStorage.getChatHistory(roleId);
@@ -9412,30 +9708,27 @@
         }
 
         // ========== 钱包余额 workData：安全读写 ==========
-        // 结构非法 / 余额非有限数字时一律回落 { balance: 1000 }，绝不把脏数据带进计算
+        // Missing wallet is a new wallet; damaged wallet must never be reset by a receipt.
         const WORK_DATA_KEY = 'workData';
         function getWorkData() {
-            let wd = null;
             try {
-                const raw = localStorage.getItem(WORK_DATA_KEY);
-                if (raw) wd = JSON.parse(raw);
-            } catch (e) {}
-            if (!wd || typeof wd !== 'object' || Array.isArray(wd)) {
-                wd = { balance: 1000 };
-            }
-            if (typeof wd.balance !== 'number' || !isFinite(wd.balance)) {
-                wd.balance = 1000;
-            }
-            // 交易明细：history 缺失或非法时补空数组（老数据自动兼容）
-            if (!Array.isArray(wd.history)) wd.history = [];
-            return wd;
+                const raw=localStorage.getItem(WORK_DATA_KEY);
+                if(raw===null)return {balance:1000,history:[]};
+                const wd=JSON.parse(raw);
+                if(!wd||typeof wd!=='object'||Array.isArray(wd)||typeof wd.balance!=='number'||!Number.isFinite(wd.balance)||wd.balance<0||
+                   (wd.history!=null&&!Array.isArray(wd.history)))return null;
+                if(wd.history==null)wd.history=[];
+                return wd;
+            }catch(error){return null;}
         }
         function saveWorkData(wd) {
             try {
-                localStorage.setItem(WORK_DATA_KEY, JSON.stringify(wd));
+                const raw=JSON.stringify(wd);
+                localStorage.setItem(WORK_DATA_KEY,raw);
+                if(localStorage.getItem(WORK_DATA_KEY)!==raw){showToast('钱包保存结果待核对，请勿重复操作');return false;}
                 return true;
             } catch (e) {
-                showToast('保存失败：本地存储空间不足');
+                showToast('钱包保存失败，请检查本地存储');
                 return false;
             }
         }
@@ -9466,19 +9759,24 @@
         function handlePayCardClick(event) {
             const cardEl = event && event.currentTarget;
             if (!cardEl) return;
-            const mid = cardEl.getAttribute('data-mid') || '';
-            const indexStr = cardEl.getAttribute('data-index');
-
-            // 必须按稳定 mid 查全量历史，不能把过滤了 silent/date 的显示序号当数组下标。
-            const list = loadMessages();
-            let index = mid ? list.findIndex(function (item) { return item && ensureMid(item) === mid; }) : -1;
-            if (index < 0 && indexStr !== '' && indexStr != null) {
-                const legacyIndex = parseInt(indexStr, 10);
-                if (!isNaN(legacyIndex) && legacyIndex >= 0) index = legacyIndex;
-            }
-            if (index < 0 || index >= list.length) return;
-            const msg = list[index];
-            if (!msg || (msg.type !== 'redpacket' && msg.type !== 'transfer')) return;
+            const mid=cardEl.getAttribute('data-mid')||'',type=cardEl.getAttribute('data-type')||'';
+            const id=String(currentCharacter&&currentCharacter.id||'');
+            const scope=captureForwardTarget(id),locks=window.navigator&&window.navigator.locks;
+            if(!mid||!scope||!locks||typeof locks.request!=='function'){showToast('无法确认交易或安全锁定钱包，请刷新后重试');return;}
+            return Promise.resolve(locks.request('maomao-wallet-workData-v1',{mode:'exclusive',ifAvailable:true},function(lock){
+                if(!lock){showToast('钱包正在处理其他交易');return;}
+                if(String(currentCharacter&&currentCharacter.id||'')!==id||!forwardTargetCurrent(id,scope)||(isGroupChat&&!readGroupScope())){showToast('会话已变化，未收款');return;}
+                return handlePayCardClickLocked(mid,type);
+            })).catch(function(){showToast('收款状态未确认，请检查钱包记录');});
+        }
+        function handlePayCardClickLocked(mid,type) {
+            // A stale or duplicated stable ID must never fall back to a different card.
+            const list=loadMessages();
+            const matched=Array.isArray(list)?list.filter(item=>item&&String(item.mid||'')===mid):[];
+            if(matched.length!==1){showToast('交易卡片已变化，请刷新后重试');return;}
+            const msg=matched[0];
+            if(msg.type!==type||(type!=='redpacket'&&type!=='transfer'))return;
+            if(isGroupChat&&(!window.ChatContextPolicy||typeof window.ChatContextPolicy.groupPublicHistory!=='function'||window.ChatContextPolicy.groupPublicHistory([msg],String(currentCharacter.id)).length!==1)){showToast('该交易不属于当前公开群聊');return;}
             const isRed = msg.type === 'redpacket';
 
             if (msg.type === 'transfer' && msg.status === 'returned') {
@@ -9608,7 +9906,7 @@
 
 
         // ===== 群投票 / 群接龙 / 角色群管理标记 =====
-        function processGroupInteractionMarkers(rawText, speaker, historyList, isRegeneration, isGroupFollowup, isCompleted, expectedGameSessionId, queueGameWhisper, turnEffects, queueGameReveal) {
+        function processGroupInteractionMarkers(rawText, speaker, historyList, isRegeneration, isGroupFollowup, isCompleted, expectedGameSessionId, queueGameWhisper, turnEffects, queueGameReveal, contextOnly) {
             var text = String(rawText || '');
             if (!isGroupChat || !currentGroup || !Array.isArray(historyList)) return text;
             // Hidden private actions must be complete, flat end-of-reply tokens.
@@ -9907,7 +10205,7 @@
             // whole-history snapshot when a group member sends a private receipt.
             function saveGroupPrivateRoleMessageSafely(roleId, message) {
                 var id = String(roleId || '').trim();
-                if (!id || !message || !message.mid || !message.privateGroupReceiptV1) return false;
+                if (!id || !message || !message.mid || !message.privateGroupReceiptV1||groupPageExited||!currentGroupSpeaker(id)) return false;
                 var key = 'chat_history_' + id;
                 try {
                     var versioned = window.PhoneStorage && window.PhoneStorage.result;
@@ -9929,6 +10227,7 @@
                         localStorage.setItem(key, JSON.stringify(history.concat([message])));
                     }
                     // Never accept the legacy duplicate as proof of success.
+                    if(groupPageExited||!currentGroupSpeaker(id))return false;
                     var verifiedRaw = localStorage.getItem(key);
                     var verified = verifiedRaw === null ? null : JSON.parse(verifiedRaw);
                     if (!Array.isArray(verified)) return false;
@@ -9977,15 +10276,11 @@
                     // Never mirror an in-game secret into the permanent 1:1 history.
                     if (privateRule.active) return '';
                 }
-                var members = Array.isArray(currentGroup.members) ? currentGroup.members : [];
-                var target = members.find(function (member) {
-                    return member && (String(member.id) === String(targetKey).trim() ||
-                        String(member.name || '').trim() === String(targetKey).trim() ||
-                        groupMemberDisplayName(member) === String(targetKey).trim());
-                });
-                if (!target || !target.id || !String(privateText || '').trim()) return '';
-                if (!speaker || String(speaker.id) !== String(target.id)) return '';
-                var targetId = String(target.id);
+                var targetId=String(targetKey).trim(),speakerId=String(speaker&&speaker.id||'');
+                if(targetId!==speakerId||!currentGroupSpeaker(targetId)||!String(privateText||'').trim())return {ok:false,code:'INVALID_SPEAKER'};
+                var targets=currentGroup.members.filter(member=>member&&String(member.id)===targetId);
+                if(targets.length!==1)return {ok:false,code:'INVALID_SPEAKER'};
+                var target=targets[0];
                 var displayName = groupMemberDisplayName(target);
                 var privateMessageText = String(privateText).trim().slice(0, 300);
                 var privateMsg = { role: 'assistant', name: displayName, text: privateMessageText, time: Date.now(),
@@ -10189,7 +10484,7 @@
                 var activityToken = ++groupAutoFollowupToken;
                 var activityDelay = getGroupReplyDelayMs();
                 setTimeout(function () {
-                    if (activityToken !== groupAutoFollowupToken) return;
+                    if (activityToken !== groupAutoFollowupToken||groupPageExited||!readGroupScope()||singleChatSendPending) return;
                     sendMsg({ contextOnly: true, silent: true, groupFollowup: true, groupAutoDepth: 1 });
                 }, activityDelay);
             }
@@ -10387,9 +10682,22 @@
             });
         })();
 
+        // Group-only listening extension. No player is created until explicit selection.
+        let groupListeningView = null;
+        function mountGroupListeningView(){
+            if(!isGroupChat||!readGroupScope()||!window.MAOGroupListeningView)return;
+            groupListeningView=window.MAOGroupListeningView.mount({
+                host:document.querySelector('.phone-mockup'),header:document.querySelector('.chat-header'),
+                menu:document.getElementById('plusGroupActions'),getGroupScope:readGroupScope,
+                hasRole:id=>!!getRoleById(id),memberName:groupMemberDisplayName,
+                paintAvatar:(el,id,member)=>fillGroupPortrait(el,id==='__user'?getMyAvatar():groupSpeakerAvatarForMessage(null,member),id),
+                notify:showToast
+            });
+        }
+        mountGroupListeningView();
     </script>
     <script src="js/chat-extras.js?t=20261122cards4"></script>
-    <script src="../call/call-overlay.js?v=20261121call1"></script>
+    <script src="../call/call-overlay.js?v=20261126c06"></script>
     <script>
     function openNarrationModal() {
         var m = document.createElement('div');

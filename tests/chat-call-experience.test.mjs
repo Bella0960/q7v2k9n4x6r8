@@ -11,7 +11,7 @@ const styles = read('../chat/call/call-overlay.css');
 
 test('chat detail loads the call experience stylesheet and script', () => {
   assert.match(detail, /call\/call-overlay\.css\?v=20261121call1/);
-  assert.match(detail, /call\/call-overlay\.js\?v=20261121call1/);
+  assert.match(detail, /call\/call-overlay\.js\?v=20261126c06/);
   assert.ok(detail.indexOf('js/chat-extras.js') < detail.indexOf('../call/call-overlay.js'));
 });
 
@@ -52,7 +52,8 @@ test('group calls load the saved group roster and keep participant identities', 
   assert.match(detail, /data-feat="group-call"/);
   assert.match(extras, /case 'group-call': featCall\('group'\)/);
   assert.match(overlay, /readGroupData\(character\.id\)/);
-  assert.match(overlay, /phone_groups/);
+  assert.match(overlay, /MAOGroupWriteGuard\?\.read/);
+  assert.match(overlay, /MAOGroupCallRoster\.create/);
   assert.match(overlay, /ai_custom_characters/);
   assert.match(overlay, /resolveGroupParticipants/);
   assert.match(overlay, /maomao-call-group-grid/);

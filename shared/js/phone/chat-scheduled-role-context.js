@@ -25,18 +25,20 @@
       if (!Array.isArray(input.groupMembers) ||
           typeof input.roleLoader !== 'function' ||
           typeof contract.getGroupModelHistory !== 'function') return fail('group-speaker');
-      history = contract.getGroupModelHistory(history, input.groupMembers, input.roleLoader);
+      if(typeof context.groupPublicHistory!=='function')return fail('group-public-history');
+      history = contract.getGroupModelHistory(context.groupPublicHistory(history,str(input.groupId)), input.groupMembers, input.roleLoader);
     } else if (typeof contract.getModelHistory === 'function') {
       history = contract.getModelHistory(history, role);
     }
     var memories = Array.isArray(input.memories) ? input.memories : [];
-    var memoryText = [str(role.memory)].concat(memories.filter(function (m) {
+    var shareMemory = !group || input.groupMemorySharing === true;
+    var memoryText = shareMemory ? [str(role.memory)].concat(memories.filter(function (m) {
       return m && (m.status === 'fixed' || m.status === 'confirmed' || !m.status);
-    }).map(function (m) { return str(m.content || m.text); })).filter(Boolean).join('\n');
+    }).map(function (m) { return str(m.content || m.text); })).filter(Boolean).join('\n') : '';
     if (memoryText.length > 32000) return fail('memory-too-long');
 
     var source = contract.buildSavedSourceEnvelope({
-      role: role, storage: store, conversationId: str(role.id),
+      role: shareMemory ? role : Object.assign({},role,{memory:''}), storage: store, conversationId: str(role.id),
       contextPolicy: context, bindingBridge: binder,
       currentText: str(input.currentText), recentMessages: history,
       userName: str(input.userName), memory: memoryText,

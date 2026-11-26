@@ -210,3 +210,20 @@ test('online system uses same minimal fallback and preserves current persona sou
   assert.ok(main);
   assert.doesNotThrow(()=>new vm.Script(main));
 });
+
+
+test('public group model view strips private receipts, invalid authors and unverifiable quotes without editing storage',()=>{
+ const {context}=fixture();
+ const history=[{"mid":"p","role":"assistant","memberId":"r1","name":"甲","text":"公开内容"},{"mid":"s","role":"assistant","memberId":"r1","text":"SECRET","type":"group_private"},{"mid":"m","role":"assistant","memberId":"r1","text":"OTHER_SECRET","privateFromGroup":true},{"mid":"v","role":"assistant","memberId":"r2","text":"HIDDEN","visibility":"role_only"},{"mid":"x","role":"assistant","memberId":"r2","text":"WRONG_GROUP","fromGroupId":"g2"},{"mid":"u","role":"user","text":"回复","quote":{"mid":"s","text":"SECRET"}},{"mid":"q","role":"user","text":"引用","quote":{"mid":"p","text":"FORGED"}},{"mid":"a","role":"assistant","memberId":"__user","text":"IMPOSTOR"},{"mid":"k","role":"assistant","memberId":"r2","name":"乙","text":"公开乙"}];const original=JSON.stringify(history);
+ const filtered=context.groupPublicHistory(history,'g1');
+ assert.deepEqual(Array.from(filtered,x=>x.mid),['p','u','q','k']);
+ assert.equal(filtered.find(x=>x.mid==='u').quote,undefined);
+ assert.equal(filtered.find(x=>x.mid==='q').quote.text,'公开内容');
+ assert.equal(JSON.stringify(history),original);
+ const payload=JSON.stringify(context.mapHistoryToApiMessages(history,null,{isGroupChat:true,groupId:'g1',speakerId:'r1',groupMembers:[{id:'r1',name:'甲'},{id:'r2',name:'乙'}]}));
+ assert.doesNotMatch(payload,/SECRET|HIDDEN|WRONG_GROUP|FORGED|IMPOSTOR/);
+ assert.match(payload,/公开内容/);
+ const lore=context.buildWorldbookInjectionText([{id:'w',entries:[{name:'secret',content:'secret-lore',injectMode:'keyword',keywords:['SECRET']},{name:'public',content:'public-lore',injectMode:'keyword',keywords:['公开内容']}]}],{recentMessages:filtered});
+ assert.match(lore,/public-lore/);assert.doesNotMatch(lore,/secret-lore/);
+ assert.ok(detail.includes('groupLoreCurrent()&&_chatHistoryBaselines'));
+});

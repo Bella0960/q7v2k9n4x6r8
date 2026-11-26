@@ -212,7 +212,7 @@ test('group persona output guard is before persistence and leaves offline/role d
   const rolePolicy=read('shared/js/phone/chat-role-context.js');
   const guard=detail.indexOf('const qualityResult = qualityPolicy &&');
   const marker=detail.indexOf('fullText = processGroupInteractionMarkers(fullText',guard);
-  const save=detail.indexOf('var replySaved = saveMessages(historyList)',guard);
+  const save=detail.indexOf('var replySaved = isGroupChat ? await saveGroupReplyLocked(historyList,groupTurnCurrent) : saveMessages(historyList)',guard);
   assert.ok(guard>0 && marker>guard && save>marker);
   assert.match(detail,/qualityPolicy\.validateGroupOnlineReply\(/);
   assert.match(detail,/if \(!qualityResult\.ok\) \{[\s\S]{0,1000}inflightSnapshot = null;/);

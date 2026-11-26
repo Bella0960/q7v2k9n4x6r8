@@ -459,3 +459,88 @@ test('C9 spectatorMode saved in settings page is reflected in a fresh chat-detai
     await context.close();
   }
 });
+
+
+// These use the actual page, composer, PhoneStream SSE parser, and browser
+// localStorage/Web Locks. The provider is synthetic; no paid API calls.
+test('C10 incomplete group SSE preserves public prefix once and never runs markers', async () => {
+  const context=await newContext();
+  const page=await context.newPage();
+  const key='chat_history_g1';
+  try {
+    await seed(page,{
+      phone_groups:[makeGroup('g1','中断测试群',[member('c1','角色一',{activeFrom:'00:00',activeTo:'23:59'}),member('c2','角色二',{muted:true})],{autoTalkEnabled:false,autoTalkRounds:0})],
+      ai_custom_characters:makeRoles(),api_settings:apiSeed(),
+      [key]:[{role:'user',mid:'original',text:'旧记录',time:1000}],
+      chat_history_c2:[{role:'user',mid:'private-original',text:'单聊记录',time:1000}]
+    });
+    const groupsBefore=await read(page,'phone_groups');
+    const privateBefore=await read(page,'chat_history_c2');
+    let requests=0;
+    await page.route('https://mock.local/**',route=>route.fulfill({status:200,contentType:'application/json',body:'{}'}));
+    await page.route('**/chat/completions',route=>{
+      requests++;
+      return route.fulfill({status:200,contentType:'text/event-stream',
+        body:'data: '+JSON.stringify({choices:[{delta:{content:'收到，我在。[群私聊:c2:PRIVATE_FIXTURE_529][红包:10:测试]'}}]})+'\n\n'});
+    });
+    await page.goto(baseUrl+'/chat/chat/chat-detail.html?id=g1',{waitUntil:'load'});
+    await page.waitForFunction(()=>document.getElementById('chat-title')?.textContent?.includes('中断测试群'));
+    await page.locator('#chat-input').fill('测试中断');
+    await sendFromVisibleComposer(page);
+    await page.waitForFunction(k=>JSON.parse(localStorage.getItem(k)||'[]').some(x=>x.role==='system_error'),key,{timeout:20000});
+    const rows=await read(page,key);
+    assert.equal(rows.filter(x=>x.mid==='original').length,1);
+    assert.equal(rows.filter(x=>x.role==='user'&&x.text==='测试中断').length,1);
+    const reply=rows.filter(x=>x.role==='assistant');
+    assert.equal(reply.length,1);
+    assert.equal(reply[0].memberId,'c1');
+    assert.equal(reply[0].text,'收到，我在。');
+    assert.equal(rows.filter(x=>x.role==='system_error').length,1);
+    assert.ok(!JSON.stringify(rows).includes('PRIVATE_FIXTURE_529'));
+    assert.deepEqual(await read(page,'chat_history_c2'),privateBefore);
+    assert.deepEqual(await read(page,'phone_groups'),groupsBefore);
+    assert.equal(requests,1);
+    await page.reload({waitUntil:'load'});
+    assert.deepEqual(await read(page,key),rows);
+  } finally {await context.close();}
+});
+
+test('C11 stale interrupted group SSE cannot overwrite a concurrent tab', async () => {
+  const context=await newContext(),page=await context.newPage(),observer=await context.newPage();
+  const key='chat_history_g1';let releaseResponse,seenRequest;
+  const release=new Promise(resolve=>{releaseResponse=resolve;});
+  const seen=new Promise(resolve=>{seenRequest=resolve;});
+  try {
+    await seed(page,{
+      phone_groups:[makeGroup('g1','并发测试群',[member('c1','角色一',{activeFrom:'00:00',activeTo:'23:59'}),member('c2','角色二',{muted:true})],{autoTalkEnabled:false,autoTalkRounds:0})],
+      ai_custom_characters:makeRoles(),api_settings:apiSeed(),
+      [key]:[{role:'user',mid:'original',text:'旧记录',time:1000}]
+    });
+    await observer.goto(baseUrl+'/chat/chat/chat-detail.html?id=g1',{waitUntil:'load'});
+    await observer.waitForFunction(()=>!!window.ChatHistoryAtomic);
+    await page.route('https://mock.local/**',route=>route.fulfill({status:200,contentType:'application/json',body:'{}'}));
+    await page.route('**/chat/completions',async route=>{
+      seenRequest();await release;
+      await route.fulfill({status:200,contentType:'text/event-stream',
+        body:'data: '+JSON.stringify({choices:[{delta:{content:'旧回复不应保存'}}]})+'\n\n'});
+    });
+    await page.goto(baseUrl+'/chat/chat/chat-detail.html?id=g1',{waitUntil:'load'});
+    await page.waitForFunction(()=>document.getElementById('chat-title')?.textContent?.includes('并发测试群'));
+    await page.locator('#chat-input').fill('并发测试');
+    await sendFromVisibleComposer(page);
+    await Promise.race([seen,new Promise((_,reject)=>setTimeout(()=>reject(Error('no synthetic SSE request')),15000))]);
+    const update=await observer.evaluate(async k=>{
+      const old=JSON.parse(localStorage.getItem(k));
+      const message={role:'user',mid:'other-tab',text:'其他窗口的新消息',time:Date.now()};
+      const saved=await window.ChatHistoryAtomic.appendManyIf('g1',[message]);
+      return {ok:saved.ok,expected:old.concat(message)};
+    },key);
+    assert.equal(update.ok,true);
+    releaseResponse();
+    await page.waitForFunction(()=>typeof singleChatSendPending!=='undefined'&&!singleChatSendPending,null,{timeout:20000});
+    assert.deepEqual(await read(observer,key),update.expected);
+    await page.goto(baseUrl+'/chat/chat/chat.html',{waitUntil:'load'});
+    await page.goto(baseUrl+'/chat/chat/chat-detail.html?id=g1',{waitUntil:'load'});
+    assert.deepEqual(await read(page,key),update.expected);
+  } finally {releaseResponse();await context.close();}
+});

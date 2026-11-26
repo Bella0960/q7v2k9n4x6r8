@@ -353,10 +353,10 @@ test('chat AI context validation marks saved user bubble retryable without makin
   const result = { failed: [], notifications: [], rendered: false };
   const environment = {
     window: { RoleWorldbookBindings: binding },
-    localStorage: storage, result
+    localStorage: storage, result, callCurrent: () => true
   };
   const execute = new Function('environment', `
-    const { window, localStorage, result } = environment;
+    const { window, localStorage, result, callCurrent } = environment;
     const console = { error() {} };
     const RoleWorldbookBindings = window.RoleWorldbookBindings;
     const aliasRoleId = 'role_a', currentRoleId = 'role_a', roleId = 'role_a';
@@ -467,6 +467,7 @@ test('latest QA AI prompt actually filters private/group lore and blocks bad sto
     const result = { stopped: true, text: null, failures: [], notices: [] };
     const task = new Function('env', `
       const { window, localStorage, roles, result, opts } = env;
+      const callCurrent = () => opts.callRevoked !== true;
       const console = { error() {} };
       const roleForTurn = roles[0], currentCharacter = roleForTurn;
       const isGroupChat = !!opts.group, aliasRoleId = isGroupChat ? 'g1' : 'role_a';
@@ -502,4 +503,8 @@ test('latest QA AI prompt actually filters private/group lore and blocks bad sto
   assert.equal(malformed.stopped, true);
   assert.deepEqual(malformed.failures, [{ mid: 'm1', time: 1, reason: 'worldbook-read' }]);
   assert.match(malformed.notices[0], /本轮未请求 AI/);
+  const revoked = execute({ callRevoked: true, noBooks: true, mounts: { chat_worldbooks_role_a: '{broken' } });
+  assert.equal(revoked.stopped, true);
+  assert.deepEqual(revoked.failures, []);
+  assert.deepEqual(revoked.notices, []);
 });

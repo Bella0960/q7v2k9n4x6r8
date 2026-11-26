@@ -39,6 +39,11 @@ test('same emitted bytes yield the same release; changed code yields a new relea
 import vm from 'node:vm';
 const current='c'.repeat(24), old='d'.repeat(24);
 const origin='https://app.invalid';
+const swSource=fs.readFileSync('sw.js','utf8');
+const cacheBase=swSource.match(/^const CACHE_NAME = '(phone-app-pwa-v\d+)';$/m)?.[1];
+assert.ok(cacheBase, 'source app-shell cache name must be versioned');
+const oldCacheBase='phone-app-pwa-v'+(Number(cacheBase.split('v').at(-1))-1);
+const activeCache=cacheBase+'-'+current;
 function swHarness() {
   const calls={matches:[],writes:[],fetches:[],deleted:[]};
   const handlers={};
@@ -56,7 +61,7 @@ function swHarness() {
   };
   const caches={
     open:async()=>cache,
-    keys:async()=>['phone-app-pwa-v310','phone-app-pwa-v311-'+current,'maomao-font-assets-v1','maomao-media-store','__mao_account_v1__example'],
+    keys:async()=>[oldCacheBase,activeCache,'maomao-font-assets-v1','maomao-media-store','__mao_account_v1__example'],
     delete:async key=>{calls.deleted.push(key);return true;}
   };
   const fetch=async(req,options)=>{
@@ -64,9 +69,10 @@ function swHarness() {
     if(new URL(req.url).pathname==='/pwa-release.json')return Response.json({release:current});
     return new Response('const wrong=true;', {headers:{'content-type':'text/javascript','x-mao-release':current}});
   };
-  const source=fs.readFileSync('sw.js','utf8')
+  const source=swSource
     .replace("const BUILD_RELEASE = '__MAOMAO_BUILD_RELEASE__';","const BUILD_RELEASE = '"+current+"';")
-    .replace("const CACHE_NAME = 'phone-app-pwa-v311';","const CACHE_NAME = 'phone-app-pwa-v311-"+current+"';");
+    .replace("const CACHE_NAME = '"+cacheBase+"';","const CACHE_NAME = '"+activeCache+"';");
+  assert.ok(source.includes("const CACHE_NAME = '"+activeCache+"';"));
   vm.runInNewContext(source,{self,caches,fetch,URL,Request,Response,Headers,Map,Date,AbortController,setTimeout,clearTimeout,console});
   async function request(path) {
     const tasks=[];let response;
@@ -94,7 +100,7 @@ test('a stale executable request never receives current bytes under its old vers
 test('activation removes only obsolete app-shell generations, never media or scoped account caches',async()=>{
   const h=swHarness();
   await h.activate();
-  assert.deepEqual(h.calls.deleted,['phone-app-pwa-v310']);
+  assert.deepEqual(h.calls.deleted,[oldCacheBase]);
 });
 
 test('optional precache has a bounded deadline even when a request never settles',async()=>{

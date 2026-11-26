@@ -8,6 +8,9 @@
 <script src="../../shared/js/native-feel.js"></script>
 <script src="../../shared/js/phone/phone_storage.js"></script>
 <script src="../../shared/js/phone/chat-message-policy.js?v=20261122search1"></script>
+<script src="../../shared/js/phone/chat-context-policy.js?v=20261125public1"></script>
+<script src="../../shared/js/group-governance.js?v=20261125scope3"></script>
+<script src="../../shared/js/phone/group-write-guard.js?v=20261125g10"></script>
 <style>
   * { box-sizing: border-box; margin: 0; padding: 0; -webkit-tap-highlight-color: transparent; }
   body {
@@ -192,7 +195,16 @@
     return m ? decodeURIComponent(m[1]) : ''; // 正则取到的是原始串，需要手动解码
   }
   var roleId = getRoleIdFromUrl();
-  console.log('[chat-search] roleId =', roleId);
+  var groupSearch=String(roleId).charAt(0)==='g';
+  var searchGuard=window.MAOGroupWriteGuard;
+  var searchGroup=groupSearch&&searchGuard?searchGuard.read(String(roleId)):null;
+  function searchGroupCurrent(){
+    if(!groupSearch)return true;
+    try{return !!(searchGroup&&window.GroupGovernance&&window.GroupGovernance.userIsInGroup(searchGroup.group)&&searchGuard.matches(searchGroup)&&window.ChatContextPolicy&&typeof window.ChatContextPolicy.groupPublicHistory==='function');}catch(error){return false;}
+  }
+  function searchMessageAllowed(message){
+    return !groupSearch||(searchGroupCurrent()&&window.ChatContextPolicy.groupPublicHistory([message],String(roleId)).length===1);
+  }
 
   // ================= 搜索结果样式（JS 注入，不改动 head 中已做好的极简 CSS） =================
   var searchExtraStyle = document.createElement('style');
@@ -250,9 +262,9 @@
 
   // 历史记录：解析失败/空数组统一返回 []
   // 注意：变量名不能用 history（会遮蔽只读的 window.history，赋值被忽略导致脚本报错中断）
-  var historyList = [];
+  var historyList = [], rawHistory = null;
   try {
-    var rawHistory = localStorage.getItem('chat_history_' + roleId);
+    if(searchGroupCurrent())rawHistory = localStorage.getItem('chat_history_' + roleId);
     if (rawHistory) {
       var parsedHistory = JSON.parse(rawHistory);
       if (Array.isArray(parsedHistory)) historyList = parsedHistory;
@@ -322,6 +334,7 @@
   }
 
   function renderResults(keyword) {
+    if(!searchGroupCurrent()){renderEmpty('群资料已变化，请重新进入');return;}
     var kw = keyword.trim();
     var kwLower = kw.toLowerCase();
 
@@ -329,6 +342,7 @@
     var matched = [];
     for (var i = 0; i < displayList.length; i++) {
       var mm = displayList[i];
+      if(!searchMessageAllowed(mm))continue;
       if (window.ChatMessagePolicy && typeof window.ChatMessagePolicy.isSearchableMessage === 'function') {
         if (!window.ChatMessagePolicy.isSearchableMessage(mm)) continue;
       } else if (isErrorMsg(mm)) continue;
@@ -366,12 +380,13 @@
     var card = e.target.closest ? e.target.closest('.sr-card') : null;
     if (!card || !searchResults.contains(card)) return;
     var idx = parseInt(card.getAttribute('data-idx'), 10);
-    if (isNaN(idx)) return;
+    if (isNaN(idx)||!searchMessageAllowed(displayList[idx])) return;
+    try{if(localStorage.getItem('chat_history_'+roleId)!==rawHistory){renderEmpty('聊天记录已变化，请重新进入搜索');return;}}catch(error){renderEmpty('聊天记录暂不可用');return;}
     window.location.href = 'chat-detail.html?id=' + encodeURIComponent(roleId) + '&hl=' + idx;
   });
 
   // 初始状态：完全没有历史 -> 暂无聊天记录；否则提示开始搜索
-  if (displayList.filter(function (m) { return !isErrorMsg(m); }).length === 0) {
+  if (displayList.filter(function (m) { return searchMessageAllowed(m)&&!isErrorMsg(m); }).length === 0) {
     renderEmpty('暂无聊天记录');
     searchInput.disabled = true;
     searchInput.placeholder = '暂无聊天记录';
