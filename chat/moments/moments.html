@@ -4,7 +4,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>空间 · 小手机</title>
     <script src="../../shared/js/font-loader.js?v=20261022v1"></script><style>:root { --base-font-size: 14px; }html { font-size: calc(var(--base-font-size, 14px) / 14 * 16); }</style>
-    <script src="../../shared/js/native-feel.js"></script><script src="../../shared/js/chat-beauty.js?v=20261102v3"></script><script src="../../shared/js/phone/phone_storage.js"></script><script src="../../shared/js/phone/phone_api.js"></script><script src="../../shared/js/phone/phone_context.js?v=20261102npc1"></script><script src="../../shared/js/phone/phone_apps.js"></script><script src="../../shared/js/phone/phone_engine.js"></script><script src="../../shared/js/phone/phone_ui.js"></script><style>html {
+    <script src="../../shared/js/native-feel.js"></script><script src="../../shared/js/phone/moments-cover-store.js?v=20261124v1"></script><script src="../../shared/js/chat-beauty.js?v=20261102v3"></script><script src="../../shared/js/phone/phone_storage.js"></script><script src="../../shared/js/phone/phone_api.js"></script><script src="../../shared/js/phone/phone_context.js?v=20261102npc1"></script><script src="../../shared/js/phone/phone_apps.js"></script><script src="../../shared/js/phone/phone_engine.js"></script><script src="../../shared/js/phone/phone_ui.js"></script><style>html {
     -webkit-user-select: none;
     user-select: none;
     -webkit-touch-callout: none;
@@ -580,11 +580,11 @@ a:active, button:active, [role="button"]:active { transform: scale(0.97); }</sty
         <div class="space-stage">
             <div class="wechat-moments-toolbar">
                 <a class="wechat-moments-back" href="../chat/chat.html" aria-label="返回微信">
-                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="m15 18-6-6 6-6"/></svg>
+                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" style="display:block;width:20px;height:20px;flex:0 0 20px"><path d="m15 18-6-6 6-6"/></svg>
                 </a>
                 <strong>朋友圈</strong>
                 <button type="button" id="wechatMomentsCamera" aria-label="发表动态">
-                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M4 7h3l2-2h6l2 2h3a2 2 0 0 1 2 2v9a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V9a2 2 0 0 1 2-2Z"/><circle cx="12" cy="13" r="3.5"/></svg>
+                    <svg width="21" height="21" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" style="display:block;width:21px;height:21px;flex:0 0 21px"><path d="M4 7h3l2-2h6l2 2h3a2 2 0 0 1 2 2v9a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V9a2 2 0 0 1 2-2Z"/><circle cx="12" cy="13" r="3.5"/></svg>
                 </button>
             </div>
             <div class="cover-block">
@@ -645,6 +645,7 @@ a:active, button:active, [role="button"]:active { transform: scale(0.97); }</sty
     </div>
 
     <script src="../../shared/js/phone/role-public-timeline.js?v=20261102v1"></script>
+    <script src="../../shared/js/phone/moments-chat-action.js?v=20261124v4"></script>
         <script src="../../shared/js/nav.js"></script>
     <script>
         /* ================= 数据层 ================= */
@@ -1216,101 +1217,46 @@ a:active, button:active, [role="button"]:active { transform: scale(0.97); }</sty
         }
 
         if (aiBtn) aiBtn.addEventListener('click', function () {
-            var characters = loadCharacters();
-            if (!characters.length) {
-                showToast('还没有角色，先去联系人添加一个吧');
-                return;
-            }
+            if (aiBtn.disabled) return;
+            var selected = document.getElementById('roleSelect');
+            var selectedId = selected ? String(selected.value || '') : '';
+            var action = window.MomentsChatAction;
+            if (!action || !window.PhoneAPI) { showToast('发布模块暂不可用'); return; }
+            var role = action.resolveRole(getCharacterList(), selectedId);
+            if (!role) { showToast('请先选择要发动态的角色'); return; }
             var config = getApiConfig();
-            var apiKey = (config.apiKey || '').trim();
-            if (!apiKey) {
-                showToast('请先到设置页配置 API Key');
-                return;
-            }
-            var baseUrl = (config.baseUrl || 'https://api.openai.com/v1').trim().replace(/\/+$/, '');
-            var model = (config.model || 'gpt-3.5-turbo').trim();
+            if (!String(config.apiKey || '').trim()) { showToast('请先到设置页配置 API Key'); return; }
 
-            var role = characters[Math.floor(Math.random() * characters.length)];
-            var persona = (role.persona || role.prompt || '一个善解人意的AI角色').trim();
-            var tone = (role.tone || '').trim();
-
-            var systemPrompt = '你是' + (role.name || '一个角色') + '。角色设定：' + persona +
-                (tone ? '。说话语气：' + tone : '') +
-                '。现在要以第一人称发布一条社交空间动态。';
+            var systemPrompt = '你是虚构角色' + (role.name || '角色') +
+                '。人设：' + String(role.persona || role.prompt || '').slice(0, 4000) +
+                '。语气：' + String(role.tone || '').slice(0, 500) +
+                '。结合自己的生活设定写一条自然的朋友圈，避免重复已有动态。不得复制私聊、真实个人资料、联系方式、地址、密钥；不得代表其他角色或用户发帖。只输出 [朋友圈动态:正文]，正文不超过120字。';
             if (window.RolePublicTimeline && typeof window.RolePublicTimeline.buildRolePrompt === 'function') {
-                var postTimelinePrompt = window.RolePublicTimeline.buildRolePrompt(role.id, loadMoments(), { maxEntries: 3 });
-                if (postTimelinePrompt) systemPrompt += '\n\n' + postTimelinePrompt;
+                var timeline = window.RolePublicTimeline.buildRolePrompt(selectedId, loadMoments(), { maxEntries: 3 });
+                if (timeline) systemPrompt += '\n\n' + timeline;
             }
-            var userPrompt = '请结合你的人设，写一条此刻想发的生活动态（朋友圈风格）。' +
-                '要求：只输出动态正文本身，50个字以内，一句话，口语化、自然真实；' +
-                '不要使用任何表情符号，不要加引号或括号，不要解释，不要出现“动态：”之类的前缀。' +
-                '如果你想发一张图片，请直接在正文里用文字描述这张图片（比如：今天阳光很好，桌上摆着一杯热气腾腾的咖啡），不要输出图片代码。';
-
+            var requestId = (window.crypto && typeof window.crypto.randomUUID === 'function')
+                ? window.crypto.randomUUID() : Date.now() + '_' + Math.random().toString(36).slice(2);
             aiBtn.disabled = true;
             showToast((role.name || 'TA') + ' 正在构思…');
-
-            var momentApiStart = Date.now();
-            var controller = new AbortController();
-            var timeoutId = setTimeout(function () { controller.abort(); }, 15000);
-
-            fetch(baseUrl + '/chat/completions', {
-                method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json',
-                    'Authorization': 'Bearer ' + apiKey
-                },
-                signal: controller.signal,
-                body: JSON.stringify({
-                    model: model,
-                    messages: [
-                        { role: 'system', content: systemPrompt },
-                        { role: 'user', content: userPrompt }
-                    ],
-                    temperature: config.temperature != null ? config.temperature : 0.8,
-                    stream: false
-                })
-            }).then(function (response) {
-                if (!response.ok) {
-                    return response.text().then(function (t) {
-                        var detail = t;
-                        try { detail = (JSON.parse(t).error || {}).message || t; } catch (e) {}
-                        throw new Error('HTTP ' + response.status + '：' + (detail || response.statusText));
-                    });
-                }
-                return response.json();
-            }).then(function (data) {
-                var text = (((data || {}).choices || [])[0] || {}).message
-                    ? data.choices[0].message.content : '';
-                text = String(text || '').replace(/^["“”]+|["“”]+$/g, '').replace(/^动态[:：]\s*/, '').trim();
-                if (!text) throw new Error('返回内容为空');
-                if (text.length > 200) text = text.slice(0, 200);
-
-                var post = {
-                    id: 'm_' + Date.now() + '_' + Math.floor(Math.random() * 1000),
-                    authorId: role.id || '',
-                    author: role.name || '匿名用户',
-                    avatar: role.avatar || '',
-                    content: text,
-                    image: '',
-                    time: Date.now(),
-                    likes: 0,
-                    liked: false,
-                    comments: 0,
-                    commentList: [],
-                    byAI: true
-                };
-                var list = loadMoments();
-                list.unshift(post);
-                saveMoments(list);
+            Promise.resolve().then(function () {
+                return window.PhoneAPI.complete({
+                    system: systemPrompt,
+                    user: '以你自己的身份发布此刻的日常动态。',
+                    timeoutMs: 30000
+                });
+            }).then(async function (result) {
+                var content = action.parsePost(result);
+                if (!content) throw new Error('模型没有返回可发布正文');
+                var post = await action.publishLocked({
+                    roleId: selectedId, requestId: requestId, content: content,
+                    source: 'menu', storage: localStorage, getCharacters: getCharacterList
+                });
                 renderMoments();
-                logApiCall(model, 'success', momentApiStart);
-                showToast((role.name || 'TA') + ' 发布了新动态');
-            }).catch(function (err) {
-                var msg = (err && err.name === 'AbortError') ? '请求超时，请稍后再试' : ('生成失败：' + (err && err.message ? err.message : '未知错误'));
-                showToast(msg);
-                logApiCall(model, 'error', momentApiStart, (err && err.message) ? err.message : '未知错误');
+                showToast((post.author || 'TA') + ' 发布了新动态');
+            }).catch(function () {
+                showToast('动态发布失败，请检查连接或存储后重试');
             }).finally(function () {
-                clearTimeout(timeoutId);
                 aiBtn.disabled = false;
             });
         });
@@ -1515,6 +1461,9 @@ a:active, button:active, [role="button"]:active { transform: scale(0.97); }</sty
         /* ================= 封面 / 头像：回显 + 点击上传（读写 myProfile，不改排版样式） ================= */
         (function () {
             var PROFILE_KEY = 'myProfile';
+            var coverUploadRevision = 0;
+            var coverWriteQueue = Promise.resolve();
+            var coverRevision = 0;
             var coverBlock = document.querySelector('.cover-block');
             var avatarBox = document.getElementById('coverAvatar');
             var coverInput = document.getElementById('coverInput');
@@ -1537,8 +1486,9 @@ a:active, button:active, [role="button"]:active { transform: scale(0.97); }</sty
                 var p = readProfile();
                 var coverName = document.getElementById('wechatCoverName');
                 if (coverName) coverName.textContent = p.nickname || p.name || '我';
-                if (p.cover) {
-                    coverBlock.style.backgroundImage = 'url("' + p.cover + '")';
+                function displayCover(source) {
+                if (source) {
+                    coverBlock.style.backgroundImage = 'url("' + source + '")';
                     coverBlock.style.backgroundSize = 'cover';
                     coverBlock.style.backgroundPosition = 'center';
                     coverBlock.style.backgroundRepeat = 'no-repeat';
@@ -1548,6 +1498,13 @@ a:active, button:active, [role="button"]:active { transform: scale(0.97); }</sty
                     coverBlock.style.backgroundPosition = '';
                     coverBlock.style.backgroundRepeat = '';
                 }
+                }
+                var revision = ++coverRevision;
+                displayCover(p.cover || '');
+                var store = window.MomentsCoverStore;
+                if (store) store.get().then(function (source) {
+                    if (revision === coverRevision && source) displayCover(source);
+                }).catch(function () {});
                 if (p.avatar) {
                     avatarBox.innerHTML = '<img src="' + p.avatar + '" alt="">';
                 } else {
@@ -1573,7 +1530,7 @@ a:active, button:active, [role="button"]:active { transform: scale(0.97); }</sty
                 }
             }
 
-            // 通用压缩：mode='cover' 封面最大宽 600 等比缩放；mode='avatar' 200x200 居中裁剪
+            // 封面高清缩放（最长边 2400），头像维持原尺寸。
             function compressImage(file, mode, cb) {
                 var reader = new FileReader();
                 reader.onload = function (ev) {
@@ -1591,13 +1548,13 @@ a:active, button:active, [role="button"]:active { transform: scale(0.97); }</sty
                                 var sy = (img.height - side) / 2;
                                 ctx.drawImage(img, sx, sy, side, side, 0, 0, size, size);
                             } else {
-                                var maxW = 600;
-                                var scale = Math.min(1, maxW / img.width);
+                                var maxSide = 2400;
+                                var scale = Math.min(1, maxSide / Math.max(img.width, img.height));
                                 canvas.width = Math.round(img.width * scale);
                                 canvas.height = Math.round(img.height * scale);
                                 ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
                             }
-                            cb(canvas.toDataURL('image/jpeg', 0.7));
+                            cb(canvas.toDataURL('image/jpeg', mode === 'cover' ? 0.94 : 0.7));
                         } catch (err) {
                             alert('图片处理失败，请更换图片重试');
                             cb('');
@@ -1620,8 +1577,21 @@ a:active, button:active, [role="button"]:active { transform: scale(0.97); }</sty
                     var file = e.target.files && e.target.files[0];
                     input.value = ''; // 先重置，保证重选同一张图也能触发 change
                     if (!file) return;
+                    var uploadRevision = mode === 'cover' ? ++coverUploadRevision : 0;
                     compressImage(file, mode, function (dataUrl) {
                         if (!dataUrl) return;
+                        if (mode === 'cover') {
+                            var store = window.MomentsCoverStore;
+                            if (!store) { showToast('封面存储不可用，请重试'); return; }
+                            if (uploadRevision !== coverUploadRevision) return;
+                            coverWriteQueue = coverWriteQueue.catch(function () {}).then(function () {
+                                if (uploadRevision !== coverUploadRevision) return;
+                                return store.save(dataUrl).then(function () {
+                                    if (uploadRevision === coverUploadRevision) applyProfilePreview();
+                                });
+                            }).catch(function () { showToast('封面保存失败，请重试'); });
+                            return;
+                        }
                         if (saveProfileField(field, dataUrl)) applyProfilePreview();
                     });
                 });
@@ -1677,6 +1647,13 @@ a:active, button:active, [role="button"]:active { transform: scale(0.97); }</sty
         })();
 
         renderMoments();
+        // Same-origin chat tabs publish into the same store; refresh when returning.
+        window.addEventListener('storage', function (event) {
+            if (event.key === MOMENTS_KEY) renderMoments();
+        });
+        window.addEventListener('pageshow', function (event) {
+            if (event.persisted) renderMoments();
+        });
 
         (function processPublishedPostReplies() {
             try {
@@ -1696,33 +1673,34 @@ a:active, button:active, [role="button"]:active { transform: scale(0.97); }</sty
         /* ================= 角色选择（封面菜单内） ================= */
         (function initRoleSelect() {
             var S = window.PhoneStorage;
-            var E = window.PhoneEngine;
-
-            if (!S || !E) return; // 公共模块没加载就跳过
-
+            if (!S) return;
             var roleSelect = document.getElementById('roleSelect');
-
-            // 填充角色下拉
+            if (!roleSelect) return;
+            var key = 'moments_selected_role_v1';
             var chars = S.getCharacters();
-            if (roleSelect && chars.length) {
-                var html = '';
-                for (var i = 0; i < chars.length; i++) {
-                    var c = chars[i];
-                    html += '<option value="' + c.id + '">' + (c.name || '角色' + (i + 1)) + '</option>';
-                }
-                roleSelect.innerHTML = html;
-                // 默认选中 currentContact 或第一个
-                var saved = E.getCurrentContactId();
-                if (saved) roleSelect.value = saved;
-                E.setCurrentContact(roleSelect.value);
-            }
-
-            // 角色切换 → 保存
-            if (roleSelect) {
-                roleSelect.addEventListener('change', function () {
-                    E.setCurrentContact(roleSelect.value);
-                });
-            }
+            roleSelect.textContent = '';
+            var placeholder = document.createElement('option');
+            placeholder.value = '';
+            placeholder.textContent = '请选择角色';
+            roleSelect.appendChild(placeholder);
+            chars.forEach(function (c) {
+                if (!c || c.id == null || String(c.id) === '') return;
+                var option = document.createElement('option');
+                option.value = String(c.id);
+                option.textContent = c.name || '角色';
+                roleSelect.appendChild(option);
+            });
+            try {
+                var saved = localStorage.getItem(key);
+                // Use the current chat only as the initial suggestion; never change it.
+                if (saved === null && typeof S.getCurrentContactId === 'function') saved = S.getCurrentContactId();
+                if (window.MomentsChatAction && window.MomentsChatAction.resolveRole(chars, saved)) roleSelect.value = String(saved);
+                else roleSelect.value = '';
+            } catch (e) { roleSelect.value = ''; }
+            roleSelect.addEventListener('change', function () {
+                try { localStorage.setItem(key, roleSelect.value); }
+                catch (e) { showToast('角色选择未能保存'); }
+            });
         })();
     </script>
 <script src="../../shared/js/statusbar-control.js"></script>

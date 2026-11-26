@@ -169,8 +169,8 @@
     register({
         id: 'moments', label: '朋友圈与动态',
         keys: ['moments','moments_notifications'],
-        prefixes: ['moments_', 'moment_', 'chat_auto_comment_', 'maomao_moments_'],
-        databases: ['maomao-assets']
+        prefixes: ['moments_', 'moment_', 'chat_auto_comment_', 'chat_auto_moment_', 'maomao_moments_'],
+        databases: ['maomao-assets', 'maomao-moments-cover']
     });
     register({
         id: 'games', label: '游戏与剧情进度',

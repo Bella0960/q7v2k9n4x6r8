@@ -27,6 +27,7 @@
     <script src="../../shared/js/phone/chat-context-policy.js?v=20261107vision1"></script>
     <script src="../../shared/js/phone/chat-presence-policy.js?v=20261102v17"></script>
     <script src="../../shared/js/phone/role-public-timeline.js?v=20261102v1"></script>
+    <script src="../../shared/js/phone/moments-chat-action.js?v=20261124v4"></script>
     <script src="../../shared/js/phone/group-chat-policy.js?v=20261102v5"></script>
     <script src="../../shared/js/chat-notifier.js?v=20261102v3"></script>
     <style>
@@ -6267,6 +6268,30 @@
                 }
             }
 
+            // Explicit Moments requests reuse this chat turn's model call.
+            // Capture the actual role and persisted user message, never use the global selected role.
+            var momentRetrySource = retryTarget && contextOnly && historyList.find(function (item) {
+                return item && item.role === 'user' && String(item.mid || '') === String(retryTarget.mid || '');
+            });
+            var momentRequestText = momentRetrySource ? momentRetrySource.text : text;
+            var momentsAction = (!isGroupChat && !isRegen && (!contextOnly || momentRetrySource) && !silent &&
+                presenceMode === 'online' && window.MomentsChatAction &&
+                currentCharacter && currentCharacter.id != null && failureTarget &&
+                window.MomentsChatAction.requestsPost(momentRequestText)) ? {
+                    roleId: String(currentCharacter.id),
+                    requestId: String((retryTarget && retryTarget.mid) || failureTarget.mid || '')
+                } : null;
+            if (momentsAction && momentsAction.requestId) {
+                systemPrompt += '\n\n' + window.MomentsChatAction.postPrompt();
+            } else momentsAction = null;
+            var autoMomentsRoleId = (!momentsAction && !/(?:朋友圈|动态)/.test(String(text || '')) && !isGroupChat && !isRegen && !contextOnly && !silent &&
+                presenceMode === 'online' && currentCharacter && currentCharacter.id != null &&
+                failureTarget && failureTarget.mid && window.MomentsChatAction)
+                ? String(currentCharacter.id) : '';
+            if (autoMomentsRoleId && window.MomentsChatAction.autoEligible(localStorage, autoMomentsRoleId, Date.now())) {
+                systemPrompt += '\n\n' + window.MomentsChatAction.autoPrompt();
+            } else autoMomentsRoleId = '';
+
             // 构造 OpenAI 兼容格式 messages 数组 (system + 历史记录)
             const apiMessages = [
                 { role: 'system', content: systemPrompt }
@@ -6455,12 +6480,18 @@
             // R4 渲染回调：交给 PhoneStream 每帧节流调用（正则清洗 + DOM 写入 + 滚动）
             // 引擎已抽离至 shared/js/phone/phone_stream.js（三段式超时/SSE 解析/残留收尾）
             function paintStreamLive(text) {
+                // Do not display a draft post or an unverified success claim during streaming.
+                if (momentsAction) {
+                    lastPaintedStreamText = typeof text === 'string' ? text : '';
+                    return;
+                }
                 // 保留原始累计文本：若流引擎意外抛错，收尾仍可走既有清洗与落库流程。
                 lastPaintedStreamText = typeof text === 'string' ? text : '';
                 // 同步快照，供 pagehide 时把半截消息落库
                 inflightSnapshot = !isGroupChat && isRegen ? null : {
                     text: (function () {
                         var snapshotText = lastPaintedStreamText;
+                        if (window.MomentsChatAction) snapshotText = window.MomentsChatAction.stripAuto(snapshotText);
                         if (window.RoleStickerLibrary && typeof window.RoleStickerLibrary.stripStreamMarker === 'function') {
                             snapshotText = window.RoleStickerLibrary.stripStreamMarker(snapshotText);
                         }
@@ -6489,6 +6520,7 @@
                 if (window.ChatImageVision && typeof window.ChatImageVision.stripAvatarCandidateMarker === 'function') {
                     tmpText = window.ChatImageVision.stripAvatarCandidateMarker(tmpText);
                 }
+                if (window.MomentsChatAction) tmpText = window.MomentsChatAction.stripAuto(tmpText).trim();
                 if (!tmpText) return;
 
                 if (!streamBubble) {
@@ -6625,6 +6657,37 @@
 
             try {
                 if (fullText) {
+                    if (momentsAction) {
+                        var momentContent = streamResult.ok
+                            ? window.MomentsChatAction.parsePost(stripInternalReasoning(fullText)) : '';
+                        if (momentContent) {
+                            try {
+                                if (!singleChatTurnIsCurrent(historyList) ||
+                                    String(currentCharacter.id) !== momentsAction.roleId) throw new Error('角色已切换');
+                                await window.MomentsChatAction.publishLocked({
+                                    roleId: momentsAction.roleId,
+                                    requestId: momentsAction.requestId,
+                                    content: momentContent,
+                                    storage: localStorage,
+                                    canPublish: function () { return singleChatTurnIsCurrent(historyList) && String(currentCharacter.id) === momentsAction.roleId; },
+                                    getCharacters: function () { return window.PhoneStorage.getCharacters(); }
+                                });
+                                fullText = '朋友圈已发布。';
+                                if (typeof showToast === 'function') showToast('朋友圈已发布');
+                            } catch (momentError) {
+                                fullText = '朋友圈未能保存，请检查存储后重试。';
+                                if (typeof showToast === 'function') showToast('朋友圈发布失败');
+                            }
+                        } else {
+                            fullText = (streamResult.ok && window.MomentsChatAction.parseNoPost(stripInternalReasoning(fullText))) || '这次未生成可发布的朋友圈，请重试。';
+                        }
+                    }
+                    var autoMomentContent = '';
+                    if (window.MomentsChatAction) {
+                        var parsedAutoMoment = window.MomentsChatAction.extractAuto(stripInternalReasoning(fullText));
+                        fullText = parsedAutoMoment.text;
+                        if (autoMomentsRoleId && streamResult.ok && fullText) autoMomentContent = parsedAutoMoment.content;
+                    }
                     // ---- 标记剥离 → 清洗 → 落库 → 重渲染（成功与中断保文共用同一套收尾） ----
                     // 群投票/接龙/群管理标记先落到当前历史与群资料，再清理展示文本
                     fullText = processGroupInteractionMarkers(fullText, groupReplyPick, historyList, isRegen, isGroupFollowup);
@@ -6747,6 +6810,22 @@
                         transferDecisionSnapshots = applyTransferDecisionMarkers(historyList, parsedTransferDecision.amounts);
                         var replySaved = saveMessages(historyList);
                         var replySaveFailed = !replySaved;
+                        if (replySaved && autoMomentContent && singleChatTurnIsCurrent(historyList) &&
+                            String(currentCharacter.id) === autoMomentsRoleId &&
+                            window.MomentsChatAction.autoEligible(localStorage, autoMomentsRoleId, Date.now())) {
+                            try {
+                                var autoMomentRequestId = String(failureTarget.mid);
+                                await window.MomentsChatAction.publishLocked({
+                                    roleId: autoMomentsRoleId, requestId: autoMomentRequestId, source: 'auto',
+                                    content: autoMomentContent, storage: localStorage,
+                                    canPublish: function () { return singleChatTurnIsCurrent(historyList) && String(currentCharacter.id) === autoMomentsRoleId; },
+                                    getCharacters: function () { return window.PhoneStorage.getCharacters(); }
+                                });
+                                if (typeof showToast === 'function') showToast('角色发布了新动态');
+                            } catch (autoMomentError) {
+                                if (typeof showToast === 'function') showToast('自动动态未能保存');
+                            }
+                        }
                         var avatarRoleId = aliasRoleId || currentCharacter.id;
                         if (replySaved && !isGroupChat && window.RoleAvatarLibrary &&
                             typeof window.RoleAvatarLibrary.addAsset === 'function') {
