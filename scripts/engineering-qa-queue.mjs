@@ -695,9 +695,9 @@ async function resumeCandidate(repository, baseline, branch, stored, { push = fa
   };
 }
 
-function invalidateCandidate(repository, baseline, candidate) {
+async function invalidateCandidate(repository, baseline, candidate, { deleteRemote = false } = {}) {
   if (!SHA.test(baseline ?? '') || !SHA.test(candidate ?? '')) {
-    fail('Usage: node scripts/engineering-qa-queue.mjs invalidate <qa-baseline-sha> --confirm-candidate=<candidate-sha>');
+    fail('Usage: node scripts/engineering-qa-queue.mjs invalidate <qa-baseline-sha> --confirm-candidate=<candidate-sha> [--delete-remote]');
   }
   const branch = 'integration/qa-batch-' + baseline.slice(0, 12);
   const stored = readCandidateReceipt(repository, baseline, branch);
@@ -706,18 +706,36 @@ function invalidateCandidate(repository, baseline, candidate) {
     fail('Confirmation SHA does not match the saved candidate; nothing was invalidated.');
   }
   assertPushTarget(repository);
-  const remoteSha = remoteBranchSha(branch);
-  if (remoteSha) {
-    fail('Remote candidate ref exists (' + remoteSha + '); local invalidation will not delete or replace a remote candidate.');
-  }
   const ref = 'refs/heads/' + branch;
   const localSha = localBranchSha(ref);
   if (localSha && localSha !== candidate) {
     fail('Local candidate ref differs from the saved candidate; nothing was invalidated.');
   }
+  const remoteSha = remoteBranchSha(branch);
+  if (remoteSha && remoteSha !== candidate) {
+    fail('Remote candidate ref is a different SHA (' + remoteSha + '); refusing to delete another window’s candidate.');
+  }
+  if (remoteSha && !deleteRemote) {
+    fail('Remote candidate exists at the confirmed SHA. Add --delete-remote only when the coordinator explicitly intends to void this published candidate.');
+  }
+  if (remoteSha) {
+    // Ref deletion is guarded by the exact old SHA; a concurrent change makes Git reject it.
+    await getLatestSuccessfulQaReleaseReceipt();
+    git(['push', '--force-with-lease=refs/heads/' + branch + ':' + candidate,
+      'origin', ':refs/heads/' + branch], 'Delete explicitly invalidated QA candidate ref');
+    if (remoteBranchSha(branch)) {
+      fail('Remote candidate ref changed during invalidation; the local receipt is retained.');
+    }
+  }
   if (localSha) git(['update-ref', '-d', ref, candidate], 'Invalidate explicitly confirmed local candidate');
   unlinkSync(stored.path);
-  return { status: 'invalidated-local-candidate', baseline, branch, candidate, remoteRefDeleted: false };
+  return {
+    status: 'invalidated-candidate',
+    baseline,
+    branch,
+    candidate,
+    remoteRefDeleted: Boolean(remoteSha)
+  };
 }
 
 async function assembleReadyBatch(repository, baseline, { push = false } = {}) {
@@ -878,15 +896,18 @@ async function main() {
     return;
   }
   if (command === 'invalidate') {
-    const [baseline, confirmation, ...extra] = args;
-    const match = /^--confirm-candidate=([0-9a-f]{40})$/.exec(confirmation ?? '');
-    if (extra.length || !match) {
-      fail('Usage: node scripts/engineering-qa-queue.mjs invalidate <qa-baseline-sha> --confirm-candidate=<candidate-sha>');
+    const [baseline, ...flags] = args;
+    const confirmations = flags.filter(flag => flag.startsWith('--confirm-candidate='));
+    const deleteRemote = flags.includes('--delete-remote');
+    const extra = flags.filter(flag => !flag.startsWith('--confirm-candidate=') && flag !== '--delete-remote');
+    const match = /^--confirm-candidate=([0-9a-f]{40})$/.exec(confirmations[0] ?? '');
+    if (extra.length || confirmations.length !== 1 || !match) {
+      fail('Usage: node scripts/engineering-qa-queue.mjs invalidate <qa-baseline-sha> --confirm-candidate=<candidate-sha> [--delete-remote]');
     }
-    console.log(JSON.stringify(invalidateCandidate(repository, baseline, match[1]), null, 2));
+    console.log(JSON.stringify(await invalidateCandidate(repository, baseline, match[1], { deleteRemote }), null, 2));
     return;
   }
-  fail('Usage: npm run eng:register -- <PR-number> <TASK-ID> <QA-baseline-SHA> <F1|F2|F3|F4> "exact test check name" [...] [--depends-on=TASK-ID,TASK-ID] | validate-baseline <qa-source-sha> | assemble <qa-baseline-sha> [--push] | invalidate <qa-baseline-sha> --confirm-candidate=<candidate-sha>');
+  fail('Usage: npm run eng:register -- <PR-number> <TASK-ID> <QA-baseline-SHA> <F1|F2|F3|F4> "exact test check name" [...] [--depends-on=TASK-ID,TASK-ID] | validate-baseline <qa-source-sha> | assemble <qa-baseline-sha> [--push] | invalidate <qa-baseline-sha> --confirm-candidate=<candidate-sha> [--delete-remote]');
 }
 
 if (process.argv[1] && import.meta.url === pathToFileURL(resolve(process.argv[1])).href) {
