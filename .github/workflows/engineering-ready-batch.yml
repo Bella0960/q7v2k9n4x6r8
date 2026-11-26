@@ -4,7 +4,7 @@ on:
   workflow_dispatch:
     inputs:
       qa_baseline_sha:
-        description: Exact source SHA from the latest successful QA source receipt
+        description: Exact source SHA from the latest successful QA-only release (verify runs do not count)
         type: string
         required: true
 
@@ -32,11 +32,12 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: '22'
-      - name: Validate baseline input
+      - name: Validate exact latest successful QA release receipt
         env:
           QA_BASELINE: ${{ inputs.qa_baseline_sha }}
         run: |
-          node -e "if (!/^[0-9a-f]{40}$/.test(process.env.QA_BASELINE || '')) process.exit(1)"
+          set -euo pipefail
+          node scripts/engineering-qa-queue.mjs validate-baseline "$QA_BASELINE" | tee -a "$GITHUB_STEP_SUMMARY"
       - name: Discover, verify, assemble and push one immutable candidate
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}

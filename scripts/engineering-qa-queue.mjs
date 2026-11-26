@@ -9,6 +9,11 @@ import { runConflictAudit } from './engineering-pr-conflicts.mjs';
 
 const API = 'https://api.github.com';
 const DEFAULT_REPO = 'Bella0960/q7v2k9n4x6r8';
+const QA_REPOSITORY = 'Bella0960/web-runtime-lab';
+const QA_WORKFLOW_FILE = 'reusable-qa-request.yml';
+const QA_WORKFLOW_PATH = '.github/workflows/' + QA_WORKFLOW_FILE;
+const QA_REQUEST_PATH = '.github/qa-release-request.json';
+const QA_RELEASE_STEP = 'Automatically select scope, validate and publish QA once';
 const SHA = /^[0-9a-f]{40}$/;
 const TASK_ID = /^[A-Z][A-Z0-9-]{1,63}$/;
 const RISK = /^F[1-4]$/;
@@ -208,14 +213,14 @@ function equalPaths(a, b) {
   return JSON.stringify([...a].sort()) === JSON.stringify([...b].sort());
 }
 
-async function api(path, { method = 'GET', body } = {}) {
+async function api(path, { method = 'GET', body, publicReadOnly = false } = {}) {
   const token = process.env.GH_TOKEN || process.env.GITHUB_TOKEN;
-  if (!token) fail('Set GH_TOKEN or run inside GitHub Actions with GITHUB_TOKEN; the queue fails closed without authenticated API access.');
+  if (!publicReadOnly && !token) fail('Set GH_TOKEN or run inside GitHub Actions with GITHUB_TOKEN; the queue fails closed without authenticated API access.');
   const response = await fetch(API + path, {
     method,
     headers: {
       accept: 'application/vnd.github+json',
-      authorization: 'Bearer ' + token,
+      ...(publicReadOnly ? {} : { authorization: 'Bearer ' + token }),
       'x-github-api-version': '2022-11-28',
       'user-agent': 'maomao-ready-task-registry',
       ...(body ? { 'content-type': 'application/json' } : {})
@@ -235,11 +240,11 @@ async function api(path, { method = 'GET', body } = {}) {
   return data;
 }
 
-async function pagedArray(path, key = null, limit = 3000) {
+async function pagedArray(path, key = null, limit = 3000, options = {}) {
   const output = [];
   for (let page = 1; page <= Math.ceil(limit / 100); page++) {
     const separator = path.includes('?') ? '&' : '?';
-    const data = await api(path + separator + 'per_page=100&page=' + page);
+    const data = await api(path + separator + 'per_page=100&page=' + page, options);
     const items = key ? data?.[key] : data;
     if (!Array.isArray(items)) fail('GitHub API returned an invalid paginated list for ' + path);
     output.push(...items);
@@ -271,6 +276,102 @@ async function fetchPrEvidence(repository, pr) {
     fail('PR #' + pr.number + ' commit-status list is incomplete.');
   }
   return { reviews, checkRuns, status, files };
+}
+
+
+async function readQaRequestAtRun(run) {
+  const response = await api(
+    '/repos/' + QA_REPOSITORY + '/contents/' + QA_REQUEST_PATH + '?ref=' + encodeURIComponent(run.head_sha),
+    { publicReadOnly: true }
+  );
+  if (response?.encoding !== 'base64' || typeof response.content !== 'string') {
+    fail('QA run #' + run.run_number + ' has no readable immutable request-file receipt.');
+  }
+  try {
+    return JSON.parse(Buffer.from(response.content.replace(/\\s/g, ''), 'base64').toString('utf8'));
+  } catch {
+    fail('QA run #' + run.run_number + ' has an invalid immutable request-file receipt.');
+  }
+}
+
+async function qaRunJobs(run) {
+  return pagedArray(
+    '/repos/' + QA_REPOSITORY + '/actions/runs/' + run.id + '/jobs',
+    'jobs',
+    3000,
+    { publicReadOnly: true }
+  );
+}
+
+export async function getLatestSuccessfulQaReleaseReceipt() {
+  const runs = await pagedArray(
+    '/repos/' + QA_REPOSITORY + '/actions/workflows/' + QA_WORKFLOW_FILE + '/runs?branch=main',
+    'workflow_runs',
+    3000,
+    { publicReadOnly: true }
+  );
+  const ordered = runs
+    .filter(run => run?.path === QA_WORKFLOW_PATH && run?.head_branch === 'main' &&
+      ['push', 'workflow_dispatch'].includes(run?.event))
+    .sort((a, b) => (Date.parse(b?.created_at ?? '') || 0) - (Date.parse(a?.created_at ?? '') || 0));
+
+  for (const run of ordered) {
+    if (!Number.isSafeInteger(run?.id) || !SHA.test(run?.head_sha ?? '')) {
+      fail('QA workflow run metadata is incomplete; refusing to infer the deployed source SHA.');
+    }
+
+    if (run.event === 'push') {
+      const request = await readQaRequestAtRun(run);
+      if (request?.operation === 'verify') continue;
+      if (request?.operation !== 'release' || request?.confirmation !== 'qa-only' ||
+          !SHA.test(request?.candidate ?? '')) {
+        fail('QA push run #' + run.run_number + ' has an unknown or invalid operation; refusing to use an older release baseline.');
+      }
+      if (run.status !== 'completed' || run.conclusion !== 'success') {
+        fail('A newer QA release attempt #' + run.run_number + ' did not complete successfully. Its deployment state is uncertain; do not assemble from an older baseline.');
+      }
+      const jobs = await qaRunJobs(run);
+      const releaseSteps = jobs.flatMap(job => Array.isArray(job?.steps) ? job.steps : [])
+        .filter(step => step?.name === QA_RELEASE_STEP);
+      if (releaseSteps.length !== 1 || releaseSteps[0].conclusion !== 'success') {
+        fail('QA release run #' + run.run_number + ' lacks a successful release-step receipt.');
+      }
+      return {
+        repository: QA_REPOSITORY,
+        workflow: QA_WORKFLOW_PATH,
+        runId: run.id,
+        runNumber: run.run_number,
+        runHeadSha: run.head_sha,
+        sourceSha: request.candidate,
+        releasedAt: run.updated_at ?? run.created_at
+      };
+    }
+
+    if (run.status !== 'completed') {
+      fail('QA workflow_dispatch run #' + run.run_number + ' is still active; wait for the QA release queue to finish before assembling.');
+    }
+    const jobs = await qaRunJobs(run);
+    const releaseSteps = jobs.flatMap(job => Array.isArray(job?.steps) ? job.steps : [])
+      .filter(step => step?.name === QA_RELEASE_STEP);
+    if (releaseSteps.length !== 1) {
+      fail('Cannot determine whether manual QA run #' + run.run_number + ' published a candidate.');
+    }
+    if (releaseSteps[0].conclusion === 'skipped') continue;
+    fail('Latest successful QA release run #' + run.run_number +
+      ' used workflow_dispatch; its exact candidate SHA is not recorded in the immutable request commit. Refusing to guess the source baseline.');
+  }
+  fail('No successful QA-only release receipt was found in the fixed reusable QA workflow.');
+}
+
+async function requireCurrentQaBaseline(baseline) {
+  if (!SHA.test(baseline ?? '')) fail('QA baseline must be a full 40-character SHA.');
+  const receipt = await getLatestSuccessfulQaReleaseReceipt();
+  if (receipt.sourceSha !== baseline) {
+    fail('Stale QA baseline ' + baseline + '. Latest successful QA release is run #' +
+      receipt.runNumber + ' with source SHA ' + receipt.sourceSha +
+      '. Reassemble from the latest successful QA source SHA; the old candidate must not be handed to QA.');
+  }
+  return receipt;
 }
 
 function parseArgs(args) {
@@ -450,7 +551,7 @@ function pushCandidate(repository, branch, candidate) {
 }
 
 async function assembleReadyBatch(repository, baseline, { push = false } = {}) {
-  if (!SHA.test(baseline ?? '')) fail('QA baseline must be a full 40-character SHA.');
+  const qaSourceReceipt = await requireCurrentQaBaseline(baseline);
   const branch = 'integration/qa-batch-' + baseline.slice(0, 12);
   const ref = 'refs/heads/' + branch;
   const localExists = git(['show-ref', '--verify', '--quiet', ref], 'Local candidate preflight', true).ok;
@@ -471,7 +572,7 @@ async function assembleReadyBatch(repository, baseline, { push = false } = {}) {
       const record = { id: task.id, status: 'ready', base: task.base, head: task.head, paths: task.paths, dependsOn: task.dependsOn };
       writeFileSync(join(temp, String(index + 1).padStart(3, '0') + '.json'), JSON.stringify(record));
     }
-    const result = spawnSync(process.execPath, [fileURLToPath(BATCH_SCRIPT), temp, baseline, branch], {
+    const result = spawnSync(process.execPath, [fileURLToPath(BATCH_SCRIPT), temp, baseline, branch, JSON.stringify(qaSourceReceipt)], {
       encoding: 'utf8', timeout: 180000, maxBuffer: 16 * 1024 * 1024,
       env: { ...process.env, GIT_TERMINAL_PROMPT: '0' }
     });
@@ -513,9 +614,19 @@ async function assembleReadyBatch(repository, baseline, { push = false } = {}) {
       };
     }
 
+    let finalQaSourceReceipt;
+    try {
+      // Recheck at the handoff boundary: a newer QA release during assembly invalidates this candidate.
+      finalQaSourceReceipt = await requireCurrentQaBaseline(baseline);
+    } catch (error) {
+      git(['update-ref', '-d', ref, candidate], 'Remove candidate after QA baseline changed during assembly');
+      candidate = null;
+      throw error;
+    }
     if (push) pushCandidate(repository, branch, candidate);
     return {
       status: push ? 'pushed' : 'assembled-local',
+      qaSourceReceipt: finalQaSourceReceipt,
       repository,
       baseline,
       branch,
@@ -541,6 +652,13 @@ async function main() {
   const repository = process.env.GITHUB_REPOSITORY || DEFAULT_REPO;
   const [command, ...args] = process.argv.slice(2);
   if (command === 'register') return registerTask(repository, args);
+  if (command === 'validate-baseline') {
+    const [baseline, ...extra] = args;
+    if (extra.length) fail('Usage: node scripts/engineering-qa-queue.mjs validate-baseline <latest-successful-qa-source-sha>');
+    const receipt = await requireCurrentQaBaseline(baseline);
+    console.log(JSON.stringify({ status: 'current-qa-baseline', baseline, qaSourceReceipt: receipt }, null, 2));
+    return;
+  }
   if (command === 'assemble') {
     const { baseline, push } = parseArgs(args);
     const receipt = await assembleReadyBatch(repository, baseline, { push });
@@ -548,7 +666,7 @@ async function main() {
     if (receipt.status === 'blocked') process.exitCode = 2;
     return;
   }
-  fail('Usage: node scripts/engineering-qa-queue.mjs register ... | assemble <qa-baseline-sha> [--push]');
+  fail('Usage: node scripts/engineering-qa-queue.mjs register ... | validate-baseline <qa-source-sha> | assemble <qa-baseline-sha> [--push]');
 }
 
 if (process.argv[1] && import.meta.url === pathToFileURL(resolve(process.argv[1])).href) {

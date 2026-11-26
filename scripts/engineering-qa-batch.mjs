@@ -78,13 +78,35 @@ function readReadyTasks(directory) {
   return orderReadyTasks(records.filter(task => task.status === 'ready'));
 }
 
-function assemble(directory, qaSha, branch) {
+function validateQaSourceReceipt(receipt, baseline) {
+  if (!receipt || receipt.repository !== 'Bella0960/web-runtime-lab' ||
+      receipt.workflow !== '.github/workflows/reusable-qa-request.yml' ||
+      !Number.isSafeInteger(receipt.runId) || receipt.runId < 1 ||
+      !Number.isSafeInteger(receipt.runNumber) || receipt.runNumber < 1 ||
+      !shaPattern.test(receipt.runHeadSha ?? '') ||
+      receipt.sourceSha !== baseline ||
+      typeof receipt.releasedAt !== 'string' || !Number.isFinite(Date.parse(receipt.releasedAt))) {
+    throw new Error('Batch requires a verified latest successful QA source receipt matching the exact baseline SHA.');
+  }
+  return {
+    repository: receipt.repository,
+    workflow: receipt.workflow,
+    runId: receipt.runId,
+    runNumber: receipt.runNumber,
+    runHeadSha: receipt.runHeadSha,
+    sourceSha: receipt.sourceSha,
+    releasedAt: receipt.releasedAt
+  };
+}
+
+function assemble(directory, qaSha, branch, receipt) {
   if (!branchPattern.test(branch ?? '')) {
     throw new Error('Use a new integration/ branch for the batch.');
   }
   const ref = 'refs/heads/' + branch;
   git(['check-ref-format', ref], 'Candidate branch validation');
   const baseline = commit(qaSha, 'Deployed QA baseline');
+  const qaSourceReceipt = validateQaSourceReceipt(receipt, baseline);
   const tasks = readReadyTasks(directory);
   if (!tasks.length) throw new Error('No ready tasks to assemble.');
 
@@ -117,8 +139,12 @@ function assemble(directory, qaSha, branch) {
       throw new Error(task.id + ' would change paths outside its approved ownership.');
     }
     if (!paths.length) continue;
+    const message = 'Integrate ' + task.id + ' into ' + branch + '\\n\\n' +
+      'QA-Source-SHA: ' + qaSourceReceipt.sourceSha + '\\n' +
+      'QA-Release-Run: ' + qaSourceReceipt.runId + '\\n' +
+      'QA-Release-Request-SHA: ' + qaSourceReceipt.runHeadSha;
     candidate = git(['-c', 'commit.gpgSign=false', 'commit-tree', tree, '-p', candidate, '-p', task.head,
-      '-m', 'Integrate ' + task.id + ' into ' + branch], task.id + ' candidate commit').trim();
+      '-m', message], task.id + ' candidate commit').trim();
   }
   if (candidate === baseline) throw new Error('All ready changes are already in the QA baseline.');
   // A zero old value makes this a create-only update, including simultaneous runs.
@@ -127,6 +153,7 @@ function assemble(directory, qaSha, branch) {
     branch,
     baseline,
     candidate,
+    qaSourceReceipt,
     tasks: tasks.map(({ id, base, head, dependsOn }) => ({
       id,
       base,
@@ -139,11 +166,14 @@ function assemble(directory, qaSha, branch) {
 
 function main() {
   try {
-    const [directory, baseline, branch, ...extra] = process.argv.slice(2);
-    if (!directory || !baseline || !branch || extra.length) {
-      throw new Error('Usage: npm run eng:batch -- <task-directory> <deployed-qa-sha> <integration/branch>');
+    const [directory, baseline, branch, receiptJson, ...extra] = process.argv.slice(2);
+    if (!directory || !baseline || !branch || !receiptJson || extra.length) {
+      throw new Error('Usage: npm run eng:batch -- <task-directory> <deployed-qa-sha> <integration/branch> <verified-qa-source-receipt-json>');
     }
-    console.log(JSON.stringify(assemble(directory, baseline, branch), null, 2));
+    let receipt;
+    try { receipt = JSON.parse(receiptJson); }
+    catch { throw new Error('QA source receipt argument must be valid JSON.'); }
+    console.log(JSON.stringify(assemble(directory, baseline, branch, receipt), null, 2));
   } catch (error) {
     console.error(error.message);
     process.exitCode = 1;
