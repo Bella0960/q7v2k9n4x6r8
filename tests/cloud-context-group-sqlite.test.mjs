@@ -94,6 +94,12 @@ test('contact scheduling binds the latest consented turn and reuses its pending 
     assert.equal(pending.scheduled_at,now+59999);
     assert.equal(store.enqueueCloudContactForSnapshot(args).scheduled_at,pending.scheduled_at);
     assert.equal(store.countPendingActivitiesForCharacter('a','r'),1);
+    store.setUserAutonomy('a',false,now+1,'d1');
+    assert.equal(store.countPendingActivitiesForCharacter('a','r'),0);
+    assert.equal(store.enqueueCloudContactForSnapshot(args),null);
+    store.setUserAutonomy('a',true,now+2,'d1');
+    assert.equal(store.enqueueCloudContactForSnapshot(args),null,
+      'turning the switch back on must not replay a cancelled contact');
     const newer=store.recordCharacterContextSnapshot(snap('a','d1','r','e2',now+5));
     assert.equal(store.enqueueCloudContactForSnapshot(args),null);
     assert.equal(store.enqueueCloudContactForSnapshot({...args,deviceId:'d2',contextVersion:newer.contextVersion}),null);

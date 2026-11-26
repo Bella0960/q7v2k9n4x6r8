@@ -260,6 +260,11 @@ export class CloudDatabase {
         if (!this.store.hasCloudContextSchema()) {
           return Response.json({ ok: false, reason: 'cloud_context_schema_unavailable' }, { status: 503 });
         }
+        if (this.env.AUTONOMY_MODEL_BACKEND !== 'mock' &&
+            (this.env.AUTONOMY_MODEL_BACKEND !== 'openai_compatible' ||
+             this.env.AUTONOMY_ALLOW_REAL_MODEL !== 'true')) {
+          return Response.json({ ok: false, reason: 'real_model_not_enabled' });
+        }
         const result = await runCloudModelTick({ store: this.store, env: this.env });
         return Response.json({ ok: result.ok, result });
       }

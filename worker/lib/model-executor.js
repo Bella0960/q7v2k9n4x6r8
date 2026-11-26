@@ -38,6 +38,8 @@ export function readAutonomyModelConfig(env = {}) {
   const timeoutMs = Number(env.AUTONOMY_MODEL_TIMEOUT_MS || 20000);
   if (!Number.isSafeInteger(timeoutMs) || timeoutMs < 3000 || timeoutMs > 60000) return null;
 
+  if (backend === 'mock') return { backend, timeoutMs };
+
   // Optional zero-API-key provider. Merely adding an AI binding does not
   // activate inference: it also needs an explicit backend selection and
   // the existing account/character opt-in + scheduler gates.
@@ -108,6 +110,14 @@ export async function generateAutonomousMessages({
 } = {}) {
   const config = readAutonomyModelConfig(env);
   if (!config) return { ok: false, reason: 'model_not_configured' };
+  if (config.backend === 'mock') {
+    if (!snapshot || typeof snapshot !== 'object') return { ok: false, reason: 'context_snapshot_missing' };
+    if (!initialContact) return { ok: true, send: false, messages: [] };
+    if (Number(snapshot.last_user_message_at) !== 0 || snapshot.recent_messages_json !== '[]') {
+      return { ok: false, reason: 'initial_contact_context_invalid' };
+    }
+    return { ok: true, send: true, messages: ['这是一条免费模拟通知。', '第二条气泡，用于检查聊天恢复。'] };
+  }
   if (!snapshot || typeof snapshot !== 'object') {
     return { ok: false, reason: 'context_snapshot_missing' };
   }

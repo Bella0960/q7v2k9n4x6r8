@@ -1778,7 +1778,7 @@
             }
           );
           if (result.queued) {
-            initialTestStatus.textContent = '已排队，可以锁屏。预计 ' +
+            initialTestStatus.textContent = (result.modelMode === 'mock' ? '免费模拟任务已排队。' : '任务已排队。') + '可以锁屏，预计 ' +
               new Date(result.scheduledAt).toLocaleTimeString() + ' 后开始生成。';
             return;
           }

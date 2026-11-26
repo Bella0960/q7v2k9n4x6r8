@@ -1420,7 +1420,8 @@ export function createApp({ store, env = {}, now = () => Date.now(), fetchImpl =
     }) : null;
     return ok({ saved: true, duplicate: result.duplicate === true,
       contextVersion: result.contextVersion, queued: Boolean(task),
-      scheduledAt: task?.scheduled_at ?? null, initialContact });
+      scheduledAt: task?.scheduled_at ?? null, initialContact,
+      modelMode: env.AUTONOMY_MODEL_BACKEND === 'mock' ? 'mock' : 'external' });
   }
 
   async function listCharacterOutboundMessages(request, characterId, url) {

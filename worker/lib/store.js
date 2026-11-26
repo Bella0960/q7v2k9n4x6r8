@@ -766,16 +766,19 @@ class CloudStore {
    * by the gate; missing character row inherits the global choice.
    */
   setUserAutonomy(userId, enabled, now, deviceId = null) {
-    if (deviceId && !this.isActiveAccountDevice(userId, deviceId)) return null;
-    this.exec(
-      `INSERT INTO user_autonomy (user_id, enabled, updated_at)
-       VALUES (?, ?, ?)
-       ON CONFLICT(user_id) DO UPDATE SET enabled = excluded.enabled, updated_at = excluded.updated_at`,
-      userId,
-      enabled ? 1 : 0,
-      now
-    );
-    return this.getUserAutonomy(userId);
+    return this.transaction(() => {
+      if (deviceId && !this.isActiveAccountDevice(userId, deviceId)) return null;
+      this.exec(
+        `INSERT INTO user_autonomy (user_id, enabled, updated_at)
+         VALUES (?, ?, ?)
+         ON CONFLICT(user_id) DO UPDATE SET enabled = excluded.enabled, updated_at = excluded.updated_at`,
+        userId,
+        enabled ? 1 : 0,
+        now
+      );
+      if (!enabled) this.cancelPendingCloudContacts(userId, now);
+      return this.getUserAutonomy(userId);
+    });
   }
 
   getUserAutonomy(userId) {
@@ -1021,6 +1024,18 @@ class CloudStore {
     )[0] || null;
   }
 
+  cancelPendingCloudContacts(userId, now) {
+    this.exec(
+      `UPDATE activity_queue
+       SET status = 'superseded', locked_by = NULL, locked_until = NULL,
+           next_attempt_at = NULL, updated_at = ?
+       WHERE status IN ('waiting', 'retry', 'running') AND kind = 'contact'
+         AND CASE WHEN json_valid(payload_json) THEN json_extract(payload_json,'$.executionMode') END = 'cloud'
+         AND device_id IN (SELECT id FROM devices WHERE user_id = ?)`,
+      now, userId
+    );
+  }
+
   setUserContextSharing({ userId, enabled, deviceId, now }) {
     if (typeof enabled !== 'boolean') return null;
     const value = enabled ? 1 : 0;
@@ -1037,15 +1052,7 @@ class CloudStore {
       );
       if (value === 0) {
         this.exec('DELETE FROM character_context_snapshots WHERE user_id = ?', userId);
-        this.exec(
-          `UPDATE activity_queue
-           SET status = 'superseded', locked_by = NULL, locked_until = NULL,
-               next_attempt_at = NULL, updated_at = ?
-           WHERE status IN ('waiting', 'retry', 'running') AND kind = 'contact'
-             AND CASE WHEN json_valid(payload_json) THEN json_extract(payload_json,'$.executionMode') END = 'cloud'
-             AND device_id IN (SELECT id FROM devices WHERE user_id = ?)`,
-          now, userId
-        );
+        this.cancelPendingCloudContacts(userId, now);
       }
       return this.getUserContextSharing(userId);
     });

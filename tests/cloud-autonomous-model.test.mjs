@@ -479,3 +479,19 @@ test('SQLite budget reservation is durable, scoped, lease fenced and one-use',()
     assert.equal(exec("SELECT COUNT(*) AS n FROM execution_log")[0].n,2);
   } finally { db.close(); }
 });
+
+test('free mock produces only a fixed two-bubble first-contact result with no provider access', async () => {
+  const forbidden = () => { throw new Error('provider must not run'); };
+  const args = {
+    env: {AUTONOMY_MODEL_BACKEND:'mock', AI:{run:forbidden}},
+    snapshot: {last_user_message_at:0,recent_messages_json:'[]',persona_text:'secret fixture'},
+    fetchImpl: forbidden
+  };
+  const result = await generateAutonomousMessages({...args,initialContact:true});
+  assert.equal(result.send,true);
+  assert.equal(result.messages.length,2);
+  assert.ok(!JSON.stringify(result).includes('secret fixture'));
+  assert.equal((await generateAutonomousMessages(args)).send,false);
+  assert.equal((await generateAutonomousMessages({...args,initialContact:true,
+    snapshot:{...args.snapshot,last_user_message_at:1}})).reason,'initial_contact_context_invalid');
+});
