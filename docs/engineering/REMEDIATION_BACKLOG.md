@@ -240,6 +240,18 @@ Acceptance before implementation:
 
 ## Feature implementation
 
+### UI-CONTACT-001 — Unify contacts page shell background
+**Priority:** P2 · **Status:** IN PROGRESS
+
+Scope: make the base contacts shell background match the neutral contact content stage, removing the white strip exposed below the list without changing the page's white surfaces.
+
+Acceptance:
+- The default contacts shell and `.contact-stage` both use `#FAFAFA`.
+- Existing white search/list surfaces remain white.
+- Silver Butterfly and WeChat theme-specific shell backgrounds remain intact.
+- Bottom navigation geometry and Home Indicator appearance/behavior remain unchanged.
+
+
 ### AI-IMG-001 — Complete role-based image generation and gallery
 **Priority:** P1 · **Status:** IN PROGRESS
 
