@@ -367,13 +367,14 @@ function runQueueAssembleCli(t, specs, options = {}) {
     'const buildQaRuns = release => {',
     '  const requestCommit = release.runHeadSha || String(release.runId || 91).padStart(40, "0");',
     '  return [',
-    '    { id: 950, run_number: 95, workflow_id: 428897690, path: ".github/workflows/reusable-qa-request.yml", event: "push", head_branch: "main", status: "completed", conclusion: release.newerRunConclusion || "success", head_sha: "e".repeat(40), created_at: "2026-11-26T15:17:19Z" },',
+    '    { id: 950, run_number: 95, workflow_id: 428897690, path: ".github/workflows/reusable-qa-request.yml", event: "push", head_branch: "main", status: "completed", conclusion: release.newerRunConclusion || "success", head_sha: "e".repeat(40), created_at: "2026-11-26T15:17:19Z", updated_at: "2026-11-26T15:17:19Z" },',
     '    { id: 949, run_number: 94, workflow_id: 428897690, path: ".github/workflows/reusable-qa-request.yml", event: "pull_request", head_branch: "GOV-007/test", status: "completed", conclusion: "success", head_sha: "f".repeat(40), created_at: "2026-11-26T10:04:44Z" },',
     '    { id: 948, run_number: 93, workflow_id: 428897690, path: ".github/workflows/reusable-qa-request.yml", event: "pull_request", head_branch: "GOV-007/test", status: "completed", conclusion: "failure", head_sha: "a".repeat(40), created_at: "2026-11-26T10:03:47Z" },',
-    '    { id: 952, run_number: 92, workflow_id: 428897690, path: ".github/workflows/reusable-qa-request.yml", event: "push", head_branch: "main", status: "completed", conclusion: "failure", head_sha: "d".repeat(40), created_at: "2026-11-26T09:29:11Z" },',
-    '    { id: release.runId || 45785677703, run_number: release.runNumber || 91, workflow_id: 428897690, path: ".github/workflows/reusable-qa-request.yml", event: release.event || "push", head_branch: "main", status: "completed", conclusion: "success", head_sha: requestCommit, created_at: release.createdAt || "2026-11-26T08:44:11Z" }',
+    '    { id: 952, run_number: 92, workflow_id: 428897690, path: ".github/workflows/reusable-qa-request.yml", event: "push", head_branch: "main", status: "completed", conclusion: "failure", head_sha: "d".repeat(40), created_at: "2026-11-26T09:29:11Z", updated_at: "2026-11-26T09:29:11Z" },',
+    '    { id: release.runId || 45785677703, run_number: release.runNumber || 91, workflow_id: 428897690, path: ".github/workflows/reusable-qa-request.yml", event: release.event || "push", head_branch: "main", status: "completed", conclusion: "success", head_sha: requestCommit, created_at: release.createdAt || "2026-11-26T08:44:11Z", updated_at: release.updatedAt || release.createdAt || "2026-11-26T08:44:11Z" },',
+    ...(release.rerunOlderRelease ? ['    { id: 45784272072, run_number: 90, workflow_id: 428897690, path: ".github/workflows/reusable-qa-request.yml", event: "push", head_branch: "main", status: "completed", conclusion: "success", head_sha: "b".repeat(40), run_attempt: 2, created_at: "2026-11-26T08:34:11Z", updated_at: "2026-11-26T16:30:00Z" }'] : []),
     '  ];',
-    '};',
+    '};'
     'globalThis.fetch = async (input, init = {}) => {',
     '  const url = new URL(String(input));',
     '  const method = init.method || "GET";',
@@ -390,7 +391,7 @@ function runQueueAssembleCli(t, specs, options = {}) {
     '  if (qaJobs) {',
     '    const id = Number(qaJobs[1]);',
     '    const release = releaseForCall(Math.max(0, qaRunListCalls - 1));',
-    '    if (id !== (release.runId || 45785677703)) throw new Error("Unexpected QA jobs request: " + id);',
+    '    if (id !== (release.rerunOlderRelease ? 45784272072 : (release.runId || 45785677703))) throw new Error("Unexpected QA jobs request: " + id);',
     '    return json({ jobs: [{ id: 91001, name: "request", conclusion: "success", steps: [{ name: "Automatically select scope, validate and publish QA once", conclusion: "success" }] }] });',
     '  }',
     '  if (path === qaBase + "/contents/.github/qa-release-request.json") {',
@@ -402,7 +403,8 @@ function runQueueAssembleCli(t, specs, options = {}) {
       ? { operation: "release", candidate: release.sourceSha, confirmation: "qa-only" }
       : { operation: "verify", candidate: "4b49c0a95ea8cfedc8aa2007c061a1f6f6771431", confirmation: "qa-only" };',
     '    else if (ref === "d".repeat(40)) request = { operation: "verify", candidate: "6c61b0395705848dfa898073709a651869e87b90", confirmation: "qa-only" };',
-    '    else if (ref === requestCommit) request = { operation: "release", candidate: release.sourceSha, confirmation: "qa-only" };',
+    '    else if (release.rerunOlderRelease && ref === "b".repeat(40)) request = { operation: "release", candidate: release.sourceSha, confirmation: "qa-only" };
+    else if (ref === requestCommit) request = { operation: "release", candidate: release.sourceSha, confirmation: "qa-only" };',
     '    else throw new Error("Unexpected QA receipt ref: " + ref);',
     '    return json({ encoding: "base64", content: Buffer.from(JSON.stringify(request), "utf8").toString("base64") });',
     '  }',
@@ -567,4 +569,24 @@ test('fails closed when a newer push run is an unsuccessful QA release attempt',
   assert.equal(result.status, 1);
   assert.equal(receipt, null);
   assert.match(result.stderr, /newer QA release attempt #95 did not complete successfully/i);
+});
+
+
+test('recognizes a rerun of an older release as the latest actual QA deployment', t => {
+  const { result, receipt, baseline, candidateDeployedFile } = runQueueAssembleCli(
+    t, [{ id: 'TASK-10' }], {
+      advanceQaBaseline: true,
+      useLatestAsInput: true,
+      qaReleaseSequence: [{
+        source: 'latest',
+        rerunOlderRelease: true,
+        updatedAt: '2026-11-26T08:44:11Z'
+      }]
+    }
+  );
+  assert.equal(result.status, 0, result.stderr);
+  assert.equal(receipt.status, 'assembled-local');
+  assert.equal(receipt.qaSourceReceipt.runNumber, 90);
+  assert.equal(receipt.qaSourceReceipt.sourceSha, baseline);
+  assert.equal(candidateDeployedFile, 'already deployed to QA');
 });

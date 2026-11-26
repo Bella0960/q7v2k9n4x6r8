@@ -313,20 +313,29 @@ export async function getLatestSuccessfulQaReleaseReceipt() {
   const ordered = runs
     .filter(run => run?.path === QA_WORKFLOW_PATH && run?.head_branch === 'main' &&
       ['push', 'workflow_dispatch'].includes(run?.event))
-    .sort((a, b) => (Number(b?.run_number) || 0) - (Number(a?.run_number) || 0));
+    .sort((a, b) => {
+      const updatedAt = run => Date.parse(run?.updated_at ?? '') || Date.parse(run?.created_at ?? '') || 0;
+      return updatedAt(b) - updatedAt(a) ||
+        (Number(b?.run_attempt) || 0) - (Number(a?.run_attempt) || 0) ||
+        (Number(b?.run_number) || 0) - (Number(a?.run_number) || 0);
+    });
 
   for (const run of ordered) {
     if (!Number.isSafeInteger(run?.id) || run.id < 1 ||
         !Number.isSafeInteger(run?.run_number) || run.run_number < 1 ||
-        !SHA.test(run?.head_sha ?? '') || !Number.isFinite(Date.parse(run?.created_at ?? ''))) {
+        !SHA.test(run?.head_sha ?? '') || !Number.isFinite(Date.parse(run?.updated_at ?? run?.created_at ?? ''))) {
       fail('QA workflow run metadata is incomplete; refusing to infer the deployed source SHA.');
     }
 
     if (run.event === 'push') {
       const request = await readQaRequestAtRun(run);
-      if (request?.operation === 'verify') continue;
-      if (request?.operation !== 'release' || request?.confirmation !== 'qa-only' ||
-          !SHA.test(request?.candidate ?? '')) {
+      if (!request || typeof request !== 'object' || Array.isArray(request) ||
+          Object.keys(request).some(key => !['operation', 'candidate', 'confirmation'].includes(key)) ||
+          !['verify', 'release'].includes(request.operation) || !SHA.test(request.candidate ?? '')) {
+        fail('QA push run #' + run.run_number + ' has an invalid immutable request; refusing to use an older QA baseline.');
+      }
+      if (request.operation === 'verify') continue;
+      if (request.operation !== 'release' || request.confirmation !== 'qa-only') {
         fail('QA push run #' + run.run_number + ' has an unknown or invalid operation; refusing to use an older release baseline.');
       }
       if (run.status !== 'completed' || run.conclusion !== 'success') {
