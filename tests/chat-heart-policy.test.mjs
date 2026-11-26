@@ -42,6 +42,46 @@ test('heart storage keys isolate both conversation and speaker identities', () =
   assert.equal(policy.storageKey({ conversationId: 'group-1', speakerId: 'group-1', isGroupChat: true }), '');
 });
 
+test('v2 storage keys avoid separator collisions and ambiguous v1 histories fail closed', () => {
+  const policy = createPolicy();
+  const first = { conversationId: 'a_b', speakerId: 'c', isGroupChat: true };
+  const second = { conversationId: 'a', speakerId: 'b_c', isGroupChat: true };
+  assert.notEqual(policy.storageKey(first), policy.storageKey(second));
+
+  const legacyKey = 'chat_heart_history_v1_a_b_c';
+  const legacyRecords = [{
+    id: 'old-a',
+    text: 'A 的旧心声',
+    createdAt: 100,
+    conversationId: 'a_b',
+    speakerId: 'c'
+  }];
+  const storage = makeStorage({ [legacyKey]: JSON.stringify(legacyRecords) });
+
+  assert.equal(policy.getLatest(storage, first).record.text, 'A 的旧心声');
+  const ambiguous = policy.getLatest(storage, second);
+  assert.equal(ambiguous.record, null);
+  assert.equal(ambiguous.code, 'legacy_ambiguous');
+
+  assert.equal(policy.appendHearts(storage, second, ['B 的新心声'], 200).ok, true);
+  assert.equal(storage.getItem(legacyKey), JSON.stringify(legacyRecords));
+  assert.equal(policy.getLatest(storage, first).record.text, 'A 的旧心声');
+  assert.equal(policy.getLatest(storage, second).record.text, 'B 的新心声');
+});
+
+test('v1 history without explicit owner IDs is not assigned to a speaker', () => {
+  const policy = createPolicy();
+  const options = { conversationId: 'group_1', speakerId: 'member_2', isGroupChat: true };
+  const key = 'chat_heart_history_v1_group_1_member_2';
+  const storage = makeStorage({
+    [key]: JSON.stringify([{ id: 'legacy-unknown', text: '归属不明', createdAt: 100 }])
+  });
+  const result = policy.getLatest(storage, options);
+  assert.equal(result.ok, true);
+  assert.equal(result.code, 'legacy_ambiguous');
+  assert.equal(result.record, null);
+});
+
 test('group members keep separate histories and never read the ambiguous legacy group key', () => {
   const policy = createPolicy();
   const storage = makeStorage({ 'latest_heart_group-1': '旧群心声，归属不明' });

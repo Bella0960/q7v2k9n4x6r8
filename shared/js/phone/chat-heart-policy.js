@@ -4,7 +4,8 @@
 (function (global) {
   'use strict';
 
-  var PREFIX = 'chat_heart_history_v1_';
+  var PREFIX = 'chat_heart_history_v2_';
+  var LEGACY_PREFIX = 'chat_heart_history_v1_';
   var MAX_HISTORY = 24;
   var MAX_TEXT = 200;
 
@@ -35,7 +36,15 @@
   function storageKey(options) {
     var scope = resolveScope(options);
     if (!scope) return '';
-    return PREFIX + encodeURIComponent(scope.conversationId) + '_' +
+    // Encode the pair as one JSON tuple. A separator between two independently
+    // encoded IDs is ambiguous because encodeURIComponent leaves "_" unchanged.
+    return PREFIX + encodeURIComponent(JSON.stringify([
+      scope.conversationId, scope.speakerId
+    ]));
+  }
+
+  function legacyStorageKey(scope) {
+    return LEGACY_PREFIX + encodeURIComponent(scope.conversationId) + '_' +
       encodeURIComponent(scope.speakerId);
   }
 
@@ -56,8 +65,9 @@
     return { text: cleaned, hearts: hearts };
   }
 
-  function normalizeRecord(item, scope) {
+  function normalizeRecord(item, scope, requireIdentity) {
     if (!item || typeof item !== 'object' || Array.isArray(item)) return null;
+    if (requireIdentity && (item.conversationId == null || item.speakerId == null)) return null;
     var value = text(item.text);
     var createdAt = Number(item.createdAt);
     if (!value || !isFinite(createdAt) || createdAt < 0) return null;
@@ -76,10 +86,10 @@
     var scope = resolveScope(options);
     if (!scope) return fail('scope');
     if (!storage || typeof storage.getItem !== 'function') return fail('storage');
-    var key = storageKey(options);
+
     var raw;
     try {
-      raw = storage.getItem(key);
+      raw = storage.getItem(storageKey(options));
     } catch (_) {
       return fail('read');
     }
@@ -90,15 +100,50 @@
       if (!Array.isArray(parsed)) return fail('corrupt');
       var records = [];
       for (var i = 0; i < parsed.length; i++) {
-        var record = normalizeRecord(parsed[i], scope);
+        // V2 records must carry their own identity; the key is not sufficient
+        // evidence of ownership.
+        var record = normalizeRecord(parsed[i], scope, true);
         if (!record) return fail('corrupt');
         records.push(record);
       }
       return { ok: true, code: 'ok', records: records.slice(-MAX_HISTORY), legacy: false };
     }
 
-    // Only direct chats may read the old single-role key. The old group key
-    // was shared by every member and cannot be attributed safely.
+    // V1 used "<encoded conversation>_<encoded speaker>". Since "_" is not
+    // escaped by encodeURIComponent, distinct ID pairs could share one key.
+    // Read a V1 history only when every record proves the exact pair. Never
+    // infer ownership from the key or rewrite/delete an ambiguous legacy value.
+    var ambiguousLegacy = false;
+    var legacyRaw;
+    try {
+      legacyRaw = storage.getItem(legacyStorageKey(scope));
+    } catch (_) {
+      return fail('read');
+    }
+    if (legacyRaw != null) {
+      var legacyParsed;
+      try { legacyParsed = JSON.parse(legacyRaw); } catch (_) { return fail('corrupt'); }
+      if (!Array.isArray(legacyParsed)) return fail('corrupt');
+      var legacyRecords = [];
+      for (var j = 0; j < legacyParsed.length; j++) {
+        var item = legacyParsed[j];
+        if (!item || typeof item !== 'object' || Array.isArray(item)) return fail('corrupt');
+        if (item.conversationId == null || item.speakerId == null ||
+            String(item.conversationId) !== scope.conversationId ||
+            String(item.speakerId) !== scope.speakerId) {
+          ambiguousLegacy = true;
+          break;
+        }
+        var legacyRecord = normalizeRecord(item, scope, true);
+        if (!legacyRecord) return fail('corrupt');
+        legacyRecords.push(legacyRecord);
+      }
+      if (!ambiguousLegacy && legacyRecords.length) {
+        return { ok: true, code: 'legacy_v1', records: legacyRecords.slice(-MAX_HISTORY), legacy: true };
+      }
+    }
+
+    // Only direct chats may read the older single-role latest-value key.
     if (!scope.isGroupChat && scope.legacyRoleId) {
       var legacy;
       try { legacy = storage.getItem('latest_heart_' + scope.legacyRoleId); }
@@ -118,6 +163,10 @@
           }]
         };
       }
+    }
+
+    if (ambiguousLegacy) {
+      return { ok: true, code: 'legacy_ambiguous', records: [], legacy: false };
     }
     return { ok: true, code: 'ok', records: [], legacy: false };
   }
