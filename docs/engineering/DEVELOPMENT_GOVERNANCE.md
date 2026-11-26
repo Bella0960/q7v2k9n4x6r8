@@ -171,6 +171,10 @@ Choose by actual behavior and affected consumers, not by file extension alone.
 - The current reusable runner executes the candidate test plan in both `verify` and `release`; `release` then performs the QA-only deployment and post-deployment checks. Therefore, for a ready candidate that is explicitly authorized for QA publication, use one `release` operation rather than running `verify` and then `release` on the same unchanged SHA. Use `verify` when a no-deploy validation is actually required or when diagnosing a candidate that is not yet ready to publish.
 - A release request is not a deployment receipt. Record the exact tested SHA, successful run, deployed Worker version, and `preview.mao520.com` source receipt separately.
 
+The coordinator can assemble independent ready tasks with `npm run --silent eng:batch -- <task-directory> <deployed-qa-sha> <integration/branch>`. Give each task its own JSON record. A reviewed task has `id`, `status: "ready"`, full `base` and `head` commit SHAs, and an exact `paths` array matching its Git diff. Records marked `in-progress` or `blocked` stay out of the batch.
+
+Use the source SHA from the current QA receipt as the baseline. The command requires each reviewed task base to be in that baseline's history. It rejects overlapping paths or Git merge conflicts and creates a new local integration branch in one create-only update. The output records the baseline, candidate SHA, and included task SHAs. The coordinator uses that exact candidate with the fixed QA request, then records the deployed Worker version and live source receipt after a successful release.
+
 ### 10.5 Failure handling: diagnose once, repair the cause
 
 - Read the actual failed job and sanitized stage summary before retrying. Identify whether the failure is candidate/baseline preflight, a specific Node test, browser test, build, post-test safety guard, upload, or post-deployment readiness.

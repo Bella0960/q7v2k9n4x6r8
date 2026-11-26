@@ -50,7 +50,8 @@
     "test:role:avatars": "node --test tests/role-avatar-library.test.mjs",
     "test:chat:image-vision": "node --test tests/chat-image-vision.test.mjs",
     "postbuild": "node --test tests/production-assets-isolation.test.mjs",
-    "eng:conflicts": "node scripts/engineering-pr-conflicts.mjs"
+    "eng:conflicts": "node scripts/engineering-pr-conflicts.mjs",
+    "eng:batch": "node scripts/engineering-qa-batch.mjs"
   },
   "devDependencies": {
     "playwright": "^1.64.1",

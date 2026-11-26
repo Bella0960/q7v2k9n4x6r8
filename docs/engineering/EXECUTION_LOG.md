@@ -312,3 +312,9 @@ On the next turn/session, read this file and the current `AGENTS.md` first. Cont
 - Eliminated per-PR API calls. The scanner reads paginated open PR metadata and derives changed paths from the pinned base and head commits in Git. It fetches missing commits without checking out another branch or changing local branch refs.
 - Ran the CLI against the live public source from the GOV-006 checkout with no token. The scan completed across 174 open PRs in two API pages, found 136 PR/path overlaps across six branch paths, and exited 2 as expected. Cross-checked exact findings for PRs #300 and #547 against GitHub’s changed-file lists.
 - Node syntax check, 10/10 focused tests, and `git diff --check` passed. The tests exercise paginated PR metadata, actual Git history, filenames and renames, and incomplete API responses.
+
+### GOV-006 isolated QA batch assembly
+
+- Added `npm run eng:batch` to collect ready task records and assemble their reviewed commits on the recorded QA baseline. The Git ref is created only after every ownership, ancestry, and merge check passes.
+- The isolated Git test verified two independent tasks, preservation of existing baseline content and dirty working files, exclusion of an unfinished task, exact overlap rejection, and rejection of an existing integration ref. Together with the scanner, 11/11 focused tests passed.
+- The current fixed QA workflow was inspected. A QA release, adaptive coverage expansion, and the live version/source receipt remain outside this local assembly verification. Source PR #507 is still open in draft and the active release policy keeps adaptive migration in acceptance.
