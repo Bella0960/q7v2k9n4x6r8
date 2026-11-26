@@ -41,8 +41,8 @@ const CSS_BEHAVIOR_PROPERTIES = new Set([
   'will-change'
 ]);
 function cssBehaviorSignature(css) {
-  const source = css.replace(/\\*[\\s\\S]*?\\*\\//g, '');
-  const rules = [...source.matchAll(/([^{}]+)\\{([^{}]*)\\}/g)].map(([, selector, body]) => {
+  const source = css.replace(/\/\*[\s\S]*?\*\//g, '');
+  const rules = [...source.matchAll(/([^{}]+)\{([^{}]*)\}/g)].map(([, selector, body]) => {
     const declarations = body.split(';').map(value => value.trim()).filter(Boolean);
     return { selector: selector.trim(), declarations };
   });
@@ -55,7 +55,7 @@ function cssBehaviorSignature(css) {
       const property = declaration.slice(0, colon).trim().toLowerCase();
       if (!CSS_BEHAVIOR_PROPERTIES.has(property)) return false;
       const value = declaration.slice(colon + 1);
-      for (const match of value.matchAll(/var\\(\\s*(--[a-zA-Z0-9_-]+)/g)) {
+      for (const match of value.matchAll(/var\(\s*(--[a-zA-Z0-9_-]+)/g)) {
         referencedVariables.add(match[1]);
       }
       return true;
@@ -73,14 +73,14 @@ function cssBehaviorSignature(css) {
       }
     }
   }
-  const conditionalRules = [...source.matchAll(/@(media|supports|container|layer|scope|starting-style|keyframes|property)\\b[^{}]*\\{/gi)]
-    .map(match => match[0].replace(/\\s+/g, ' ').trim());
+  const conditionalRules = [...source.matchAll(/@(media|supports|container|layer|scope|starting-style|keyframes|property)\b[^{}]*\{/gi)]
+    .map(match => match[0].replace(/\s+/g, ' ').trim());
   return JSON.stringify({ behaviorRules, variableRules, conditionalRules });
 }
 function cssCompatible(before, after) {
   return cssResources(before) === cssResources(after) &&
     cssBehaviorSignature(before) === cssBehaviorSignature(after) &&
-    !/[\\\\\\u0000]/.test(after.replace(/\\/\\*[\\s\\S]*?\\*\\//g, ''));
+    !/[\\\u0000]/.test(after.replace(/\/\*[\s\S]*?\*\//g, ''));
 }
 function htmlShape(html) {
   const raw = [];
