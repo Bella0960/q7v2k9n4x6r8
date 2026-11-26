@@ -50,7 +50,7 @@ function validateManifest(value) {
     base: value.base,
     head: value.head,
     risk: value.risk,
-    requiredChecks: checks,
+    requiredChecks: manifest.requiredChecks,
     dependsOn: [...new Set(value.dependsOn ?? [])]
   };
 }
@@ -281,17 +281,29 @@ function parseArgs(args) {
 }
 
 async function registerTask(repository, args) {
-  const [numberText, id, base, risk, ...requiredChecks] = args;
+  const [numberText, id, base, risk, ...extraArgs] = args;
   const number = Number(numberText);
   if (!Number.isSafeInteger(number) || number < 1) fail('PR number must be a positive integer.');
+  const dependencyArgs = extraArgs.filter(value => value.startsWith('--depends-on='));
+  if (dependencyArgs.length > 1 ||
+      extraArgs.some(value => value.startsWith('--') && !value.startsWith('--depends-on='))) {
+    fail('Only one --depends-on=TASK-ID,TASK-ID option is supported.');
+  }
+  const requiredChecks = extraArgs.filter(value => !value.startsWith('--depends-on='));
+  const dependsOn = dependencyArgs.length
+    ? dependencyArgs[0].slice('--depends-on='.length).split(',').map(value => value.trim())
+    : [];
+  if (dependencyArgs.length && (!dependencyArgs[0].slice('--depends-on='.length).trim() || dependsOn.some(value => !value))) {
+    fail('--depends-on must contain a comma-separated list of Task IDs.');
+  }
   if (!TASK_ID.test(id ?? '') || !SHA.test(base ?? '') || !RISK.test(risk ?? '') || !requiredChecks.length) {
     fail('Usage: npm run eng:register -- <PR-number> <TASK-ID> <QA-baseline-SHA> <F1|F2|F3|F4> "<exact test check name>" [...] [--depends-on=TASK-ID,TASK-ID]');
   }
   const manifest = validateManifest({
     version: 1, id, status: 'submitted', base,
-    head: '0'.repeat(40), risk, requiredChecks
+    head: '0'.repeat(40), risk, requiredChecks, dependsOn
   });
-  const pr = existingPr;
+  const pr = await api('/repos/' + repository + '/pulls/' + number);
   if (pr.state !== 'open' || pr.head?.repo?.full_name !== repository || pr.base?.repo?.full_name !== repository) {
     fail('Registration requires an open PR whose head and base both belong to ' + repository + '.');
   }
