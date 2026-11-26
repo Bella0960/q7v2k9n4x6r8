@@ -820,21 +820,32 @@ test('CLI invalidate never deletes a different remote SHA even with explicit rem
 });
 
 test('engineering-only test and script changes do not trigger unrelated app regression suites', () => {
-  const tutorial = readFileSync(new URL('../.github/workflows/tutorial-regression.yml', import.meta.url), 'utf8');
-  const font = readFileSync(new URL('../.github/workflows/font-runtime-regression.yml', import.meta.url), 'utf8');
-  const chat = readFileSync(new URL('../.github/workflows/chat-regression-contract.yml', import.meta.url), 'utf8');
+  const read = name => readFileSync(new URL('../.github/workflows/' + name, import.meta.url), 'utf8');
+  const tutorial = read('tutorial-regression.yml');
+  const font = read('font-runtime-regression.yml');
+  const chatCall = read('chat-call-regression.yml');
+  const chat = read('chat-regression-contract.yml');
+  const inspect = read('inspect-phone-gesture.yml');
+  const perf = read('perf-gate.yml');
+  const pwa = read('pwa-navigation-regression.yml');
   const section = (source, begin, end) => source.split(begin)[1].split(end)[0];
+  const assertScoped = (source, workflow, selfOnPr = true) => {
+    assert.equal(source.includes("package.json"), false, workflow + ' must not run on script-only package edits');
+    assert.ok(source.includes("package-lock.json"), workflow + ' must still run on dependency lock changes');
+    if (selfOnPr) assert.equal(source.includes(workflow), false, workflow + ' PR workflow edits must use contract tests, not app regression');
+  };
 
-  assert.equal(tutorial.includes("- 'package.json'"), false);
-  assert.ok(tutorial.includes("- 'package-lock.json'"));
+  assertScoped(tutorial, 'tutorial-regression.yml', false);
 
   const fontPr = section(font, '  pull_request:', '  push:');
   const fontPush = section(font, '  push:', 'permissions:');
-  assert.equal(fontPr.includes("package.json"), false);
-  assert.equal(fontPr.includes("font-runtime-regression.yml"), false);
-  assert.ok(fontPr.includes("package-lock.json"));
-  assert.ok(fontPush.includes("package-lock.json"));
-  assert.ok(fontPush.includes("font-runtime-regression.yml"));
+  assertScoped(fontPr, 'font-runtime-regression.yml');
+  assert.ok(fontPush.includes('font-runtime-regression.yml'));
+
+  const chatCallPr = section(chatCall, '  pull_request:', '  push:');
+  const chatCallPush = section(chatCall, '  push:', 'permissions:');
+  assertScoped(chatCallPr, 'chat-call-regression.yml');
+  assert.ok(chatCallPush.includes('chat-call-regression.yml'));
 
   const chatPr = section(chat, '  pull_request:', '  workflow_dispatch:');
   const chatPush = section(chat, '  push:', '  pull_request:');
@@ -844,6 +855,24 @@ test('engineering-only test and script changes do not trigger unrelated app regr
     assert.ok(paths.includes("- 'tests/**'"));
     assert.ok(paths.includes("- '!tests/engineering-*.test.mjs'"));
   }
-  assert.equal(chatPr.includes("chat-regression-contract.yml"), false);
-  assert.ok(chatPush.includes("chat-regression-contract.yml"));
+  assert.equal(chatPr.includes('chat-regression-contract.yml'), false);
+  assert.ok(chatPush.includes('chat-regression-contract.yml'));
+
+  const inspectPr = section(inspect, '  pull_request:', '  workflow_dispatch:');
+  const inspectPush = section(inspect, '  push:', '  pull_request:');
+  assertScoped(inspectPr, 'inspect-phone-gesture.yml');
+  assertScoped(inspectPush, 'inspect-phone-gesture.yml', false);
+  assert.ok(inspectPush.includes('inspect-phone-gesture.yml'));
+
+  const perfPr = section(perf, '  pull_request:', '  workflow_dispatch:');
+  const perfPush = section(perf, '  push:', '  pull_request:');
+  assertScoped(perfPr, 'perf-gate.yml');
+  assertScoped(perfPush, 'perf-gate.yml', false);
+  assert.ok(perfPush.includes('perf-gate.yml'));
+
+  const pwaPr = section(pwa, '  pull_request:', '  push:');
+  const pwaPush = section(pwa, '  push:', 'permissions:');
+  assertScoped(pwaPr, 'pwa-navigation-regression.yml');
+  assertScoped(pwaPush, 'pwa-navigation-regression.yml', false);
+  assert.ok(pwaPush.includes('pwa-navigation-regression.yml'));
 });
