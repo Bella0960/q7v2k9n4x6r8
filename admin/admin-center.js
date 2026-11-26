@@ -332,6 +332,7 @@
     const invitesVerified = !invitePageError &&
       validOverviewSummary(inviteSummary, ['total', 'pending', 'used', 'expired', 'revoked']);
 
+    $('overviewTotalCount').textContent = accountsVerified ? String(accountSummary.total) : '—';
     $('overviewPendingCount').textContent = accountsVerified ? String(accountSummary.pending) : '—';
     $('overviewActiveCount').textContent = accountsVerified ? String(accountSummary.active) : '—';
     $('overviewRestrictedCount').textContent = accountsVerified ? String(accountSummary.restricted) : '—';
@@ -1430,12 +1431,17 @@
         throw error;
       }
       const me = await api('/api/accounts/me');
-      if (me.account && me.account.id !== pageAccountId) {
+      const account = me.account;
+      if (!account || typeof account.id !== 'string' ||
+          typeof account.role !== 'string' || typeof account.status !== 'string') {
+        throw new Error('账号服务暂时未返回可验证的登录状态，请重新检查。');
+      }
+      if (account.id !== pageAccountId || pageAccountContext() !== pageAccountId) {
         const error = new Error('管理中心账号上下文与当前登录账号不一致。');
         error.code = 'ACCOUNT_CONTEXT_CHANGED';
         throw error;
       }
-      if (!me.account || me.account.role !== 'super_admin' || me.account.status !== 'active') {
+      if (account.role !== 'super_admin' || account.status !== 'active') {
         window.location.replace('/account/index.html?admin=1');
         return;
       }

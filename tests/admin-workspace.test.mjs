@@ -50,7 +50,7 @@ test('preview reads enforce the existing administrator account context and rejec
   assert.doesNotMatch(overview, /localStorage|sessionStorage|document\.cookie|innerHTML/);
   assert.doesNotMatch(overview, /\bPOST\b|\bPUT\b|\bDELETE\b/);
   assert.match(js, /headers\.set\('x-mao-account-context', accountId\)/);
-  assert.match(js, /me\.account\.role !== 'super_admin'/);
+  assert.match(js, /account\.role !== 'super_admin'/);
 });
 
 test('dashboard metrics use only validated summaries, not list length as a false global total', () => {
@@ -78,8 +78,8 @@ test('design stays neutral, responsive and free of fake service health indicator
   assert.doesNotMatch(css, /linear-gradient|radial-gradient|#[a-fA-F0-9]{6}\b[^\n]*purple/i);
   assert.doesNotMatch(html, /MAO/);
   assert.match(html, /不代表所有云端服务的健康状态/);
-  assert.ok(html.includes('admin-workspace.css?v=20261123-v1'));
-  assert.ok(html.includes('admin-center.js?v=20261124-account-recovery1'));
+  assert.ok(html.includes('admin-workspace.css?v=20261126-v2'));
+  assert.ok(html.includes('admin-center.js?v=20261126-admin-overview1'));
 });
 
 // MAOMAO interface preference: only functional back-navigation arrows may appear.

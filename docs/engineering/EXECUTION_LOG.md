@@ -744,3 +744,13 @@ On the next turn/session, read this file and the current `AGENTS.md` first. Cont
 - 2026-11-26 REAL-FRIEND-001: verified live public domain mappings and Worker service/namespace bindings. The app domain has a dormant QA forwarding binding; the deployed source gates all forwarding on MAO_APP_CUTOVER_ENABLED and the live value is false. Added a separate core-only maintenance entry that checks this isolation, pinned deployment versions and an independent recovery receipt before deploying only the core. Existing qa-only phone deployment remains separate. The encrypted restored snapshot was retained privately. Independent durable custody of its recovery credential and scoped maintenance credentials remain pending. No online changes.
 
 - 2026-11-26 REAL-FRIEND-001: received encrypted images and voice now offer a scoped retry for transient network failures. Retrying after a session or friendship change is ignored, and permission or integrity failures do not offer retry. Focused chat tests passed 12/12. No rerun of migration rehearsal and no online changes.
+
+### 2026-11-26 · ADMIN-CORE-001 · 管理中心会话恢复
+
+- 手机 QA 回执对应 v311，源码 d042e0d7fabf2b68ac9a4cd3faffcc7ba1da5b30。候选基于此提交，沿用已有管理员工作台、云端诊断和 #480 已整合的上下文恢复。
+- 账号服务返回缺失字段时留在原页重试。身份核验期间页面账号上下文变化时中止管理数据读取。未变更 Worker 鉴权、创始管理员、账号或存储。
+- 账号、管理员、云端诊断与 Worker 页面门禁 Node 回归 224/224，本地 Vite 构建通过。真实账号登录和 QA 发布待验证。回滚仅需还原本变更。
+
+- 同一候选链追加总览优化：使用已验证的账号目录总数，压缩首页快捷区，并接入原有真人好友审批和账号安全页面。保留现有服务端权限与审计。Node 224/224，Vite 通过，合成账号 Chromium 375/390/430px 三档通过。真机登录仍待验证。
+
+- ADMIN-CORE-001 真机反馈：管理目录同时返回账号上下文错误。QA 转发使用已验证的创始账号标识传递作用域至现有独立身份服务。回归模拟身份服务作用域门禁，覆盖目录读取和写入。回滚可还原本提交。

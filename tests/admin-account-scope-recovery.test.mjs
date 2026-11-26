@@ -5,7 +5,7 @@ import { readFileSync } from 'node:fs';
 const admin = readFileSync(new URL('../admin/admin-center.js', import.meta.url), 'utf8');
 const worker = readFileSync(new URL('../worker.js', import.meta.url), 'utf8');
 
-function makeInit({ scopedId = '', serverAccount = null, apiError = null } = {}) {
+function makeInit({ scopedId = '', serverAccount = null, apiError = null, nextScopedId = scopedId } = {}) {
   const start = admin.indexOf('  async function init() {');
   const end = admin.indexOf('\n\n  init();', start);
   assert.ok(start >= 0 && end > start, 'admin init contract exists');
@@ -25,7 +25,7 @@ function makeInit({ scopedId = '', serverAccount = null, apiError = null } = {})
     return elements.get(id);
   };
   const init = factory(
-    () => scopedId,
+    () => apiCalls.length ? nextScopedId : scopedId,
     async path => {
       apiCalls.push(path);
       if (apiError) throw apiError;
@@ -100,4 +100,28 @@ test('missing scope notice leads to existing same-origin login, never desktop lo
   assert.match(worker, /return redirectToVerifiedLogin\(url/);
   assert.match(worker, /if \(isHtmlDocument && authorizedAccount\) return await injectAccountScope\(response, authorizedAccount, env\)/);
   assert.match(worker, /return authorizedAccount \? await injectAccountScope\(response, authorizedAccount, env\) : response/);
+});
+
+test('incomplete identity responses offer retry without redirecting or loading private data', async () => {
+  const id = 'MAO-SYNTHETICFOUNDER01';
+  for (const serverAccount of [null, {}, { id, role: 'super_admin' }]) {
+    const app = makeInit({ scopedId: id, serverAccount });
+    await app.init();
+    assert.deepEqual(app.redirects, []);
+    assert.deepEqual(app.stats(), { refreshes: 0, overviews: 0 });
+    assert.match(app.errors.at(-1), /未返回可验证的登录状态/);
+  }
+});
+
+test('identity verification cannot unlock the workspace after page context changes', async () => {
+  const id = 'MAO-SYNTHETICFOUNDER01';
+  const app = makeInit({
+    scopedId: id,
+    nextScopedId: 'MAO-SYNTHETICOTHER01',
+    serverAccount: { id, role: 'super_admin', status: 'active' }
+  });
+  await app.init();
+  assert.deepEqual(app.redirects, []);
+  assert.deepEqual(app.stats(), { refreshes: 0, overviews: 0 });
+  assert.match(app.errors.at(-1), /账号上下文与当前登录账号不一致/);
 });
