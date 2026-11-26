@@ -754,3 +754,14 @@ On the next turn/session, read this file and the current `AGENTS.md` first. Cont
 - 同一候选链追加总览优化：使用已验证的账号目录总数，压缩首页快捷区，并接入原有真人好友审批和账号安全页面。保留现有服务端权限与审计。Node 224/224，Vite 通过，合成账号 Chromium 375/390/430px 三档通过。真机登录仍待验证。
 
 - ADMIN-CORE-001 真机反馈：管理目录同时返回账号上下文错误。QA 转发使用已验证的创始账号标识传递作用域至现有独立身份服务。回归模拟身份服务作用域门禁，覆盖目录读取和写入。回滚可还原本提交。
+
+## 2026-11-26 · THEME-PREVIEW-005 · 六主题五场景真实预览
+
+- **Owner request:** Stop asking the user to relay separate handoff documents. Assign and track work directly in the source repository; Doubao implements on the task branch and reports through the PR.
+- **Stage04 evidence:** verify run 45715229293 completed/success; QA release run 45773629382 completed/success for integrated stage04 candidate e2f2f22c4e810a8db116e3d95d6a4e3b10511615. Follow-up QA candidate bc7d062f333d29c3623a660193c171f094550eb5 is the current immutable request candidate; queue/publish workflow 45774682577 completed/success. No production release authorized.
+- **Task base:** `bc7d062f333d29c3623a660193c171f094550eb5`. The old #531 head 49e6267f is stale for new work and is not the base.
+- **Task branch:** `THEME-PREVIEW-005/real-scene-previews` (created directly from the current QA candidate; initially clean).
+- **Scope:** six full themes × five real scenes, 30 combinations; first runnable isolation prototypes for chat detail and Moments, then expand. Existing theme coverage boundaries remain explicit; unsupported combinations show the actual scene in default styling with an honest note.
+- **Safety:** synthetic fixtures only; no production page business scripts, real localStorage/IndexedDB, real contacts/media, AI/MCP/network calls, setThemePreset, or resolve(realContactId). No schema, backup, SW, account, wallet, desktop layout, production, or deployment changes.
+- **Delivery rule:** all source/tests are committed in this repository and surfaced through the PR. No separate user-facing handoff Markdown, ZIP, patch, or screenshot bundle. This execution log is the internal checkpoint required by AGENTS.md.
+- **Status:** IN PROGRESS. No code changes or QA deployment yet; implementation is assigned to Doubao via repository PR comment.
