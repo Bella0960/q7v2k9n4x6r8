@@ -66,7 +66,7 @@ jobs:
           }
           const receipt = JSON.parse(readFileSync(receiptPath, 'utf8'));
           const branch = 'integration/qa-batch-' + baseline.slice(0, 12);
-          if (receipt.version !== 1 || receipt.repository !== 'Bella0960/q7v2k9n4x6r8' ||
+          if (![1, 2].includes(receipt.version) || receipt.repository !== 'Bella0960/q7v2k9n4x6r8' ||
               receipt.baseline !== baseline || receipt.branch !== branch ||
               !/^[0-9a-f]{40}$/.test(receipt.candidate || '')) {
             throw new Error('Recovery artifact receipt does not match the requested repository and QA baseline.');

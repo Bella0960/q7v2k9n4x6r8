@@ -198,8 +198,21 @@ function assemble(directory, qaSha, branch, receipt) {
       const task = tasks[index];
       const prMergeBase = prMergeBasesByTask.get(task.id);
       const previousTree = git(['rev-parse', candidate + '^{tree}'], task.id + ' previous candidate tree').trim();
-      const tree = applyTaskDelta(candidate, prMergeBase, task.head, pathsByTask.get(task.id),
-        task.id, worktreeRoot, index);
+      // A PR head already in the deployed QA history is already integrated.
+      // Do not re-apply its patch: git apply --3way treats an already-applied
+      // hunk as a conflict. Still write a provenance-only commit when another
+      // task contributes a real tree change.
+      const alreadyDeployed = spawnSync('git', ['merge-base', '--is-ancestor', task.head, candidate], {
+        encoding: 'utf8', timeout: 60000, maxBuffer: 1024 * 1024
+      });
+      if (alreadyDeployed.status !== 0 && alreadyDeployed.status !== 1) {
+        throw new Error(task.id + ' already-deployed ancestry check failed: ' +
+          String(alreadyDeployed.stderr || alreadyDeployed.error?.message || 'unknown Git error').slice(0, 1000));
+      }
+      const tree = alreadyDeployed.status === 0
+        ? git(['rev-parse', candidate + '^{tree}'], task.id + ' already-deployed QA tree').trim()
+        : applyTaskDelta(candidate, prMergeBase, task.head, pathsByTask.get(task.id),
+          task.id, worktreeRoot, index);
       if (!shaPattern.test(tree)) throw new Error(task.id + ' returned an unexpected merged tree.');
       const changed = changedPaths(candidate, tree);
       if (changed.some(path => owners.get(path) !== task.id)) {

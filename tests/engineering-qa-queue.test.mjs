@@ -809,6 +809,8 @@ test('ready-batch workflow archives a candidate before pushing and restores it b
   assert.match(workflow, /git bundle create/);
   assert.match(workflow, /retention-days: 90/);
   assert.match(workflow, /cancel-in-progress: false/);
+  assert.ok(workflow.includes('![1, 2].includes(receipt.version)'),
+    'candidate recovery must accept current v2 receipts as well as legacy v1 receipts');
 });
 
 test('CLI invalidate deletes a remote candidate only with exact SHA and explicit remote-delete confirmation', async t => {

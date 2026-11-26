@@ -216,6 +216,77 @@ test('transplants only the PR delta onto a diverged QA baseline and preserves bo
   assert.ok(message.includes('QA-Source-SHA: ' + qaBaseline));
 });
 
+test('skips an already-deployed PR head but records its provenance in a mixed batch', t => {
+  const cwd = mkdtempSync(join(tmpdir(), 'maomao-qa-batch-already-deployed-'));
+  t.after(() => rmSync(cwd, { recursive: true, force: true }));
+  const run = (bin, args) => execFileSync(bin, args, { cwd, encoding: 'utf8', stdio: 'pipe' }).trim();
+  const git = (...args) => run('git', args);
+  const write = (path, contents) => writeFileSync(join(cwd, path), contents);
+  git('init', '-q', '-b', 'main');
+  git('config', 'user.name', 'QA Test');
+  git('config', 'user.email', 'qa@example.invalid');
+  write('base.txt', 'common base');
+  git('add', 'base.txt');
+  git('commit', '-qm', 'Common ancestor');
+  const common = git('rev-parse', 'HEAD');
+
+  git('switch', '-qc', 'task-one', common);
+  write('one.txt', 'already deployed task');
+  git('add', 'one.txt');
+  git('commit', '-qm', 'Task one');
+  const taskOneHead = git('rev-parse', 'HEAD');
+
+  git('switch', '-qc', 'qa-deployed', taskOneHead);
+  write('deployed.txt', 'existing QA content');
+  git('add', 'deployed.txt');
+  git('commit', '-qm', 'Deployed QA baseline');
+  const qaBaseline = git('rev-parse', 'HEAD');
+
+  git('switch', '-qc', 'task-two', common);
+  write('two.txt', 'new task');
+  git('add', 'two.txt');
+  git('commit', '-qm', 'Task two');
+  const taskTwoHead = git('rev-parse', 'HEAD');
+
+  mkdirSync(join(cwd, 'records'));
+  write('records/one.json', JSON.stringify({
+    id: 'TASK-01', status: 'ready', prMergeBase: common,
+    head: taskOneHead, paths: ['one.txt'], dependsOn: []
+  }));
+  write('records/two.json', JSON.stringify({
+    id: 'TASK-02', status: 'ready', prMergeBase: common,
+    head: taskTwoHead, paths: ['two.txt'], dependsOn: []
+  }));
+  git('switch', '-q', 'main');
+
+  const qaSourceReceipt = {
+    repository: 'Bella0960/web-runtime-lab',
+    workflow: '.github/workflows/reusable-qa-request.yml',
+    runId: 45785677703,
+    runNumber: 91,
+    runHeadSha: '9'.repeat(40),
+    sourceSha: qaBaseline,
+    releasedAt: '2026-11-26T09:02:40Z'
+  };
+  const result = spawnSync(process.execPath, [
+    script, 'records', qaBaseline, 'integration/already-deployed-task', JSON.stringify(qaSourceReceipt)
+  ], { cwd, encoding: 'utf8' });
+
+  assert.equal(result.status, 0, result.stderr);
+  const receipt = JSON.parse(result.stdout);
+  const candidate = receipt.candidate;
+  assert.equal(git('rev-parse', candidate + '^^'), qaBaseline);
+  assert.equal(git('show', candidate + ':one.txt'), 'already deployed task');
+  assert.equal(git('show', candidate + ':two.txt'), 'new task');
+  assert.equal(git('show', candidate + ':deployed.txt'), 'existing QA content');
+  const history = git('log', '--format=%B', qaBaseline + '..' + candidate);
+  assert.ok(history.includes('Task-ID: TASK-01'));
+  assert.ok(history.includes('Task-PR-Head-SHA: ' + taskOneHead));
+  assert.ok(history.includes('Task-ID: TASK-02'));
+  assert.ok(history.includes('Task-PR-Head-SHA: ' + taskTwoHead));
+  assert.equal(git('rev-list', '--parents', '-n', '1', candidate).trim().split(/\s+/).length, 2);
+});
+
 test('blocks a conflicting PR delta against deployed QA without creating a candidate ref', t => {
   const cwd = mkdtempSync(join(tmpdir(), 'maomao-qa-batch-delta-conflict-'));
   t.after(() => rmSync(cwd, { recursive: true, force: true }));
