@@ -823,26 +823,27 @@ test('engineering-only test and script changes do not trigger unrelated app regr
   const tutorial = readFileSync(new URL('../.github/workflows/tutorial-regression.yml', import.meta.url), 'utf8');
   const font = readFileSync(new URL('../.github/workflows/font-runtime-regression.yml', import.meta.url), 'utf8');
   const chat = readFileSync(new URL('../.github/workflows/chat-regression-contract.yml', import.meta.url), 'utf8');
-  const section = (source, start, end) => source.split(start)[1].split(end)[0];
+  const section = (source, begin, end) => source.split(begin)[1].split(end)[0];
 
-  assert.doesNotMatch(tutorial, /- 'package\\.json'/);
-  assert.match(tutorial, /- 'package-lock\\.json'/);
+  assert.equal(tutorial.includes("- 'package.json'"), false);
+  assert.ok(tutorial.includes("- 'package-lock.json'"));
 
   const fontPr = section(font, '  pull_request:', '  push:');
   const fontPush = section(font, '  push:', 'permissions:');
-  assert.doesNotMatch(fontPr, /package\\.json|font-runtime-regression\\.yml/);
-  assert.match(fontPr, /package-lock\\.json/);
-  assert.match(fontPush, /package-lock\\.json/);
-  assert.match(fontPush, /font-runtime-regression\\.yml/);
+  assert.equal(fontPr.includes("package.json"), false);
+  assert.equal(fontPr.includes("font-runtime-regression.yml"), false);
+  assert.ok(fontPr.includes("package-lock.json"));
+  assert.ok(fontPush.includes("package-lock.json"));
+  assert.ok(fontPush.includes("font-runtime-regression.yml"));
 
   const chatPr = section(chat, '  pull_request:', '  workflow_dispatch:');
   const chatPush = section(chat, '  push:', '  pull_request:');
   for (const paths of [chatPr, chatPush]) {
-    assert.doesNotMatch(paths, /- 'package\\.json'/);
-    assert.match(paths, /- 'package-lock\\.json'/);
-    assert.match(paths, /- 'tests\\/\\*\\*'/);
-    assert.match(paths, /- '!tests\\/engineering-\\*\\.test\\.mjs'/);
+    assert.equal(paths.includes("- 'package.json'"), false);
+    assert.ok(paths.includes("- 'package-lock.json'"));
+    assert.ok(paths.includes("- 'tests/**'"));
+    assert.ok(paths.includes("- '!tests/engineering-*.test.mjs'"));
   }
-  assert.doesNotMatch(chatPr, /chat-regression-contract\\.yml/);
-  assert.match(chatPush, /chat-regression-contract\\.yml/);
+  assert.equal(chatPr.includes("chat-regression-contract.yml"), false);
+  assert.ok(chatPush.includes("chat-regression-contract.yml"));
 });
