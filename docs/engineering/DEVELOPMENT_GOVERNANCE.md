@@ -62,12 +62,14 @@ After merge:
 
 Parallel work is useful when tasks have clear file ownership and no shared schema changes.
 
-Recommended lanes:
-- A. Repository/docs/CI governance: AGENTS.md, docs/engineering, .github/workflows, package scripts.
-- B. Storage/backup audit: storage registry, backup.js, MediaRepository and database tests. Must not start chat cutover until backup gaps are closed.
-- C. Chat callers and compatibility inventory: read-only at first; produce a call-site matrix. Do not edit conversation storage until Lane B and the user approve migration design.
-- D. Asset optimization: assets/games/assets/music only, with before/after image QA and original preservation.
-- E. Feature fixes: different Apps or disjoint file sets may run in parallel under separate Task IDs/branches/PRs. Overlapping files and shared contracts remain single-owner; storage architecture changes require explicit coordination.
+Illustrative work domains (not fixed agent assignments):
+- Repository governance and CI: `AGENTS.md`, `docs/engineering`, `.github/workflows`, and package scripts.
+- Storage and backup: storage registry, `backup.js`, `MediaRepository`, and database tests. Chat storage cutover remains blocked until backup gaps are closed and migration is approved.
+- Chat compatibility: inventory callers, tests, selectors, and persisted formats before changing shared conversation behavior.
+- Asset optimization: inspect assets under `assets/`, games, and music; preserve originals and verify visual quality before replacement.
+- App features: separate Task IDs/branches/PRs for disjoint app modules; shared files and contracts have one named owner.
+
+These are capability categories only. They do not assign work to “Agent A/B/C/D/E”, prescribe a fixed sequence, or authorize an agent to start a task. Current assignments, risk lanes, dependencies, and file ownership are governed exclusively by `docs/engineering/ENGINEERING_WORKFLOW.md`, the current approved backlog, and the owner's explicit requests. Independent tasks may proceed in parallel when ownership is disjoint.
 
 File ownership:
 - Each agent claims exact paths before modifying.
