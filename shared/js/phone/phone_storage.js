@@ -92,9 +92,8 @@
             if (bucket && bucket.chat != null) return bucket.chat;
         }
         if (appId === 'memories') {
-            var memories = NS.rawGet('chat_memories_' + contactId, null);
-            if (Array.isArray(memories)) return { items: memories };
-            if (bucket && bucket.memories != null) return bucket.memories;
+            var memoryRead = inspectMemoryList(contactId);
+            return memoryRead ? { items: memoryRead.list } : null;
         }
 
         if (bucket && bucket[appId] != null) return bucket[appId];
@@ -284,27 +283,195 @@
     };
 
     // 记忆（按角色）
+    function inspectMemoryList(contactId) {
+        if (typeof contactId === 'number' && Number.isFinite(contactId)) contactId = String(contactId);
+        if (typeof contactId !== 'string' || !contactId.trim() ||
+            ['__proto__','prototype','constructor'].indexOf(contactId) >= 0) return null;
+        try {
+            var raw = localStorage.getItem('chat_memories_' + contactId);
+            if (raw !== null) {
+                var list = JSON.parse(raw);
+                return Array.isArray(list) ? {list:list} : null;
+            }
+            var rootRaw = localStorage.getItem(PHONE_DATA_KEY);
+            var root = rootRaw === null ? {} : JSON.parse(rootRaw);
+            if (!root || typeof root !== 'object' || Array.isArray(root)) return null;
+            var bucket = Object.prototype.hasOwnProperty.call(root,contactId) ? root[contactId] : null;
+            if (bucket != null && (typeof bucket !== 'object' || Array.isArray(bucket))) return null;
+            var legacy = bucket && bucket.memories;
+            if (legacy != null && (!legacy || !Array.isArray(legacy.items))) return null;
+            return {list:legacy ? legacy.items : []};
+        } catch (_) { return null; }
+    }
     NS.getMemories = function (contactId) {
-        var v = NS.rawGet('chat_memories_' + contactId, null);
-        if (Array.isArray(v)) return v;
-        var root = NS._getRoot();
-        var bucket = root[contactId];
-        if (bucket && bucket.memories && Array.isArray(bucket.memories.items)) return bucket.memories.items;
-        return [];
+        var read = inspectMemoryList(contactId);
+        return read ? read.list : [];
+    };
+    // Read-side projection; memory management and backup still use the full list.
+    NS.selectActiveMemories = function (list, contactId) {
+        if (typeof contactId !== 'string' || !contactId.trim()) return [];
+        return (Array.isArray(list) ? list : []).filter(function (m) {
+            if (typeof m === 'string') return !!m.trim();
+            return !!(m && typeof m === 'object' && !Array.isArray(m) &&
+                (m.sourceRoleId == null || String(m.sourceRoleId) === contactId) &&
+                (m.roleId == null || String(m.roleId) === contactId) &&
+                (m.status == null || m.status === 'confirmed' || m.status === 'fixed') &&
+                typeof (m.content || m.text) === 'string' && (m.content || m.text).trim());
+        });
+    };
+    NS.getActiveMemories = function (contactId) {
+        return NS.selectActiveMemories(NS.getMemories(contactId), contactId);
+    };
+    // Generic save paths must not modify revision-chain records. The explicit
+    // review operation will require a separate validated transition.
+    function protectedMemoryRecords(list) {
+        var ids = new Set();
+        list.forEach(function(m) {
+            if (!m || typeof m !== 'object') return;
+            if (m.source === 'user-correction' || ['superseded-fixed','superseded-confirmed','withdrawn'].indexOf(m.status) >= 0) {
+                if (m.id != null) ids.add(String(m.id));
+                if (Array.isArray(m.sourceMemoryIds)) m.sourceMemoryIds.forEach(function(id) { ids.add(String(id)); });
+            }
+        });
+        return list.filter(function(m) {
+            return m && typeof m === 'object' &&
+                (m.source === 'user-correction' || ['superseded-fixed','superseded-confirmed','withdrawn'].indexOf(m.status) >= 0 || ids.has(String(m.id)));
+        });
+    }
+    function writeMemoryList(contactId,list) {
+        if (!Array.isArray(list)) return {state:'validation'};
+        var before = inspectMemoryList(contactId);
+        if (!before) return {state:'corrupt'};
+        // No new revision transitions via the legacy bulk-save APIs.
+        var protectedBefore = protectedMemoryRecords(before.list);
+        var protectedAfter = protectedMemoryRecords(list);
+        if (JSON.stringify(protectedBefore) !== JSON.stringify(protectedAfter)) return {state:'conflict'};
+        var key = 'chat_memories_' + contactId, serialized;
+        try {
+            serialized = JSON.stringify(list);
+            localStorage.setItem(key,serialized);
+            if (localStorage.getItem(key) !== serialized) return {state:'error'};
+        } catch (e) {
+            return {state:['QuotaExceededError','NS_ERROR_DOM_QUOTA_REACHED','QUOTA_EXCEEDED_ERR'].indexOf(e && e.name) >= 0 ? 'quota' : 'error'};
+        }
+        // Preserve a divergent legacy copy; only remove a proven duplicate.
+        try {
+            var raw = localStorage.getItem(PHONE_DATA_KEY);
+            var root = raw == null ? null : JSON.parse(raw);
+            var bucket = root && root[contactId];
+            if (bucket && bucket.memories && Array.isArray(bucket.memories.items) &&
+                JSON.stringify(bucket.memories.items) === JSON.stringify(before.list)) {
+                delete bucket.memories;
+                if (!Object.keys(bucket).length) delete root[contactId];
+                NS.rawSet(PHONE_DATA_KEY,root);
+            }
+        } catch (_) {}
+        return {state:'ok'};
+    }
+    NS.saveMemories = function (contactId,list) {
+        return writeMemoryList(contactId,list).state === 'ok';
     };
 
-    NS.saveMemories = function (contactId, list) {
-        // 与聊天记录一样，先确认主 key 写入成功，再清除重复副本。
-        var saved = NS.rawSet('chat_memories_' + contactId, Array.isArray(list) ? list : []);
-        if (!saved) return false;
-        var root = NS._getRoot();
-        var bucket = root[contactId];
-        if (bucket && bucket.memories != null) {
-            delete bucket.memories;
-            if (!Object.keys(bucket).length) delete root[contactId];
-            NS.rawSet(PHONE_DATA_KEY, root);
+    // Explicit review operation: derive the new list internally, never accept
+    // arbitrary replacement records. No migration or legacy-only write.
+    NS.reviewMemoryRevision = function (contactId, operation, expected, replacement, options) {
+        function fail(reason) { return {ok:false,reason:reason}; }
+        var account = global.__MAO_ACCOUNT_SCOPE__;
+        function authorized() {
+            try {
+                return !!(account && account.ready === true && typeof account.accountId === 'string' &&
+                    account.accountId && global.__MAO_ACCOUNT_SCOPE__ === account &&
+                    options && options.confirmed === true && options.accountId === account.accountId &&
+                    typeof options.getCurrentRoleId === 'function' && String(options.getCurrentRoleId()) === contactId);
+            } catch (_) { return false; }
         }
-        return true;
+        if (typeof contactId !== 'string' || !contactId.trim() || contactId !== contactId.trim() ||
+            contactId.charAt(0) === 'g' || ['__proto__','prototype','constructor'].includes(contactId) ||
+            !authorized() || !['revise','undo'].includes(operation)) return fail('invalid-scope');
+        var key = 'chat_memories_' + contactId, raw, records;
+        try {
+            raw = localStorage.getItem(key);
+            if (typeof raw !== 'string') return fail('primary-unavailable');
+            records = JSON.parse(raw);
+        } catch (_) { return fail('read-failed'); }
+        if (!Array.isArray(records) || records.some(function(m) {return !m || typeof m !== 'object' || Array.isArray(m);}))
+            return fail('invalid-existing-data');
+        function owned(m) {
+            return m && typeof m.id === 'string' && !!m.id && String(m.sourceRoleId || '') === contactId &&
+                (m.roleId == null || String(m.roleId) === contactId);
+        }
+        function active(m) { return m && ['fixed','confirmed'].includes(m.status); }
+        function superseded(m) { return m && ['superseded-fixed','superseded-confirmed'].includes(m.status); }
+        function inspectChain(list) {
+            var ids = new Map(), links = new Map(), children = new Map();
+            for (var m of list) {
+                if (m.id == null) continue;
+                var id = String(m.id);
+                ids.set(id,ids.has(id)?null:m);
+            }
+            for (var m of list) {
+                if (m.source !== 'user-correction' && !superseded(m) && m.status !== 'withdrawn') continue;
+                if (!owned(m) || ids.get(m.id) !== m) return null;
+                if (m.source !== 'user-correction') {
+                    if (m.status === 'withdrawn') return null;
+                    continue;
+                }
+                if ((!active(m) && !superseded(m) && m.status !== 'withdrawn') ||
+                    !Array.isArray(m.sourceMemoryIds) || m.sourceMemoryIds.length !== 1 ||
+                    typeof m.sourceMemoryIds[0] !== 'string') return null;
+                var parent = ids.get(m.sourceMemoryIds[0]);
+                if (!owned(parent) || parent === m) return null;
+                links.set(m.id,parent.id);
+                if (m.status !== 'withdrawn') {
+                    if (!superseded(parent) || children.has(parent.id) ||
+                        (m.status !== parent.status && m.status !== parent.status.slice('superseded-'.length))) return null;
+                    children.set(parent.id,m.id);
+                }
+            }
+            for (var m of list) if (superseded(m) && !children.has(m.id)) return null;
+            for (var id of links.keys()) {
+                var seen = new Set(), cur = id;
+                while (links.has(cur)) {
+                    if (seen.has(cur)) return null;
+                    seen.add(cur); cur = links.get(cur);
+                }
+            }
+            return {ids:ids,children:children};
+        }
+        var chain = inspectChain(records);
+        if (!chain) return fail('revision-conflict');
+        var target = expected && chain.ids.get(expected.id);
+        if (!owned(target) || !active(target) || JSON.stringify(target) !== JSON.stringify(expected)) return fail('stale-memory');
+        var next = records.slice(), index = records.indexOf(target), result;
+        if (operation === 'revise') {
+            if (typeof replacement !== 'string' || !replacement.trim() || replacement.length > 600) return fail('invalid-content');
+            var content = replacement.trim();
+            if (content === String(target.content || target.text || '').trim()) return fail('unchanged');
+            if (records.length >= 300) return fail('capacity');
+            var now = Date.now(), n = records.length, id;
+            do { id = 'mem_revision_' + now.toString(36) + '_' + (n++).toString(36); } while (chain.ids.has(id));
+            next[index] = Object.assign({},target,{status:'superseded-' + target.status});
+            result = {id:id,content:content,category:target.category || 'detail',
+                importance:Math.max(1,Math.min(5,Number(target.importance)||3)),
+                status:target.status,source:'user-correction',sourceRoleId:contactId,
+                sourceMemoryIds:[target.id],createdAt:now,lastReinforcedAt:now,reinforcementCount:1};
+            next.push(result);
+        } else {
+            if (target.source !== 'user-correction') return fail('not-revision');
+            var parent = chain.ids.get(target.sourceMemoryIds[0]);
+            if (!owned(parent) || !superseded(parent) || chain.children.get(parent.id) !== target.id) return fail('revision-conflict');
+            result = Object.assign({},parent,{status:parent.status.slice('superseded-'.length)});
+            next[records.indexOf(parent)] = result;
+            next[index] = Object.assign({},target,{status:'withdrawn'});
+        }
+        if (!inspectChain(next)) return fail('revision-conflict');
+        try {
+            if (!authorized() || localStorage.getItem(key) !== raw) return fail('stale-memory');
+            var serialized = JSON.stringify(next);
+            localStorage.setItem(key,serialized);
+            if (localStorage.getItem(key) !== serialized) return fail('readback-failed');
+        } catch (_) { return fail('save-failed'); }
+        return {ok:true,memory:result};
     };
 
     NS.deleteMemoryEntry = function (contactId, expected) {
@@ -784,21 +951,8 @@
                 return failResult(ERR.NOT_FOUND, 'chat data not found for ' + contactId, false);
             }
             if (appId === 'memories') {
-                var mem = _probe('chat_memories_' + contactId);
-                if (mem.state === 'ok') {
-                    if (Array.isArray(mem.parsed)) {
-                        return okResult({ items: mem.parsed },
-                            { found: true, source: 'chat_memories_' + contactId });
-                    }
-                }
-                if (mem.state === 'corrupt') {
-                    return failResult(ERR.CORRUPT_DATA,
-                        'chat_memories_' + contactId + ' corrupt', false, { raw: mem.raw });
-                }
-                if (bucket && bucket.memories != null) {
-                    return okResult(bucket.memories, { found: true, source: 'phone_data_v2' });
-                }
-                return failResult(ERR.NOT_FOUND, 'memories data not found for ' + contactId, false);
+                var memoryResult = R.getMemories(contactId);
+                return memoryResult.ok ? okResult({ items:memoryResult.value },memoryResult.meta) : memoryResult;
             }
 
             if (bucket && bucket[appId] != null) {
@@ -986,43 +1140,23 @@
 
         R.getMemories = function (contactId) {
             var probe = _probe('chat_memories_' + contactId);
-            if (probe.state === 'corrupt') {
-                return failResult(ERR.CORRUPT_DATA,
-                    'chat_memories_' + contactId + ' corrupt', false, { raw: probe.raw });
-            }
-            if (probe.state === 'ok' && Array.isArray(probe.parsed)) {
-                return okResult(probe.parsed,
-                    { found: true, source: 'chat_memories_' + contactId });
-            }
+            if (probe.state !== 'missing') return _probeToResult(probe,'array');
             var rootRes = R.getRoot();
-            if (rootRes.ok && rootRes.value) {
-                var bucket = rootRes.value[contactId];
-                if (bucket && bucket.memories && Array.isArray(bucket.memories.items)) {
-                    return okResult(bucket.memories.items,
-                        { found: true, source: 'phone_data_v2' });
-                }
+            if (!rootRes.ok) return rootRes;
+            var bucket = rootRes.value && rootRes.value[contactId];
+            if (bucket && bucket.memories != null) {
+                if (!Array.isArray(bucket.memories.items)) return failResult(ERR.CORRUPT_DATA,'legacy memory list invalid',false);
+                return okResult(bucket.memories.items,{found:true,source:'phone_data_v2'});
             }
-            return failResult(ERR.NOT_FOUND, 'memories not found for ' + contactId, false);
+            return failResult(ERR.NOT_FOUND,'memories not found for ' + contactId,false);
         };
 
-        R.saveMemories = function (contactId, list) {
-            var arr = Array.isArray(list) ? list : [];
-            var out = _write('chat_memories_' + contactId, arr);
-            if (out.state !== 'ok') return _writeToResult(out, 'chat_memories_' + contactId);
-            var rootRes = R.getRoot();
-            if (rootRes.ok && rootRes.value) {
-                var root = rootRes.value;
-                var bucket = root[contactId];
-                if (bucket && bucket.memories != null) {
-                    delete bucket.memories;
-                    if (!Object.keys(bucket).length) delete root[contactId];
-                    var sub = _write('phone_data_v2', root);
-                    if (sub.state !== 'ok') {
-                        console.warn('[PhoneStorage.result] phone_data_v2 cleanup failed', sub.error);
-                    }
-                }
-            }
-            return okResult(true, { written: 'chat_memories_' + contactId });
+        R.saveMemories = function (contactId,list) {
+            var out = writeMemoryList(contactId,list);
+            if (out.state === 'validation') return failResult(ERR.VALIDATION_FAILED,'expected memory array',false);
+            if (out.state === 'corrupt') return failResult(ERR.CORRUPT_DATA,'memory source unreadable',false);
+            if (out.state === 'conflict') return failResult(ERR.CONFLICT,'memory revision chain protected',false);
+            return _writeToResult(out,'chat_memories_' + contactId);
         };
 
         /* ---------- API profiles / config ---------- */

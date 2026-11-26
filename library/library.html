@@ -1441,8 +1441,8 @@ button{font:inherit;color:inherit;cursor:pointer;border:0;background:transparent
             String(m.text || m.content || '').slice(0, 180);
         });
       }
-      if (window.PhoneStorage && typeof PhoneStorage.getMemories === 'function') {
-        memories = PhoneStorage.getMemories(roleId).slice(-5).map(function (m) {
+      if (window.PhoneStorage && typeof PhoneStorage.getActiveMemories === 'function') {
+        memories = PhoneStorage.getActiveMemories(String(roleId)).slice(-5).map(function (m) {
           return typeof m === 'string' ? m : String(m.text || m.content || m.title || '');
         }).filter(Boolean);
       }

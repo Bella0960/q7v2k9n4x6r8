@@ -29,7 +29,7 @@
     <script src="../../shared/js/phone/image-generation.js?v=20261106v1"></script>
     <script src="../../shared/js/phone/role-gallery-image-autonomy.js?v=20261111v2"></script>
     <script src="../../shared/js/phone/role_family_cards.js?v=20261028v3"></script>
-    <script src="../../shared/js/phone/memory_recall.js?v=20261118groupmemory1"></script>
+    <script src="../../shared/js/phone/memory_recall.js?v=20261126memoryruntime2"></script>
     <script src="../../shared/js/phone/phone_stream.js?v=20261121global2"></script>
     <script src="../../shared/js/phone/chat-message-policy.js?v=20261029v5"></script>
     <script src="../../shared/js/phone/chat-send-policy.js?v=20261029v2"></script>
@@ -5371,7 +5371,10 @@
             } catch (e) { return []; }
         }
         function saveWeightMemories(roleId, arr) {
-            arr = trimMemoriesByWeight(arr, 300);   // M1：存储上限 300 条，按权重淘汰尾部
+            if (!Array.isArray(arr) || arr.length > 300) {
+                if (typeof showToast === 'function') showToast('记忆库容量不足，原记录仍保留');
+                return false;
+            }
             if (_storage) {
                 var ok = _storage.saveMemories(roleId, arr);
                 if (ok) {
@@ -5395,22 +5398,12 @@
             const reinforcementBoost = Math.min(1.45, 1 + (repeats - 1) * 0.08);
             return imp * base * Math.pow(2, -days / half) * reinforcementBoost;
         }
-        // M1：记忆存储上限 —— 超过 max 条时按权重淘汰最不重要的；fixed（钉住）永不淘汰
-        function trimMemoriesByWeight(arr, max) {
-            arr = (Array.isArray(arr) ? arr : []).filter(Boolean);
-            if (arr.length <= max) return arr;
-            var pinned = arr.filter(function (m) { return m.status === 'fixed'; });
-            var rest = arr.filter(function (m) { return m.status !== 'fixed'; });
-            var budget = Math.max(0, max - pinned.length);
-            rest = rest.map(function (m) { return { m: m, w: memoryWeight(m) }; })
-                .sort(function (a, b) { return b.w - a.w; })
-                .slice(0, budget)
-                .map(function (x) { return x.m; });
-            return pinned.concat(rest);
-        }
         // 构造注入文本；加载记录与权重算法仍留在页面。纯文案规则走共享策略，加载失败则回退旧逻辑。
         function buildWeightedMemoryText(roleId, fallbackText) {
-            const mems = loadWeightMemories(roleId);
+            const allMemories = loadWeightMemories(roleId);
+            const mems = _storage && typeof _storage.selectActiveMemories === 'function'
+                ? _storage.selectActiveMemories(allMemories, String(roleId)).filter(function(m) { return typeof m === 'object' && m.content; }) : [];
+            if (Array.isArray(allMemories) && allMemories.some(function(m) { return m && ['superseded-fixed','superseded-confirmed','withdrawn'].includes(m.status); })) fallbackText = '';
             if (window.ChatContextPolicy && typeof window.ChatContextPolicy.buildWeightedMemoryInjectionText === 'function') {
                 return window.ChatContextPolicy.buildWeightedMemoryInjectionText(mems, fallbackText, memoryWeight);
             }
@@ -7087,6 +7080,7 @@
                 }
             }
 
+            let historicalRecallGuard = null;
             // Search older saved conversation locally. This adds no separate API call and only
             // injects a few relevant source excerpts when the current message matches.
             if (window.MemoryRecall && typeof window.MemoryRecall.buildHistoricalRecallText === 'function') {
@@ -7128,7 +7122,55 @@
                 if (isGroupChat) recallOptions.groupPublicOnly = true;
                 if (isGroupChat) recallOptions.groupMembers =
                     currentGroup && Array.isArray(currentGroup.members) ? currentGroup.members : [];
-                const recalledText = window.MemoryRecall.buildHistoricalRecallText(recallableHistory, recallQuery, recallOptions);
+                let recalledText = '';
+                if (isGroupChat) {
+                    // Keep the existing separately scoped group path.
+                    recalledText = window.MemoryRecall.buildHistoricalRecallText(recallableHistory, recallQuery, recallOptions);
+                } else if (typeof window.MemoryRecall.recallForModelHistory === 'function') {
+                    const account = window.__MAO_ACCOUNT_SCOPE__;
+                    const rawBaseline = _chatHistoryBaselines.get(historyList);
+                    const roleId = String(roleForTurn.id);
+                    const initialHref = window.location.href;
+                    let archiveSnapshot = null;
+                    try {
+                        if (_storage && typeof _storage.getMemoryArchive === 'function') archiveSnapshot = JSON.stringify(_storage.getMemoryArchive(roleId));
+                    } catch (_) {}
+                    historicalRecallGuard = function () {
+                        try {
+                            return account && account.ready === true && window.__MAO_ACCOUNT_SCOPE__ === account &&
+                                window.location.href === initialHref && String(currentCharacter.id) === roleId &&
+                                storageKey === 'chat_history_' + roleId && typeof rawBaseline === 'string' &&
+                                localStorage.getItem(storageKey) === rawBaseline &&
+                                JSON.stringify(getRoleById(roleId)) === JSON.stringify(roleForTurn) &&
+                                archiveSnapshot !== null && JSON.stringify(_storage.getMemoryArchive(roleId)) === archiveSnapshot;
+                        } catch (_) { return false; }
+                    };
+                    let allowExtended = false;
+                    try {
+                        const archive = JSON.parse(archiveSnapshot);
+                        allowExtended = Array.isArray(archive.hidden) && archive.hidden.length === 0 &&
+                            !isRegen && !retryTarget && !contextOnly && !silent;
+                    } catch (_) {}
+                    // The authoritative model projection already respects role
+                    // identity and retry/regeneration exclusions. Never index raw storage.
+                    if (historicalRecallGuard()) {
+                        const recallResult = await window.MemoryRecall.recallForModelHistory(recallableHistory, recallQuery, recallOptions, {
+                            scope: { kind:'role', accountId:String(account.accountId), conversationId:roleId, revision:'current-turn' },
+                            isCurrent:historicalRecallGuard, allowExtended:allowExtended
+                        });
+                        if (!recallResult.ok || !historicalRecallGuard()) {
+                            stopForMissingRoleSource('recall-source-changed', '历史记录或角色资料已变化，本轮已停止');
+                            return;
+                        }
+                        recalledText = recallResult.text;
+                    } else {
+                        // Unverified or legacy-only sources do not enter the new index.
+                        historicalRecallGuard = null;
+                    }
+                } else {
+                    // Older cached engine: preserve existing bounded recall, never start an index.
+                    recalledText = window.MemoryRecall.buildHistoricalRecallText(recallableHistory, recallQuery, recallOptions);
+                }
                 if (recalledText) apiMessages[0].content += '\n\n' + recalledText;
             }
 
@@ -7255,6 +7297,10 @@
                 scrollToBottom(true);
             }
 
+            if (historicalRecallGuard && !historicalRecallGuard()) {
+                stopForMissingRoleSource('recall-source-changed', '历史记录已更新，本轮已停止');
+                return;
+            }
             // Final delivery barrier: verify what the model will actually receive.
             // This is intentionally AFTER context selection / memory retrieval / history
             // mapping, and BEFORE calling PhoneStream. No generic fallback is allowed.
@@ -10473,7 +10519,7 @@
 (function () {
   var params = new URLSearchParams(location.search);
   var rid = params.get('id') || params.get('roleId') || '';
-  if (!rid) return;
+  if (!rid || rid.charAt(0) === 'g') return;
 
   var HOUR = 3600000;
   var overlay = document.getElementById('sumOverlay');
@@ -10522,7 +10568,28 @@
     overlay.style.display = 'none';
   }
   async function doSummarize() {
-    var revision = window.PhoneStorage?.getMemoryArchive(rid).revision;
+    var storage = window.PhoneStorage, recall = window.MemoryRecall;
+    if (!storage || typeof storage.getMemoryArchiveEntries !== 'function' ||
+        typeof storage.getMemoryArchive !== 'function' || !recall ||
+        typeof recall.appendPendingSummary !== 'function') {
+      sumToast('记忆组件尚未更新，请刷新页面后重试');
+      return;
+    }
+    var account = window.__MAO_ACCOUNT_SCOPE__;
+    var revision = storage.getMemoryArchive(rid).revision;
+    var historyRaw;
+    try { historyRaw = localStorage.getItem('chat_history_' + rid); }
+    catch (_) { sumToast('聊天记录读取失败'); return; }
+    if (historyRaw === null) { sumToast('没有可整理的主存档'); return; }
+    function currentSource() {
+      try {
+        var current = new URLSearchParams(location.search);
+        return (current.get('id') || current.get('roleId') || '') === rid &&
+          window.__MAO_ACCOUNT_SCOPE__ === account &&
+          localStorage.getItem('chat_history_' + rid) === historyRaw &&
+          storage.getMemoryArchive(rid).revision === revision;
+      } catch (_) { return false; }
+    }
     btnConfirm.disabled = true;
     btnConfirm.textContent = '整理中...';
     try {
@@ -10533,17 +10600,23 @@
       var apiModel = (config.model || 'gpt-3.5-turbo').trim();
       if (!apiKey) { sumToast('请先到设置页配置 API Key'); overlay.style.display = 'none'; return; }
 
-      var history = getHistory(), startIndex = getProcessedCount();
+      var history = JSON.parse(historyRaw), startIndex = getProcessedCount();
+      if (!Array.isArray(history)) throw new Error('memory-json-invalid');
       if (startIndex > history.length) startIndex = 0;
-      var archive = window.PhoneStorage?.getMemoryArchiveEntries(rid, history);
-      var visible = archive ? new Set(archive.map(function (entry) { return entry.index; })) : null;
+      var archive = storage.getMemoryArchiveEntries(rid, history);
+      if (!Array.isArray(archive)) throw new Error('memory-json-invalid');
+      var visible = new Set(archive.map(function (entry) { return entry.index; }));
       var hardEnd = Math.min(history.length, startIndex + Math.min(20, getInterval()));
       var endIndex = startIndex, transcriptLines = [], transcriptChars = 0;
       while (endIndex < hardEnd) {
         var m = history[endIndex], line = '';
-        if ((!visible || visible.has(endIndex)) && m && !m.isError && m.role !== 'system_error') {
+        if (visible.has(endIndex) && m && !m.isError && !m.sendFailed && !m.silent &&
+            ['sent','user','received','assistant'].includes(m.role) && m.groupId == null && m.memberId == null &&
+            m.type !== 'group_private' && m.type !== 'group_game_private' && m.visibility !== 'private' && m.visibility !== 'role_only' &&
+            (m.sourceRoleId == null || String(m.sourceRoleId) === rid) &&
+            (m.roleId == null || String(m.roleId) === rid)) {
           var who = (m.role === 'sent' || m.role === 'user') ? '用户' : '角色';
-          var content = String(m.text || m.content || m.desc || '').trim();
+          var content = recall.cleanText(m.text || m.content || m.desc || '');
           if (content) line = who + '：' + content;
         }
         if (line && transcriptLines.length && transcriptChars + line.length + 1 > 4000) break;
@@ -10564,6 +10637,7 @@
         sumToast('没有新的未整理记录');
         return;
       }
+      if (!currentSource()) { sumToast('聊天记录已变化，本批未整理'); return; }
       if (!transcript) {
         localStorage.setItem('chat_summary_processed_' + rid, String(endIndex));
         localStorage.setItem('chat_last_summary_' + rid, String(Date.now()));
@@ -10585,70 +10659,30 @@
           ]
         })
       });
-      clearTimeout(timer);
-      if (!resp.ok) { sumToast(friendlyHttpError(resp.status, '')); overlay.style.display = 'none'; return; }
-      var data = await resp.json();
-      if (window.PhoneStorage?.getMemoryArchive(rid).revision !== revision) return;
+      if (!resp.ok) { clearTimeout(timer); sumToast(friendlyHttpError(resp.status, '')); overlay.style.display = 'none'; return; }
+      var data = await resp.json().finally(function () { clearTimeout(timer); });
+      if (!currentSource()) { sumToast('聊天记录已变化，本批未整理'); return; }
       var text = data && data.choices && data.choices[0] && data.choices[0].message ? (data.choices[0].message.content || '').trim() : '';
       var jsonMatch = text.match(/\[[\s\S]*\]/);
       if (!jsonMatch) throw new Error('memory-json-invalid');
       var items = JSON.parse(jsonMatch[0]);
       if (!Array.isArray(items)) throw new Error('memory-json-invalid');
 
-      var existing = [];
-      try {
-        var raw = localStorage.getItem('chat_memories_' + rid);
-        existing = raw ? JSON.parse(raw) : [];
-        if (!Array.isArray(existing)) existing = [];
-      } catch (e) {}
-      var now = Date.now(), confirmed = 0, pending = 0, reinforced = 0;
-      items.forEach(function (it) {
-        if (!it || !it.content) return;
-        var content = String(it.content).trim().slice(0, 240);
-        var key = content.toLowerCase().replace(/[^\u3400-\u9fffA-Za-z0-9]/g, '');
-        var duplicate = existing.find(function (m) {
-          return String(m && m.content || '').toLowerCase().replace(/[^\u3400-\u9fffA-Za-z0-9]/g, '') === key;
-        });
-        var importance = Math.max(1, Math.min(5, parseInt(it.importance, 10) || 3));
-        if (duplicate && key) {
-          duplicate.reinforcementCount = Math.max(1, Number(duplicate.reinforcementCount) || 1) + 1;
-          duplicate.lastReinforcedAt = now;
-          duplicate.updatedAt = now;
-          duplicate.importance = Math.max(Number(duplicate.importance) || 3, importance);
-          duplicate.sourceStartIndex = startIndex;
-          duplicate.sourceEndIndex = endIndex - 1;
-          reinforced++;
-          return;
-        }
-        var status = importance >= 4 ? 'confirmed' : 'pending';
-        if (status === 'confirmed') confirmed++; else pending++;
-        existing.push({
-          id: 'mem_' + now.toString(36) + '_' + existing.length.toString(36),
-          content: content,
-          category: ['key','plot','detail','anniversary','preference'].indexOf(it.category) >= 0 ? it.category : 'detail',
-          importance: importance, status: status, createdAt: now, lastReinforcedAt: now,
-          reinforcementCount: 1, source: 'auto-summary', sourceRoleId: String(rid),
-          sourceStartIndex: startIndex, sourceEndIndex: endIndex - 1
-        });
-      });
-      if (window.MemoryRecall && window.MemoryRecall.saveMemories) {
-        var ok2 = window.MemoryRecall.saveMemories(rid, existing);
-        if (!ok2 && typeof sumToast === 'function') sumToast('记忆未能保存：' + (existing.length || 0) + ' 条新整理的记忆未落库，请检查本地存储空间');
-      } else {
-        try { localStorage.setItem('chat_memories_' + rid, JSON.stringify(existing)); }
-        catch (e) { if (typeof sumToast === 'function') sumToast('记忆未能保存，请检查本地存储空间'); }
+      var result = recall.appendPendingSummary(rid, items, { start:startIndex, end:endIndex - 1 });
+      if (!result || !result.ok) {
+        sumToast(result && result.reason === 'capacity' ? '记忆库已满，原记录与整理进度均保留' : '本批记忆未能保存，整理进度未推进');
+        return;
       }
+      // Only a successful complete batch may advance the progress cursor.
       localStorage.setItem('chat_summary_processed_' + rid, String(endIndex));
-      localStorage.setItem('chat_last_summary_' + rid, String(now));
+      localStorage.setItem('chat_last_summary_' + rid, String(Date.now()));
       overlay.style.display = 'none';
-      var message = '本批整理：' + confirmed + ' 条确认';
-      if (pending) message += ' · ' + pending + ' 条待确认';
-      if (reinforced) message += ' · 强化旧记忆 ' + reinforced + ' 条';
-      sumToast(message);
+      sumToast('本批整理：' + result.added + ' 条待确认' + (result.duplicates ? ' · ' + result.duplicates + ' 条已存在' : ''));
     } catch (err) {
       sumToast('总结失败：' + (err.name === 'AbortError' ? '请求超时' : (err.message === 'memory-json-invalid' ? '模型返回格式不正确，未推进进度，可重试' : '网络错误')));
       overlay.style.display = 'none';
     } finally {
+      if (typeof timer !== 'undefined') clearTimeout(timer);
       btnConfirm.disabled = false;
       btnConfirm.textContent = '整理下一批';
     }

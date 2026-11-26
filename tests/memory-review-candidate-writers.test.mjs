@@ -1,0 +1,31 @@
+import test from 'node:test';
+import assert from 'node:assert/strict';
+import {readFileSync} from 'node:fs';
+const read=path=>readFileSync(new URL('../'+path,import.meta.url),'utf8');
+const recall=read("shared/js/phone/memory_recall.js");
+const storage=read("shared/js/phone/phone_storage.js");
+const repository=read("shared/js/phone/storage/memory-repository.js");
+const page=read("worldbook/memory/memory.html");
+const original={id:'m1',sourceRoleId:'A',status:'confirmed',content:'原始记录',category:'detail'};
+function fixture(records=[original],drop=false){
+ const map=new Map([['chat_memories_A',JSON.stringify(records)]]);let writes=0,ready=false;
+ const localStorage={getItem:k=>map.get(k)??null,setItem:(k,v)=>{if(k==='chat_memories_A'&&ready){writes++;if(drop)return;}map.set(k,String(v));},removeItem:k=>map.delete(k)};
+ const window={localStorage};
+ new Function('window','localStorage',storage)(window,localStorage);
+ window.PhoneStorage.Repository=function(opts){this._storage=opts.storage;};
+ new Function('window',repository)(window);
+ new Function('window',recall)(window);ready=true;
+ return {window,api:window.MemoryRecall,repo:new window.PhoneStorage.MemoryRepository(),records:()=>JSON.parse(map.get('chat_memories_A')),writes:()=>writes};
+}
+const items=[{content:'新摘要',category:'detail',importance:5}], opts={source:'manual-summary',sourceMessageCount:2,isCurrent:()=>true};
+test('manual summary appends pending without changing source',()=>{const f=fixture(),r=f.api.appendReviewCandidates('A',items,opts);assert.equal(r.ok,true);assert.deepEqual(f.records()[0],original);assert.equal(f.records()[1].status,'pending');assert.equal(f.writes(),1);});
+test('merge proposal preserves each original and records provenance',()=>{const list=[original,{...original,id:'m2'},{...original,id:'m3'}],f=fixture(list),r=f.api.appendReviewCandidates('A',items,{source:'merge-candidate',sourceMemoryIds:['m1','m2','m3'],isCurrent:()=>true});assert.equal(r.ok,true);assert.deepEqual(f.records().slice(0,3),list);assert.deepEqual(f.records()[3].sourceMemoryIds,['m1','m2','m3']);assert.equal(f.records()[3].status,'pending');});
+test('stale source cannot append',()=>{const f=fixture();assert.equal(f.api.appendReviewCandidates('A',items,{...opts,isCurrent:()=>false}).reason,'stale-source');assert.equal(f.writes(),0);});
+test('full store never evicts',()=>{const f=fixture(Array.from({length:300},(_,i)=>({...original,id:'m'+i})));assert.equal(f.api.appendReviewCandidates('A',items,opts).reason,'capacity');assert.equal(f.writes(),0);});
+test('invalid second item rejects whole batch',()=>{const f=fixture();assert.equal(f.api.appendReviewCandidates('A',[...items,{content:''}],opts).reason,'invalid-item');assert.equal(f.writes(),0);});
+test('failed persistence does not report success',()=>{const f=fixture([original],true);assert.equal(f.api.appendReviewCandidates('A',items,opts).ok,false);assert.deepEqual(f.records(),[original]);});
+test('merge with foreign source fails',()=>{const f=fixture([original,{...original,id:'m2'},{...original,id:'m3',sourceRoleId:'B'}]);assert.equal(f.api.appendReviewCandidates('A',items,{source:'merge-candidate',sourceMemoryIds:['m1','m2','m3'],isCurrent:()=>true}).reason,'invalid-source');assert.equal(f.writes(),0);});
+test('repository rejects malformed list without clearing records',()=>{const f=fixture();assert.equal(f.repo.save('A',null).error.code,'VALIDATION_FAILED');assert.deepEqual(f.records(),[original]);});
+test('repository cannot remove or overwrite revision chain',()=>{const list=[{...original,status:'superseded-confirmed'},{...original,id:'m2',source:'user-correction',sourceMemoryIds:['m1']}],f=fixture(list);assert.equal(f.repo.remove('A').error.code,'CONFLICT');assert.equal(f.repo.save('A',[original]).error.code,'CONFLICT');assert.deepEqual(f.records(),list);});
+test('repository import retains old entries with no ID',()=>{const legacy={content:'旧记录'},f=fixture([legacy]);assert.equal(f.repo.import('A',[original],false).ok,true);assert.deepEqual(f.records(),[legacy,original]);});
+test('page uses append-only generation and verifies stale preview',()=>{assert.ok(page.includes("source:'manual-summary', sourceMessageCount:historySlice.length"));assert.ok(page.includes("source:'merge-candidate', sourceMemoryIds:pool.map(m=>m.id)"));assert.ok(!page.includes('// 删除该类原已确认记忆'));assert.ok(page.includes('JSON.stringify(arr) !== previewSnapshot'));assert.ok(page.includes('if (!saveMemories(previewRole, arr))'));});

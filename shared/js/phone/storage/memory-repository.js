@@ -54,7 +54,9 @@
             return { ok: false, error: { code: 'VALIDATION_FAILED',
                 message: 'contactId is required', retryable: false } };
         }
-        var r = this._storage.rawGet(_key(contactId), 'array');
+        if (!this._storage || typeof this._storage.getMemories !== 'function')
+            return {ok:false,error:{code:'DB_UNAVAILABLE',message:'guarded memory reader unavailable',retryable:true}};
+        var r = this._storage.getMemories(String(contactId));
         if (r.ok) return r;
         if (r.error && r.error.code === 'NOT_FOUND') {
             return { ok: true, value: [], meta: { found: false, contactId: contactId } };
@@ -73,8 +75,10 @@
             return { ok: false, error: { code: 'VALIDATION_FAILED',
                 message: 'contactId is required', retryable: false } };
         }
-        if (!Array.isArray(list)) list = [];
-        return this._storage.rawSet(_key(contactId), list);
+        if (!Array.isArray(list)) return {ok:false,error:{code:'VALIDATION_FAILED',message:'memory list must be array',retryable:false}};
+        if (!this._storage || typeof this._storage.saveMemories !== 'function')
+            return {ok:false,error:{code:'DB_UNAVAILABLE',message:'guarded memory writer unavailable',retryable:true}};
+        return this._storage.saveMemories(String(contactId),list);
     };
 
     MemoryRepository.prototype.saveMemory = function (contactId, memory, expectedRevision) {
@@ -157,7 +161,9 @@
             return { ok: false, error: { code: 'VALIDATION_FAILED',
                 message: 'contactId is required', retryable: false } };
         }
-        return this._storage.rawRemove(_key(contactId));
+        // Keep all revision-chain protection in the guarded writer. Do not
+        // remove the primary key and expose a stale legacy copy.
+        return this.save(contactId,[]);
     };
 
     MemoryRepository.prototype.clearScope = function (contactId) {
@@ -269,12 +275,13 @@
         var r = this.readMemories(contactId);
         if (!r.ok && !(r.error && r.error.code === 'NOT_FOUND')) return r;
         var existing = r.ok ? r.value.slice() : [];
-        var map = {};
+        var map = Object.create(null);
         existing.forEach(function (m) { if (m && m.id != null) map[m.id] = m; });
         items.forEach(function (m) { if (m && m.id != null) map[m.id] = m; });
         var merged = [];
         existing.forEach(function (m) {
-            if (m && m.id != null && map[m.id]) { merged.push(map[m.id]); delete map[m.id]; }
+            if (m && m.id != null && Object.hasOwn(map,m.id)) { merged.push(map[m.id]); delete map[m.id]; }
+            else merged.push(m);
         });
         Object.keys(map).forEach(function (id) { merged.push(map[id]); });
 

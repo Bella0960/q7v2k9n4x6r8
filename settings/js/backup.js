@@ -484,6 +484,91 @@
         }
     }
 
+    // Inspect the entire memory payload before the existing restore path is
+    // allowed to clear live storage. Keep legacy lists readable and never
+    // rewrite incoming bytes or try to reconstruct a missing revision.
+    function validateMemoryBackup(data) {
+        var states = ['superseded-fixed','superseded-confirmed','withdrawn'];
+        function validList(list, roleId) {
+            if (!Array.isArray(list)) return false;
+            var special = list.filter(function(m) {
+                return m && typeof m === 'object' &&
+                    (m.source === 'user-correction' || states.indexOf(m.status) >= 0);
+            });
+            if (!special.length) return true;
+            var byId = new Map(), linked = new Map();
+            list.forEach(function(m) {
+                if (!m || typeof m !== 'object' || m.id == null) return;
+                var id = String(m.id);
+                if (byId.has(id)) byId.set(id,null);
+                else byId.set(id,m);
+            });
+            function owned(m) {
+                return m && typeof m.id === 'string' && !!m.id &&
+                    byId.get(m.id) === m && String(m.sourceRoleId || '') === roleId &&
+                    (m.roleId == null || String(m.roleId) === roleId);
+            }
+            for (var i = 0; i < special.length; i++) {
+                var m = special[i];
+                if (!owned(m)) return false;
+                if (m.source !== 'user-correction') {
+                    if (m.status === 'withdrawn') return false;
+                    continue;
+                }
+                if (['fixed','confirmed'].concat(states).indexOf(m.status) < 0 ||
+                    !Array.isArray(m.sourceMemoryIds) || m.sourceMemoryIds.length !== 1 ||
+                    typeof m.sourceMemoryIds[0] !== 'string') return false;
+                var parentId = m.sourceMemoryIds[0], parent = byId.get(parentId);
+                if (!owned(parent) || parent === m) return false;
+                linked.set(m.id,parentId);
+            }
+            // At most one non-withdrawn child of each superseded version.
+            var children = new Map();
+            for (var entry of linked) {
+                var child = byId.get(entry[0]);
+                if (child.status === 'withdrawn') continue;
+                var parent = byId.get(entry[1]);
+                if (['superseded-fixed','superseded-confirmed'].indexOf(parent.status) < 0 ||
+                    children.has(parent.id)) return false;
+                children.set(parent.id,child.id);
+            }
+            for (var m of special) {
+                if (['superseded-fixed','superseded-confirmed'].indexOf(m.status) >= 0 && !children.has(m.id)) return false;
+            }
+            // Every chain must terminate at an existing original.
+            for (var id of linked.keys()) {
+                var seen = new Set(), current = id;
+                while (linked.has(current)) {
+                    if (seen.has(current)) return false;
+                    seen.add(current); current = linked.get(current);
+                }
+            }
+            return true;
+        }
+        try {
+            var keys = Object.keys(data);
+            for (var i = 0; i < keys.length; i++) {
+                var key = keys[i];
+                if (key.indexOf('chat_memories_') === 0) {
+                    var roleId = key.slice('chat_memories_'.length);
+                    if (!roleId || typeof data[key] !== 'string' ||
+                        !validList(JSON.parse(data[key]),roleId)) return false;
+                }
+            }
+            if (Object.prototype.hasOwnProperty.call(data,'phone_data_v2')) {
+                if (typeof data.phone_data_v2 !== 'string') return false;
+                var root = JSON.parse(data.phone_data_v2);
+                if (!root || typeof root !== 'object' || Array.isArray(root)) return false;
+                for (var roleId of Object.keys(root)) {
+                    var bucket = root[roleId];
+                    if (bucket && bucket.memories != null &&
+                        !validList(bucket.memories.items,roleId)) return false;
+                }
+            }
+        } catch (_) { return false; }
+        return true;
+    }
+
     // 严格校验：结构 → 应用标识 → schema 版本 → data 段 → 核心键抽样
     function validateBackup(obj) {
         if (!obj || typeof obj !== 'object') return '文件不是有效的 JSON 对象';
@@ -494,6 +579,7 @@
         if (meta.schema > BACKUP_SCHEMA) return '备份版本（schema ' + meta.schema + '）比当前应用更新，请先升级应用再导入';
         if (meta.schema < 1) return 'schema 版本号异常，拒绝导入';
         if (!obj.data || typeof obj.data !== 'object' || Array.isArray(obj.data)) return 'data 段缺失或格式错误';
+        if (!validateMemoryBackup(obj.data)) return '记忆存档损坏或修订链不完整，已阻止恢复以保护原数据';
         var scope = meta.scope || '';
         var registry = typeof backupRegistry === 'function' ? backupRegistry() : null;
         if (scope && (!registry || !registry.get(scope)))
@@ -523,8 +609,10 @@
         localStorage.clear();
         var failed = false;
         Object.keys(snap).forEach(function (k) {
-            try { localStorage.setItem(k, String(snap[k])); }
-            catch (e) { failed = true; }
+            try {
+                localStorage.setItem(k, String(snap[k]));
+                if (localStorage.getItem(k) !== String(snap[k])) failed = true;
+            } catch (e) { failed = true; }
         });
         return !failed;
     }
@@ -607,14 +695,16 @@
         });
     }
     function rpWriteSnapshot(snap, role) {
+        var media = arguments[2] || '{}';
         return rpOpen().then(function (db) {
             return new Promise(function (resolve, reject) {
                 var tx = db.transaction(RP_STORE_NAME, 'readwrite');
-                tx.objectStore(RP_STORE_NAME).put({ role: role, snap: snap, createdAt: Date.now() });
+                // add is an atomic reservation: an unresolved recovery point must never be replaced.
+                tx.objectStore(RP_STORE_NAME).add({ role: role, snap: snap, media: media, createdAt: Date.now() });
                 tx.oncomplete = function () { resolve(); };
                 tx.onerror = function () { reject(tx.error || new Error('Restore-point write failed')); };
                 tx.onabort = function () { reject(tx.error || new Error('Restore-point write aborted')); };
-            });
+            }).finally(function () { db.close(); });
         });
     }
     function rpReadSnapshot(role) {
@@ -624,7 +714,7 @@
                 var req = tx.objectStore(RP_STORE_NAME).get(role);
                 req.onsuccess = function () { resolve(req.result || null); };
                 req.onerror = function () { reject(req.error); };
-            });
+            }).finally(function () { db.close(); });
         });
     }
     function rpDeleteRole(role) {
@@ -632,10 +722,11 @@
             return new Promise(function (resolve, reject) {
                 var tx = db.transaction(RP_STORE_NAME, 'readwrite');
                 tx.objectStore(RP_STORE_NAME).delete(role);
-                tx.oncomplete = function () { resolve(); };
+                tx.oncomplete = function () { resolve(true); };
                 tx.onerror = function () { reject(tx.error); };
-            });
-        }).catch(function () {});  // 恢复点删不掉不应该阻断主流程
+                tx.onabort = function () { reject(tx.error || new Error('Recovery cleanup aborted')); };
+            }).finally(function(){db.close();});
+        }).catch(function () { return false; });
     }
 
     /* ===== IndexedDB 工具函数 =====
@@ -907,6 +998,8 @@
     function restoreStore(db, storeDef, records, clearOnRestore) {
         var mergeOnly = arguments[4] === true;
         var blobFields = storeDef.blobFields || [];
+        var strict = arguments[5] === true;
+        var sharedTx = arguments[6] || null;
         return new Promise(function (resolve, reject) {
             // 无 clearOnRestore 且记录为空 → 跳过（原有行为，不影响非媒体库）
             if (!Array.isArray(records) || (!records.length && (!clearOnRestore || mergeOnly))) {
@@ -914,11 +1007,17 @@
                 return;
             }
             var storeName = storeDef.store;
-            var tx = db.transaction(storeName, 'readwrite');
+            var tx = sharedTx || db.transaction(storeName, 'readwrite');
             var store = tx.objectStore(storeName);
-            if (!mergeOnly) store.clear();
+            if (!mergeOnly) {
+                try { store.clear(); } catch (e) {
+                    if (strict) try { tx.abort(); } catch (_) {}
+                    reject(e); return;
+                }
+            }
             // 空数组 + clearOnRestore：只执行 clear()，不 put 任何记录
             if (!records.length) {
+                if (sharedTx) { resolve({ written:0, skipped:0 }); return; }
                 tx.oncomplete = function () { resolve({ written: 0, skipped: 0 }); };
                 tx.onerror = function () { reject(tx.error || new Error('Store clear failed')); };
                 tx.onabort = function () { reject(tx.error || new Error('Store clear aborted')); };
@@ -940,6 +1039,7 @@
                         skipped++;
                         return;
                     }
+                    if (strict && blobFields.length && value && typeof value === 'object') value = Object.assign({},value);
                     // blobFields 反向解码：base64 字符串 → Blob 实例；解码失败整条跳过。
                     // MIME 优先读伴生字段 __blobMime_<fieldName>（导出时写入），
                     // 无伴生字段时 fallback 到 value.format（字体预设兼容），
@@ -948,6 +1048,7 @@
                         for (var j = 0; j < blobFields.length; j++) {
                             var f = blobFields[j];
                             var v = value[f];
+                            if (strict && (typeof v !== 'string' || !v)) throw new Error('Missing encoded blob');
                             if (v && typeof v === 'string') {
                                 try {
                                     var mimeKey = '__blobMime_' + f;
@@ -970,52 +1071,71 @@
                     skipped++;
                 }
             });
+            if (sharedTx) {
+                // Requests are queued synchronously in the common transaction.
+                // Do not replace the database-level commit/abort listeners.
+                if (skipped) {
+                    try { tx.abort(); } catch (_) {}
+                    reject(new Error('Store record could not be restored'));
+                } else resolve({ written:written, skipped:0 });
+                return;
+            }
             tx.oncomplete = function () { resolve({ written: written, skipped: skipped }); };
             tx.onerror = function () { reject(tx.error || new Error('Store write failed')); };
             tx.onabort = function () { reject(tx.error || new Error('Store write aborted')); };
+            // Production restore is strict: a synchronous decode/put failure
+            // must roll back the entire store, including its preceding clear.
+            if (strict && skipped) {
+                try { tx.abort(); } catch (e) { reject(e); }
+            }
         });
     }
 
-    // 恢复一个 DB：顺序处理备份里有的 store，一个 store 一个事务。
-    // 备份里有我们没登记的 store（兼容性/未来字段）→ 静默跳过。
-    // 返回 Promise<{ written: number, skipped: number, dbRestored: boolean }>
+    // 恢复一个 DB：同一数据库内所有选中表共享一次事务。
+    // 任一表失败必须撤销本数据库的全部写入；跨 DB 不具有原子性。
     function restoreDatabase(dbName, version, storeDefs, incomingDb) {
         var mergeOnly = arguments[4] === true;
-        if (!incomingDb || typeof incomingDb !== 'object') return Promise.resolve({ written: 0, skipped: 0, dbRestored: true });
-        var db = null;
-        // 已登记的扩展数据库和内置数据库使用同样的恢复语义。
-        var targetDef = null;
-        var allTargets = typeof backupTargets === 'function' ? backupTargets() : IDB_TARGETS;
-        for (var t = 0; t < allTargets.length; t++) {
-            if (allTargets[t].db === dbName) { targetDef = allTargets[t]; break; }
-        }
-        var clearOnRestore = targetDef && targetDef.clearOnRestore;
-        return idbOpen(dbName, version, storeDefs).then(function (_db) {
-            db = _db;
-            var storeMap = {};
-            storeDefs.forEach(function (d) { storeMap[d.store] = d; });
-            var storeNames = Object.keys(incomingDb);
-            var i = 0, totalWritten = 0, totalSkipped = 0;
-            function next() {
-                if (i >= storeNames.length) { db.close(); return { written: totalWritten, skipped: totalSkipped, dbRestored: true }; }
-                var sn = storeNames[i++];
-                var def = storeMap[sn];
-                if (!def) return next();
-                var records = incomingDb[sn];
-                // clearOnRestore: 空数组也调用 restoreStore（会执行 clear()），确保恢复状态与备份一致
-                if (!Array.isArray(records) ||
-                    (!records.length && (!clearOnRestore || mergeOnly))) return next();
-                return restoreStore(db, def, records, clearOnRestore, mergeOnly).then(function (res) {
-                    totalWritten += res.written;
-                    totalSkipped += res.skipped;
-                    return next();
-                });
-            }
-            return next();
-        }).catch(function (e) {
-            if (db) { try { db.close(); } catch (e2) {} }
-            throw e;
+        if (!incomingDb || typeof incomingDb !== 'object' || Array.isArray(incomingDb))
+            return Promise.reject(new Error('Invalid database payload'));
+        var targets = typeof backupTargets === 'function' ? backupTargets() : IDB_TARGETS;
+        var target = targets.find(function(t) { return t.db === dbName; });
+        var clearOnRestore = !!(target && target.clearOnRestore);
+        var defs = new Map(storeDefs.map(function(d) { return [d.store,d]; }));
+        var names = Object.keys(incomingDb);
+        if (names.some(function(sn) { return !defs.has(sn) || !Array.isArray(incomingDb[sn]); }))
+            return Promise.reject(new Error('Unknown or invalid store payload'));
+        names = names.filter(function(sn) {
+            return incomingDb[sn].length || (clearOnRestore && !mergeOnly);
         });
+        if (!names.length) return Promise.resolve({written:0,skipped:0,dbRestored:true});
+        var db = null;
+        return idbOpen(dbName,version,storeDefs).then(function(opened) {
+            db = opened;
+            if (names.length === 1) {
+                var def = defs.get(names[0]), records = incomingDb[names[0]];
+                return restoreStore(db, def, records, clearOnRestore, mergeOnly, true)
+                    .then(function(res) { return {written:res.written,skipped:res.skipped,dbRestored:true}; });
+            }
+            var tx = db.transaction(names,'readwrite');
+            var completion = new Promise(function(resolve,reject) {
+                tx.oncomplete = function() { resolve(); };
+                tx.onabort = function() { reject(tx.error || new Error('Database restore aborted')); };
+                // IndexedDB's default request-error behavior aborts the shared
+                // transaction. Do not preventDefault or resolve on request success.
+            });
+            var jobs = names.map(function(sn) {
+                return restoreStore(db,defs.get(sn),incomingDb[sn],clearOnRestore,mergeOnly,true,tx);
+            });
+            // All requests are queued before yielding. Handle a rejected queue
+            // (including objectStore/clear failure) by aborting the common tx.
+            var queued = Promise.all(jobs).catch(function(e) {
+                try { tx.abort(); } catch (_) {}
+                throw e;
+            });
+            return Promise.all([completion,queued]).then(function(results) {
+                return {written:results[1].reduce(function(n,r) {return n+r.written;},0),skipped:0,dbRestored:true};
+            });
+        }).finally(function() { if(db) db.close(); });
     }
 
     // 导入兜底：备份文件通常不含 API 密钥（见 SECRET_KEYS），而 restore() 会先 clear()。
@@ -1045,6 +1165,7 @@
             result.shouldKeep++;
             try {
                 localStorage.setItem(k, cur);
+                if (localStorage.getItem(k) !== cur) throw new Error('readback failed');
                 result.written++;
             } catch (e) {
                 result.failed++;
@@ -1127,14 +1248,680 @@
             return track && track.id && track.source === 'local' && !validIds.has(String(track.id));
         });
     }
+    // BACKUP-SAFE-001: read-only structural checks against current registry.
+    // No independent restore engine or schema change.
+    // Capture the original records of every store this import will write.
+    // Keep native blobs until the readonly transaction commits; encode only
+    // afterward. An incomplete or oversized snapshot prevents import.
+    async function captureMediaRestorePoint(obj, scope, isCurrent) {
+        var maxChars = 64 * 1024 * 1024, maxRows = 100000;
+        var used = 0, count = 0, out = Object.create(null);
+        function check() {
+            if (!isCurrent()) throw new Error('Restore scope changed');
+        }
+        function charge(n) {
+            used += n;
+            if (used > maxChars) throw new Error('Media recovery point exceeds limit');
+        }
+        function plain(value, depth) {
+            depth = depth || 0;
+            if (depth > 128) throw new Error('Recovery record too deeply nested');
+            if (value === null || typeof value === 'string' || typeof value === 'boolean' ||
+                (typeof value === 'number' && Number.isFinite(value) && !Object.is(value,-0))) return;
+            if (typeof value !== 'object' || !value ||
+                (!Array.isArray(value) && Object.getPrototypeOf(value) !== Object.prototype &&
+                 Object.getPrototypeOf(value) !== null)) throw new Error('Unsupported recovery value');
+            var keys = Object.keys(value);
+            if (Array.isArray(value) && (keys.length !== value.length || keys.some(function(k,i){return k !== String(i);})))
+                throw new Error('Unsupported sparse recovery array');
+            keys.forEach(function(k) { plain(value[k],depth+1); });
+        }
+        function openExisting(name) {
+            return new Promise(function(resolve,reject) {
+                var missing = false, stopped = false, req;
+                try { req = indexedDB.open(name); } catch(e) { reject(e); return; }
+                req.onupgradeneeded = function(e) {
+                    missing = e.oldVersion === 0;
+                    req.transaction.abort();
+                };
+                req.onblocked = function() { stopped=true; reject(new Error('Recovery source blocked')); };
+                req.onerror = function() {
+                    if (missing) resolve(null); else reject(new Error('Recovery source unreadable'));
+                };
+                req.onsuccess = function() {
+                    if (stopped) { req.result.close(); return; }
+                    resolve(req.result);
+                };
+            });
+        }
+        function readStores(db, defs) {
+            return new Promise(function(resolve,reject) {
+                var rows = Object.create(null), failure, tx;
+                try {
+                    tx = db.transaction(defs.map(function(d){return d.store;}),'readonly');
+                    tx.onabort = function(){reject(failure || new Error('Recovery read aborted'));};
+                    tx.oncomplete = function(){resolve(rows);};
+                    defs.forEach(function(def) {
+                        var list = rows[def.store] = [];
+                        var req = tx.objectStore(def.store).openCursor();
+                        req.onsuccess = function() {
+                            try {
+                                check();
+                                var cur = req.result;
+                                if (!cur) return;
+                                if (++count > maxRows) throw new Error('Too many recovery records');
+                                var key = cur.primaryKey, value = cur.value, blobs = [];
+                                if (!(typeof key === 'string' || (typeof key === 'number' && Number.isFinite(key))))
+                                    throw new Error('Unsupported recovery key');
+                                if ((def.blobFields || []).length) {
+                                    if (!value || typeof value !== 'object' || Array.isArray(value))
+                                        throw new Error('Invalid media recovery record');
+                                    value = Object.assign(Object.create(null),value);
+                                    def.blobFields.forEach(function(field) {
+                                        var blob = value[field];
+                                        if (!(blob instanceof Blob)) throw new Error('Missing original media');
+                                        if (Object.prototype.hasOwnProperty.call(value,'__blobMime_'+field))
+                                            throw new Error('Conflicting media metadata');
+                                        charge(Math.ceil(blob.size/3)*4);
+                                        blobs.push({field:field,blob:blob});
+                                        delete value[field];
+                                    });
+                                }
+                                if (def.keyPath && (!value || value[def.keyPath] !== key)) throw new Error('Recovery primary key mismatch');
+                                plain(value);
+                                charge(JSON.stringify({key:key,value:value}).length);
+                                list.push({key:key,value:value,blobs:blobs});
+                                cur.continue();
+                            } catch(e) { failure=e; try {tx.abort();}catch(_) {reject(e);} }
+                        };
+                    });
+                } catch(e) { if(tx)try{tx.abort();}catch(_){} reject(e); }
+            });
+        }
+        var incoming = obj.indexedDB || {};
+        for (var target of backupTargets(scope)) {
+            var payload = incoming[target.db];
+            if (!payload) continue;
+            var defs = target.stores.filter(function(d) {
+                return Array.isArray(payload[d.store]) &&
+                    (payload[d.store].length || (target.clearOnRestore && !scope));
+            });
+            if (!defs.length) continue;
+            check();
+            var db = await openExisting(target.db);
+            if (!db) {out[target.db]={existed:false,stores:{}};continue;}
+            try {
+                if (defs.some(function(d){return !db.objectStoreNames.contains(d.store);}))
+                    throw new Error('Recovery source store missing');
+                var version = db.version;
+                var rows = await readStores(db,defs);
+            } finally {db.close();}
+            check();
+            var stores = Object.create(null);
+            for (var def of defs) {
+                var list = stores[def.store] = [];
+                for (var row of rows[def.store]) {
+                    check();
+                    for (var part of row.blobs) {
+                        var encoded = await blobToBase64(part.blob);
+                        if (typeof encoded !== 'string' || encoded.length !== Math.ceil(part.blob.size/3)*4)
+                            throw new Error('Incomplete media recovery encoding');
+                        row.value[part.field] = encoded;
+                        row.value['__blobMime_'+part.field] = part.blob.type;
+                    }
+                    list.push(def.keyPath ? row.value : {__key:row.key,__value:row.value});
+                }
+            }
+            out[target.db]={existed:true,version:version,stores:stores};
+        }
+        check();
+        var serialized=JSON.stringify(out);
+        if (serialized.length>maxChars) throw new Error('Media recovery point exceeds limit');
+        return serialized;
+    }
+
+    function validateRestorePayload(obj, scope) {
+        function record(v) { return !!v && typeof v === 'object' && !Array.isArray(v); }
+        function own(v,k) { return Object.prototype.hasOwnProperty.call(v,k); }
+        function validKey(v) { return (typeof v === 'string' && v.length > 0) ||
+            (typeof v === 'number' && Number.isFinite(v)); }
+        function validBase64(v) {
+            if (typeof v !== 'string' || !v.length || v.length % 4 === 1) return false;
+            var pad = v.endsWith('==') ? 2 : v.endsWith('=') ? 1 : 0;
+            return (!pad || v.length % 4 === 0) && /^[A-Za-z0-9+/]+={0,2}$/.test(v);
+        }
+        if (!Number.isInteger(obj.__backup.schema)) return '备份版本号无效';
+        for (var k of Object.keys(obj.data)) {
+            if (['__proto__','constructor','prototype'].includes(k) ||
+                /^__mao_account_v1__/.test(k)) return '备份含内部存储键，已阻止恢复';
+            if (typeof obj.data[k] !== 'string') return '备份本机数据格式异常';
+            if (/^chat_history_/.test(k)) {
+                try { if (!Array.isArray(JSON.parse(obj.data[k]))) return '聊天存档格式损坏'; }
+                catch (_) { return '聊天存档无法读取'; }
+            }
+        }
+        var manifest = obj.__backup.indexedDB;
+        if (manifest != null && !record(manifest)) return '媒体备份清单格式异常';
+        if (obj.indexedDB == null) {
+            if (manifest && Object.values(manifest).some(function(n) { return n !== 0; }))
+                return '备份声明了媒体数据但实际缺失';
+            return '';
+        }
+        if (obj.__backup.schema < 2 || !record(obj.indexedDB)) return '媒体备份格式异常';
+        var targets = new Map(backupTargets(scope).map(function(t) { return [t.db,t]; }));
+        var totals = new Map();
+        for (var dbName of Object.keys(obj.indexedDB)) {
+            var target = targets.get(dbName), stores = obj.indexedDB[dbName];
+            if (!target || !record(stores)) return '备份含未登记或无效媒体库，请更新应用';
+            var defs = new Map(target.stores.map(function(d) { return [d.store,d]; }));
+            var total = 0;
+            for (var sn of Object.keys(stores)) {
+                var def = defs.get(sn), rows = stores[sn];
+                if (!def || !Array.isArray(rows)) return '媒体记录格式异常';
+                var keys = new Set();
+                for (var row of rows) {
+                    if (!record(row)) return '媒体记录损坏';
+                    var wrapped = own(row,'__key') || own(row,'__value');
+                    if (wrapped && (!own(row,'__key') || !own(row,'__value') || def.keyPath)) return '媒体记录键格式异常';
+                    var value = wrapped ? row.__value : row;
+                    var key = wrapped ? row.__key : def.keyPath && value[def.keyPath];
+                    if (!validKey(key) || keys.has(key)) return '媒体记录键缺失或重复';
+                    keys.add(key);
+                    for (var field of def.blobFields || []) {
+                        if (!record(value) || !validBase64(value[field])) return '媒体原始内容缺失或编码损坏';
+                    }
+                }
+                total += rows.length;
+            }
+            if (dbName === 'maomao-assets') {
+                if (!['assets','blobs','refs'].every(function(sn) { return Array.isArray(stores[sn]); }))
+                    return '图片资源备份缺少必要关联记录';
+                var blobs = new Set(stores.blobs.map(function(row) { return row.assetId; }));
+                var assetIds = new Set(stores.assets.map(function(row) { return row.assetId; }));
+                if (stores.assets.some(function(row) { return !blobs.has(row.assetId); }) ||
+                    stores.refs.some(function(row) { return !blobs.has(row.assetId) || !assetIds.has(row.assetId); }) ||
+                    (Array.isArray(stores.image_records) && stores.image_records.some(function(row) {
+                        return !row.characterId || !blobs.has(row.assetId) || !assetIds.has(row.assetId);
+                    })))
+                    return '图片资源引用缺少原始内容或元数据';
+            }
+            totals.set(dbName,total);
+        }
+        if (manifest) {
+            for (var name of Object.keys(manifest)) {
+                var count = manifest[name];
+                if (!Number.isInteger(count) || count < 0 || !targets.has(name) ||
+                    (totals.get(name) || 0) !== count) return '媒体清单与实际记录数不一致';
+            }
+        }
+        return '';
+    }
+
+    // Match MediaRepository's content-addressed ID (SHA-256 first 20 bytes,
+    // uppercase base32). Verify original bytes without touching live storage.
+    async function verifyBackupAssetHashes(obj) {
+        var media = obj.indexedDB && obj.indexedDB['maomao-assets'];
+        if (!media || !Array.isArray(media.blobs) || !media.blobs.length) return '';
+        var crypto = window.crypto;
+        if (!crypto || !crypto.subtle || typeof crypto.subtle.digest !== 'function' ||
+            typeof window.atob !== 'function') return '当前浏览器无法核验图片指纹';
+        var alpha = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ234567', total = 0;
+        for (var row of media.blobs) {
+            if (!row || !/^as_[A-Z2-7]{32}$/.test(row.assetId) || typeof row.blob !== 'string')
+                return '图片资源标识或内容异常';
+            // Keep existing export bounds on imported bytes too; no skipped hash
+            // is allowed to masquerade as a verified restore.
+            var padding = row.blob.endsWith('==') ? 2 : row.blob.endsWith('=') ? 1 : 0;
+            var expectedSize = Math.floor(row.blob.length * 3 / 4) - padding;
+            total += expectedSize;
+            if (expectedSize > 30 * 1024 * 1024 || total > 90 * 1024 * 1024)
+                return '图片备份超出当前可安全校验的大小限制';
+            try {
+                var binary = window.atob(row.blob);
+                if (binary.length !== expectedSize) return '图片内容编码异常';
+                var bytes = new Uint8Array(binary.length);
+                for (var i=0; i<binary.length; i++) bytes[i] = binary.charCodeAt(i);
+                binary = null;
+                var digest = new Uint8Array(await crypto.subtle.digest('SHA-256',bytes));
+                bytes = null;
+                if (digest.length !== 32) return '图片指纹校验失败';
+                var bits=0, acc=0, hash='';
+                for (var j=0;j<20;j++) {
+                    acc=(acc<<8)|digest[j]; bits+=8;
+                    while(bits>=5) { hash+=alpha[(acc >>> (bits-5)) & 31]; bits-=5; }
+                }
+                if ('as_'+hash !== row.assetId) return '图片内容与原始指纹不一致，可能已损坏';
+            } catch (_) { return '图片内容无法完成指纹校验'; }
+        }
+        return '';
+    }
+
+    function captureRestoreBaseline() {
+        var out = Object.create(null);
+        var keys = Object.keys(localStorage);
+        for (var k of keys) {
+            var value = localStorage.getItem(k);
+            if (typeof value !== 'string') throw new Error('unreadable local snapshot');
+            out[k] = value;
+        }
+        if (Object.keys(localStorage).length !== keys.length) throw new Error('local snapshot changed');
+        return out;
+    }
+
+    function restoreOutcomeComplete(incoming, current, scope, expectedCounts, outcomes, secretRes, dbFailed, dbSkippedBlob) {
+        if (secretRes.failed || dbFailed.length || dbSkippedBlob) return false;
+        try {
+            for (var k of Object.keys(incoming)) {
+                if (localStorage.getItem(k) !== incoming[k]) return false;
+            }
+            var registry = scope ? backupRegistry() : null;
+            if (scope && !registry) return false;
+            for (var k of Object.keys(current)) {
+                if (Object.prototype.hasOwnProperty.call(incoming,k)) continue;
+                var retain = neverBackupKey(k) || SECRET_KEYS.indexOf(k) >= 0 ||
+                    (scope && !registry.belongsTo(scope,k));
+                if (localStorage.getItem(k) !== (retain ? current[k] : null)) return false;
+            }
+            for (var name of Object.keys(expectedCounts)) {
+                var result = outcomes[name];
+                if (!result || result.written !== expectedCounts[name] || result.skipped !== 0) return false;
+            }
+        } catch (_) { return false; }
+        return true;
+    }
+
+    // JSON.parse silently accepts duplicate object keys. Scan the already
+    // syntactically valid source, decoding only object keys (not large blobs).
+    // This checks the backup envelope, not JSON strings stored as user data.
+    function validateUniqueBackupKeys(raw) {
+        var stack = [];
+        for (var i=0;i<raw.length;i++) {
+            var ch=raw[i], top=stack[stack.length-1];
+            if (ch === '"') {
+                var start=i++;
+                while (i<raw.length && raw[i] !== '"') {
+                    if (raw[i] === '\\') i++;
+                    i++;
+                }
+                if (top && top.keys && top.expectKey) {
+                    var key=JSON.parse(raw.slice(start,i+1));
+                    if (top.keys.has(key)) return '备份包含重复字段，无法确定正确数据';
+                    top.keys.add(key); top.expectKey=false;
+                }
+            } else if (ch === '{' || ch === '[') {
+                if (stack.length>=128) return '备份结构嵌套过深';
+                stack.push(ch === '{' ? {keys:new Set(),expectKey:true} : {});
+            } else if (ch === '}' || ch === ']') stack.pop();
+            else if (ch === ',' && top && top.keys) top.expectKey=true;
+        }
+        return '';
+    }
+
+    // A recovery archive is evidence, not a full or module backup. Its
+    // affected stores may be only a subset of the device's media databases.
+    function sameRecoveryPoint(a,b) {
+        return !!(a && b && a.role === b.role && a.createdAt === b.createdAt &&
+            a.media === b.media && JSON.stringify(a.snap) === JSON.stringify(b.snap) &&
+            JSON.stringify(a.journal) === JSON.stringify(b.journal));
+    }
+    // Import intent journal, attached to the existing recovery point. Do not
+    // store another copy of imported content or include credential fingerprints.
+    function journalEligibleKey(k) {
+        return !neverBackupKey(k) && SECRET_KEYS.indexOf(k)<0 &&
+            !['__proto__','constructor','prototype'].includes(k) &&
+            !/^__mao_account_v1__/.test(k);
+    }
+    async function journalFingerprint(value) {
+        if(value===null)return null;
+        if(typeof value!=='string')throw new Error('invalid-journal-value');
+        var crypto=window.crypto;
+        if(!crypto || !crypto.subtle || typeof crypto.subtle.digest!=='function')
+            throw new Error('journal-crypto-unavailable');
+        // Hash exact JS UTF-16 code units (including unpaired surrogates).
+        var bytes=new Uint8Array(value.length*2);
+        for(var i=0;i<value.length;i++){var n=value.charCodeAt(i);bytes[2*i]=n>>>8;bytes[2*i+1]=n&255;}
+        var digest=new Uint8Array(await crypto.subtle.digest('SHA-256',bytes));
+        if(digest.length!==32)throw new Error('journal-fingerprint-failed');
+        return Array.from(digest,function(n){return n.toString(16).padStart(2,'0');}).join('');
+    }
+    async function prepareRestoreJournal(current,incoming,scope,obj,isCurrent) {
+        var registry=scope?backupRegistry():null;
+        if(scope&&!registry)throw new Error('unknown-scope');
+        var keys=new Set(Object.keys(current).concat(Object.keys(incoming)));
+        if(keys.size>10000)throw new Error('journal-key-limit');
+        var entries=[],chars=0;
+        for(var k of keys){
+            if(!isCurrent())throw new Error('account-or-baseline-changed');
+            if(!journalEligibleKey(k)||(scope&&!registry.belongsTo(scope,k)))continue;
+            var before=Object.hasOwn(current,k)?current[k]:null;
+            var expected=Object.hasOwn(incoming,k)?incoming[k]:null;
+            if(before===expected)continue;
+            chars+=k.length+(expected===null?0:expected.length);
+            if(chars>16*1024*1024)throw new Error('journal-size-limit');
+            entries.push({key:k,expected:await journalFingerprint(expected)});
+        }
+        if(!isCurrent())throw new Error('account-or-baseline-changed');
+        var dbs=[];
+        for(var target of backupTargets(scope)){
+            if(!obj.indexedDB||!Object.hasOwn(obj.indexedDB,target.db))continue;
+            var stores=obj.indexedDB[target.db];
+            var count=Object.values(stores).reduce(function(n,rows){return n+rows.length;},0);
+            dbs.push({name:target.db,state:'not-started',expectedCount:count});
+        }
+        return {format:1,scope:scope,local:{state:'not-started',entries:entries},databases:dbs};
+    }
+    // Compare-and-set against the exact recovery point, including its journal.
+    // No business writes can begin before the preceding intent checkpoint commits.
+    async function checkpointRestoreJournal(expected,journal,isCurrent) {
+        if(!isCurrent())throw new Error('account-changed');
+        var next=Object.assign({},expected,{journal:journal});
+        var db=await rpOpen();
+        try {
+            await new Promise(function(resolve,reject){
+                var tx=db.transaction(RP_STORE_NAME,'readwrite'),store=tx.objectStore(RP_STORE_NAME);
+                tx.oncomplete=function(){resolve();};
+                tx.onabort=function(){reject(new Error('journal-checkpoint-aborted'));};
+                tx.onerror=function(){reject(new Error('journal-checkpoint-failed'));};
+                var req=store.get(RP_ROLE_PRE);
+                req.onsuccess=function(){
+                    try{
+                        if(!isCurrent()||!sameRecoveryPoint(req.result,expected)){tx.abort();return;}
+                        store.put(next);
+                    }catch(_){try{tx.abort();}catch(e){reject(e);}}
+                };
+            });
+        }finally{db.close();}
+        if(!isCurrent()||!sameRecoveryPoint(await rpReadSnapshot(RP_ROLE_PRE),next))
+            throw new Error('journal-readback-failed');
+        return next;
+    }
+    function journalWithState(record,kind,name,state,written) {
+        var journal=JSON.parse(JSON.stringify(record.journal));
+        var item=kind==='local'?journal.local:journal.databases.find(function(d){return d.name===name;});
+        if(!item)throw new Error('journal-target-missing');
+        var allowed={'not-started':['writing'],writing:['verified','reported-committed','uncertain']};
+        if(!allowed[item.state]||!allowed[item.state].includes(state)||
+            (kind==='local'&&state==='reported-committed')||(kind!=='local'&&state==='verified'))
+            throw new Error('invalid-journal-transition');
+        item.state=state;
+        if(Number.isInteger(written)&&written>=0)item.written=written;
+        return journal;
+    }
+    // Read-only classification; "matches intent" is not proof of exclusive
+    // authorship and never grants permission to overwrite a current value.
+    async function inspectRecoveryJournal(record,isCurrent) {
+        var j=record.journal;
+        if(!j||j.format!==1||!j.local||!Array.isArray(j.local.entries)||!Array.isArray(j.databases))
+            return null;
+        var result={localState:j.local.state,original:0,matchesIntent:0,changed:0,
+            unverified:0,databases:j.databases.map(function(d){return {state:d.state};})};
+        for(var entry of j.local.entries){
+            if(!isCurrent())throw new Error('account-changed');
+            if(!entry||typeof entry.key!=='string'||!journalEligibleKey(entry.key)||
+                (entry.expected!==null&&!/^[0-9a-f]{64}$/.test(entry.expected)))
+                throw new Error('invalid-journal-entry');
+            var key=entry.key,current=localStorage.getItem(key);
+            var before=Object.hasOwn(record.snap,key)?record.snap[key]:null;
+            if(current===before){result.original++;continue;}
+            if(j.local.state!=='verified'){result.unverified++;continue;}
+            var fingerprint=await journalFingerprint(current);
+            if(!isCurrent())throw new Error('account-changed');
+            if(localStorage.getItem(key)!==current){result.changed++;continue;}
+            if(fingerprint===entry.expected)result.matchesIntent++;
+            else result.changed++;
+        }
+        return result;
+    }
+
+    function recoveryScope() {
+        var account = window.__MAO_ACCOUNT_SCOPE__;
+        var meta = document.querySelector('meta[name="mao-account-id"]');
+        if ((meta || account) && (!account || account.ready !== true ||
+            typeof account.accountId !== 'string' || !account.accountId ||
+            (meta && account.accountId !== String(meta.content || '').trim()))) throw new Error('account-not-ready');
+        return {account:account, name:'maomao-restore-v1:'+ (account ? encodeURIComponent(account.accountId) : 'legacy')};
+    }
+    async function withRecoveryLock(action, requireSharedLock) {
+        var scope = recoveryScope();
+        function current() {
+            try { return recoveryScope().account === scope.account; } catch (_) { return false; }
+        }
+        var locks = window.navigator && window.navigator.locks;
+        if (locks && typeof locks.request === 'function') {
+            return locks.request(scope.name,{mode:'exclusive',ifAvailable:true},function(lock) {
+                if (!lock) throw new Error('restore-busy');
+                if (!current()) throw new Error('account-changed');
+                return action(current);
+            });
+        }
+        // Legacy browsers can keep the existing import path, but must not
+        // discard a point when another tab could still be importing.
+        if (requireSharedLock) throw new Error('shared-lock-unavailable');
+        if (withRecoveryLock.busy) throw new Error('restore-busy');
+        withRecoveryLock.busy = true;
+        try { if (!current()) throw new Error('account-changed'); return await action(current); }
+        finally { withRecoveryLock.busy = false; }
+    }
+    function makeRecoveryArchive(record) {
+        if (!record || record.role !== RP_ROLE_PRE || !Number.isFinite(record.createdAt) ||
+            !record.snap || typeof record.snap !== 'object' || Array.isArray(record.snap))
+            throw new Error('invalid-recovery-point');
+        var snap=Object.create(null), omitted=0;
+        Object.keys(record.snap).forEach(function(k) {
+            if (typeof record.snap[k] !== 'string') throw new Error('invalid-recovery-value');
+            if (neverBackupKey(k) || SECRET_KEYS.indexOf(k) >= 0 ||
+                ['__proto__','prototype','constructor'].includes(k) || /^__mao_account_v1__/.test(k)) {
+                omitted++; return;
+            }
+            snap[k]=record.snap[k];
+        });
+        var media=null, mediaRows=0;
+        if (record.media !== undefined) {
+            if (typeof record.media !== 'string') throw new Error('invalid-recovery-media');
+            media=JSON.parse(record.media);
+            if (!media || typeof media !== 'object' || Array.isArray(media)) throw new Error('invalid-recovery-media');
+            var targets=new Map(backupTargets().map(function(t){return [t.db,t];}));
+            Object.keys(media).forEach(function(name) {
+                var item=media[name], target=targets.get(name);
+                if (!target || !item || typeof item.existed !== 'boolean' ||
+                    !item.stores || typeof item.stores !== 'object' || Array.isArray(item.stores))
+                    throw new Error('invalid-recovery-database');
+                var allowed=new Set(target.stores.map(function(d){return d.store;}));
+                if (!item.existed && Object.keys(item.stores).length) throw new Error('invalid-absent-database');
+                if (item.existed && (!Number.isInteger(item.version)||item.version<1)) throw new Error('invalid-recovery-version');
+                Object.keys(item.stores).forEach(function(sn) {
+                    if (!allowed.has(sn)||!Array.isArray(item.stores[sn])) throw new Error('invalid-recovery-store');
+                    mediaRows+=item.stores[sn].length;
+                });
+            });
+        }
+        return {__recovery:{app:BACKUP_APP,format:1,createdAt:record.createdAt,
+            completeBackup:false,automaticRestore:false,knownCredentialKeysOmitted:omitted,
+            mediaCaptured:media!==null},data:snap,media:media,counts:{local:Object.keys(snap).length,media:mediaRows}};
+    }
+    function downloadRecoveryArchive(archive) {
+        var blob=new Blob([JSON.stringify(archive)],{type:'application/json'});
+        var url=URL.createObjectURL(blob),a=document.createElement('a');
+        try {
+            a.href=url;
+            a.download='maomao-recovery-'+new Date(archive.__recovery.createdAt).toISOString().replace(/[:.]/g,'-')+'.json';
+            document.body.appendChild(a); a.click();
+        } finally { a.remove(); setTimeout(function(){URL.revokeObjectURL(url);},1500); }
+    }
+    function deleteExactRecoveryPoint(expected,isCurrent) {
+        return rpOpen().then(function(db) {
+            return new Promise(function(resolve,reject) {
+                var tx=db.transaction(RP_STORE_NAME,'readwrite'),store=tx.objectStore(RP_STORE_NAME),deleted=false;
+                var req=store.get(RP_ROLE_PRE);
+                req.onsuccess=function() {
+                    try {
+                        if (!isCurrent() || !sameRecoveryPoint(req.result,expected)) {tx.abort();return;}
+                        store.delete(RP_ROLE_PRE); deleted=true;
+                    } catch (_) { try {tx.abort();} catch(e){reject(e);} }
+                };
+                tx.oncomplete=function(){resolve(deleted);};
+                tx.onabort=function(){resolve(false);};
+                tx.onerror=function(){reject(tx.error || new Error('recovery-delete-failed'));};
+            }).finally(function(){db.close();});
+        });
+    }
+    // Conservative recovery for empty affected stores. Never clear, overwrite,
+    // upgrade or create a business database. The original point stays intact.
+    function recoverEmptyMediaDatabase(target, saved, isCurrent) {
+        var names=Object.keys(saved.stores);
+        var defs=new Map(target.stores.map(function(d){return [d.store,d];}));
+        if (!saved.existed || !names.length) return Promise.resolve({state:'skipped',written:0});
+        if (target.db==='maomao-assets' && target.stores.some(function(d){return !names.includes(d.store);}))
+            return Promise.resolve({state:'incomplete',written:0});
+        var batches=names.map(function(name){
+            var def=defs.get(name);
+            if(!def) throw new Error('unregistered-store');
+            return {name:name,def:def,rows:saved.stores[name].map(function(row){
+                var value=def.keyPath?row:row.__value, key=def.keyPath?row[def.keyPath]:row.__key;
+                if ((def.blobFields||[]).length) {
+                    value=Object.assign(Object.create(null),value);
+                    def.blobFields.forEach(function(field){
+                        var mk='__blobMime_'+field, mime=value[mk];
+                        if(typeof mime!=='string') throw new Error('missing-mime');
+                        var blob=base64ToBlob(value[field],mime);
+                        value[field]=mime===''?new Blob([blob],{type:''}):blob;
+                        delete value[mk];
+                    });
+                }
+                return {value:value,key:key};
+            })};
+        });
+        if(!isCurrent()) return Promise.reject(new Error('account-changed'));
+        return new Promise(function(resolve,reject){
+            var req,stopped=false;
+            try{req=indexedDB.open(target.db);}catch(e){reject(e);return;}
+            req.onupgradeneeded=function(){stopped=true;req.transaction.abort();resolve({state:'missing-db',written:0});};
+            req.onblocked=function(){stopped=true;reject(new Error('database-blocked'));};
+            req.onerror=function(){if(!stopped)reject(new Error('database-unreadable'));};
+            req.onsuccess=function(){
+                var db=req.result;
+                if(stopped){db.close();return;}
+                if(!isCurrent()||db.version!==saved.version||
+                    names.some(function(n){return !db.objectStoreNames.contains(n);})){
+                    db.close();resolve({state:'changed',written:0});return;
+                }
+                var tx,reason='failed',written=0;
+                function abort(why){reason=why;try{tx.abort();}catch(e){db.close();reject(e);}}
+                try{
+                    tx=db.transaction(names,'readwrite');
+                    tx.onabort=function(){db.close();resolve({state:reason,written:0});};
+                    tx.oncomplete=function(){db.close();resolve({state:'recovered',written:written});};
+                    var left=batches.length;
+                    batches.forEach(function(batch){
+                        var store=tx.objectStore(batch.name);
+                        if(store.keyPath!==(batch.def.keyPath||null)){abort('changed');return;}
+                        var count=store.count();
+                        count.onsuccess=function(){
+                            try {
+                                if(!isCurrent()){abort('changed');return;}
+                                if(count.result!==0){abort('occupied');return;}
+                                if(--left!==0)return;
+                                // All counts and adds run in the same transaction.
+                                // add (not put) also rejects a duplicate key.
+                                for(var part of batches){
+                                    var dest=tx.objectStore(part.name);
+                                    for(var row of part.rows){
+                                        if(part.def.keyPath)dest.add(row.value);
+                                        else dest.add(row.value,row.key);
+                                        written++;
+                                    }
+                                }
+                            }catch(_){abort('failed');}
+                        };
+                    });
+                }catch(e){if(tx){abort('failed');}else{db.close();reject(e);}}
+            };
+        });
+    }
+    async function recoverMissingMedia(record,isCurrent){
+        var archive=makeRecoveryArchive(record);
+        if(!archive.media) return {state:'no-media',written:0,skipped:0};
+        var targets=new Map(backupTargets().map(function(t){return [t.db,t];}));
+        var payload=Object.create(null),skipped=0;
+        for(var name of Object.keys(archive.media)){
+            var item=archive.media[name],target=targets.get(name);
+            if(!item.existed || !Object.values(item.stores).some(function(rows){return rows.length;}) ||
+                (name==='maomao-assets' && target.stores.some(function(d){return !Object.hasOwn(item.stores,d.store);}))){
+                skipped++;continue;
+            }
+            payload[name]=item.stores;
+        }
+        var names=Object.keys(payload);
+        if(!names.length)return {state:'no-media',written:0,skipped:skipped};
+        var obj={__backup:{schema:2},data:{},indexedDB:payload};
+        if(validateRestorePayload(obj,'') || await verifyBackupAssetHashes(obj))
+            return {state:'invalid-media',written:0,skipped:skipped};
+        if(!isCurrent())throw new Error('account-changed');
+        if(!confirm('只补回空数据表中的原始媒体，不覆盖已有记录、不恢复文字数据。存在新记录的数据库会跳过，恢复点会保留。确定继续？'))
+            return {state:'cancelled'};
+        var fresh=await rpReadSnapshot(RP_ROLE_PRE);
+        if(!isCurrent()||!sameRecoveryPoint(record,fresh))return {state:'changed'};
+        var written=0,failed=0;
+        for(var name of names){
+            if(!isCurrent()){failed++;break;}
+            try{
+                var result=await recoverEmptyMediaDatabase(targets.get(name),archive.media[name],isCurrent);
+                written+=result.written;
+                if(result.state==='failed'){failed++;break;}
+                if(result.state!=='recovered')skipped++;
+            }catch(_){failed++;break;}
+        }
+        return {state:'media-recovery-result',written:written,skipped:skipped,failed:failed};
+    }
+
+    // Export requests do not prove the browser wrote a file. Releasing the
+    // point requires re-reading the selected archive and a fresh exact match.
+    async function manageRecoveryPoint(action,verified) {
+        return withRecoveryLock(async function(isCurrent) {
+            var rec=await rpReadSnapshot(RP_ROLE_PRE);
+            if (!isCurrent()) throw new Error('account-changed');
+            if (!rec) return {state:'missing'};
+            if (action==='view') {
+                var archive=makeRecoveryArchive(rec);
+                return {state:'available',createdAt:rec.createdAt,counts:archive.counts,
+                    mediaCaptured:archive.__recovery.mediaCaptured,progress:await inspectRecoveryJournal(rec,isCurrent)};
+            }
+            if (action==='export') {
+                var archive=makeRecoveryArchive(rec);
+                if (!confirm('恢复档案可能含私人聊天与图片。已排除已知凭据键，但仍请妥善保管。它不是完整备份，暂不能直接导入。确定导出？')) return {state:'cancelled'};
+                if (!isCurrent()) throw new Error('account-changed');
+                downloadRecoveryArchive(archive);
+                return {state:'export-requested'};
+            }
+            if (action==='recover-media') return recoverMissingMedia(rec,isCurrent);
+            if (action==='release') {
+                if (!verified || verified.account !== recoveryScope().account ||
+                    typeof verified.text !== 'string') return {state:'export-required'};
+                if (verified.text !== JSON.stringify(makeRecoveryArchive(rec))) return {state:'archive-mismatch'};
+                if (!confirm('已核对所选档案与当前恢复点一致。释放将删除本机这一个恢复点，不会自动恢复任何数据。档案不包含已排除的凭据。确定释放？')) return {state:'cancelled'};
+                if (!isCurrent()) throw new Error('account-changed');
+                return {state:await deleteExactRecoveryPoint(rec,isCurrent)?'released':'changed'};
+            }
+            throw new Error('unknown-recovery-action');
+        },action==='release'||action==='recover-media');
+    }
+
     function handleImportFile(file) {
         var requestedScope = arguments[1];
         if (!file) return;
         var reader = new FileReader();
         reader.onload = async function (ev) {
-            var obj;
-            try { obj = JSON.parse(String(ev.target.result)); }
-            catch (e) { toast('导入失败：文件不是合法 JSON'); return; }
+          try { return await withRecoveryLock(async function () {
+            var obj, rawText = String(ev.target.result);
+            try { obj = JSON.parse(rawText); }
+            catch (e) {
+                var trimmed = rawText.trim();
+                toast('导入失败：' + (!trimmed ? '备份文件为空' : /^</.test(trimmed) ? '文件是网页而非备份' : '文件不是完整合法的 JSON'));
+                return;
+            }
+            var duplicateError = validateUniqueBackupKeys(rawText);
+            if (duplicateError) { toast('导入失败：' + duplicateError + '，本机数据未改动'); return; }
+            if (obj && obj.__recovery) { toast('这是恢复档案，不是普通备份，暂不能直接导入'); return; }
             var err = validateBackup(obj);
             if (err) { toast('导入失败：' + err); return; }
             if (obj.__backup.complete === false) {
@@ -1154,8 +1941,10 @@
                 toast('分类备份请使用「恢复所选模块」，避免误覆盖全量数据'); return;
             }
 
+            var payloadError = validateRestorePayload(obj, scope);
+            if (payloadError) { toast('导入失败：' + payloadError + '，本机数据未改动'); return; }
             // Never import auth/session secrets from an old or externally supplied archive.
-            var incoming = {};
+            var incoming = Object.create(null);
             Object.keys(obj.data).forEach(function(k) {
                 if (!neverBackupKey(k)) incoming[k] = obj.data[k];
             });
@@ -1171,23 +1960,65 @@
                 ? '只恢复「' + backupRegistry().get(scope).label + '」模块（本机数据 ' + count + ' 项'
                   + (idbTotal ? '，共享媒体 ' + idbTotal + ' 项' : '') + '）' + label
                   + '。\\n\\n不会清空其他模块。共享图片和字体按记录合并，但同名记录可能更新。'
-                  + '本机恢复点只保障 localStorage；恢复前请另存一份完整备份。确定继续？'
+                  + '本机恢复点保留文字和本次涉及的媒体记录，但不支持自动跨库回滚。恢复前请另存完整备份。确定继续？'
                 : '将用备份覆盖当前全部数据（localStorage ' + count + ' 项'
                   + (idbTotal ? '，IndexedDB ' + idbTotal + ' 项' : '') + '）' + label
                   + '。\\n\\n当前数据会先自动导出一份安全备份，localStorage 导入失败会自动回滚。确定继续？';
+            var account = window.__MAO_ACCOUNT_SCOPE__;
+            var accountMeta = document.querySelector('meta[name="mao-account-id"]');
+            if ((accountMeta || account) && (!account || account.ready !== true ||
+                (accountMeta && account.accountId !== String(accountMeta.content || '').trim()))) {
+                toast('账号存储尚未就绪，已阻止恢复'); return;
+            }
+            var hashError = await verifyBackupAssetHashes(obj);
+            if (hashError || window.__MAO_ACCOUNT_SCOPE__ !== account) {
+                toast('导入失败：' + (hashError || '账号已变化') + '，本机数据未改动'); return;
+            }
+            var preview;
+            try { preview = captureRestoreBaseline(); }
+            catch (_) { toast('本机存储读取不完整，已阻止恢复'); return; }
+            var registry = backupRegistry();
+            var deleted = Object.keys(preview).filter(function(k) {
+                return !neverBackupKey(k) && SECRET_KEYS.indexOf(k) < 0 &&
+                    (!scope || registry && registry.belongsTo(scope,k)) &&
+                    !Object.prototype.hasOwnProperty.call(incoming,k);
+            }).length;
+            var overwritten = Object.keys(incoming).filter(function(k) {
+                return Object.prototype.hasOwnProperty.call(preview,k) && preview[k] !== incoming[k];
+            }).length;
+            if (deleted || overwritten) promptText += '\n\n校验提示：预计删除本机 ' + deleted + ' 项，覆盖 ' + overwritten + ' 项。';
             if (!confirm(promptText)) return;
+            function stillCurrent() {
+                try {
+                    if (window.__MAO_ACCOUNT_SCOPE__ !== account) return false;
+                    var now = captureRestoreBaseline();
+                    return Object.keys(now).length === Object.keys(preview).length &&
+                        Object.keys(preview).every(function(k) { return now[k] === preview[k]; });
+                } catch (_) { return false; }
+            }
+            if (!stillCurrent()) { toast('本机数据已变化，请重新选择备份'); return; }
 
             // 1. 建立本机恢复点：把当前 localStorage 快照写入独立 IndexedDB，
             //    写完立即读回并用 verifyRestore 对 localStorage 实际内容做校验。
             //    恢复点 DB 独立于三个业务库的 version，localStorage.clear() 炸不到它。
-            var current = snapshot(false, false, true);
+            var current = preview;
+            var mediaSnapshot;
+            try {
+                if (await rpReadSnapshot(RP_ROLE_PRE)) {
+                    toast('存在尚未处理的恢复点。请到设置的数据管理中查看和导出恢复档案'); return;
+                }
+                mediaSnapshot = await captureMediaRestorePoint(obj,scope,stillCurrent);
+            } catch (_) { toast('无法完整建立媒体恢复前副本，本机数据未改动'); return; }
+            if (!stillCurrent()) { toast('本机数据已变化，本次恢复已停止'); return; }
             var rpSnap = null;       // 从恢复点读回的真正快照
             var rpReady = false;
             try {
-                await rpWriteSnapshot(current, RP_ROLE_PRE);
+                await rpWriteSnapshot(current, RP_ROLE_PRE, mediaSnapshot);
                 var rpRec = await rpReadSnapshot(RP_ROLE_PRE);
                 if (rpRec && rpRec.snap && typeof rpRec.snap === 'object'
-                        && Object.keys(rpRec.snap).length === Object.keys(current).length) {
+                        && rpRec.media === mediaSnapshot
+                        && Object.keys(rpRec.snap).length === Object.keys(current).length
+                        && Object.keys(current).every(function(k){return rpRec.snap[k]===current[k];})) {
                     rpSnap = rpRec.snap;
                     rpReady = true;
                 }
@@ -1218,6 +2049,20 @@
                 backupFileWarn = '（未能提供额外的安全备份文件，但已建立可回滚的恢复点）';
             }
 
+            if (!stillCurrent()) { toast('本机数据已变化，本次恢复已停止，恢复点保留'); return; }
+            // Persist the planned and started states before any business mutation.
+            var journalAccountCurrent=function(){return window.__MAO_ACCOUNT_SCOPE__===account;};
+            var journalRecord=rpRec;
+            async function markJournal(kind,name,state,written){
+                journalRecord=await checkpointRestoreJournal(journalRecord,
+                    journalWithState(journalRecord,kind,name,state,written),journalAccountCurrent);
+            }
+            try{
+                var journal=await prepareRestoreJournal(current,incoming,scope,obj,journalAccountCurrent);
+                journalRecord=await checkpointRestoreJournal(journalRecord,journal,journalAccountCurrent);
+                await markJournal('local',null,'writing');
+            }catch(_){toast('恢复状态记录无法保存，已停止导入，原恢复点保留');return;}
+            if(!stillCurrent()){toast('本机数据已变化，本次恢复已停止，恢复点保留');return;}
             // 2. localStorage 覆盖写入；失败则从恢复点回滚后结束（IndexedDB 还没动）
             var ok = scope ? restoreScoped(incoming, scope) : restore(incoming);
             if (!ok) {
@@ -1247,7 +2092,8 @@
                         + (verify.mismatched && verify.mismatched.length ? '，值不等 ' + verify.mismatched.length + ' 项' : '')
                         + '）。当前数据可能不完整');
                 }
-                return;  // 失败路径：不清理恢复点（让它留着便于排查或下次覆盖）
+                try{await markJournal('local',null,'uncertain');}catch(_){}
+                return;  // 失败路径：保留原恢复点
             }
             // 3. 保留本机 API 凭据（备份未携带时），避免导入他人备份后丢失配置
             var secretRes = scope ? { written: 0, failed: 0, failedKeys: [] } :
@@ -1266,10 +2112,17 @@
                 }
             });
 
+            var localVerified=journalAccountCurrent() &&
+                restoreOutcomeComplete(incoming,current,scope,{}, {},secretRes,[],0);
+            try{await markJournal('local',null,localVerified?'verified':'uncertain');}
+            catch(_){alert('文字恢复状态未能记录，已停止媒体恢复，原恢复点保留');return;}
+            if(!localVerified){alert('文字恢复未完整完成，已停止媒体恢复，原恢复点保留');return;}
+
             // 4. IndexedDB 恢复：schema < 2 的旧备份跳过并提示
             var dbRestored = 0;
             var dbSkippedBlob = 0;  // blob 解码失败被跳过的记录数
             var dbFailed = [];
+            var expectedCounts = Object.create(null), dbOutcomes = Object.create(null);
             var dbSkippedOld = false;
             if (obj.__backup.schema >= 2 && obj.indexedDB && typeof obj.indexedDB === 'object') {
                 var selectedTargets = backupTargets(scope);
@@ -1277,23 +2130,32 @@
                     var tgt = selectedTargets[i];
                     var incomingDb = obj.indexedDB[tgt.db];
                     if (!incomingDb || typeof incomingDb !== 'object') continue;
+                    expectedCounts[tgt.db] = Object.values(incomingDb).reduce(function(n,rows) { return n + rows.length; },0);
+                    if (window.__MAO_ACCOUNT_SCOPE__ !== account) { dbFailed.push('账号已变化'); break; }
                     try {
+                        await markJournal('database',tgt.db,'writing');
+                        if(!journalAccountCurrent())throw new Error('account-changed');
                         var res = await restoreDatabase(tgt.db, tgt.version, tgt.stores, incomingDb, !!scope);
+                        dbOutcomes[tgt.db] = {written:res.written,skipped:res.skipped};
                         dbRestored += res.written;
                         dbSkippedBlob += res.skipped;
+                        var reported=res.written===expectedCounts[tgt.db]&&res.skipped===0;
+                        await markJournal('database',tgt.db,reported?'reported-committed':'uncertain',res.written);
+                        if(!reported){dbFailed.push(tgt.db+'（写入数量未核对）');break;}
                     } catch (e) {
-                        dbFailed.push(tgt.db + '（' + ((e && e.message) || '未知错误') + '）');
+                        try{await markJournal('database',tgt.db,'uncertain');}catch(_){}
+                        dbFailed.push(tgt.db + '（恢复失败）');
+                        break; // Do not modify subsequent databases after a failure.
                     }
                 }
             } else {
                 dbSkippedOld = true;
             }
 
-            // A scoped import must not report success after a partial IDB
-            // failure, nor discard its pre-import localStorage recovery point.
-            if (scope && (dbFailed.length || dbSkippedBlob)) {
-                toast('分类恢复尚未完成：共享媒体有 ' + (dbFailed.length + dbSkippedBlob)
-                    + ' 处失败；已保留导入前的本机恢复点');
+            // Full and scoped imports both retain recovery points on partial failure.
+            if (window.__MAO_ACCOUNT_SCOPE__ !== account ||
+                !restoreOutcomeComplete(incoming,current,scope,expectedCounts,dbOutcomes,secretRes,dbFailed,dbSkippedBlob)) {
+                alert('导入未完整完成：部分数据或媒体未通过恢复核查。导入前的文字和受影响媒体恢复点已保留；媒体可能已部分更新，尚未自动回滚。');
                 return;
             }
 
@@ -1301,7 +2163,9 @@
             var fontOrphanCleaned = (!scope || scope === 'themes') ? await checkFontPresetOrphan() : false;
 
             // 5. 成功路径：清掉本机恢复点（已无需保留）
-            rpDeleteRole(RP_ROLE_PRE);
+            if (window.__MAO_ACCOUNT_SCOPE__ !== account) { alert('账号状态已变化，恢复点保留'); return; }
+            var recoveryCleaned = await deleteExactRecoveryPoint(journalRecord,journalAccountCurrent).catch(function(){return false;});
+            if (recoveryCleaned !== true) { alert('数据恢复已完成，但恢复点未能清理。请保留该恢复点并检查本机存储。'); return; }
 
             // 6. 组装最终提示
             var parts = ['导入成功'];
@@ -1319,6 +2183,7 @@
             var tail = backupFileWarn || '';
             toast(parts.join('，') + tail + '，正在刷新…');
             setTimeout(function () { location.reload(); }, 700);
+          },false); } catch (_) { toast('恢复操作暂不可用或已有操作进行中，本机恢复点请妥善保留'); }
         };
         reader.onerror = function () { toast('导入失败：文件读取失败'); };
         reader.readAsText(file);
@@ -1350,6 +2215,60 @@
             var selected = moduleFile.files && moduleFile.files[0];
             moduleFile.value = '';
             handleImportFile(selected, chosen);
+        });
+    }
+
+    // Recovery point management uses the existing data section and does not
+    // inspect private text or media in the DOM.
+    var recoveryStatus=$('recoveryPointStatus'), recoveryView=$('rowViewRecoveryPoint'),
+        recoveryExport=$('rowExportRecoveryPoint'), recoveryRelease=$('rowReleaseRecoveryPoint'),
+        recoveryFile=$('recoveryPointFileInput'), recoveryMedia=$('rowRecoverMissingMedia');
+    var recoveryBusy=false;
+    async function runRecoveryAction(action,verified) {
+        if (recoveryBusy || !recoveryStatus) return;
+        recoveryBusy=true;
+        try {
+            var result=await manageRecoveryPoint(action,verified);
+            if (result.state==='available') {
+                recoveryStatus.textContent='建立于 '+new Date(result.createdAt).toLocaleString()+
+                    ' · 文字 '+result.counts.local+' 项 · '+(result.mediaCaptured?'媒体 '+result.counts.media+' 条':'旧恢复点未记录媒体');
+                if(result.progress){var p=result.progress;recoveryStatus.textContent+='。文字差异：原值 '+p.original+' 项，符合导入预期 '+p.matchesIntent+' 项，变化 '+p.changed+' 项，未核验 '+p.unverified+' 项；媒体事务报告已提交 '+p.databases.filter(function(d){return d.state==='reported-committed';}).length+' 个库。';}
+            } else if (result.state==='missing') {recoveryStatus.textContent='当前没有待处理的恢复点';}
+            else if (result.state==='export-requested') {recoveryStatus.textContent='已请求导出。释放时请重新选择已保存的档案，核对一致后才可释放';}
+            else if (result.state==='export-required') {recoveryStatus.textContent='请先导出并选择当前恢复点档案';}
+            else if (result.state==='archive-mismatch') {recoveryStatus.textContent='档案与当前恢复点不一致，原恢复点仍保留';}
+            else if (result.state==='released') {recoveryStatus.textContent='已释放恢复点，可重新导入；本机业务数据未被恢复';}
+            else if (result.state==='changed') {recoveryStatus.textContent='恢复点已变化或未能处理，请重新查看';}
+            else if (result.state==='no-media') {recoveryStatus.textContent='没有可安全补回的媒体，恢复点保留';}
+            else if (result.state==='invalid-media') {recoveryStatus.textContent='媒体副本未通过校验，未恢复任何记录';}
+            else if (result.state==='media-recovery-result') {recoveryStatus.textContent='已补回 '+result.written+' 条媒体记录；跳过 '+result.skipped+' 个库'+(result.failed?'；发生失败，已停止':'')+'。原恢复点保留，未恢复文字。';}
+        } catch(e) {
+            recoveryStatus.textContent=e && e.message==='shared-lock-unavailable'?
+                '此浏览器无法安全释放恢复点，请更新浏览器。原恢复点仍保留。':
+                '恢复点操作未完成，可能正在恢复或存储异常。请保留原数据。';
+        } finally {recoveryBusy=false;}
+    }
+    if(recoveryView) recoveryView.addEventListener('click',function(){runRecoveryAction('view');});
+    if(recoveryExport) recoveryExport.addEventListener('click',function(){runRecoveryAction('export');});
+    if(recoveryMedia) recoveryMedia.addEventListener('click',function(){runRecoveryAction('recover-media');});
+    if(recoveryRelease && recoveryFile) {
+        recoveryRelease.addEventListener('click',function(){if(!recoveryBusy)recoveryFile.click();});
+        recoveryFile.addEventListener('change',async function(){
+            var file=recoveryFile.files && recoveryFile.files[0];
+            recoveryFile.value='';
+            if(!file || recoveryBusy) return;
+            var verified;
+            try {
+                var scope=recoveryScope();
+                if(file.size>128*1024*1024 || typeof file.text!=='function') throw new Error('archive-unreadable');
+                recoveryBusy=true;
+                var content=await file.text();
+                if(recoveryScope().account!==scope.account) throw new Error('account-changed');
+                verified={account:scope.account,text:content};
+            } catch(_) {
+                recoveryStatus.textContent='档案无法完整读取或账号已变化，原恢复点仍保留';
+            } finally {recoveryBusy=false;}
+            if(verified) await runRecoveryAction('release',verified);
         });
     }
 
