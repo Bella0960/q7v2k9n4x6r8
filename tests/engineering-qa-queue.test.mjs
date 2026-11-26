@@ -285,7 +285,7 @@ function runQueueAssembleCli(t, specs, options = {}) {
   const wrapperScript = [
     '#!/bin/sh',
     'if [ "$1" = "remote" ] && [ "$2" = "get-url" ] && [ "$3" = "origin" ]; then',
-    '  printf "%s\\n" "https://github.com/"' + repository + '"',
+    '  printf "%s\\n" "https://github.com/' + repository + '"',
     '  exit 0',
     'fi',
     'if [ "$1" = "ls-remote" ] && [ "$2" = "--heads" ] && [ "$3" = "origin" ]; then',
