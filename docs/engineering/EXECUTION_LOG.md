@@ -308,3 +308,6 @@ On the next turn/session, read this file and the current `AGENTS.md` first. Cont
 - `ROLE-BEHAVIOR-001`：复用现有 voice habit、emotion continuity、life notes、autonomy，统一本轮行为上下文；不新增并行人设引擎或 API 调用。
 - `ROLE-ACTION-001`：梳理散落在 chat-detail 的群管理、关系、投票/接龙等动作标记，建立统一执行入口；模型标记本身不构成权限，状态变更须等主回复提交后执行并验证/回滚。
 - `ROLE-LIFE-001`：复用现有生活线、事件和足迹数据，补齐计划/进行中/完成/取消/改期生命周期；不另建数据库。
+
+
+**PR 回执补记：** PR head `421b827dee5cac7753e7bd8a69e7a96309b6b776` 的 GitHub Actions workflow runs 为 0；当前仅有 Netlify `deploy-preview-545` 状态（netlify/maomaoecat/deploy-preview=success, netlify/maoer/deploy-preview=success）。这些自动 deploy-preview 不是 MAOMAO 唯一 QA，不作为功能验收或发布依据。本轮未访问、未使用这些地址，也未发布到 `preview.mao520.com`。
