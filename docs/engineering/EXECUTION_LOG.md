@@ -302,3 +302,9 @@ On the next turn/session, read this file and the current `AGENTS.md` first. Cont
 - **本地 Node smoke：** 使用 Node.js 22 对提交中的 `chat-heart-policy.js` 逻辑执行隔离测试，7/7 检查通过（标记解析、双成员隔离、24 条上限、私聊旧键读取、写入失败、提示词边界）。
 - **完整仓库测试：** `npm run test:chat:contract`、`npm run build`、Chromium 和手机 PWA 尚未执行。当前容器无法解析 GitHub 主机，GitHub PR head 的 workflow/status 查询也没有返回运行记录；不能将 smoke 测试等同于完整回归。
 - **最新 PR head：** `da8491775932f810ee51e284c1fed242e2e22222`；当前 Actions runs=0，combined status=0 条。PR #545 继续保持 Draft、未合并、未部署。
+
+
+**后续架构拆分登记（仅排期，不混入 ROLE-MIND-001 实现）：**
+- `ROLE-BEHAVIOR-001`：复用现有 voice habit、emotion continuity、life notes、autonomy，统一本轮行为上下文；不新增并行人设引擎或 API 调用。
+- `ROLE-ACTION-001`：梳理散落在 chat-detail 的群管理、关系、投票/接龙等动作标记，建立统一执行入口；模型标记本身不构成权限，状态变更须等主回复提交后执行并验证/回滚。
+- `ROLE-LIFE-001`：复用现有生活线、事件和足迹数据，补齐计划/进行中/完成/取消/改期生命周期；不另建数据库。
