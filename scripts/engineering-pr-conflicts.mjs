@@ -50,9 +50,11 @@ function uniquePairs(items){
  for(const x of items)m.set([x.scope,x.currentPath,x.otherPath].join('\u0000'),x);
  return [...m.values()].sort((a,b)=>[a.scope,a.currentPath,a.otherPath].join('|').localeCompare([b.scope,b.currentPath,b.otherPath].join('|'))).slice(0,40);
 }
-export function buildConflictReport({repository='Bella0960/q7v2k9n4x6r8',currentBranch='',currentSha='',currentPaths=[],pullRequests=[]}={}){
+export function buildConflictReport({repository='Bella0960/q7v2k9n4x6r8',currentBranch='',currentSha='',currentPaths=[],pullRequests=[],ignorePullRequestNumbers=[]}={}){
+ const ignored=new Set(ignorePullRequestNumbers.filter(Number.isSafeInteger));
  const own=pathSet(currentPaths),findings=[];
  for(const pr of pullRequests){
+  if(ignored.has(pr?.number))continue;
   if(pr?.state&&pr.state!=='open')continue;
   const branch=pr?.head?.ref??pr?.branch;
   const headRepository=pr?.head?.repo?.full_name??pr?.headRepository;
@@ -165,17 +167,17 @@ function changedPaths(base,head){
   git('ls-files','-z','--others','--exclude-standard')];
  return [...new Set(outputs.flatMap(splitPaths))].sort();
 }
-export async function runConflictAudit({repo=process.env.GITHUB_REPOSITORY||'Bella0960/q7v2k9n4x6r8',base='origin/main',head='HEAD'}={}){
+export async function runConflictAudit({repo=process.env.GITHUB_REPOSITORY||'Bella0960/q7v2k9n4x6r8',base='origin/main',head='HEAD',ignorePullRequestNumbers=[]}={}){
  if(!/^[A-Za-z0-9_.-]+\/[A-Za-z0-9_.-]+$/.test(repo))throw new Error('Repository must use owner/name form');
  const branch=git('branch','--show-current').trim(),sha=git('rev-parse',head).trim();
  if(!SHA.test(sha))throw new Error('Current Git SHA invalid');
  const mine=changedPaths(base,head);
- if(!mine.length)return buildConflictReport({repository:repo,currentBranch:branch,currentSha:sha,currentPaths:mine});
+ if(!mine.length)return buildConflictReport({repository:repo,currentBranch:branch,currentSha:sha,currentPaths:mine,ignorePullRequestNumbers});
  if(git('rev-parse','--is-shallow-repository').trim()==='true'){
   throw new Error('A complete Git history is required. Fetch the full history and retry.');
  }
  const pullRequests=withGitPaths(repo,await openPrs(repo));
- return buildConflictReport({repository:repo,currentBranch:branch,currentSha:sha,currentPaths:mine,pullRequests});
+ return buildConflictReport({repository:repo,currentBranch:branch,currentSha:sha,currentPaths:mine,pullRequests,ignorePullRequestNumbers});
 }
 function render(r){
  const displayPath=path=>/[\u0000-\u001f\u007f-\u009f]/.test(path)

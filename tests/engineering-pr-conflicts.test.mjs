@@ -119,3 +119,17 @@ test('command line scans exact Git paths across committed and working-tree chang
   }
  );
 });
+
+
+test('batch ownership audit can exclude only the PRs already selected for the candidate',()=>{
+ const r=buildConflictReport({
+  currentPaths:['chat/chat/detail.html'],
+  ignorePullRequestNumbers:[20],
+  pullRequests:[
+   pull(20,'CHAT/selected',['chat/chat/detail.html']),
+   pull(21,'CHAT/unselected',['chat/chat/detail.html'])
+  ]
+ });
+ assert.equal(r.exactOverlapCount,1);
+ assert.equal(r.findings[0].number,21);
+});
