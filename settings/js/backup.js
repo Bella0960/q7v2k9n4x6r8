@@ -387,8 +387,9 @@
             musicCoverRefs.forEach(function(assetId) {
                 if (!exportedMusicAssets.has(assetId)) missingMusicMedia.push(assetId);
             });
+            var missingGroupPortraits=backupMissingGroupPortraits({data:snap,indexedDB:dbData},groupPortraitBackupAccount());
             var backupComplete = dbWarnings.length === 0 && allSkipped.length === 0
-                && !hasAudioMeta && missingAudioIds.length === 0 && missingMusicMedia.length === 0;
+                && !hasAudioMeta && missingAudioIds.length === 0 && missingMusicMedia.length === 0 && !missingGroupPortraits;
             // localStorage 也没有任何数据时（纯 IndexedDB 备份）也允许导出，
             // 因为 wallpaper / books / photos 都可能只在 IndexedDB 里。
             if (!Object.keys(snap).length && !dbTotal) {
@@ -434,7 +435,8 @@
                         recordsSkipped: allSkipped.length,
                         audioMetadataOnly: hasAudioMeta,
                         missingMusicAudio: missingAudioIds.length,
-                        missingMusicMedia: missingMusicMedia.length
+                        missingMusicMedia: missingMusicMedia.length,
+                        missingGroupPortraits: missingGroupPortraits
                     },
                     ...(scope ? { scope: scope, moduleLabel: registry.get(scope).label,
                         sharedMedia: exportTargets.some(function(t) {
@@ -478,6 +480,7 @@
                 + ' 首本地歌曲缺少可恢复音频，备份不完整且已禁止自动恢复）';
             if (missingMusicMedia.length) msg += '（' + missingMusicMedia.length
                 + ' 项音乐封面/背景未包含原始图片，此备份不可自动恢复）';
+            if(missingGroupPortraits)msg+='（群内头像原图或归属不完整，禁止自动恢复）';
             if (allSkipped.length) {
                 msg += '（' + allSkipped.length + ' 项因体积超限或读取失败未包含'
                     + '：' + allSkipped.slice(0, 5).map(function (s) { return s.db + '.' + s.store + '::' + s.id; }).join('、')
@@ -1133,6 +1136,45 @@
         }).map(function(record) { return String(record.assetId); }));
         return imageIds.some(function(id) { return !available.has(id); });
     }
+    // Group portrait mappings are account-local. Verify the complete owner tuple, metadata
+    // and bytes before declaring a backup complete or allowing an import to overwrite data.
+    function backupMissingGroupPortraits(obj,account) {
+        var raw=obj&&obj.data&&obj.data.phone_groups;
+        if(raw==null)return false;
+        var groups;
+        try{groups=JSON.parse(raw);}catch(error){return true;}
+        if(!Array.isArray(groups))return true;
+        var db=obj.indexedDB&&obj.indexedDB['maomao-assets']||{};
+        var blobs=Array.isArray(db.blobs)?db.blobs:[],assets=Array.isArray(db.assets)?db.assets:[],refs=Array.isArray(db.refs)?db.refs:[];
+        var blobMap=new Map(),assetMap=new Map(),refMap=new Map(),duplicates=new Set();
+        function index(rows,map){rows.forEach(function(row){if(row&&typeof row.assetId==='string'){if(map.has(row.assetId))duplicates.add(row.assetId);map.set(row.assetId,row);}});}
+        index(blobs,blobMap);index(assets,assetMap);index(refs,refMap);
+        var groupIds=new Set();
+        for(var group of groups){
+            if(!group||!group.portraitOverridesV1)continue;
+            var record=group.portraitOverridesV1,gid=String(group.id||'');
+            if(!/^g.+$/.test(gid)||groupIds.has(gid)||!/^MAO-[A-Z0-9]{12,24}$/.test(record.accountId||'')||!Array.isArray(record.entries))return true;
+            groupIds.add(gid);
+            if(!record.entries.length)continue;
+            if(!account||account!==record.accountId)return true;
+            var members=Array.isArray(group.members)?group.members:[],ids=new Set();
+            for(var entry of record.entries){
+                if(!entry||typeof entry.memberId!=='string'||!/^as_[A-Z2-7]{32}$/.test(entry.assetId||'')||ids.has(entry.memberId))return true;
+                ids.add(entry.memberId);
+                if(entry.memberId!=='__user'&&members.filter(function(m){return m&&String(m.id)===entry.memberId;}).length!==1)return true;
+                var assetId=entry.assetId,blob=blobMap.get(assetId),asset=assetMap.get(assetId),ref=refMap.get(assetId);
+                if(duplicates.has(assetId)||!blob||!asset||!ref||!musicBackupBlobEncoded(blob.blob)||!/^image\/(?:jpeg|png|webp)$/.test(asset.mimeType||''))return true;
+                var owners=Array.isArray(ref.refs)?ref.refs:[ref];
+                var owner=JSON.stringify([account,gid,entry.memberId]);
+                if(!owners.some(function(x){return x&&x.ownerType==='group-portrait'&&x.ownerId===owner;}))return true;
+            }
+        }
+        return false;
+    }
+    function groupPortraitBackupAccount(){
+        var scope=window.__MAO_ACCOUNT_SCOPE__;
+        return scope&&scope.ready===true?scope.accountId:null;
+    }
     function backupMissingMusicBytes(obj) {
         var audio = obj.indexedDB && obj.indexedDB['maomao-media-store']
             && obj.indexedDB['maomao-media-store'].audio;
@@ -1172,6 +1214,7 @@
             if (backupMissingMusicImages(obj)) {
                 toast('备份缺少音乐自定义封面或背景原图，已阻止恢复以保护原素材'); return;
             }
+            if(backupMissingGroupPortraits(obj,groupPortraitBackupAccount())){toast('群内头像原图缺失或账号归属不一致，已阻止恢复以保护现有数据');return;}
             var scope = obj.__backup.scope || '';
             if (requestedScope && scope !== requestedScope) {
                 toast('导入失败：文件分类与当前选择不一致'); return;
