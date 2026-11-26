@@ -179,6 +179,14 @@ Choose by actual behavior and affected consumers, not by file extension alone.
 - The current reusable workflow runs the candidate gates inside one request job; rerunning that failed job can repeat the candidate suite. Do not describe a whole-job rerun as a single-test retry. Use bounded read-only retries only where the runner already permits them; never retry deployment mutations blindly.
 - Never delete tests, weaken assertions, skip a required gate, fabricate a pass, or label an unobserved browser/device check as verified.
 
+### 10.7 Read-only file-ownership conflict scan
+
+- Before opening a task branch or assembling an integration candidate, run `npm run eng:conflicts` from the source checkout. It compares committed, staged, unstaged, and untracked paths with changed-file lists for all open PRs in the public source repository.
+- An exact path overlap is a **BLOCK** until owners coordinate. Changes in the same shared runtime, Worker, workflow, build-config, release-core, or engineering-governance hotspot are **SHARED** warnings requiring one named owner. Different files in the same feature submodule are **REVIEW** warnings, not automatic blockers.
+- The scanner reads PR metadata and filenames only. It does not read PR bodies/source contents, write GitHub state, rebase, merge, close PRs, or dispatch QA.
+- An incomplete API scan exits non-zero and must never be interpreted as “no conflicts”. A zero-change branch reports that no ownership conclusion was made.
+- The report is advisory, not a guarantee against semantic conflicts. Task owners still declare exact paths and the integration coordinator resolves ownership before merging.
+
 ### 10.6 Owner-facing delivery
 
 - Do not ask the owner to repeat "continue" for work already authorized. Complete the bounded work package and keep independent work moving.
