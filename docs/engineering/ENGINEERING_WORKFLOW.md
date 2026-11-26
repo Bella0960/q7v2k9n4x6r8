@@ -1,6 +1,6 @@
 # MAOMAO 统一工程工作流（GOV-006）
 
-状态：**已进入 main，作为所有开发窗口的统一任务协作入口**。  
+状态：**GOV-006 工具代码已进入 main；本次统一说明文档随 rollout PR 提交，合并后成为所有开发窗口的统一操作入口**。  
 适用对象：所有 AI 开发窗口、人工开发者、代码审核者和唯一集成协调者。
 
 本文件说明新工程工具如何使用。根目录 `AGENTS.md` 仍是所有贡献者的总入口；`docs/engineering/RELEASE_POLICY.md` 仍是 QA/生产发布权限与安全门禁的唯一权威。本文不取代这两份规则。
@@ -12,7 +12,7 @@
 - 共享任务登记使用 GitHub 开放 PR 描述中的 `MAOMAO_TASK_V1` 结构，不另建数据库。
 - 主线 GitHub Actions 工程工具测试已在合并 SHA `a47aad61c1af350666f5b27da6073fc1facd62af` 上通过 **49/49**（run [45885303840](https://github.com/Bella0960/q7v2k9n4x6r8/actions/runs/45885303840)）。
 - 固定 QA 发布入口已另行完成真实 QA-only 发布验证（run [45885895415](https://github.com/Bella0960/web-runtime-lab/actions/runs/45885895415)）。这证明固定 QA 发布入口可用，**不等于**已经完成一次由 `engineering-ready-batch.yml` 发起的真实跨窗口自动组批闭环。
-- `engineering-ready-batch.yml` 是 owner-only 手动触发工作流；首次真实组批/恢复全流程仍须单独记录实测结果。不得把单元测试通过写成自动批处理已端到端验证。
+- `engineering-ready-batch.yml` 是 owner-only 手动触发工作流；首次真实组批/恢复全流程当前为 **NOT VERIFIED**，仍须单独记录实测结果。不得把单元测试通过写成自动批处理已端到端验证。
 
 ## 2. 退役的旧协作方式
 
@@ -112,6 +112,7 @@ npm run eng:batch:auto -- <current-deployed-QA-source-SHA> [--push]
 - 如果该 SHA 已准备好且已获 QA 发布授权，不要先 verify 再 release；release 会运行候选测试并执行 QA-only 发布。
 - 需要不部署的检查或诊断时才使用 verify。
 - 请求提交不是部署成功。发布后必须核对真实成功运行、QA Worker 版本和在线源码回执。
+- P0 问题在等待整批会明显伤害用户时，可由协调者单独形成一个批次发布；仍必须走同一固定 QA 门禁。
 - QA-only 不得部署生产 Worker、改变身份核心或迁移数据。APK 仍为手动流程。
 
 ## 6. 失败与恢复
@@ -131,4 +132,4 @@ npm run eng:batch:auto -- <current-deployed-QA-source-SHA> [--push]
 - 不删除、覆盖或裁剪用户数据；不泄漏密钥、真实聊天内容或个人资料。
 - 不因采用新工具而削弱账号隔离、身份权限、备份恢复、支付、云端数据和生产安全检查。
 
-**所有窗口以当前 main 中的本文和 `AGENTS.md` 为准。旧聊天交接、旧版本号、旧批次指令只保留为历史记录，不再作为执行命令。**
+**本 PR 合并后，所有窗口以当前 main 中的本文和 `AGENTS.md` 为准。旧聊天交接、旧版本号、旧批次指令只保留为历史记录，不再作为执行命令。**
