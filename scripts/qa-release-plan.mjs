@@ -23,16 +23,16 @@ const git = (...args) => execFileSync('git', args, { encoding: 'utf8', stdio: ['
 // Compare HTML after masking only plain visible text in a simple element.
 // Raw-text elements, scripts, comments, attributes, nesting and event handlers
 // must remain exactly unchanged. Inline CSS is accepted only if the CSS
-// contains no newly changed resource-loading/executable constructs.
+// contains no changed resource-loading/executable constructs or interaction-critical CSS.
 function cssResources(css) {
   return (css.match(/url\s*\([^)]*\)|@import[^;]*;|@font-face\s*\{[^}]*\}|(?:expression|behavior|-moz-binding)\s*[:(][^;}]*|javascript\s*:/gi) || []).join('\n');
 }
 const CSS_BEHAVIOR_PROPERTIES = new Set([
-  'pointer-events', 'touch-action', 'user-select', '-webkit-user-select',
+  'all', 'pointer-events', 'touch-action', 'user-select', '-webkit-user-select',
   'cursor', 'display', 'visibility', 'position', 'z-index',
   'overflow', 'overflow-x', 'overflow-y', 'overscroll-behavior',
   'overscroll-behavior-x', 'overscroll-behavior-y', 'scroll-behavior',
-  'scroll-snap-type', 'scroll-snap-align', 'inset', 'inset-block',
+  'scroll-snap-type', 'scroll-snap-align', 'scrollbar-width', 'scrollbar-gutter', 'inset', 'inset-block',
   'inset-inline', 'top', 'right', 'bottom', 'left', 'transform',
   'clip', 'clip-path', 'mask', 'mask-image', 'content', 'opacity',
   'animation', 'animation-name', 'animation-duration', 'animation-delay',
