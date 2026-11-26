@@ -1560,6 +1560,8 @@
     var roleAutonomyMode = document.getElementById('cloudCharacterAutonomyMode');
     var roleAutonomySave = document.getElementById('cloudRoleAutonomySave');
     var roleTimezone = document.getElementById('cloudRoleTimezone');
+    var roleDelay = document.getElementById('cloudRoleDelay');
+    var roleDailyLimit = document.getElementById('cloudRoleDailyLimit');
     var roleActiveStart = document.getElementById('cloudRoleActiveStart');
     var roleActiveEnd = document.getElementById('cloudRoleActiveEnd');
     var roleBusyStart = document.getElementById('cloudRoleBusyStart');
@@ -1587,7 +1589,7 @@
     }
 
     function setRoleControlsDisabled(disabled) {
-      [roleAutonomyMode, roleAutonomySave, roleTimezone, roleActiveStart, roleActiveEnd,
+      [roleAutonomyMode, roleAutonomySave, roleTimezone, roleDelay, roleDailyLimit, roleActiveStart, roleActiveEnd,
         roleBusyStart, roleBusyEnd, roleAsleepStart, roleAsleepEnd, roleAway, roleScheduleSave]
         .forEach(function (element) {
           if (element) element.disabled = !!disabled;
@@ -1621,6 +1623,8 @@
       if (roleAsleepStart) roleAsleepStart.value = '';
       if (roleAsleepEnd) roleAsleepEnd.value = '';
       if (roleAway) roleAway.checked = value.away === true;
+      if (roleDelay) roleDelay.value = value.contactDelayMinutes ?? '';
+      if (roleDailyLimit) roleDailyLimit.value = value.dailyModelLimit ?? '';
       fillWindow(roleActiveStart, roleActiveEnd, value.active);
       fillWindow(roleBusyStart, roleBusyEnd, value.busy);
       fillWindow(roleAsleepStart, roleAsleepEnd, value.asleep);
@@ -1642,7 +1646,9 @@
           roleAutonomyMode.value = autonomy.inherited ? 'inherit' :
             autonomy.enabled ? 'on' : 'off';
         }
-        if (roleTimezone) roleTimezone.value = scheduleResult.timeZone || '';
+        if (roleTimezone) {
+          roleTimezone.value = scheduleResult.timeZone || Intl.DateTimeFormat().resolvedOptions().timeZone || '';
+        }
         fillRoleSchedule(scheduleResult.configured ? scheduleResult.schedule : {});
         setRoleControlsDisabled(false);
       } catch (error) {
@@ -1772,7 +1778,7 @@
             }
           );
           if (result.queued) {
-            initialTestStatus.textContent = '已排队，可以锁屏。预计 ' +
+            initialTestStatus.textContent = (result.modelMode === 'mock' ? '免费模拟任务已排队。' : '任务已排队。') + '可以锁屏，预计 ' +
               new Date(result.scheduledAt).toLocaleTimeString() + ' 后开始生成。';
             return;
           }
@@ -1822,6 +1828,14 @@
             asleep: readOptionalWindow(roleAsleepStart, roleAsleepEnd, '休息时段'),
             away: Boolean(roleAway && roleAway.checked)
           };
+          if (roleDelay && roleDelay.value !== '') {
+            if (!roleDelay.checkValidity()) throw new Error('等待时间须为 30 到 1440 分钟的整数');
+            schedule.contactDelayMinutes = Number(roleDelay.value);
+          }
+          if (roleDailyLimit && roleDailyLimit.value !== '') {
+            if (!roleDailyLimit.checkValidity()) throw new Error('每日调用次数须为 0 到 100 的整数');
+            schedule.dailyModelLimit = Number(roleDailyLimit.value);
+          }
         } catch (error) {
           setStatusText(error.message);
           return;

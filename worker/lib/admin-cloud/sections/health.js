@@ -9,6 +9,8 @@
 
 import { MIGRATIONS, runtimeMigrations } from '../../migrations.js';
 import { validateConfig } from '../../scheduler-policy.js';
+import { readCloudModelBudget } from '../../cloud-model-scheduler.js';
+import { readAutonomyModelConfig } from '../../model-executor.js';
 import { usesDelegatedIdentity } from '../../identity-bridge.js';
 import { createRepository } from '../repository.js';
 import { rollup } from '../states.js';
@@ -77,7 +79,7 @@ export const healthSection = {
   id: 'health',
   title: '云服务状态',
   order: 10,
-  collect({ env, store, query }) {
+  collect({ env, store, query, now }) {
     const repo = createRepository(query);
     const delegated = usesDelegatedIdentity(env);
     const checks = [];
@@ -149,6 +151,35 @@ export const healthSection = {
         positiveInt(env, 'AUTONOMY_DEVICE_LEASE_MS') != null &&
         nonNegativeInt(env, 'AUTONOMY_DEVICE_GRACE_MS') != null;
       return { state: configured ? 'ok' : 'not_configured', reason: configured ? undefined : 'presence_config_missing' };
+    }));
+
+    checks.push(runCheck('cloud_model_runtime', '云端主动联系', () => {
+      const enabled = env.AUTONOMY_CLOUD_ENABLED === 'true';
+      const schemaReady = Boolean(store.hasCloudContextSchema?.());
+      const budget = readCloudModelBudget(env);
+      const modelConfigured = Boolean(readAutonomyModelConfig(env));
+      const since = now - 86400000;
+      const rows = query(
+        `SELECT
+           COUNT(CASE WHEN kind = 'cloud_model_budget' THEN 1 END) AS attempts,
+           COUNT(CASE WHEN kind = 'autonomy_cloud_tick' THEN 1 END) AS ticks,
+           COUNT(CASE WHEN reason_code = 'outbound_group_committed' THEN 1 END) AS groups,
+           COUNT(CASE WHEN kind = 'autonomy_cloud_model' AND status = 'failed' THEN 1 END) AS failures
+         FROM execution_log
+         WHERE created_at >= ? AND kind IN ('cloud_model_budget','autonomy_cloud_tick','autonomy_cloud_model')`, since
+      )[0];
+      const attempts = Number(rows?.attempts ?? 0);
+      return {
+        state: enabled && schemaReady && budget && modelConfigured ? 'ok' : 'not_configured',
+        reason: !enabled ? 'cloud_model_disabled' : !schemaReady ? 'cloud_context_schema_unavailable'
+          : !budget ? 'cloud_model_budget_unavailable' : !modelConfigured ? 'model_not_configured' : undefined,
+        facts: {
+          enabled, schemaReady, modelConfigured, windowHours: 24, attempts,
+          tickCount: Number(rows?.ticks ?? 0), groupCount: Number(rows?.groups ?? 0),
+          failureCount: Number(rows?.failures ?? 0), globalAttemptLimit: budget?.global ?? null,
+          globalAttemptsRemaining: budget ? Math.max(0, budget.global - attempts) : null
+        }
+      };
     }));
 
     // No data source: stated explicitly instead of inventing a number.

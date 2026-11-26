@@ -191,7 +191,9 @@ test('health: fully configured Worker reports observed checks ok and platform me
   const platform = checkOf(s, 'platform_metrics');
   assert.equal(platform.state, 'unavailable');
   assert.equal(platform.reason, 'cloudflare_analytics_not_connected');
-  assert.equal(s.summary.unobserved, 1, 'blind spots are counted, not hidden');
+  assert.equal(checkOf(s, 'cloud_model_runtime').reason, 'cloud_model_disabled');
+  assert.equal(checkOf(s, 'cloud_model_runtime').facts.globalAttemptsRemaining, null);
+  assert.equal(s.summary.unobserved, 2, 'unobserved services and disabled cloud model are counted');
 });
 
 test('health: missing configuration is "not_configured", never "ok" and never an invented value', async () => {

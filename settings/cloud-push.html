@@ -452,7 +452,7 @@
                     </div>
                     <button id="cloudRoleAutonomySave" class="cloud-button" type="button">保存角色授权</button>
                     <button id="cloudRoleInitialTest" class="cloud-button" type="button">排队测试角色首次联系</button>
-                    <p id="cloudRoleInitialTestStatus" class="cloud-hint" role="status" aria-live="polite">请选择新建测试角色。此测试只发送角色名称和固定开场指令。</p>
+                    <p id="cloudRoleInitialTestStatus" class="cloud-hint" role="status" aria-live="polite">请选择新建测试角色。只发送角色名称和固定开场指令。模拟模式不会调用外部模型。真实模式可能消耗额度，关闭主动联系会阻止后续任务，已发出的模型请求仍可能计费。</p>
                     <p id="cloudRoleSaveStatus" class="cloud-hint" role="status" aria-live="polite"></p>
                     <p class="cloud-hint">若开启角色通知，单条主动消息的文字和对应角色昵称会用于锁屏通知预览；这不代表自动上传完整聊天记录或角色设定。上下文共享仍由上方独立开关控制。</p>
                 </div>
@@ -495,6 +495,15 @@
                         <input id="cloudRoleAway" type="checkbox">
                         此角色当前设为外出
                     </label>
+                    <label class="cloud-field" for="cloudRoleDelay">
+                        <span>回复后最短等待（分钟）</span>
+                        <input id="cloudRoleDelay" type="number" min="30" max="1440" step="1" placeholder="沿用云端默认">
+                    </label>
+                    <label class="cloud-field" for="cloudRoleDailyLimit">
+                        <span>每日模型调用上限（次）</span>
+                        <input id="cloudRoleDailyLimit" type="number" min="0" max="100" step="1" placeholder="沿用云端额度">
+                    </label>
+                    <p class="cloud-hint">填 0 暂停此角色的云端模型调用。重试会计入额度，实际次数也受账号及全站额度限制。</p>
                     <button id="cloudRoleScheduleSave" class="cloud-button primary" type="button">保存时区与作息</button>
                     <p class="cloud-hint">时区和允许主动联系的起止时间为必填；忙碌与休息时段可选。未保存有效作息的角色不会进入云端调度。</p>
                 </div>

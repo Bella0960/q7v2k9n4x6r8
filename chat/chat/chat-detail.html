@@ -3242,6 +3242,52 @@
             return true;
         }
 
+        function syncSavedCloudContext(list) {
+            const cloud = window.MaomaoCloud;
+            if (isGroupChat || !cloud || typeof cloud.noteCharacterContextChanged !== 'function') return;
+            const role = currentCharacter;
+            const roleId = String(role.id);
+            let snapshot = null;
+            try {
+                const messages = list.slice(-40).filter(function (message) {
+                    return message && (!message.type || message.type === 'text') &&
+                        !message.attachments && !message.image && !message.audio && !message.video &&
+                        !message.file && message.visibility !== 'private' && message.visibility !== 'role_only';
+                });
+                const latest = messages.findLast(function (message) {
+                    return ['sent', 'user'].includes(message.role);
+                });
+                const rawTime = latest?.time ?? latest?.timestamp ?? latest?.createdAt;
+                const time = typeof rawTime === 'number' ? rawTime : Date.parse(rawTime);
+                const recentMessages = messages.filter(function (message) {
+                    return ['sent','user','received','assistant','character'].includes(message.role) &&
+                        typeof (message.text ?? message.content) === 'string' &&
+                        (message.text ?? message.content).trim();
+                }).slice(-12).map(function (message) {
+                    return { role: ['sent','user'].includes(message.role) ? 'user' : 'assistant',
+                        content: (message.text ?? message.content).trim().slice(0, 600) };
+                });
+                if (Number.isSafeInteger(time) && time > 0 && recentMessages.some(message => message.role === 'user')) {
+                    const books = JSON.parse(localStorage.getItem('phone_worldbooks') ?? '[]');
+                    if (!Array.isArray(books)) throw new Error('invalid worldbook collection');
+                    const selected = window.RoleWorldbookBindings.filterBooks(roleId, books, role);
+                    if (!selected.ok) throw new Error('invalid worldbook binding');
+                    const lore = window.ChatContextPolicy.buildWorldbookInjectionText(selected.books, {
+                        currentText: latest.text ?? latest.content ?? '', recentMessages, maxEntries: 4, maxChars: 1200
+                    });
+                    const persona = [role.persona, role.prompt, role.systemPrompt, role.speechStyle]
+                        .filter(value => typeof value === 'string').join(' ').slice(0, 2200);
+                    const memory = buildWeightedMemoryText(roleId, '').slice(0, 1200);
+                    snapshot = { characterName: String(role.name || role.nickname || '').slice(0,80),
+                        personaText: ['角色设定：' + persona, '世界书：' + lore, '角色记忆：' + memory].join(' '),
+                        recentMessages, lastUserMessageAt: time };
+                }
+            } catch {
+                // Preserve version fencing without uploading a partial or unreadable role context.
+            }
+            Promise.resolve(cloud.noteCharacterContextChanged(roleId, list, snapshot)).catch(function () {});
+        }
+
         function saveMessages(list) {
             if (_chatHistoryUnreadable) {
                 if (typeof showToast === 'function' && _shouldWarnAgain('chat-corrupt')) {
@@ -3331,6 +3377,7 @@
                 if (persistedExactly) {
                     _rememberChatBaseline(list, expectedSerialized);
                     _resetWarnCooldown('chat-save');
+                    if (typeof syncSavedCloudContext === 'function') syncSavedCloudContext(list);
                     return true;
                 }
             }
