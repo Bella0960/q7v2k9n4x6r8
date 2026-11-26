@@ -509,7 +509,7 @@ function runQueueAssembleCli(t, specs, options = {}) {
   };
   return {
     result, receipt, baseline, originalBaseline, latestQaSha, candidateExists,
-    candidateDeployedFile, candidateRef, receiptPath, remotePath, remoteSha, runQueue, git: gitCommand
+    candidateDeployedFile, cwd, candidateRef, receiptPath, remotePath, remoteSha, runQueue, git: gitCommand
   };
 }
 
