@@ -8,8 +8,7 @@ on:
       - 'settings/font-settings.html'
       - 'sw.js'
       - 'tests/font-runtime-performance.test.mjs'
-      - 'package.json'
-      - '.github/workflows/font-runtime-regression.yml'
+      - 'package-lock.json'
   push:
     branches: [main]
     paths:
@@ -17,7 +16,7 @@ on:
       - 'settings/font-settings.html'
       - 'sw.js'
       - 'tests/font-runtime-performance.test.mjs'
-      - 'package.json'
+      - 'package-lock.json'
       - '.github/workflows/font-runtime-regression.yml'
 
 permissions:
