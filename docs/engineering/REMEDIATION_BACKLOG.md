@@ -90,9 +90,10 @@ Acceptance:
 - Release evidence records exact SHA, workflow run, deployed Worker version, and actual QA source receipt.
 
 Current blockers / follow-up:
-- Diagnose the cause of run #45792397059 at `tests/travel-storage.browser.mjs`; the available sanitized log does not establish whether it is code or environment.
+- Complete public validation of the shared PR-backed registry, evidence collector, and create-only candidate push.
 - Complete public validation and owner acceptance of QA infrastructure PR #507 before treating adaptive selection as generally active.
-- Add new module mappings only alongside dedicated browser tests and classifier regression coverage.
+- Diagnose the cause of run #45792397059 at `tests/travel-storage.browser.mjs`; the available sanitized log does not establish whether it is code or environment.
+- Release receipt, current QA baseline, and actual QA-only deployment remain separate acceptance evidence; no source-tooling test can substitute for them.
 
 ## Phase 1 — GitHub and build governance
 

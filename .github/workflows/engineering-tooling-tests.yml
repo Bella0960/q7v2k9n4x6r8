@@ -1,0 +1,33 @@
+name: Engineering tooling tests
+
+on:
+  pull_request:
+    paths:
+      - 'scripts/engineering-*.mjs'
+      - 'tests/engineering-*.test.mjs'
+      - 'package.json'
+      - '.github/workflows/engineering-tooling-tests.yml'
+      - '.github/workflows/engineering-ready-batch.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  engineering-tools:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Syntax checks
+        run: |
+          node --check scripts/engineering-pr-conflicts.mjs
+          node --check scripts/engineering-qa-batch.mjs
+          node --check scripts/engineering-qa-queue.mjs
+      - name: Focused engineering tests
+        run: |
+          node --test tests/engineering-pr-conflicts.test.mjs tests/engineering-qa-batch.test.mjs tests/engineering-qa-queue.test.mjs

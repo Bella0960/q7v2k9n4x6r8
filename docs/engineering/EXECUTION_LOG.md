@@ -330,3 +330,13 @@ On the next turn/session, read this file and the current `AGENTS.md` first. Cont
 - **QA dependency:** the fixed reusable QA workflow requires the candidate source to contain the adaptive-release marker. The current #507 base branch's `scripts/qa-direct-release.mjs` lacks that marker; PR #507 head contains it. The live deployed QA source receipt was not read in this checkpoint, so whether the deployed baseline already includes #507 is **NOT VERIFIED**. Confirm this before attempting a batch release.
 - **Safety:** no QA request, QA deployment, production deployment, Worker change, APK action, secret change, or user-data operation was performed.
 - **Next:** implement a durable PR-backed task registry with explicit ready/review/test evidence; then add a safe remote-candidate handoff. Keep QA dispatch as a single coordinator-controlled action under the current release policy.
+
+
+### GOV-006 PR-backed ready-task registry — 2026-11-26
+
+- Added a shared registry embedded in each task PR, plus a command to register/refresh task ID, QA baseline SHA, current head SHA, risk lane, and exact required check names.
+- Added cross-window discovery across all paginated open PRs, exact-head approval validation, required GitHub check validation, stale-head detection, complete changed-file pagination, and exact path comparison against the pinned Git diff.
+- Added automatic task-record generation and reuse of the isolated batch assembler. The candidate is unique and create-only per QA baseline; optional push is non-force and verifies the remote SHA.
+- Added a second ownership scan against non-selected open PRs. Exact path overlap and shared-core hotspot overlap reject the candidate; incomplete scans also reject it.
+- Added owner-only workflow-dispatch entry and focused engineering-tooling CI. The workflow requires the exact current QA source SHA from the latest successful receipt; it does not guess a baseline or deploy QA.
+- **Not yet verified:** run the newly added Node test suite on the current PR head and inspect the GitHub Actions result. No QA request, QA deployment, production deployment, Worker change, secret change, or APK action was performed.

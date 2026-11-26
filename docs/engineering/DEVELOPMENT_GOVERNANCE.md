@@ -198,3 +198,15 @@ Use the source SHA from the current QA receipt as the baseline. The command requ
 - Do not ask the owner to repeat "continue" for work already authorized. Complete the bounded work package and keep independent work moving.
 - Progress messages are reserved for durable milestones or real blockers. The final report is concise: Task ID, root cause, files changed, focused checks and exact results, branch/PR, exact candidate SHA, and the actual QA receipt/version/link if deployed.
 - If QA is queued or blocked, state the exact queue/blocker and continue other independent tasks. Never present a historical QA version as the result of the current change.
+
+
+### 10.8 Shared PR-backed ready-task registry and immutable candidate handoff
+
+- GitHub open PRs are the shared registry across development windows; no separate database or external service is required.
+- Each task PR registers one machine-readable `MAOMAO_TASK_V1` block using `npm run eng:register -- <PR> <TASK-ID> <QA-baseline-SHA> <risk> "<exact test check>" [...]`. Re-run registration after every new commit so the recorded head SHA cannot silently go stale.
+- Registration records task ID, exact QA baseline, exact PR head SHA, risk lane, and named GitHub checks. It does not set approval, merge, or deployment state.
+- The coordinator runs `npm run eng:batch:auto -- <current-deployed-QA-source-SHA> [--push]`. The collector scans every open PR page, then checks current PR head, draft/open state, same-repository ownership, latest review per reviewer, approval on the exact head by someone other than the author, every named check, other check/status failures, complete PR file pagination, and exact agreement between GitHub's changed-file list and the pinned Git diff.
+- Only submitted PRs with current-head approval and successful named test/build evidence are ready. Missing/stale approvals, pending/failed checks, incomplete API results, stale manifests, mismatched paths, or a task base not contained in the current QA baseline fail closed.
+- The batch uses one immutable branch name per QA baseline: `integration/qa-batch-<first-12-baseline-sha>`. Candidate creation is create-only; a second run for the same baseline cannot overwrite or silently create a second candidate. The coordinator performs a second ownership scan against all other open PRs, excluding only PRs deliberately selected for this batch. Exact path and shared-core hotspot conflicts block the candidate.
+- With `--push`, the exact candidate SHA is pushed to the matching source repository's `origin` using a non-force Git push and then read back with `ls-remote`. The push is not a QA deployment. The owner still submits one QA-only `release` request to the existing fixed runner; do not run a same-SHA `verify` first because the release runner already executes the candidate gates.
+- The source workflow `engineering-ready-batch.yml` provides one owner-only, non-cancelling coordinator action. It requires the exact current QA source SHA from the latest successful receipt; it has no schedule and cannot infer or invent a deployed baseline. Production and APK actions remain outside this workflow.

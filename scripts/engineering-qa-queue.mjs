@@ -118,6 +118,7 @@ export function evaluateTaskEvidence({ pr, manifest, reviews = [], checkRuns = [
   const reasons = [];
   if (pr?.state !== 'open') reasons.push('PR is not open');
   if (pr?.draft) reasons.push('PR is still draft');
+  if (pr?.base?.ref !== 'main' && !/^(integration|qa)\\//.test(pr?.base?.ref ?? '')) reasons.push('PR base must be main or an approved integration/qa branch');
   if (pr?.head?.repo?.full_name !== repository || pr?.base?.repo?.full_name !== repository) {
     reasons.push('PR head/base must both belong to the source repository');
   }
@@ -253,6 +254,9 @@ async function fetchPrEvidence(repository, pr) {
     api('/repos/' + repository + '/commits/' + pr.head.sha + '/status'),
     getPrFiles(repository, pr.number)
   ]);
+  if (!Array.isArray(status?.statuses) || status.total_count > status.statuses.length) {
+    fail('PR #' + pr.number + ' commit-status list is incomplete.');
+  }
   return { reviews, checkRuns, status, files };
 }
 
@@ -279,6 +283,7 @@ async function registerTask(repository, args) {
     fail('Registration requires an open PR whose head and base both belong to ' + repository + '.');
   }
   manifest.head = pr.head.sha;
+  if (!SHA.test(manifest.head)) fail('PR head SHA is not a full commit SHA.');
   const comparison = await api('/repos/' + repository + '/compare/' + base + '...' + manifest.head);
   if (comparison.status !== 'ahead' || !(comparison.ahead_by > 0)) {
     fail('The declared QA baseline must be an ancestor of the task head and the task must contain changes.');
@@ -286,6 +291,8 @@ async function registerTask(repository, args) {
   const files = await getPrFiles(repository, number);
   if (!files.length) fail('Cannot register an empty PR.');
   const body = replaceTaskManifest(pr.body ?? '', manifest);
+  const latest = await api('/repos/' + repository + '/pulls/' + number);
+  if (latest.head?.sha !== manifest.head || latest.state !== 'open') fail('PR head changed during registration; rerun eng:register.');
   const updated = await api('/repos/' + repository + '/pulls/' + number, { method: 'PATCH', body: { body } });
   console.log(JSON.stringify({
     status: 'submitted',
@@ -324,7 +331,12 @@ async function collectReadyTasks(repository, baseline, pullRequests) {
     }
     if (!manifest) continue;
     const evidence = await fetchPrEvidence(repository, pr);
-    const result = evaluateTaskEvidence({ pr, manifest, ...evidence, repository });
+    const latestPr = await api('/repos/' + repository + '/pulls/' + pr.number);
+    if (latestPr.head?.sha !== pr.head?.sha || latestPr.state !== 'open' || latestPr.draft) {
+      blocked.push({ ...latestOpenPrMetadata(pr), state: 'blocked', reasons: ['PR changed while the queue was collecting evidence; rerun the scan'] });
+      continue;
+    }
+    const result = evaluateTaskEvidence({ pr: latestPr, manifest, ...evidence, repository });
     if (!result.ready) {
       blocked.push({ ...latestOpenPrMetadata(pr), state: 'blocked', reasons: result.reasons });
       continue;
@@ -419,12 +431,19 @@ async function assembleReadyBatch(repository, baseline, { push = false } = {}) {
     const receipt = JSON.parse(result.stdout);
     candidate = receipt.candidate;
 
-    const conflicts = await runConflictAudit({
-      repo: repository,
-      base: baseline,
-      head: candidate,
-      ignorePullRequestNumbers: ready.map(task => task.pr.number)
-    });
+    let conflicts;
+    try {
+      conflicts = await runConflictAudit({
+        repo: repository,
+        base: baseline,
+        head: candidate,
+        ignorePullRequestNumbers: ready.map(task => task.pr.number)
+      });
+    } catch (error) {
+      git(['update-ref', '-d', ref, candidate], 'Remove candidate after incomplete ownership scan');
+      candidate = null;
+      throw error;
+    }
     if (conflicts.exactOverlapCount || conflicts.sharedHotspotCount) {
       git(['update-ref', '-d', ref, candidate], 'Remove rejected local candidate');
       candidate = null;
