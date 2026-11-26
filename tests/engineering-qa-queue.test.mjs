@@ -382,7 +382,7 @@ function runQueueAssembleCli(t, specs, options = {}) {
     '  const sourceBase = "/repos/" + fixture.repository;',
     '  const qaBase = "/repos/" + fixture.qaRepository;',
     '  const suffix = path.startsWith(sourceBase) ? path.slice(sourceBase.length) : "";',
-    '  if (path === qaBase + "/actions/workflows/reusable-qa-request.yml/runs") {',
+    '  if (path === qaBase + "/actions/workflows/428897690/runs") {',
     '    const release = releaseForCall(qaRunListCalls++);',
     '    return json({ workflow_runs: buildQaRuns(release) });',
     '  }',

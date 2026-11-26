@@ -10,7 +10,7 @@ import { runConflictAudit } from './engineering-pr-conflicts.mjs';
 const API = 'https://api.github.com';
 const DEFAULT_REPO = 'Bella0960/q7v2k9n4x6r8';
 const QA_REPOSITORY = 'Bella0960/web-runtime-lab';
-const QA_WORKFLOW_FILE = 'reusable-qa-request.yml';
+const QA_WORKFLOW_ID = 428897690;
 const QA_WORKFLOW_PATH = '.github/workflows/' + QA_WORKFLOW_FILE;
 const QA_REQUEST_PATH = '.github/qa-release-request.json';
 const QA_RELEASE_STEP = 'Automatically select scope, validate and publish QA once';
@@ -288,7 +288,7 @@ async function readQaRequestAtRun(run) {
     fail('QA run #' + run.run_number + ' has no readable immutable request-file receipt.');
   }
   try {
-    return JSON.parse(Buffer.from(response.content.replace(/\\s/g, ''), 'base64').toString('utf8'));
+    return JSON.parse(Buffer.from(response.content.replace(/\s/g, ''), 'base64').toString('utf8'));
   } catch {
     fail('QA run #' + run.run_number + ' has an invalid immutable request-file receipt.');
   }
@@ -305,7 +305,7 @@ async function qaRunJobs(run) {
 
 export async function getLatestSuccessfulQaReleaseReceipt() {
   const runs = await pagedArray(
-    '/repos/' + QA_REPOSITORY + '/actions/workflows/' + QA_WORKFLOW_FILE + '/runs?branch=main',
+    '/repos/' + QA_REPOSITORY + '/actions/workflows/' + QA_WORKFLOW_ID + '/runs?branch=main',
     'workflow_runs',
     3000,
     { publicReadOnly: true }
@@ -313,10 +313,12 @@ export async function getLatestSuccessfulQaReleaseReceipt() {
   const ordered = runs
     .filter(run => run?.path === QA_WORKFLOW_PATH && run?.head_branch === 'main' &&
       ['push', 'workflow_dispatch'].includes(run?.event))
-    .sort((a, b) => (Date.parse(b?.created_at ?? '') || 0) - (Date.parse(a?.created_at ?? '') || 0));
+    .sort((a, b) => (Number(b?.run_number) || 0) - (Number(a?.run_number) || 0));
 
   for (const run of ordered) {
-    if (!Number.isSafeInteger(run?.id) || !SHA.test(run?.head_sha ?? '')) {
+    if (!Number.isSafeInteger(run?.id) || run.id < 1 ||
+        !Number.isSafeInteger(run?.run_number) || run.run_number < 1 ||
+        !SHA.test(run?.head_sha ?? '') || !Number.isFinite(Date.parse(run?.created_at ?? ''))) {
       fail('QA workflow run metadata is incomplete; refusing to infer the deployed source SHA.');
     }
 

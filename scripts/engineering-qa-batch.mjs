@@ -139,9 +139,9 @@ function assemble(directory, qaSha, branch, receipt) {
       throw new Error(task.id + ' would change paths outside its approved ownership.');
     }
     if (!paths.length) continue;
-    const message = 'Integrate ' + task.id + ' into ' + branch + '\\n\\n' +
-      'QA-Source-SHA: ' + qaSourceReceipt.sourceSha + '\\n' +
-      'QA-Release-Run: ' + qaSourceReceipt.runId + '\\n' +
+    const message = 'Integrate ' + task.id + ' into ' + branch + '\n\n' +
+      'QA-Source-SHA: ' + qaSourceReceipt.sourceSha + '\n' +
+      'QA-Release-Run: ' + qaSourceReceipt.runId + '\n' +
       'QA-Release-Request-SHA: ' + qaSourceReceipt.runHeadSha;
     candidate = git(['-c', 'commit.gpgSign=false', 'commit-tree', tree, '-p', candidate, '-p', task.head,
       '-m', message], task.id + ' candidate commit').trim();
