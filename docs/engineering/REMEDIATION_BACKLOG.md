@@ -81,6 +81,7 @@ Scope:
 Acceptance:
 - Every window records Task ID, base SHA, owned paths, risk lane, non-goals, checks, and PR/status.
 - Conflicting file ownership is serialized; independent work continues while QA is running.
+- A read-only GitHub PR conflict scanner compares branch/working-tree paths against all open PRs; exact path overlap blocks shared ownership, cross-cutting hotspots warn, and incomplete scans fail closed.
 - One coordinator forms the candidate from the currently deployed QA source plus only reviewed, ready changes.
 - The release queue remains serialized and non-cancelling; no parallel window deploys the same QA target.
 - The same unchanged candidate is not needlessly run through both verify and release.
