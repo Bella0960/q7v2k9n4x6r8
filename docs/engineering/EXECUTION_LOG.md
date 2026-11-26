@@ -349,3 +349,14 @@ On the next turn/session, read this file and the current `AGENTS.md` first. Cont
 - Added optional task dependencies and topological ordering. Tasks whose prerequisite is not ready are excluded while independent ready tasks can continue; dependency cycles fail before candidate creation.
 - Candidate push now uses an empty expected remote ref lease, preventing a race from updating a branch created by another run.
 - **Validation status:** focused test additions are committed but not executed in this environment. The current branch has successful Netlify previews; Cloudflare Workers Builds for the production Worker reports `build_outcome: skipped` with no log lines. This is NOT VERIFIED, not a successful build.
+
+### GOV-006 P0-1 dependency propagation — 2026-11-26
+
+- **Commit:** `756d3e488dee3be58a93373da0e9d521515196a9` on the existing GOV-006 branch.
+- **Root cause:** `collectReadyTasks()` parsed `dependsOn` from each PR manifest but omitted it from the registered ready-task object. The coordinator therefore wrote records without dependencies. The batch assembler receipt also omitted the dependency field.
+- **Fix:** propagate `manifest.dependsOn` into ready-task records; preserve it in batch receipts and final included-task receipts. Existing topological sorting, missing-prerequisite rejection, and cycle detection are now connected to the production CLI data path.
+- **Regression coverage added:** five `engineering-qa-queue.mjs assemble` CLI integration cases cover an unready prerequisite with an independent task, dependency/topological order, a missing prerequisite, a dependency cycle, and a standalone independent task. The direct batch test also asserts dependency receipt preservation.
+- **Verification:** **NOT VERIFIED**. The current SHA has no GitHub Actions run. `.github/workflows/engineering-tooling-tests.yml` exists on this PR branch but returns 404 on `main`; therefore this PR cannot use that branch-only workflow as CI evidence. The earlier 29/29 result predates this patch and does not cover these changes. Netlify deploy-preview checks are not test evidence. The Cloudflare Workers Builds check failed and is not a code-test result.
+- **Safety:** no merge to `main`, no official QA request/deployment, no production deployment, no Worker configuration change, no APK action, and no user-data operation.
+- **Next:** execute the committed CLI suite in an authorized Node 22 runner. Do not mark P0-1 complete or start P0-2 until the five CLI cases and the focused queue/batch suites have actually run. Do not merge `main` merely to manufacture a green check.
+
