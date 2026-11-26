@@ -112,9 +112,9 @@ test('chat detail wires speaker identity, verified saves, scoped reads, and the 
   const packageJson = JSON.parse(read('package.json'));
   assert.ok(detail.includes('chat-heart-policy.js?v=20261126mind1'));
   assert.match(detail, /row\.dataset\.memberId\s*=\s*String\(msg\.memberId\)/);
-  assert.match(detail, /streamResult\.ok\s*&&\s*replySaved\s*&&\s*parsedHeart\.hearts\.length/);
+  assert.match(detail, /streamResult\.ok\s*&&\s*replySaved\s*&&\s*fullText\s*&&\s*parsedHeart\.hearts\.length/);
   assert.match(detail, /ChatHeartPolicy\.appendHearts/);
-  assert.match(detail, /ChatHeartPolicy\.getLatest/);
+  assert.match(detail, /ChatHeartPolicy\.readHistory/);
   assert.match(detail, /ChatHeartPolicy\.buildPrompt/);
   assert.ok(serviceWorker.includes('chat-heart-policy.js?v=20261126mind1'));
   assert.match(serviceWorker, /phone-app-pwa-v206/);
