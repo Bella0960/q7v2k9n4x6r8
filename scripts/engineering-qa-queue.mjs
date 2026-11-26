@@ -348,6 +348,19 @@ function latestOpenPrMetadata(pr) {
   };
 }
 
+export function createReadyTaskRecord({ manifest, paths, pr }) {
+  return {
+    id: manifest.id,
+    status: 'ready',
+    base: manifest.base,
+    head: manifest.head,
+    paths: [...paths],
+    dependsOn: [...(manifest.dependsOn ?? [])],
+    pr,
+    risk: manifest.risk
+  };
+}
+
 async function collectReadyTasks(repository, baseline, pullRequests) {
   const registered = [];
   const blocked = [];
@@ -386,15 +399,11 @@ async function collectReadyTasks(repository, baseline, pullRequests) {
       if (!gitPaths.length || !equalPaths(apiPaths, gitPaths)) {
         fail('PR #' + pr.number + ' Git diff does not match the complete GitHub changed-file list.');
       }
-      registered.push({
-        id: manifest.id,
-        status: 'ready',
-        base: manifest.base,
-        head: manifest.head,
+      registered.push(createReadyTaskRecord({
+        manifest,
         paths: gitPaths,
-        pr: latestOpenPrMetadata(pr),
-        risk: manifest.risk
-      });
+        pr: latestOpenPrMetadata(pr)
+      }));
     } catch (error) {
       blocked.push({ ...latestOpenPrMetadata(pr), state: 'blocked', reasons: [clean(error.message)] });
     }
