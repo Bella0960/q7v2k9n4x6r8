@@ -1,6 +1,6 @@
 # MAOMAO 统一工程工作流（GOV-006）
 
-状态：**GOV-006 工具代码已进入 main；本次统一说明文档随 rollout PR 提交，合并后成为所有开发窗口的统一操作入口**。  
+状态：**GOV-006 工具代码与统一操作说明均已进入 main（2026-11-27）**。  
 适用对象：所有 AI 开发窗口、人工开发者、代码审核者和唯一集成协调者。
 
 本文件说明新工程工具如何使用。根目录 `AGENTS.md` 仍是所有贡献者的总入口；`docs/engineering/RELEASE_POLICY.md` 仍是 QA/生产发布权限与安全门禁的唯一权威。本文不取代这两份规则。
@@ -18,6 +18,7 @@
 
 以下不再作为当前执行方式：
 
+- 旧 `REMEDIATION_BACKLOG.md` 中的 “Recommended first assignments to other AIs” 及 Agent A–E 固定分配清单仅是历史快照，不代表当前任务分配、优先级或执行顺序；在该文件完成独立清理前，所有窗口必须忽略该清单。当前任务只能来自负责人明确请求、当前有效 backlog 条目和 PR-backed `MAOMAO_TASK_V1` 登记。
 - 每个窗口自行维护一份互不共享的手工任务清单，再由总控人工逐条抄录。
 - 使用本地临时 JSON 任务目录，通过旧的 `npm run eng:batch -- <task-directory> ...` 手工组批。该 npm 入口已弃用，禁止作为当前流程使用；其 alias 暂时保留在 `package.json`，因为已打开的 PR #545 正在修改该共享文件。待该 PR 解决后，再通过独立、无冲突的清理 PR 移除 alias。底层 `engineering-qa-batch.mjs` 仅作为新队列的内部组装器保留。
 - 每个开发窗口各自请求 QA、各自发布，或对同一个未变化 SHA 先 verify 再 release 重复跑完整测试。
@@ -132,4 +133,4 @@ npm run eng:batch:auto -- <current-deployed-QA-source-SHA> [--push]
 - 不删除、覆盖或裁剪用户数据；不泄漏密钥、真实聊天内容或个人资料。
 - 不因采用新工具而削弱账号隔离、身份权限、备份恢复、支付、云端数据和生产安全检查。
 
-**本 PR 合并后，所有窗口以当前 main 中的本文和 `AGENTS.md` 为准。旧聊天交接、旧版本号、旧批次指令只保留为历史记录，不再作为执行命令。**
+**本文已于 2026-11-27 合并进入 main。** 所有窗口以当前 main 中的本文和 `AGENTS.md` 为准。旧聊天交接、旧版本号、旧批次指令及静态 Agent 分配清单只保留为历史记录，不再作为执行命令。
