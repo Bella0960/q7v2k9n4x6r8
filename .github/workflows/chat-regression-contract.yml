@@ -12,9 +12,10 @@ on:
       - 'shared/js/wallpaper-store.js'
       - 'sw.js'
       - 'tests/**'
+      - '!tests/engineering-*.test.mjs'
       - 'docs/chat-architecture-contract.md'
       - 'docs/chat-regression-baseline.md'
-      - 'package.json'
+      - 'package-lock.json'
       - '.github/workflows/chat-regression-contract.yml'
   pull_request:
     paths:
@@ -26,10 +27,10 @@ on:
       - 'shared/js/wallpaper-store.js'
       - 'sw.js'
       - 'tests/**'
+      - '!tests/engineering-*.test.mjs'
       - 'docs/chat-architecture-contract.md'
       - 'docs/chat-regression-baseline.md'
-      - 'package.json'
-      - '.github/workflows/chat-regression-contract.yml'
+      - 'package-lock.json'
   workflow_dispatch:
 
 permissions:
