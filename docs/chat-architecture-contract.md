@@ -149,6 +149,8 @@ chat-extras.js 当前依赖详情页中的 loadMessages、saveMessages、appendM
 6. **AI Gateway**：根据任务类型适配 PhoneStream 或 PhoneAPI，明确区分流式与非流式任务。
 7. **Memory Service**：逐步协调记忆读取、强化、检索、注入与总结，但不在首次抽离中改变记忆策略。
 8. **外部适配器**：为聊天扩展、搜索、线下模式、通话、钱包和论坛分享提供明确的调用边界。
+9. **Role Behavior Context**：复用现有说话习惯、短期情绪线索、生活连续性与自主性策略，按本轮发言者组合成有界上下文；不另建平行人设系统。
+10. **Role Action Dispatcher**：将旁白动作与真实状态变更分开；所有状态变更统一经过身份、权限、状态、幂等和持久化验证。
 
 已将可见性/搜索规则、推理文本清理、记忆标记提取、旁白与气泡解析、保护式回复清洗、历史映射、历史条数选择、召回参数、用户动态记忆角色筛选，以及长期记忆注入文案分层抽离为共享纯函数。`ChatSendPolicy` 负责发送参数与前置判断；`ChatContextPolicy` 负责上下文相关的纯数据决策。新模块不操作 DOM、存储或网络请求，页面保留旧逻辑兜底。`buildWeightedMemoryInjectionText` 只负责按既有规则组织 fixed、confirmed、pending 与清晰/模糊记忆文案；记忆权重计算、半衰期、存储读写、`MemoryRecall` 搜索算法、systemPrompt 构建、世界书注入、API 参数、并发锁主体及消息落库顺序仍保持原位置。无角色 ID 的旧版动态记忆仍是兼容性全局条目。下一步优先在真实页面验收召回排除区间、实际注入输出和不同角色的数据隔离。
 
@@ -225,5 +227,8 @@ chat-extras.js 当前依赖详情页中的 loadMessages、saveMessages、appendM
 
 ## 9. 本次状态
 
-本契约依据当前源码持续维护。`sendMsg` 现通过 `ChatContextPolicy` 处理历史映射、角色历史条数优先级、最近历史切片、本地历史召回参数、用户动态记忆角色筛选和长期记忆注入文案分层；显式带角色 ID 的条目按角色注入，无角色 ID 的旧版条目保留全局兼容。PWA Service Worker 已递增到 `phone-app-pwa-v123`，并预缓存上下文策略 v5。2026-10-29 的 GitHub Actions [回归运行记录](https://github.com/Bella0960/MAOMAO/actions/runs/40879318959) 已在 Node.js 22 执行 `npm run test:chat:contract`，25/25 项通过。自动测试覆盖纯逻辑与静态源码契约，但不等于浏览器/PWA 端到端验证；手机端仍需实测历史召回排除范围、固定/待确认记忆注入和不同角色隔离。
+本契约依据当前源码持续维护。`sendMsg` 现通过 `ChatContextPolicy` 处理历史映射、角色历史条数优先级、最近历史切片、本地历史召回参数、用户动态记忆角色筛选和长期记忆注入文案分层；显式带角色 ID 的条目按角色注入，无角色 ID 的旧版条目保留全局兼容。`ChatPresencePolicy` 已包含说话习惯、短期情绪连续性、角色本人近期生活线索和自主性提示；聊天详情目前将它们作为多个片段分别组合，下一步应统一本轮行为上下文而非重写算法。群管理、群关系、投票/接龙等动作标记仍分布在聊天详情控制器中，尚无统一动作分发层。PWA Service Worker 已递增到 `phone-app-pwa-v123`，并预缓存上下文策略 v5。2026-10-29 的 GitHub Actions [回归运行记录](https://github.com/Bella0960/MAOMAO/actions/runs/40879318959) 已在 Node.js 22 执行 `npm run test:chat:contract`，25/25 项通过。自动测试覆盖纯逻辑与静态源码契约，但不等于浏览器/PWA 端到端验证；手机端仍需实测历史召回排除范围、固定/待确认记忆注入和不同角色隔离。
 
+
+
+**2026-11-26 · ROLE-MIND-001（Draft PR #545）：** 心声历史已在独立分支实现会话/发言者双维度隔离、私聊旧键只读兼容、群旧键拒绝归属、有限历史和写入读回验证；未合并、未部署。后续工作已登记为 ROLE-BEHAVIOR-001、ROLE-ACTION-001、ROLE-LIFE-001，分别处理行为上下文整合、动作执行统一和生活事件生命周期。
