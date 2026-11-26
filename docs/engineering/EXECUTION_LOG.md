@@ -756,3 +756,12 @@ On the next turn/session, read this file and the current `AGENTS.md` first. Cont
 - ADMIN-CORE-001 真机反馈：管理目录同时返回账号上下文错误。QA 转发使用已验证的创始账号标识传递作用域至现有独立身份服务。回归模拟身份服务作用域门禁，覆盖目录读取和写入。回滚可还原本提交。
 
 - AUTONOMY-M2 QA single-message smoke: based on the live bc7d062f release, reused existing consent controls, activity queue, SQLite completion/outbox, Cron maintenance, dispatcher, Service Worker and chat recovery. New QA-only manual route queues one fixed message per account per five minutes. Turning global autonomy off cancels pending mock jobs atomically, and role/device status is checked again at execution. No schema changes, model requests or chat context upload. Nine focused SQLite and push integration checks passed.
+
+
+## 2026-11-26 · MOMENTS-FIX-001 · QA 朋友圈导航显示条件修复
+
+- **QA 基线：** 从最近一次成功的 QA-only 发布候选 8abeaf52923ebcb39d5270dbe066b089d33b7faf 所在的 integration/qa-ui-contact-001-v177-20261126 分支派生，避免覆盖当前已发布 QA 功能。
+- **根因：** 当前 QA 分支缺少非微信主题下隐藏 .wechat-moments-toolbar 的全局规则；因此默认主题也显示微信专属顶栏，返回 SVG 在未命中主题尺寸规则时放大并挤占首屏。最新 main 已有隐藏规则，但当前 QA 基线尚未包含。
+- **修复：** 非微信主题隐藏朋友圈专属顶栏；微信主题继续显示原 88px 顶栏；基础 CSS 与 SVG 固有属性分别固定返回图标 20×20px、发表图标 21×21px。未改底部 Home Indicator、底部导航、存储键或用户数据。
+- **回归：** 扩展 tests/wechat-theme-browser.mjs，375/390/430px 下检查微信主题顶栏尺寸、封面紧贴顶栏，以及切回默认主题后顶栏隐藏。
+- **状态：** 源码静态契约检查 7/7 通过；QA verify 待执行，尚未发布。
