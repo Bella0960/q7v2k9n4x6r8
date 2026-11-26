@@ -1,7 +1,8 @@
 // Assemble approved task commits on the recorded QA baseline in a new local ref.
 import { spawnSync } from 'node:child_process';
 import { readFileSync, readdirSync } from 'node:fs';
-import { join } from 'node:path';
+import { join, resolve } from 'node:path';
+import { pathToFileURL } from 'node:url';
 
 const shaPattern = /^[0-9a-f]{40}$/;
 const taskPattern = /^[A-Z][A-Z0-9-]{1,63}$/;
@@ -135,13 +136,17 @@ function assemble(directory, qaSha, branch) {
   };
 }
 
-try {
-  const [directory, baseline, branch, ...extra] = process.argv.slice(2);
-  if (!directory || !baseline || !branch || extra.length) {
-    throw new Error('Usage: npm run eng:batch -- <task-directory> <deployed-qa-sha> <integration/branch>');
+function main() {
+  try {
+    const [directory, baseline, branch, ...extra] = process.argv.slice(2);
+    if (!directory || !baseline || !branch || extra.length) {
+      throw new Error('Usage: npm run eng:batch -- <task-directory> <deployed-qa-sha> <integration/branch>');
+    }
+    console.log(JSON.stringify(assemble(directory, baseline, branch), null, 2));
+  } catch (error) {
+    console.error(error.message);
+    process.exitCode = 1;
   }
-  console.log(JSON.stringify(assemble(directory, baseline, branch), null, 2));
-} catch (error) {
-  console.error(error.message);
-  process.exitCode = 1;
 }
+
+if (process.argv[1] && import.meta.url === pathToFileURL(resolve(process.argv[1])).href) main();

@@ -349,6 +349,11 @@ async function collectReadyTasks(repository, baseline, pullRequests) {
       blocked.push({ ...latestOpenPrMetadata(pr), state: 'blocked', reasons: ['PR changed while the queue was collecting evidence; rerun the scan'] });
       continue;
     }
+    const latestManifest = parseTaskManifest(latestPr.body ?? '');
+    if (JSON.stringify(latestManifest) !== JSON.stringify(manifest)) {
+      blocked.push({ ...latestOpenPrMetadata(pr), state: 'blocked', reasons: ['task manifest changed while the queue was collecting evidence; rerun registration and scan'] });
+      continue;
+    }
     const result = evaluateTaskEvidence({ pr: latestPr, manifest, ...evidence, repository });
     if (!result.ready) {
       blocked.push({ ...latestOpenPrMetadata(pr), state: 'blocked', reasons: result.reasons });
