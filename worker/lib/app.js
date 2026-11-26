@@ -2147,6 +2147,23 @@ export function createApp({ store, env = {}, now = () => Date.now(), fetchImpl =
         );
       }
 
+      const mockContact = /^\/api\/autonomy\/characters\/([^/]+)\/mock-contact$/.exec(path);
+      if (mockContact && method === 'POST' && readCharacterId(mockContact[1]) &&
+          env.MAOMAO_QA_MOCK_CONTACT === 'true') {
+        const device = await authenticate(request);
+        const userId = device.user_id;
+        if (!userId || userId === OWNER_USER_ID) {
+          throw new ApiError(401, 'ACCOUNT_SESSION_REQUIRED', '请先登录 MAO 账号');
+        }
+        const status = store.queueQaMockContact({
+          id: randomToken(16), userId, deviceId: device.id,
+          characterId: readCharacterId(mockContact[1]), now: now()
+        });
+        if (status === 'disabled') throw new ApiError(403, 'AUTONOMY_NOT_AUTHORIZED', '请先开启主动联系并授权此角色');
+        if (status === 'limited') throw new ApiError(429, 'ACTIVITY_QUEUE_FULL', '已有测试待执行，或距离上次测试不足五分钟');
+        return ok({ queued: true });
+      }
+
       const autonomyActivityMatch = /^\/api\/autonomy\/characters\/([^/]+)\/activities$/.exec(path);
       if (autonomyActivityMatch && readCharacterId(autonomyActivityMatch[1])) {
         const characterId = readCharacterId(autonomyActivityMatch[1]);

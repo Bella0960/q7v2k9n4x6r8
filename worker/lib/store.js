@@ -731,16 +731,25 @@ class CloudStore {
    * by the gate; missing character row inherits the global choice.
    */
   setUserAutonomy(userId, enabled, now, deviceId = null) {
-    if (deviceId && !this.isActiveAccountDevice(userId, deviceId)) return null;
-    this.exec(
-      `INSERT INTO user_autonomy (user_id, enabled, updated_at)
-       VALUES (?, ?, ?)
-       ON CONFLICT(user_id) DO UPDATE SET enabled = excluded.enabled, updated_at = excluded.updated_at`,
-      userId,
-      enabled ? 1 : 0,
-      now
-    );
-    return this.getUserAutonomy(userId);
+    return this.transaction(() => {
+      if (deviceId && !this.isActiveAccountDevice(userId, deviceId)) return null;
+      this.exec(
+        `INSERT INTO user_autonomy (user_id, enabled, updated_at)
+         VALUES (?, ?, ?)
+         ON CONFLICT(user_id) DO UPDATE SET enabled = excluded.enabled, updated_at = excluded.updated_at`,
+        userId,
+        enabled ? 1 : 0,
+        now
+      );
+      if (!enabled) {
+        this.exec(
+          `UPDATE activity_queue SET status = 'superseded', updated_at = ?
+           WHERE kind = 'qa_mock_contact' AND status = 'waiting'
+             AND device_id IN (SELECT id FROM devices WHERE user_id = ?)`, now, userId
+        );
+      }
+      return this.getUserAutonomy(userId);
+    });
   }
 
   getUserAutonomy(userId) {
@@ -1615,7 +1624,7 @@ class CloudStore {
               d.revoked_at AS source_device_revoked_at
        FROM activity_queue q
        LEFT JOIN devices d ON d.id = q.device_id
-       WHERE d.user_id = ? AND q.character_id = ?
+       WHERE d.user_id = ? AND q.character_id = ? AND q.kind <> 'qa_mock_contact'
          AND (
            (q.status IN ('waiting', 'retry')
              AND COALESCE(q.next_attempt_at, q.scheduled_at) <= ?
@@ -1876,13 +1885,65 @@ class CloudStore {
   }
 
 
+  canRunQaMockContact(userId, deviceId, characterId) {
+    return this.isActiveAccountDevice(userId, deviceId) &&
+      this.getUserAutonomy(userId)?.enabled === 1 &&
+      this.getCharacterAutonomy(userId, characterId)?.enabled !== 0;
+  }
+
+  queueQaMockContact({ id, userId, deviceId, characterId, now }) {
+    return this.transaction(() => {
+      if (!this.canRunQaMockContact(userId, deviceId, characterId)) return 'disabled';
+      const recent = this.exec(
+        `SELECT 1 FROM activity_queue q JOIN devices d ON d.id = q.device_id
+         WHERE d.user_id = ? AND q.kind = 'qa_mock_contact'
+           AND (q.status = 'waiting' OR q.created_at > ?) LIMIT 1`, userId, now - 300000
+      )[0];
+      if (recent) return 'limited';
+      const task = this.enqueueActivity({
+        id, userId, deviceId, characterId, now, scheduledAt: now,
+        kind: 'qa_mock_contact', maxAttempts: 1, payload: {}, requireActiveDevice: true
+      });
+      if (!task.inserted) throw new Error('QA test activity was not saved');
+      return 'queued';
+    });
+  }
+
+  runQaMockContacts(now) {
+    const due = this.exec(
+      `SELECT q.id, q.device_id, q.character_id, q.attempt_count, d.user_id
+       FROM activity_queue q JOIN devices d ON d.id = q.device_id
+       WHERE q.kind = 'qa_mock_contact' AND q.status = 'waiting' AND q.scheduled_at <= ?
+       ORDER BY q.scheduled_at, q.id LIMIT 10`, now
+    );
+    for (const task of due) {
+      this.transaction(() => {
+        if (!this.canRunQaMockContact(task.user_id, task.device_id, task.character_id)) {
+          this.supersedeActivity({id: task.id, expectedAttemptCount: task.attempt_count,
+            expectedStatus: 'waiting', now});
+          return;
+        }
+        const claim = this.claimActivity({id: task.id, expectedAttemptCount: task.attempt_count,
+          expectedStatus: 'waiting', owner: task.device_id, leaseUntil: now + 60000, now});
+        if (!claim) return;
+        const serverMessageId = 'qa_mock_' + task.id;
+        const result = this.completeActivityWithOutbound({
+          id: task.id, owner: task.device_id, attemptCount: claim.attempt_count, now,
+          serverMessageId, dedupeKey: serverMessageId,
+          payload: {type: 'text', text: '这是一条免费的云端联系测试消息。', characterName: '云端测试'}
+        });
+        if (!result) throw new Error('QA test message could not be saved');
+      });
+    }
+  }
+
   listDueActivities(now, limit) {
     return this.exec(
       `SELECT q.*, d.user_id AS user_id,
               d.revoked_at AS source_device_revoked_at
        FROM activity_queue q
        LEFT JOIN devices d ON d.id = q.device_id
-       WHERE (
+       WHERE q.kind <> 'qa_mock_contact' AND ((
          q.status IN ('waiting', 'retry')
          AND COALESCE(q.next_attempt_at, q.scheduled_at) <= ?
          AND (q.locked_until IS NULL OR q.locked_until <= ?)
@@ -1891,7 +1952,7 @@ class CloudStore {
          AND q.locked_until IS NOT NULL
          AND q.locked_until <= ?
        )
-       ORDER BY COALESCE(q.next_attempt_at, q.scheduled_at) ASC
+       ) ORDER BY COALESCE(q.next_attempt_at, q.scheduled_at) ASC
        LIMIT ?`,
       now,
       now,

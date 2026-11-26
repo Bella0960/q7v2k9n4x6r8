@@ -9,6 +9,7 @@
     "nodejs_compat"
   ],
   "keep_vars": true,
+  "triggers": { "crons": ["*/5 * * * *"] },
   "assets": {
     "directory": "./dist",
     "binding": "ASSETS",
@@ -50,6 +51,7 @@
     "MAO_SOCIAL_CHAT_ENABLED": "false",
     "MAO_SOCIAL_E2EE_ENABLED": "true",
     "MAO_SOCIAL_ENABLED": "true",
+    "MAOMAO_QA_MOCK_CONTACT": "true",
     "AUTONOMY_DEVICE_GRACE_MS": "0",
     "AUTONOMY_DEVICE_LEASE_MS": "120000",
     "AUTONOMY_HEARTBEAT_TTL_MS": "90000",

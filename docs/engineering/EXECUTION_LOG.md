@@ -754,3 +754,5 @@ On the next turn/session, read this file and the current `AGENTS.md` first. Cont
 - 同一候选链追加总览优化：使用已验证的账号目录总数，压缩首页快捷区，并接入原有真人好友审批和账号安全页面。保留现有服务端权限与审计。Node 224/224，Vite 通过，合成账号 Chromium 375/390/430px 三档通过。真机登录仍待验证。
 
 - ADMIN-CORE-001 真机反馈：管理目录同时返回账号上下文错误。QA 转发使用已验证的创始账号标识传递作用域至现有独立身份服务。回归模拟身份服务作用域门禁，覆盖目录读取和写入。回滚可还原本提交。
+
+- AUTONOMY-M2 QA single-message smoke: based on the live bc7d062f release, reused existing consent controls, activity queue, SQLite completion/outbox, Cron maintenance, dispatcher, Service Worker and chat recovery. New QA-only manual route queues one fixed message per account per five minutes. Turning global autonomy off cancels pending mock jobs atomically, and role/device status is checked again at execution. No schema changes, model requests or chat context upload. Nine focused SQLite and push integration checks passed.
