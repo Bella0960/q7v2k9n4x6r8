@@ -188,7 +188,7 @@ npm run eng:register -- <PR-number> <TASK-ID> <QA-baseline-SHA> <F1|F2|F3|F4> "<
 
 - After a task has changes and before opening/updating its PR or assembling a batch, run `npm run eng:conflicts` from a complete source checkout with `origin/main` available. Run it again before candidate assembly when the working tree or PR set has changed.
 - The scanner compares committed, staged, unstaged, and untracked paths against all paginated open PRs using their pinned base/head commits. An exact file overlap is **BLOCK**; a shared runtime/Worker/workflow/build/release/governance hotspot is **SHARED** and needs one named owner; same-module overlap is **REVIEW**.
-- A zero-change checkout makes no ownership conclusion. An incomplete API/Git scan exits non-zero and must never be treated as conflict-free. `GH_TOKEN` or `GITHUB_TOKEN` may be supplied for a reliable authenticated scan; never put credentials in files or logs.
+- An incomplete API/Git scan exits non-zero and must never be treated as conflict-free. `GH_TOKEN` or `GITHUB_TOKEN` may be supplied for a reliable authenticated scan; never put credentials in files or logs.
 - The scanner is read-only. It does not edit branches, rebase, merge, close PRs, or dispatch QA.
 
 **One immutable candidate**
@@ -197,7 +197,7 @@ npm run eng:register -- <PR-number> <TASK-ID> <QA-baseline-SHA> <F1|F2|F3|F4> "<
 - The workflow scans all open PRs, collects only evidence-complete registered tasks, verifies exact head/review/check/path/dependency evidence, orders dependencies, performs a second ownership scan, and assembles one candidate from the exact deployed QA baseline plus only ready tasks.
 - One baseline maps to one create-only branch: `integration/qa-batch-<first-12-baseline-sha>`. The candidate ref cannot overwrite an existing different SHA. The workflow archives the exact Git bundle and receipt for 90 days before pushing; a failed runner can resume the same candidate using its saved artifact.
 - The local equivalent is `npm run eng:batch:auto -- <current-deployed-QA-source-SHA> [--push]`. It requires a complete checkout, the correct source `origin`, and GitHub API access. Prefer the owner-only workflow for the shared coordinator run.
-- The old public `npm run eng:batch -- <task-directory> ...` entry point is retired. `scripts/engineering-qa-batch.mjs` remains an internal assembly helper called by the PR-backed queue; do not invoke it as a separate manual task-directory workflow.
+- The old public `npm run eng:batch -- <task-directory> ...` local-directory workflow is deprecated and must not be used. Its npm alias remains temporarily in `package.json` because open PR #545 owns that shared file; remove the alias only in a separate conflict-free cleanup after that PR is resolved. `scripts/engineering-qa-batch.mjs` remains an internal assembly helper called by the PR-backed queue; do not invoke it as a separate manual task-directory workflow.
 - Candidate assembly/push is **not** a QA deployment. The batch workflow does not release, merge task PRs, deploy production, or update APKs.
 
 **Single QA release coordinator**
