@@ -126,3 +126,61 @@ Website deploy is the normal release channel.
 APK build is manual and exceptional.
 Do not publish npm packages. Follow RELEASE_POLICY.md for QA and production releases.
 Before a significant migration release: full backup test, migration canary, regression checks, production deploy check, and rollback instructions.
+
+
+## 10. Fast delivery, multi-window coordination and batched QA
+
+**Owner requirement (2026-11-26):** Optimize elapsed delivery time without weakening correctness, data safety, or the current `RELEASE_POLICY.md`. This section adds execution discipline; it does not replace release authorization or QA safety gates.
+
+### 10.1 One defect, one work package
+
+- A small bug is one bounded Task ID, one dedicated task branch, and one reviewable PR. Fix the root cause; do not add unrelated redesign, cleanup, architecture work, or extra features.
+- Before editing, record the task ID, exact expected behavior, base SHA, risk lane, owned paths, non-goals, and targeted checks in the PR description or task handoff.
+- Keep each task branch based on the current approved baseline. Never use a stale candidate as a new task's base merely because it is convenient.
+- A task is not complete because code was committed. It must have the required focused checks and an explicit state: READY FOR INTEGRATION, BLOCKED, or NOT VERIFIED.
+
+### 10.2 Multiple windows: parallel work with exclusive file ownership
+
+- Independent modules or disjoint file sets may be developed and tested in parallel. Each window owns its Task ID, branch, and declared paths.
+- Two windows must never edit the same HTML, JS, CSS, test, shared module, or configuration file concurrently. If a task touches a shared API, storage contract, route registry, Worker, Service Worker, package/build config, workflow, or account boundary, appoint one implementation owner and let other windows review or prepare isolated tests.
+- Treat `AGENTS.md`, `RELEASE_POLICY.md`, `DEVELOPMENT_GOVERNANCE.md`, `REMEDIATION_BACKLOG.md`, `EXECUTION_LOG.md`, package manifests, global test runners, and QA workflows as single-owner files. The integration coordinator alone updates the shared execution log; individual windows keep their task evidence in their own PRs.
+- Do not wait idly for an unrelated QA run. Continue independent implementation, focused tests, code review, and defect diagnosis while the release queue is occupied.
+- Individual windows do not independently request QA deployments. They deliver a reviewed task branch/PR and its exact evidence to the integration coordinator.
+
+### 10.3 Risk lanes determine the minimum sufficient checks
+
+Choose by actual behavior and affected consumers, not by file extension alone.
+
+| Lane | Change type | Required local checks |
+|---|---|---|
+| D0 | Documentation-only; no runtime, workflow, or release behavior | Link/format and changed-document consistency checks. No product QA deployment. |
+| F1 | Pure visible copy, local spacing, typography, color, or presentation-only CSS | Diff proves no script, event handler, attribute, DOM structure, route, storage, resource URL, or shared behavior change; run the affected module contract and browser viewports (375/390/430px plus desktop shell). Build only when the changed path affects build output or the release gate requires it. |
+| F2 | Isolated functional bug in one module | New regression test plus affected existing contract tests and the module's relevant browser flow; run a build when runtime/build output changes. |
+| F3 | New feature, cross-module behavior, shared UI/API, or multiple dependent modules | Standard regression selection, integration checks, relevant browser flows, and build. |
+| F4 | Identity, account/session, permissions, chat/storage schemas, backup/restore, payment, cloud data, Worker/Cron/push, shared core, security, or release infrastructure | Full relevant safety, compatibility, backup/restore, integration, and release-infrastructure gates. No fast-lane downgrade. |
+
+- F1 is deliberately narrow. A structural HTML change, changed event/attribute, selector that changes behavior, new resource, shared stylesheet, or ambiguous diff is not F1.
+- The adaptive selector is not yet a universal project-wide fast lane. The currently inspected candidate selector maps presentation-only changes only for `library`, `diary`, `music`, `travel`, `cafe`, and `games`; other modules and unsupported diffs must use the standard plan until they have dedicated browser coverage and an accepted classifier mapping.
+- As of 2026-11-26, QA infrastructure PR #507 remains Draft/open and the release policy still marks adaptive migration as under acceptance. Do not report the adaptive path as globally activated or use it to bypass the standard plan before the current candidate and release receipt prove it works.
+
+### 10.4 One QA candidate for a ready batch, one release coordinator
+
+- Keep bug fixes isolated in their own task branches/PRs. Once several independent tasks are READY FOR INTEGRATION, the coordinator may combine them in dependency order on one approved `integration/` or `qa/` candidate. Do not include unfinished work, unresolved conflicts, or unrelated high-risk changes merely to make a larger batch.
+- The integration candidate must include the exact currently deployed QA source and all accepted changes. Freeze its SHA for the release; later commits belong to the next batch.
+- One coordinator owns the QA queue and the single release lock. Never let several windows dispatch separate releases for the same target. Never cancel an active release. A P0 issue may be released alone when waiting for a batch would create material user impact.
+- The current reusable runner executes the candidate test plan in both `verify` and `release`; `release` then performs the QA-only deployment and post-deployment checks. Therefore, for a ready candidate that is explicitly authorized for QA publication, use one `release` operation rather than running `verify` and then `release` on the same unchanged SHA. Use `verify` when a no-deploy validation is actually required or when diagnosing a candidate that is not yet ready to publish.
+- A release request is not a deployment receipt. Record the exact tested SHA, successful run, deployed Worker version, and `preview.mao520.com` source receipt separately.
+
+### 10.5 Failure handling: diagnose once, repair the cause
+
+- Read the actual failed job and sanitized stage summary before retrying. Identify whether the failure is candidate/baseline preflight, a specific Node test, browser test, build, post-test safety guard, upload, or post-deployment readiness.
+- A product regression requires a narrow code/test repair, a new candidate SHA, and the affected local checks. Do not rerun unrelated local suites just to reproduce it.
+- An environment or transient failure must be distinguished from a product failure. Before retrying any release, verify whether deployment already occurred by checking the Worker version and exact QA source receipt. Never blindly repeat a job that may have uploaded.
+- The current reusable workflow runs the candidate gates inside one request job; rerunning that failed job can repeat the candidate suite. Do not describe a whole-job rerun as a single-test retry. Use bounded read-only retries only where the runner already permits them; never retry deployment mutations blindly.
+- Never delete tests, weaken assertions, skip a required gate, fabricate a pass, or label an unobserved browser/device check as verified.
+
+### 10.6 Owner-facing delivery
+
+- Do not ask the owner to repeat "continue" for work already authorized. Complete the bounded work package and keep independent work moving.
+- Progress messages are reserved for durable milestones or real blockers. The final report is concise: Task ID, root cause, files changed, focused checks and exact results, branch/PR, exact candidate SHA, and the actual QA receipt/version/link if deployed.
+- If QA is queued or blocked, state the exact queue/blocker and continue other independent tasks. Never present a historical QA version as the result of the current change.
