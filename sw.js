@@ -1,7 +1,7 @@
 /* 小手机 PWA Service Worker
  * 静态资源和公开登录页可缓存；受保护页面每次经 Worker 校验。
  */
-const CACHE_NAME = 'phone-app-pwa-v210';
+const CACHE_NAME = 'phone-app-pwa-v211';
 const FONT_ASSET_CACHE = 'maomao-font-assets-v1';
 // v196 release: sweep orphaned role-owned media refs during avatar cleanup.
 const APP_SHELL = [
@@ -92,6 +92,7 @@ const APP_SHELL = [
   'shared/js/font-loader.js',
   'shared/js/native-feel.js',
   'shared/js/phone/phone_storage.js',
+  './shared/js/phone/chat-history-atomic.js?v=20261118v3',
   './shared/js/phone/phone_context.js?v=20261102npc1',
   'shared/js/phone/chat-message-policy.js?v=20261029v5',
   './shared/js/phone/chat-image-vision.js?v=20261113v1',
