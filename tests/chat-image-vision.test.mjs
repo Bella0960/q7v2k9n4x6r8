@@ -271,7 +271,9 @@ test('PWA shell and package contracts include the chat vision runtime', () => {
   const contextRevision = chatDetailSource.match(/chat-context-policy\.js\?v=[\w-]+/)?.[0];
   assert.ok(contextRevision, 'chat detail must load a versioned context policy');
   assert.ok(serviceWorkerSource.includes(contextRevision), 'PWA must precache the loaded context policy');
-  assert.ok(serviceWorkerSource.includes('chat-extras.js?t=20261107imagevision1'));
+  const extrasRevision = chatDetailSource.match(/chat-extras\.js\?t=[\w-]+/)?.[0];
+  assert.ok(extrasRevision, 'chat detail must load a versioned extension script');
+  assert.ok(serviceWorkerSource.includes(extrasRevision), 'PWA must precache the loaded extension script');
   assert.ok(packageJson.scripts['test:chat:image-vision']);
   assert.ok(packageJson.scripts['test:chat:contract'].includes('tests/chat-image-vision.test.mjs'));
 });

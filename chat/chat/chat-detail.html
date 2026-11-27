@@ -2818,11 +2818,16 @@
         // Keep its raw bytes for explicit backup/recovery rather than "repairing" on read.
         var _chatHistoryUnreadable = false;
         const singleChatTurnSnapshots = new WeakMap();
-        function loadMessages() {
+        function loadMessages(trackSnapshot = false) {
+            function snapshot(list, raw) {
+                if (trackSnapshot) singleChatTurnSnapshots.set(list, raw);
+                return list;
+            }
             if (isGroupChat && _storage) {
                 try {
+                    var groupBaseline = trackSnapshot ? localStorage.getItem(storageKey) : null;
                     var arr = _storage.getChatHistory(currentCharacter.id);
-                    if (Array.isArray(arr) && arr.length) return removeLegacyStickerCaptions(arr);
+                    if (Array.isArray(arr) && arr.length) return snapshot(removeLegacyStickerCaptions(arr), groupBaseline);
                 } catch (err) {
                     _chatHistoryUnreadable = true;
                     console.warn('读取历史聊天记录失败:', err);
@@ -2835,7 +2840,7 @@
                     const parsed = JSON.parse(raw);
                     if (!Array.isArray(parsed)) throw new Error('chat history is not an array');
                     _chatHistoryUnreadable = false;
-                    return removeLegacyStickerCaptions(parsed);
+                    return snapshot(removeLegacyStickerCaptions(parsed), raw);
                 }
             } catch (err) {
                 _chatHistoryUnreadable = true;
@@ -2849,7 +2854,7 @@
                     var legacy = _storage.getChatHistory(currentCharacter.id);
                     if (Array.isArray(legacy) && legacy.length) {
                         _chatHistoryUnreadable = false;
-                        return removeLegacyStickerCaptions(legacy);
+                        return snapshot(removeLegacyStickerCaptions(legacy), null);
                     }
                 } catch (err) {
                     _chatHistoryUnreadable = true;
@@ -2860,7 +2865,7 @@
             if (_chatHistoryUnreadable) return [];
             const initial = getInitialMessages();
             if (!saveMessages(initial)) return [];
-            return initial;
+            return snapshot(initial, trackSnapshot ? localStorage.getItem(storageKey) : null);
         }
 
         // 失败提示冷却：按错误类型分，60 秒窗口内同类失败只提示一次；成功后重置。
@@ -8686,7 +8691,7 @@
         })();
 
     </script>
-    <script src="js/chat-extras.js?t=20261107imagevision1"></script>
+    <script src="js/chat-extras.js?t=20261127snapshot1"></script>
     <script src="../call/call-overlay.js?v=20261105v1"></script>
     <script>
     function openNarrationModal() {

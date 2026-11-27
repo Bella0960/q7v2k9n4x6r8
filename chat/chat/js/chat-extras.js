@@ -13,15 +13,22 @@
     if (!msg || typeof msg !== 'object') return false;
     if (!msg.time) msg.time = Date.now();
     if (!msg.role) msg.role = 'user';
-    // Build a fresh snapshot: a failed write must not mutate a shared history array.
+    var history;
+    var originalLength;
     var saved = false;
     try {
-      var history = loadMessages();
-      if (Array.isArray(history)) saved = saveMessages(history.concat([msg])) === true;
+      history = loadMessages(true);
+      if (Array.isArray(history)) {
+        originalLength = history.length;
+        ensureMid(msg);
+        history.push(msg);
+        saved = saveMessages(history) === true;
+      }
     } catch (error) {
       saved = false;
     }
     if (!saved) {
+      if (originalLength !== undefined) history.length = originalLength;
       if (typeof showToast === 'function') showToast('聊天记录保存失败，消息未发送');
       return false;
     }
@@ -599,9 +606,21 @@
 
     if (!messages.length) return;
 
-    var history = loadMessages();
-    var next = history.concat(messages);
-    if (!saveMessages(next)) {
+    var history;
+    var originalLength;
+    var saved = false;
+    try {
+      history = loadMessages(true);
+      if (Array.isArray(history)) {
+        originalLength = history.length;
+        messages.forEach(function (message) { history.push(message); });
+        saved = saveMessages(history) === true;
+      }
+    } catch (error) {
+      saved = false;
+    }
+    if (!saved) {
+      if (originalLength !== undefined) history.length = originalLength;
       await storedAssets.reduce(function (chain, item) {
         return chain.then(function () {
           return chatImageMediaRepo.removeRef(item.assetId, 'chat-message', item.mid).then(function (released) {

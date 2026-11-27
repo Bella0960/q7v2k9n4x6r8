@@ -1017,7 +1017,7 @@ test('shared policy is loaded by both relevant pages and precached for PWA', () 
 });
 
 test('chat detail retains the legacy load/save entry points and role-scoped storage', () => {
-  assert.match(detail, /function loadMessages\(\)/);
+  assert.match(detail, /function loadMessages\(trackSnapshot = false\)/);
   assert.match(detail, /function saveMessages\(list\)/);
   assert.match(detail, /_storage\.getChatHistory\(currentCharacter\.id\)/);
   assert.match(detail, /_storage\.saveChatHistory\(currentCharacter\.id, list\)/);
