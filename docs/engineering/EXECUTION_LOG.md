@@ -419,3 +419,15 @@ On the next turn/session, read this file and the current `AGENTS.md` first. Cont
 - **Dispatch capability limitation:** the connected GitHub tools expose run inspection and reruns but no `workflow_dispatch` write operation. The owner-only `.github/workflows/engineering-ready-batch.yml` was not triggered by substituting a push trigger, request-file commit, or other workaround.
 - **Remaining shared-file cleanup:** old npm alias `eng:batch` remains in `package.json`, and the static Agent A–E list remains physically in `REMEDIATION_BACKLOG.md`; both are marked retired/non-executable. PR #545 still owns `package.json` and `REMEDIATION_BACKLOG.md`, while PR #421 also owns the backlog file. Comments were left asking those owners to finish/release the paths. After release, remove the alias in a separate conflict-free cleanup and delete the historical assignment block while preserving DATA-002/DATA-003 evidence and current GOV-006 status.
 - **QA release:** no new QA release was requested because no immutable batch candidate exists. No production deployment, APK update, secret change, data migration, or user-data operation was performed.
+
+
+## 2026-11-27 · ROLE-MIND-001 · PR #545 rebase
+
+- **PR:** #545 · `ROLE-MIND-001/heart-history-isolation-20261126`.
+- **原始 head：** `a063aca98e4650493b22454d4c5ae3943236afdf`；本次将其作为第二父提交保留，并将当前 main `1fa1d5d7386f66292c22610e84c7f38b1d6e48d2` 作为第一父提交，避免改写或丢失旧分支历史。
+- **代码范围：** 心声策略独立模块、聊天详情接入、PWA v206 预缓存、心声隔离测试、聊天架构契约与回归基线。
+- **数据边界：** 不修改消息 schema、角色/群 ID 或旧心声键；不删除旧数据。群聊历史必须以实际 speaker ID 归属。
+- **测试证据：** 早期提交 `da8491775932f810ee51e284c1fed242e2e22222` 曾有 9/9 本地 smoke 记录；后续 head 又增加了键碰撞修复。当前 head 的完整 `test:chat:contract`、Vite build、Chromium 和手机 PWA 仍须以本次 rebase 后的 GitHub Actions/实测回执为准，不能沿用早期 smoke 代替。
+- **CI 限制：** 既有 Cloudflare `Workers Builds: mao` 曾因账户构建分钟额度耗尽而失败/跳过；该项不是心声单元测试结果。Netlify Deploy Preview 不等于唯一 QA。
+- **状态：** rebase 后等待本 PR 触发的 chat regression workflow；未合并、未发布唯一 QA、未部署生产、未更新 APK、未修改用户数据。
+- **GOV-006 历史状态说明：** 本文件前文中关于“必须由非作者 GitHub 账号 APPROVED”及“QA source SHA 必须是 PR head 祖先”的记录属于当时历史快照，已由 PR #552 合入 main 的单一所有者审批与 PR merge-base/QA source 分离规则取代。
