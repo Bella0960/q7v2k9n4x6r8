@@ -3154,7 +3154,7 @@
             ensureMid(pending);
             var withPending = prior.slice();
             withPending.push(pending);
-            if (!saveMessages(withPending)) {
+            if (!await appendChatSafely([pending])) {
                 if (typeof showToast === 'function') showToast('聊天记录无法保存，暂未开始生图');
                 return;
             }
@@ -3173,6 +3173,7 @@
                     throw new Error('图片已保存到角色图库，但聊天引用没有写入；请到设置中的角色图库查看。');
                 }
                 var latest = loadMessages();
+                var imageEditBaseline = JSON.parse(JSON.stringify(latest));
                 var index = latest.findIndex(function (item) { return String(item.mid || '') === String(pending.mid); });
                 if (index < 0) return;
                 latest[index] = Object.assign({}, latest[index], {
@@ -3182,12 +3183,13 @@
                     desc: result.sceneDescription,
                     isPrivate: true
                 });
-                if (!saveMessages(latest)) {
+                if (!await replaceChatSafely(imageEditBaseline, latest)) {
                     if (typeof showToast === 'function') showToast('图片已生成并保存到图库，但聊天记录保存失败');
                 }
                 renderAllMessages();
             } catch (error) {
                 var failed = loadMessages();
+                var imageFailureBaseline = JSON.parse(JSON.stringify(failed));
                 var pendingIndex = failed.findIndex(function (item) {
                     return String(item.mid || '') === String(pending.mid);
                 });
@@ -3198,7 +3200,7 @@
                         text: '图片生成失败：' + window.PhoneImageGeneration.safeFailure(error),
                         time: Date.now()
                     });
-                    saveMessages(failed);
+                    await replaceChatSafely(imageFailureBaseline, failed);
                     renderAllMessages();
                 }
             } finally {
@@ -3350,7 +3352,8 @@
             return timeIndex;
         }
 
-        function _markUserSendFailed(list, mid, time, reason) {
+        async function _markUserSendFailed(list, mid, time, reason) {
+            var originalSnapshot = JSON.parse(JSON.stringify(list));
             var idx = _locateUserMessageIndex(list, mid, time);
             if (idx === -1) return false;
             var message = list[idx];
@@ -3358,7 +3361,7 @@
             var previousReason = message.sendFailedReason;
             message.sendFailed = true;
             message.sendFailedReason = reason || 'api-error';
-            if (!saveMessages(list)) {
+            if (!await replaceChatSafely(originalSnapshot, list)) {
                 // 标记只在真正落库后才生效；写失败就回滚内存状态，交由调用方继续按既有规则处理错误提示。
                 if (previousFailed) message.sendFailed = true;
                 else delete message.sendFailed;
@@ -3370,8 +3373,8 @@
         }
 
         // 一键重试：复用已落库的原用户消息，只发起 AI 回合（contextOnly），不会插入第二条用户消息。
-        window.retryFailedMessage = function (mid, time) {
-            if (aiSending || singleChatSendPending) {
+        window.retryFailedMessage = async function (mid, time) {
+            if (aiSending) {
                 if (typeof showToast === 'function') showToast('TA 正在回复中，稍等一下');
                 return;
             }
@@ -3385,12 +3388,13 @@
                 return;
             }
             var list = loadMessages();
+            var originalSnapshot = JSON.parse(JSON.stringify(list));
             var prepared = _prepareRetryMessage(list, mid, time);
             if (!prepared) {
                 if (typeof showToast === 'function') showToast('这条消息已不存在或无需重试');
                 return;
             }
-            if (!saveMessages(list)) {
+            if (!await replaceChatSafely(originalSnapshot, list)) {
                 // 失败标记只在保存成功后移除；写失败就原样回滚，避免界面与存储不一致。
                 prepared.message.sendFailed = true;
                 if (prepared.previous.sendFailedReason != null) {
@@ -5261,6 +5265,7 @@
                 return;
             }
             const list = loadMessages();
+            const originalSnapshot = JSON.parse(JSON.stringify(list));
             var idx = -1;
             for (let i = 0; i < list.length; i++) {
                 if (ensureMid(list[i]) === resolved.mid) { idx = i; break; }
@@ -5276,11 +5281,11 @@
                 msg.translation = out;
                 msg.translationAt = Date.now();
             }
-            if (!saveMessages(list)) {
+            if (!await replaceChatSafely(originalSnapshot, list)) {
                 if (typeof showToast === 'function') showToast('保存失败，未写入翻译');
                 return;
             }
-            rerenderFromList(list);
+            rerenderFromList(loadMessages());
             if (typeof showToast === 'function') showToast('已翻译');
         }
 
@@ -6767,7 +6772,7 @@
             // Retry failure marking is a guarded replacement of the same stored MID.
             var retryRemarked = false;
             if (!streamResult.ok && failureTarget && (!fullText || isGroupChat)) {
-                var marked = _markUserSendFailed(historyList, failureTarget.mid, failureTarget.time,
+                var marked = await _markUserSendFailed(historyList, failureTarget.mid, failureTarget.time,
                     streamResult.error && streamResult.error.kind === 'empty' ? 'empty-reply' : 'api-error');
                 if (marked) {
                     if (await replaceChatSafely(aiWriteBaseline, historyList)) {
@@ -7531,8 +7536,9 @@
 
         // ---------- 单条删除 ----------
         // ---------- 单条删除（按气泡身份，只删目标气泡） ----------
-        function deleteOneMessage(bubbleId) {
+        async function deleteOneMessage(bubbleId) {
             var list = loadMessages();
+            var originalSnapshot = JSON.parse(JSON.stringify(list));
             var resolved = resolveBubbleInPage(bubbleId);
             var keep;
             if (resolved && window.ChatMessagePolicy && typeof window.ChatMessagePolicy.removeBubblesFromHistory === 'function') {
@@ -7547,14 +7553,14 @@
                 if (typeof showToast === 'function') showToast('消息已不存在');
                 return;
             }
-            if (!saveMessages(keep)) {
+            if (!await replaceChatSafely(originalSnapshot, keep)) {
                 if (typeof showToast === 'function') showToast('删除失败，消息和图片均已保留');
                 return;
             }
             var keptMids = new Set(keep.map(function (m) { return String(ensureMid(m)); }));
             var removedMessages = list.filter(function (m) { return !keptMids.has(String(ensureMid(m))); });
             if (removedMessages.length) releaseDeletedChatImageReferences(removedMessages);
-            rerenderFromList(keep);
+            rerenderFromList(loadMessages());
             if (typeof showToast === 'function') showToast('已删除 1 条消息');
         }
 
@@ -7586,7 +7592,7 @@
             setTimeout(function () { try { editInput.focus(); } catch (e) {} }, 60);
         }
 
-        function saveEditedMessage() {
+        async function saveEditedMessage() {
             var bubbleId = editMid;
             var resolved = resolveBubbleInPage(bubbleId);
             if (!resolved) {
@@ -7601,6 +7607,7 @@
             }
             if (newText === String(resolved.text || '').trim()) { closeEditSheet(); return; }
             var list = loadMessages();
+            var originalSnapshot = JSON.parse(JSON.stringify(list));
             var idx = -1;
             for (var i = 0; i < list.length; i++) { if (ensureMid(list[i]) === resolved.mid) { idx = i; break; } }
             if (idx === -1) {
@@ -7619,11 +7626,11 @@
             }
             msg.edited = true;
             msg.editedAt = Date.now();
-            if (!saveMessages(list)) {
+            if (!await replaceChatSafely(originalSnapshot, list)) {
                 if (typeof showToast === 'function') showToast('保存失败，未修改');
                 return;
             }
-            rerenderFromList(list);
+            rerenderFromList(loadMessages());
             closeEditSheet();
             if (typeof showToast === 'function') showToast('已保存');
         }
@@ -7906,10 +7913,11 @@
         });
 
         document.getElementById('selectCancelBtn').addEventListener('click', exitSelection);
-        document.getElementById('selectDeleteBtn').addEventListener('click', function () {
+        document.getElementById('selectDeleteBtn').addEventListener('click', async function () {
             if (!selectedBubbles.size) { exitSelection(); return; }
             var removedCount = selectedBubbles.size;
             var list = loadMessages();
+            var originalSnapshot = JSON.parse(JSON.stringify(list));
             var keep;
             if (window.ChatMessagePolicy && typeof window.ChatMessagePolicy.removeBubblesFromHistory === 'function') {
                 keep = window.ChatMessagePolicy.removeBubblesFromHistory(list, Array.from(selectedBubbles));
@@ -7918,13 +7926,13 @@
             }
             var keptMids = new Set(keep.map(function (m) { return String(ensureMid(m)); }));
             var removedMessages = list.filter(function (m) { return !keptMids.has(String(ensureMid(m))); });
-            if (!saveMessages(keep)) {
+            if (!await replaceChatSafely(originalSnapshot, keep)) {
                 if (typeof showToast === 'function') showToast('删除失败，消息和图片均已保留');
                 exitSelection();
                 return;
             }
             if (removedMessages.length) releaseDeletedChatImageReferences(removedMessages);
-            rerenderFromList(keep);
+            rerenderFromList(loadMessages());
             exitSelection();
             if (typeof showToast === 'function') showToast('已删除 ' + removedCount + ' 条消息');
         });
@@ -8776,8 +8784,13 @@
             document.addEventListener('keydown', function (event) {
                 if (event.key === 'Escape' && composerOverlay && composerOverlay.classList.contains('active')) closeComposer();
             });
-            if (composerForm) composerForm.addEventListener('submit', function (event) {
+            var composerSubmitting = false;
+            if (composerForm) composerForm.addEventListener('submit', async function (event) {
                 event.preventDefault();
+                if (composerSubmitting) return;
+                composerSubmitting = true;
+                if (composerSubmit) composerSubmit.disabled = true;
+                try {
                 if (composerMode === 'poll') {
                     var question = composerQuestion.value.trim();
                     var options = composerOptions.value.split(/[\n|]/).map(function (item) { return item.trim().slice(0, 40); }).filter(Boolean).slice(0, 6);
@@ -8789,7 +8802,7 @@
                     var message = { role: 'user', type: 'group_poll', text: '', poll: { question: question.slice(0, 100), options: options, votes: {}, closed: false }, time: Date.now() };
                     ensureMid(message);
                     history.push(message);
-                    if (!saveMessages(history)) {
+                    if (!await appendChatSafely([message])) {
                         history.pop();
                         showToast('群投票没有保存成功，请检查本地存储空间');
                         return;
@@ -8807,7 +8820,7 @@
                     var chainMessage = { role: 'user', type: 'group_chain', text: '', chain: { title: title.slice(0, 80), entries: entries, closed: false }, time: Date.now() };
                     ensureMid(chainMessage);
                     chainHistory.push(chainMessage);
-                    if (!saveMessages(chainHistory)) {
+                    if (!await appendChatSafely([chainMessage])) {
                         chainHistory.pop();
                         showToast('群接龙没有保存成功，请检查本地存储空间');
                         return;
@@ -8820,6 +8833,7 @@
                     var entryText = composerEntry.value.trim();
                     if (!entryText) { composerEntry.focus(); showToast('写点内容再提交'); return; }
                     var joinHistory = loadMessages();
+                    var joinBaseline = JSON.parse(JSON.stringify(joinHistory));
                     var targetMessage = joinHistory.find(function (item) { return item && item.type === 'group_chain' && String(ensureMid(item)) === String(composerTargetMid); });
                     var targetChain = targetMessage && targetMessage.chain;
                     if (!targetChain || targetChain.closed) { closeComposer(); showToast('这条接龙已结束'); renderAllMessages(); return; }
@@ -8827,7 +8841,7 @@
                     if (targetChain.entries.some(function (entry) { return String(entry.memberId || '') === '__user'; })) { showToast('你已经参与过这条接龙'); return; }
                     var previousEntries = JSON.parse(JSON.stringify(targetChain.entries));
                     targetChain.entries.push({ memberId: '__user', name: '我', text: entryText.slice(0, 120), time: Date.now() });
-                    if (!saveMessages(joinHistory)) {
+                    if (!await replaceChatSafely(joinBaseline, joinHistory)) {
                         targetChain.entries = previousEntries;
                         showToast('接龙内容没有保存成功，请检查本地存储空间');
                         return;
@@ -8836,10 +8850,17 @@
                     renderAllMessages();
                     showToast('已加入接龙');
                 }
+                } catch (error) {
+                    console.warn('[GroupChat] group composer save failed:', error);
+                    showToast('群互动保存失败，请检查聊天记录后重试');
+                } finally {
+                    composerSubmitting = false;
+                    if (composerSubmit) composerSubmit.disabled = false;
+                }
             });
             var messageContainer = document.getElementById('chat-messages');
             if (!messageContainer) return;
-            messageContainer.addEventListener('click', function (event) {
+            messageContainer.addEventListener('click', async function (event) {
                 var privateOpenButton = event.target.closest('[data-private-open]');
                 if (privateOpenButton) {
                     var privateRoleId = privateOpenButton.getAttribute('data-private-open');
@@ -8849,6 +8870,7 @@
                 var voteButton = event.target.closest('[data-poll-mid][data-poll-option]');
                 if (voteButton) {
                     var history = loadMessages();
+                    var pollBaseline = JSON.parse(JSON.stringify(history));
                     var pollMessage = history.find(function (item) { return item && item.type === 'group_poll' && String(ensureMid(item)) === String(voteButton.getAttribute('data-poll-mid')); });
                     var poll = pollMessage && pollMessage.poll;
                     var optionIndex = parseInt(voteButton.getAttribute('data-poll-option'), 10);
@@ -8857,7 +8879,7 @@
                         ? JSON.parse(JSON.stringify(poll.votes)) : null;
                     poll.votes = poll.votes && typeof poll.votes === 'object' ? poll.votes : {};
                     poll.votes.__user = optionIndex;
-                    if (!saveMessages(history)) {
+                    if (!await replaceChatSafely(pollBaseline, history)) {
                         if (previousVotes) poll.votes = previousVotes;
                         else delete poll.votes;
                         showToast('投票没有保存成功，请检查本地存储空间');
@@ -8869,10 +8891,11 @@
                 var closePollButton = event.target.closest('[data-poll-close]');
                 if (closePollButton) {
                     var pollHistory = loadMessages();
+                    var pollCloseBaseline = JSON.parse(JSON.stringify(pollHistory));
                     var pollToClose = pollHistory.find(function (item) { return item && item.type === 'group_poll' && String(ensureMid(item)) === String(closePollButton.getAttribute('data-poll-close')); });
                     if (pollToClose && pollToClose.poll && !pollToClose.poll.closed) {
                         pollToClose.poll.closed = true;
-                        if (!saveMessages(pollHistory)) {
+                        if (!await replaceChatSafely(pollCloseBaseline, pollHistory)) {
                             pollToClose.poll.closed = false;
                             showToast('投票状态没有保存成功，请稍后重试');
                             return;
@@ -8894,10 +8917,11 @@
                 var closeChainButton = event.target.closest('[data-chain-close]');
                 if (closeChainButton) {
                     var closeHistory = loadMessages();
+                    var chainCloseBaseline = JSON.parse(JSON.stringify(closeHistory));
                     var chainToClose = closeHistory.find(function (item) { return item && item.type === 'group_chain' && String(ensureMid(item)) === String(closeChainButton.getAttribute('data-chain-close')); });
                     if (chainToClose && chainToClose.chain && !chainToClose.chain.closed) {
                         chainToClose.chain.closed = true;
-                        if (!saveMessages(closeHistory)) {
+                        if (!await replaceChatSafely(chainCloseBaseline, closeHistory)) {
                             chainToClose.chain.closed = false;
                             showToast('接龙状态没有保存成功，请稍后重试');
                             return;
