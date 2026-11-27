@@ -2,6 +2,16 @@
 
 > Release instructions: always read the latest main [RELEASE_POLICY.md](RELEASE_POLICY.md). Historical workflow names, versions, and checkpoints are not active instructions.
 
+## 2026-11-28｜ACCOUNT-001 主线整合与账号隔离验收（PR #290，F4）
+
+- 当前主线 `5512689cb842d38441a96e23beeb3f8a5d2622b8` 已包含在远端双父提交 `c37878814e627eec91bb162fe4cb4a9e1822cc25` 中。另一父提交为原账号 HEAD `351b96c73e34854a22b6210cc22a325478ea511c`。原合并未重做。同步并保留了后续远端测试提交 `0393329b6f13eff8d6c9bc8f5d0843ef20f84600` 与 `41e0750e83e5d0ea0307c569866cbc18254847bd`。本轮修复代码提交为 `8a7436b3e0ec4d092d91946114ada3ee7543a123`。
+- 用原账号 HEAD 与当前 main 重新试合，确认六个原冲突文件为 `EXECUTION_LOG.md`、`package.json`、`sw.js`、`chat-regression-contract.test.mjs`、`icon-presets-contract.test.mjs`、`pwa-navigation-cache.test.mjs`。双父提交已处理上述文本冲突。随后补回遗漏的 SW 条目并修正相关行为及测试。
+- 共享文件复核覆盖桌面、账号和管理员入口、Worker 鉴权、构建与测试命令、PWA 和历史记录。桌面普通账号移除管理员磁贴，继续由 Worker/API 独立执行权限检查。保留 main 的 `requireActiveAdmin` 导出、全部 `eng:*`、CI、聊天合同和历史日志。修复私有 HTML 条件请求复用旧响应的问题。已确认账号状态触发不可缓存的登录跳转，身份服务异常保持 503。
+- 恢复 main 的 ROLE-MIND 和当前烹饪脚本预缓存条目。缓存版本从 #290 的 v240 提升到 v312。查得 main 为 v206、#299 为 v284、在线 QA [源码回执](https://preview.mao520.com/qa-build-receipt.json) 为 `4b49c0a95ea8cfedc8aa2007c061a1f6f6771431`（源码 v311）。仅允许合格的公开账号 HTML 离线回退。私有页面联网复验，私有 API 和管理员页面走服务器，旧 Shell 缓存清理保留账号字体缓存。
+- #299 仍以原 #290 分支为 Base。检查时其 HEAD 为 `cf440666a47f5443385c2937cb14faa698d3e46a`，是在线 QA 回执的祖先。它与 #290 的共同祖先为 `4a5237784a15a4dea081394ab0c46d670f493986`，与当前 main 的共同祖先为 `1cde356c77957c1a202ea6bed7212cb067382fff`。对 #299/head 与本轮代码提交进行本地三方试合，得到 34 处冲突，包括身份、会话、PWA、包命令和功能模块。后续应由 QA 协调者基于当时的在线回执逐项整合，保留 QA 已有番外、主题工作台、旧 Shell 恢复和发布保护，以及 #290/main 的管理员鉴权导出及 GOV-006。#299 的旧委托 403 仍用于关闭直接注册、密码变更及未列入允许范围的管理操作。保留该限制，允许通过唯一隔离身份服务代理经过身份与角色核验的操作。此次代码在 QA 身份服务确认已配置、已初始化且创始人永久 ID 一致后才传递密码或会话凭据。线上绑定与实际数据隔离仍待验证。
+- Node `22.23.5`、`npm ci` 后，`test:account:ui-candidate` 86/86，其内 `test:account:release-gate` 33/33、`test:account:registration-persistence` 4/4。管理员诊断和委托权限 70/70。Vite 构建和构建后资产隔离 3/3。导航 11/11、Worker 缓存生命周期 8/8、教程 14/14、桌面／字体／论坛合同 40/40。Chromium 用本地 Vite 产物、真实 Worker 路由和内存 SQLite 验证普通账号管理员页面和 API 拒绝、001 管理中心、375/390/430 触控、账号切换存储隔离、离线私有文档 503、浏览器重启后拒绝到期会话。管理员诊断 Chromium 套件独立通过。测试均使用合成账号。
+- `test:chat:contract` 249/269。当前 main 同环境对照为 248/269。本轮解决了 Worker 的原路由和私有资源校验头合同，本轮剩余 20 项在 main 也失败，涉及上下文召回、群聊、足迹、角色提示和聊天加号菜单等合同。保留全部合同，尚不满足完整验收。GOV-006 冲突扫描完成，173 个开放 PR 中检出共同文件；合并与 QA 组批仍须核对文件归属。未验证在线 QA 登录、真实绑定、Android/iOS 真机和恢复演练。此轮只维护原草稿分支，未修改 #299，未合并或部署，也未接触正式身份、存储或钱包数据。
+
 ## 2026-11-17｜BUG-ADMIN-QA 第六阶段 · 手机端页面收口（排队第 3 项）
 
 - **用户优先级**：首要修复管理中心页面本身，尽量在 QA 整合前把 375/390/430px 手机布局、加载状态、按钮可点击性及错误恢复做完整；禁止任何模拟时间/网络/电量状态栏。继续只在原账号 PR #290 修补，用户发出「3号执行」前不得写 QA #299、合并或部署。
