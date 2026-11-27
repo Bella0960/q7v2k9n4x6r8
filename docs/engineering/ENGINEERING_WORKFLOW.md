@@ -70,7 +70,7 @@ npm run eng:register -- <PR-number> <TASK-ID> <F1|F2|F3|F4> "<exact GitHub check
 
 - 每次新增提交后必须重新运行 `eng:register`，更新精确 head SHA。
 - 登记初始状态是 `submitted`。READY 由协调器根据当前证据计算，不是开发者手工勾选。
-- 任务只有在 PR open、非 Draft、注册的 PR merge-base SHA 与当前 GitHub 三点比较 merge base 一致、head SHA 与当前 PR 完全一致、PR merge base 是 PR head 的祖先、当前 head 获得非作者审核者的 APPROVED、所有指定检查成功、其他检查/状态无失败或待完成项、文件清单完整且与 PR merge-base-to-head Git diff 一致、依赖满足时才会进入 READY。PR merge base 不要求是已部署 QA 源码 SHA 的祖先。
+- 任务只有在 PR open、非 Draft、注册的 PR merge-base SHA 与当前 GitHub 三点比较 merge base 一致、head SHA 与当前 PR 完全一致、PR merge base 是 PR head 的祖先、仓库唯一所有者对当前 head 的 owner approval 有效、所有指定检查成功、适用的其他检查/状态无失败或待完成项、文件清单完整且与 PR-merge-base-to-head Git diff 一致、依赖满足时才会进入 READY。若存在当前 head 的 CHANGES_REQUESTED review，仍然阻断。PR merge base 不要求是已部署 QA 基线的祖先。
 - 同一 Task ID 重复、旧 merge base/head、缺少依赖、依赖环、API 分页不完整或 PR 文件清单与 Git diff 不匹配都会 fail-closed。
 - `D0` 纯文档任务不进入 QA 批次，也不使用 F1–F4 manifest；仍需 PR、冲突检查和文档一致性验证。
 
@@ -111,7 +111,7 @@ GitHub 的非作者 APPROVED review 不再是 READY 的必要条件；若存在�
 工作流会：
 
 1. 读取所有开放 PR（完整分页），只收集有 `MAOMAO_TASK_V1` 且证据完整的任务。
-2. 校验 PR 当前 merge base/head、非作者审核批准、指定检查、其他检查状态、PR 文件列表与 PR-merge-base-to-head Git diff 和依赖；PR merge base 不要求是已部署 QA 基线的祖先。
+2. 校验 PR 当前 merge base/head、仓库唯一所有者对精确 head 的 owner approval、指定检查、适用的其他检查状态、PR 文件列表与 PR-merge-base-to-head Git diff 和依赖；当前 head 的 CHANGES_REQUESTED review 仍会阻断；PR merge base 不要求是已部署 QA 源码 SHA 的祖先。
 3. 按依赖顺序组批，并对未选中的开放 PR 再做一次文件所有权冲突扫描。
 4. 从当前部署 QA 基线创建唯一候选分支：
    `integration/qa-batch-<first-12-baseline-sha>`。候选只应用每个已批准任务的 PR-merge-base-to-head 差异补丁，不合并整条 PR 分支历史；使用 Git 三方应用保留 QA 基线上的独立改动，遇到内容冲突即停止，不生成候选。
