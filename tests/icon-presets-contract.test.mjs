@@ -6,7 +6,7 @@ const iconSettings = readFileSync(new URL('../settings/icon-settings.html', impo
 const home = readFileSync(new URL('../index.html', import.meta.url), 'utf8');
 const backup = readFileSync(new URL('../settings/js/backup.js', import.meta.url), 'utf8');
 const serviceWorker = readFileSync(new URL('../sw.js', import.meta.url), 'utf8');
-const pwaCacheVersion = Number((serviceWorker.match(/^const CACHE_NAME = 'phone-app-pwa-v(\\d+)'/m)?.[1] || 0));
+const pwaCacheVersion = Number((serviceWorker.match(/^const CACHE_NAME = 'phone-app-pwa-v(\d+)'/m)?.[1] || 0));
 
 test('icon preset controls live at the bottom of the existing icon upload page', () => {
   const uploadList = iconSettings.indexOf('id="iconList"');
