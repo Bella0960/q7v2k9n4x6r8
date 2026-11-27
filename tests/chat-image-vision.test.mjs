@@ -4,8 +4,10 @@ import fs from 'node:fs';
 import path from 'node:path';
 import vm from 'node:vm';
 
-const visionSource = fs.readFileSync(path.join(process.cwd(), 'shared/js/phone/chat-image-vision.js'), 'utf8');
-const contextSource = fs.readFileSync(path.join(process.cwd(), 'shared/js/phone/chat-context-policy.js'), 'utf8');
+// Normalise source line endings before multi-line contract assertions so Windows CRLF checkouts behave identically.
+const readSource = (file) => fs.readFileSync(path.join(process.cwd(), file), 'utf8').replace(/\\r\\n/g, '\\n');
+const visionSource = readSource('shared/js/phone/chat-image-vision.js');
+const contextSource = readSource('shared/js/phone/chat-context-policy.js');
 
 function createVision() {
   const window = {};
@@ -183,17 +185,11 @@ test('context policy emits OpenAI-compatible multimodal user content only when a
 });
 
 
-const chatDetailSource = fs.readFileSync(
-  path.join(process.cwd(), 'chat/chat/chat-detail.html'), 'utf8'
-);
-const chatExtrasSource = fs.readFileSync(
-  path.join(process.cwd(), 'chat/chat/js/chat-extras.js'), 'utf8'
-);
-const avatarLibrarySource = fs.readFileSync(
-  path.join(process.cwd(), 'shared/js/phone/role-avatar-library.js'), 'utf8'
-);
-const serviceWorkerSource = fs.readFileSync(path.join(process.cwd(), 'sw.js'), 'utf8');
-const characterManagerSource = fs.readFileSync(path.join(process.cwd(), 'worldbook/characters/js/characters-manager.js'), 'utf8');
+const chatDetailSource = readSource('chat/chat/chat-detail.html');
+const chatExtrasSource = readSource('chat/chat/js/chat-extras.js');
+const avatarLibrarySource = readSource('shared/js/phone/role-avatar-library.js');
+const serviceWorkerSource = readSource('sw.js');
+const characterManagerSource = readSource('worldbook/characters/js/characters-manager.js');
 const packageJson = JSON.parse(fs.readFileSync(path.join(process.cwd(), 'package.json'), 'utf8'));
 
 test('chat plus-image upload stores Blob assets and chat history stores only asset references', () => {

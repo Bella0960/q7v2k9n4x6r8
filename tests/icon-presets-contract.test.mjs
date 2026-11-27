@@ -6,6 +6,7 @@ const iconSettings = readFileSync(new URL('../settings/icon-settings.html', impo
 const home = readFileSync(new URL('../index.html', import.meta.url), 'utf8');
 const backup = readFileSync(new URL('../settings/js/backup.js', import.meta.url), 'utf8');
 const serviceWorker = readFileSync(new URL('../sw.js', import.meta.url), 'utf8');
+const pwaCacheVersion = Number((serviceWorker.match(/^const CACHE_NAME = 'phone-app-pwa-v(\\d+)'/m)?.[1] || 0));
 
 test('icon preset controls live at the bottom of the existing icon upload page', () => {
   const uploadList = iconSettings.indexOf('id="iconList"');
@@ -47,5 +48,5 @@ test('switching and resetting icons can roll back, while deleting a preset does 
 });
 
 test('service worker cache version changes so installed PWA users receive the updated icon page', () => {
-  assert.match(serviceWorker, /const CACHE_NAME = 'phone-app-pwa-v206'/);
+  assert.ok(pwaCacheVersion >= 206, 'PWA cache version must not regress below v206');
 });

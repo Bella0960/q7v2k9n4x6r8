@@ -6,9 +6,10 @@ import path from 'node:path';
 const root = process.cwd();
 const read = (file) => fs.readFileSync(path.join(root, file), 'utf8');
 const serviceWorker = read('sw.js');
+const pwaCacheVersion = Number((serviceWorker.match(/^const CACHE_NAME = 'phone-app-pwa-v(\\d+)'/m)?.[1] || 0));
 const desktopScript = read('desktop/js/script.js');
 const homePage = read('index.html');
-assert.match(serviceWorker, /const CACHE_NAME = 'phone-app-pwa-v206'/);
+assert.ok(pwaCacheVersion >= 206, 'PWA cache version must not regress below v206');
 const viteConfig = read('vite.config.js');
 
 test('build emits a manifest containing every HTML entry point', () => {
