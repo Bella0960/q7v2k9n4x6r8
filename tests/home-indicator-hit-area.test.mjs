@@ -313,7 +313,169 @@ async function runViewport(browser, baseUrl, viewport) {
     add('forum-detail.no-horizontal-overflow', false, { reason: 'no seeded post found on forum.html' });
   }
 
-  // ---------- 5. Home 条自身仍可用 ----------
+  // ---------- 5. 论坛详情页：Home 热区与评论输入框各自独立可用 ----------
+  const detailUrl = `${baseUrl}/forum/forum-detail.html?id=${encodeURIComponent(SEEDED_POST.id)}`;
+  await openPage(detailUrl, '#commentInput');
+  const detailLineGeom = await page.evaluate(() => {
+    const round = (v) => Math.round(v * 100) / 100;
+    const read = (el) => {
+      if (!el) return null;
+      const r = el.getBoundingClientRect();
+      return { left: round(r.left), top: round(r.top), width: round(r.width), height: round(r.height), right: round(r.right), bottom: round(r.bottom) };
+    };
+    const describe = (el) => {
+      if (!el) return null;
+      const cls = typeof el.className === 'string' && el.className.trim() ? '.' + el.className.trim().split(/\s+/).join('.') : '';
+      return el.tagName.toLowerCase() + (el.id ? '#' + el.id : '') + cls;
+    };
+    const shell = document.querySelector('button.maomao-global-home-indicator');
+    const lineStyle = getComputedStyle(shell, '::before');
+    const shellRect = read(shell);
+    const lineRect = shellRect ? {
+      left: round(shellRect.left + (shellRect.width - 84) / 2),
+      top: round(shellRect.top + (shellRect.height - 4) / 2),
+      width: 84,
+      height: 4,
+      right: round(shellRect.left + (shellRect.width - 84) / 2 + 84),
+      bottom: round(shellRect.top + (shellRect.height - 4) / 2 + 4)
+    } : null;
+    const lineCenter = lineRect ? {
+      x: round((lineRect.left + lineRect.right) / 2),
+      y: round((lineRect.top + lineRect.bottom) / 2)
+    } : null;
+    const hit = document.querySelector('.maomao-global-home-indicator-hit-target');
+    const hitRect = read(hit);
+    const inputRect = read(document.querySelector('#commentInput'));
+    return {
+      lineRect,
+      lineCenter,
+      lineWidth: lineStyle.width,
+      lineHeight: lineStyle.height,
+      shellPointerEvents: getComputedStyle(shell).pointerEvents,
+      hitExists: !!hit,
+      hitRect,
+      hitPointerEvents: hit ? getComputedStyle(hit).pointerEvents : null,
+      inputRect,
+      inputToHitGap: hitRect && inputRect ? round(hitRect.top - inputRect.bottom) : null,
+      lineTopElement: lineCenter ? describe(document.elementFromPoint(lineCenter.x, lineCenter.y)) : null
+    };
+  });
+
+  add('forum-detail.home-line.visible-84x4',
+    detailLineGeom.lineWidth === '84px' && detailLineGeom.lineHeight === '4px' &&
+    Math.abs(detailLineGeom.lineRect.width - 84) <= 0.5 &&
+    Math.abs(detailLineGeom.lineRect.height - 4) <= 0.5 &&
+    detailLineGeom.shellPointerEvents === 'none', detailLineGeom);
+  add('forum-detail.home-line.hit-target-present-and-aligned',
+    detailLineGeom.hitExists && detailLineGeom.hitPointerEvents === 'auto' &&
+    !!detailLineGeom.hitRect &&
+    Math.abs(detailLineGeom.hitRect.width - 84) <= 0.5 &&
+    Math.abs(detailLineGeom.hitRect.height - 4) <= 0.5 &&
+    Math.abs(detailLineGeom.hitRect.left - detailLineGeom.lineRect.left) <= 0.5 &&
+    Math.abs(detailLineGeom.hitRect.top - detailLineGeom.lineRect.top) <= 0.5,
+    { hitExists: detailLineGeom.hitExists, hitRect: detailLineGeom.hitRect, lineRect: detailLineGeom.lineRect, hitPointerEvents: detailLineGeom.hitPointerEvents });
+  add('forum-detail.home-line.reserved-below-comment-input',
+    !!detailLineGeom.inputRect && detailLineGeom.inputToHitGap >= 6,
+    { inputRect: detailLineGeom.inputRect, hitRect: detailLineGeom.hitRect, gap: detailLineGeom.inputToHitGap });
+  add('forum-detail.home-line.center.hits-home-target',
+    typeof detailLineGeom.lineTopElement === 'string' && detailLineGeom.lineTopElement.indexOf('button.maomao-global-home-indicator-hit-target') === 0,
+    { lineTopElement: detailLineGeom.lineTopElement, lineCenter: detailLineGeom.lineCenter });
+
+  // 命中可见线中心应返回桌面；随后重新进入详情页，继续验证评论功能。
+  await page.mouse.click(detailLineGeom.lineCenter.x, detailLineGeom.lineCenter.y);
+  await sleep(450);
+  const lineTapPath = pathOf();
+  add('forum-detail.home-line.center.clicking.returns-home', isIndex(), { afterPath: lineTapPath });
+
+  await openPage(detailUrl, '#commentInput');
+  const inputPoints = await page.evaluate(() => {
+    const r = document.querySelector('#commentInput').getBoundingClientRect();
+    const round = (v) => Math.round(v * 100) / 100;
+    return {
+      center: { x: round((r.left + r.right) / 2), y: round((r.top + r.bottom) / 2) },
+      bottomCenter: { x: round((r.left + r.right) / 2), y: round(r.bottom - 1) },
+      edges: {
+        top: { x: round((r.left + r.right) / 2), y: round(r.top + 1) },
+        bottom: { x: round(r.left + 20), y: round(r.bottom - 1) },
+        left: { x: round(r.left + 1), y: round((r.top + r.bottom) / 2) },
+        right: { x: round(r.right - 1), y: round((r.top + r.bottom) / 2) }
+      }
+    };
+  });
+  const detailPath = pathOf();
+  const tapAndRead = async (point) => {
+    await page.evaluate(() => { if (document.activeElement && document.activeElement.blur) document.activeElement.blur(); });
+    await page.mouse.click(point.x, point.y);
+    await sleep(160);
+    return page.evaluate(() => ({
+      path: location.pathname,
+      activeId: document.activeElement ? (document.activeElement.id || document.activeElement.tagName.toLowerCase()) : null
+    }));
+  };
+  const focusCheck = (name, result, point) => add(name,
+    !!result && result.activeId === 'commentInput' && result.path === detailPath && !isIndex(),
+    { path: result ? result.path : null, activeId: result ? result.activeId : null, point, expectedPath: detailPath });
+
+  focusCheck('forum-detail.comment-input.center.clicking.focus', await tapAndRead(inputPoints.center), inputPoints.center);
+  focusCheck('forum-detail.comment-input.bottom-center.clicking.focus', await tapAndRead(inputPoints.bottomCenter), inputPoints.bottomCenter);
+  for (const edge of ['top', 'bottom', 'left', 'right']) {
+    focusCheck(`forum-detail.comment-input.edge.${edge}.clicking.focus`, await tapAndRead(inputPoints.edges[edge]), inputPoints.edges[edge]);
+  }
+
+  const commentText = `home-indicator-002-${viewport.width}`;
+  const centerRetap = await tapAndRead(inputPoints.center);
+  let commentFocused = !!centerRetap && centerRetap.activeId === 'commentInput';
+  if (commentFocused) await page.keyboard.type(commentText);
+  await sleep(100);
+  const typedValue = await page.evaluate(() => document.querySelector('#commentInput') ? document.querySelector('#commentInput').value : '');
+  add('forum-detail.comment-input.type-and-submit.ready',
+    commentFocused && typedValue.includes(commentText),
+    { activeId: centerRetap ? centerRetap.activeId : null, typedValue, inputCenter: inputPoints.center });
+
+  if (commentFocused && typedValue.includes(commentText)) {
+    await page.click('.comment-bar .send-btn');
+    const submitDeadline = Date.now() + 2000;
+    let submitted = false;
+    while (Date.now() < submitDeadline && !submitted) {
+      await sleep(100);
+      submitted = await page.evaluate((expected) => {
+        try {
+          const posts = JSON.parse(localStorage.getItem('forum_posts') || '[]');
+          const post = posts.find((item) => item && item.id === 'hit_test_post');
+          return !!(post && Array.isArray(post.comments) && post.comments.some((c) => c && c.text === expected));
+        } catch (error) { return false; }
+      }, commentText);
+    }
+    add('forum-detail.comment-input.type-and-submit', submitted, { commentText, typedValue, submitted });
+  } else {
+    add('forum-detail.comment-input.type-and-submit', false, { commentText, typedValue, skippedBecauseNotFocused: true });
+  }
+
+  const hiddenPreferenceState = await page.evaluate(() => {
+    localStorage.setItem('settings_home_indicator_visible', '0');
+    window.dispatchEvent(new Event('maomao:home-indicator-change'));
+    return {
+      hitDisplay: getComputedStyle(document.querySelector('.maomao-global-home-indicator-hit-target')).display,
+      composerBottom: getComputedStyle(document.querySelector('.comment-bar')).bottom
+    };
+  });
+  add('forum-detail.hidden-home-indicator-restores-composer-bottom',
+    hiddenPreferenceState.hitDisplay === 'none' && hiddenPreferenceState.composerBottom === '0px',
+    hiddenPreferenceState);
+
+  const restoredPreferenceState = await page.evaluate(() => {
+    localStorage.removeItem('settings_home_indicator_visible');
+    window.dispatchEvent(new Event('maomao:home-indicator-change'));
+    return {
+      hitDisplay: getComputedStyle(document.querySelector('.maomao-global-home-indicator-hit-target')).display,
+      composerBottom: getComputedStyle(document.querySelector('.comment-bar')).bottom
+    };
+  });
+  add('forum-detail.visible-home-indicator-reserves-composer-bottom',
+    restoredPreferenceState.hitDisplay === 'block' && restoredPreferenceState.composerBottom === '24px',
+    restoredPreferenceState);
+
+  // ---------- 6. Home 条自身仍可用 ----------
   await openPage(`${baseUrl}/forum/forum.html`, '.nav-item[data-page="home"]');
   const barGeom = await page.evaluate(() => {
     const bar = document.querySelector('button.maomao-global-home-indicator');
