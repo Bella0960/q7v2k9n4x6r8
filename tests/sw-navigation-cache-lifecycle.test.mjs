@@ -20,7 +20,7 @@ import { createContext, runInContext } from 'node:vm';
 const root = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const SW_SOURCE = readFileSync(resolve(root, 'sw.js'), 'utf8');
 const ORIGIN = 'https://maomao.test';
-const NAV_URL = `${ORIGIN}/chat/chat/chat.html`;
+const NAV_URL = `${ORIGIN}/account/index.html`;
 const CACHE_NAME = SW_SOURCE.match(/const CACHE_NAME = ['"`]([^'"`]+)['"`]/)[1];
 
 function deferred() {
@@ -108,8 +108,8 @@ function createHarness({ cachedResponse = null, fetchImpl, putImpl, matchImpl } 
 
   assert.equal(typeof listeners.fetch, 'function', 'sw.js 必须注册 fetch 监听');
 
-  function dispatchNavigation() {
-    const request = { method: 'GET', mode: 'navigate', url: NAV_URL };
+  function dispatchNavigation(url = NAV_URL, mode = 'navigate') {
+    const request = { method: 'GET', mode, url };
     const event = {
       request,
       responsePromise: null,
@@ -305,4 +305,34 @@ test('场景6：网络返回非 2xx 时原样返回页面且不写缓存', async
   assert.equal(harness.putCalls.length, 0, 'response.ok 为 false 时不得写缓存');
   await flushAsync();
   assert.equal(lifecycleState.value, 'fulfilled', '非 2xx 路径的生命周期应正常结束');
+});
+
+
+test('private HTML bypasses shared cache and fails closed offline', async () => {
+  const harness = createHarness({
+    cachedResponse: htmlResponse('other-account fixture'),
+    matchImpl: () => assert.fail('private HTML must not read shared cache'),
+    fetchImpl: () => Promise.reject(new Error('offline')),
+  });
+  const url = ORIGIN + '/chat/chat/chat.html';
+  for (const mode of ['navigate', 'same-origin']) {
+    const event = harness.dispatchNavigation(url, mode);
+    const response = await event.responsePromise;
+    assert.equal(response.status, 503);
+    assert.equal(response.headers.get('cache-control'), 'no-store');
+    assert.doesNotMatch(await response.text(), /other-account fixture/);
+    assert.equal(event.lifecycle.length, 0);
+  }
+  assert.equal(harness.fetchCalls.length, 2);
+  assert.equal(harness.putCalls.length, 0);
+  assert.equal(harness.openCalls.length, 0);
+});
+
+test('admin pages and API requests go directly to the network handler', () => {
+  const harness = createHarness({ fetchImpl: () => assert.fail('Service Worker must not intercept') });
+  for (const path of ['/admin/cloud.html', '/api/admin/cloud', '/api/accounts/me']) {
+    const event = harness.dispatchNavigation(ORIGIN + path);
+    assert.equal(event.responsePromise, null);
+    assert.equal(event.lifecycle.length, 0);
+  }
 });

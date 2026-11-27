@@ -57,18 +57,26 @@ test('no test file freezes the PWA cache revision', () => {
   assert.deepEqual(frozen, [], 'assert a minimum PWA cache version instead of a frozen revision');
 });
 
-test('service worker precaches all HTML routes listed by the build manifest', () => {
+test('precache distinguishes build routes, static assets and public account HTML', () => {
   assert.match(serviceWorker, /fetch\('\.\/pwa-pages\.json'/);
-  assert.match(serviceWorker, /APP_SHELL\.concat\(pageEntries\)/);
-  assert.match(serviceWorker, /cache\.add\(url\)/);
+  assert.match(serviceWorker, /APP_SHELL\.concat\(pageEntries,/);
+  assert.match(serviceWorker, /isPublicAccountPath\(url\.pathname, scope\)[\s\S]*?cacheablePublicResponse\(response\) \? cache\.put/);
+  assert.match(serviceWorker, /if \(!isAppHtml\(url\.pathname, scope\)\) return cache\.add\(path\)/);
 });
 
-test('mobile navigation serves cached app pages before waiting for network', () => {
-  assert.match(serviceWorker, /var cachedPromise = caches\.match\(req\)/);
+test('public account navigation serves cached HTML while the network updates it', () => {
+  assert.match(serviceWorker, /if \(isPublicAccountPage\) \{[\s\S]*?var cachedPromise = caches\.match\(req\)/);
   assert.match(serviceWorker, /if \(cached\) return cached/);
   assert.match(serviceWorker, /event\.waitUntil\(updatePromise/);
 });
 
+test('private app HTML uses the network and safely returns 503 when unavailable', () => {
+  const guard = serviceWorker.slice(serviceWorker.indexOf('if (!isPublicAccountPage &&'));
+  const privateBranch = guard.slice(0, guard.indexOf('  // 页面导航'));
+  assert.match(privateBranch, /fetch\(req, \{ cache: 'no-store' \}\)/);
+  assert.match(privateBranch, /status: 503/);
+  assert.doesNotMatch(privateBranch, /caches\.|cache\.put/);
+});
 
 test('desktop app navigation has one valid capture-phase owner', () => {
   assert.doesNotMatch(desktopScript, /data-href 点击跳转|target\.closest\('\[data-href\]'\)/,
@@ -88,5 +96,5 @@ test('administrator pages and cloud diagnostics bypass the service worker cache'
   const navigation = serviceWorker.indexOf("req.mode === 'navigate'");
   assert.ok(adminGuard >= 0 && adminGuard < navigation);
   assert.match(serviceWorker.slice(adminGuard, navigation),
-    /url\.pathname === '\/api\/admin\/cloud' \|\|\s+url\.pathname\.startsWith\('\/api\/admin\/cloud\/'\)\) return;/);
+    /url\.pathname\.startsWith\('\/api\/'\)\) return;/);
 });
