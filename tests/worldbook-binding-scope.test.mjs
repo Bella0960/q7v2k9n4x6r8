@@ -132,3 +132,73 @@ test('offline date scenes apply the same binding rule for the current role', () 
   assert.match(datePage, /window\.WorldbookResolver\.resolve\(\{[\s\S]{0,160}?contactId: roleId/);
   assert.match(datePage, /wbList = wbList\.filter\(function \(b\) \{[\s\S]{0,120}?b\.scope !== 'local'/);
 });
+
+const LOCAL_C = { id: 'wb_local_c', title: '角色C私设', scope: 'local', content: '只属于C' };
+const GROUP_ALL = [GLOBAL_BOOK, LOCAL_A, LOCAL_B, LOCAL_C, LEGACY_BOOK];
+
+test('a group turn may use the speaking member own local worldbook', () => {
+  const storage = makeStorage({ 'chat_worldbooks_g1': JSON.stringify(['wb_local_a']) });
+  const resolver = createResolver(storage);
+  const result = resolver.resolve({
+    books: GROUP_ALL,
+    contactId: 'g1',
+    speakerContactId: 'role-c'
+  });
+  assert.deepEqual(idsOf(result), ['wb_global', 'wb_local_a', 'wb_legacy']);
+  assert.ok(!idsOf(result).includes('wb_local_c'), '发言成员未挂载的书不进入上下文');
+});
+
+test('the speaking member own binding is merged with the group binding', () => {
+  const storage = makeStorage({
+    'chat_worldbooks_g1': JSON.stringify(['wb_local_a']),
+    'chat_worldbooks_role-c': JSON.stringify(['wb_local_c'])
+  });
+  const resolver = createResolver(storage);
+  const result = resolver.resolve({
+    books: GROUP_ALL,
+    contactId: 'g1',
+    speakerContactId: 'role-c'
+  });
+  assert.deepEqual(idsOf(result), ['wb_global', 'wb_local_a', 'wb_local_c', 'wb_legacy']);
+  assert.equal(result.diagnostics.boundBy, 'both');
+  assert.deepEqual(list(result.diagnostics.speakerOnlyIds), ['wb_local_c']);
+  assert.deepEqual(list(result.diagnostics.excludedLocalIds), ['wb_local_b']);
+});
+
+test('a book mounted by both the group and the speaker is injected only once', () => {
+  const storage = makeStorage({
+    'chat_worldbooks_g1': JSON.stringify(['wb_local_a', 'wb_local_c']),
+    'chat_worldbooks_role-c': JSON.stringify(['wb_local_c'])
+  });
+  const resolver = createResolver(storage);
+  const result = resolver.resolve({
+    books: GROUP_ALL,
+    contactId: 'g1',
+    speakerContactId: 'role-c'
+  });
+  const occurrences = idsOf(result).filter((id) => id === 'wb_local_c').length;
+  assert.equal(occurrences, 1);
+  assert.deepEqual(list(result.diagnostics.speakerOnlyIds), []);
+});
+
+test('without a speaker id a group turn falls back to the group binding only', () => {
+  const storage = makeStorage({ 'chat_worldbooks_role-c': JSON.stringify(['wb_local_c']) });
+  const resolver = createResolver(storage);
+  const result = resolver.resolve({ books: GROUP_ALL, contactId: 'g1', speakerContactId: '' });
+  assert.deepEqual(idsOf(result), ['wb_global', 'wb_legacy']);
+  assert.equal(result.diagnostics.speakerBindingState, 'not_provided');
+  assert.equal(result.diagnostics.source, 'global_only');
+});
+
+test('a speaker id equal to the conversation id is not read twice', () => {
+  const storage = makeStorage({ 'chat_worldbooks_g1': JSON.stringify(['wb_local_a']) });
+  const resolver = createResolver(storage);
+  const result = resolver.resolve({ books: GROUP_ALL, contactId: 'g1', speakerContactId: 'g1' });
+  assert.deepEqual(idsOf(result), ['wb_global', 'wb_local_a', 'wb_legacy']);
+  assert.equal(result.diagnostics.speakerBindingState, 'not_provided');
+});
+
+test('group chat passes the speaker id only from the current turn pick', () => {
+  assert.match(chatDetail, /const speakerContactId = \(isGroupChat && groupReplyPick && groupReplyPick\.id != null\)/);
+  assert.match(chatDetail, /speakerContactId: speakerContactId/);
+});

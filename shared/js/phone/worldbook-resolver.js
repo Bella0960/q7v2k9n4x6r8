@@ -18,6 +18,9 @@
  *      只给全局书（fail-closed：宁可少注入，不可串角色）。
  *   4. 没有 scope 字段的旧数据按 'global' 处理 —— 与 worldbook.html 的
  *      normalizeBook 一致，保证老用户的书不会突然消失。
+ *   5. 群聊额外允许「本轮发言成员」用自己的挂载集合：
+ *      传 speakerContactId 时，该成员本人挂载的局部书会并入本轮上下文，
+ *      其它成员的局部书一律不读。同一本书被两级都挂载时只出现一次。
  *
  * 挂载记录兼容三种形态：
  *   ['wb_1', 'wb_2']              —— 当前写入形态
@@ -82,30 +85,46 @@
 
     /**
      * @param {Object} options
-     *   books        {Array}    世界书全库（phone_worldbooks 的值）
-     *   contactId    {String}   会话标识：单聊 = 角色 id，群聊 = 群 id
-     *   readBindings {Function} 可选，测试注入用；返回 { state, ids }
+     *   books             {Array}    世界书全库（phone_worldbooks 的值）
+     *   contactId         {String}   会话标识：单聊 = 角色 id，群聊 = 群 id
+     *   speakerContactId  {String}   可选：本轮发言成员 id（仅群聊使用）
+     *                                用来把该成员自己的局部书并入本轮上下文，
+     *                                其它成员的局部书一律不读。
+     *   readBindings      {Function} 可选，测试注入用；返回 { state, ids }
      * @returns {{ok:boolean, books:Array, diagnostics:Object}}
      */
     function resolve(options) {
         options = options || {};
         var books = Array.isArray(options.books) ? options.books : [];
         var contactId = options.contactId == null ? '' : String(options.contactId);
+        var speakerContactId = options.speakerContactId == null ? '' : String(options.speakerContactId);
+        var read = typeof options.readBindings === 'function'
+            ? options.readBindings
+            : readBindingsFromStorage;
 
-        var binding;
-        if (typeof options.readBindings === 'function') {
-            binding = normalizeBindingsResult(options.readBindings(contactId));
-        } else {
-            binding = readBindingsFromStorage(contactId);
-        }
+        var binding = normalizeBindingsResult(read(contactId));
+        var speakerBinding = (speakerContactId && speakerContactId !== contactId)
+            ? normalizeBindingsResult(read(speakerContactId))
+            : { state: 'not_provided', ids: [] };
 
         var mounted = Object.create(null);
-        binding.ids.forEach(function (id) { mounted[id] = true; });
-        var hasBinding = binding.state === 'bound';
+        function addIds(ids) { ids.forEach(function (id) { mounted[id] = true; }); }
+        if (binding.state === 'bound') addIds(binding.ids);
+        if (speakerBinding.state === 'bound') addIds(speakerBinding.ids);
+
+        var conversationBound = binding.state === 'bound';
+        var speakerBound = speakerBinding.state === 'bound';
+        var anyBound = conversationBound || speakerBound;
+
+        var conversationIds = Object.create(null);
+        if (conversationBound) binding.ids.forEach(function (id) { conversationIds[id] = true; });
+        var speakerIds = Object.create(null);
+        if (speakerBound) speakerBinding.ids.forEach(function (id) { speakerIds[id] = true; });
 
         var kept = [];
         var includedIds = [];
         var excludedLocalIds = [];
+        var speakerOnlyIds = [];
 
         books.forEach(function (book) {
             if (!book || typeof book !== 'object') return;
@@ -116,10 +135,11 @@
                 if (id) includedIds.push(id);
                 return;
             }
-            // 局部书：必须被本会话显式挂载
-            if (id && hasBinding && mounted[id]) {
+            // 局部书：必须被本会话（或本轮发言成员本人）显式挂载
+            if (id && mounted[id]) {
                 kept.push(book);
                 includedIds.push(id);
+                if (!conversationIds[id] && speakerIds[id]) speakerOnlyIds.push(id);
                 return;
             }
             if (id) excludedLocalIds.push(id);
@@ -130,11 +150,18 @@
             books: kept,
             diagnostics: {
                 contactId: contactId,
+                speakerContactId: speakerContactId,
                 bindingState: binding.state,
-                source: hasBinding ? 'bound' : 'global_only',
+                speakerBindingState: speakerBinding.state,
+                source: anyBound ? 'bound' : 'global_only',
+                boundBy: conversationBound && speakerBound
+                    ? 'both'
+                    : (speakerBound ? 'speaker' : (conversationBound ? 'conversation' : 'none')),
                 mountedCount: binding.ids.length,
+                speakerMountedCount: speakerBinding.ids.length,
                 includedIds: includedIds,
-                excludedLocalIds: excludedLocalIds
+                excludedLocalIds: excludedLocalIds,
+                speakerOnlyIds: speakerOnlyIds
             }
         };
     }
