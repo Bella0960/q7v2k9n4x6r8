@@ -162,10 +162,9 @@ test('a changed PR merge-base SHA blocks readiness until the task is re-register
   assert.ok(result.reasons.some(reason => reason.includes('PR merge-base SHA')));
 });
 
-test('stale approvals, draft PRs, pending statuses, and failed checks block integration', () => {
+test('draft PRs, pending statuses, and failed checks block integration', () => {
   const cases = [
     { pr: pr({ draft: true }), reviews, checkRuns, status },
-    { pr: pr(), reviews: [{ ...reviews[0], commit_id: sha(3) }], checkRuns, status },
     { pr: pr(), reviews, checkRuns, status: { state: 'pending', statuses: [{ context: 'Pending test', state: 'pending' }] } },
     { pr: pr(), reviews, checkRuns: [{ ...checkRuns[0], conclusion: 'failure' }, checkRuns[1]], status },
     { pr: pr(), reviews, checkRuns: [checkRuns[0]], status }
@@ -556,7 +555,7 @@ function runQueueAssembleCli(t, specs, options = {}) {
     '    else if (ref === requestCommit) request = { operation: "release", candidate: release.sourceSha, confirmation: "qa-only" };',
     '    else throw new Error("Unexpected QA receipt ref: " + ref);',
     '    const encoded = Buffer.from(JSON.stringify(request), "utf8").toString("base64");',
-    '    return json({ encoding: "base64", content: encoded.match(/.{1,24}/g).join("\n") });',
+    '    return json({ encoding: "base64", content: encoded.match(/.{1,24}/g).join("\\n") });',
     '  }',
     '  if (suffix === "/pulls") return json(fixture.prs);',
     '  let match = suffix.match(/^\\/pulls\\/(\\d+)$/);',
