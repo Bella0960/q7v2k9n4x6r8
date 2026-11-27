@@ -1883,6 +1883,63 @@ test('proactive contact is opt-in, foreground-only, daily-capped and reuses chat
   assert.match(chatNotifier, /startProactiveScheduler\(\)/);
 });
 
+test('proactive generation recovers connectivity and discards replies after opt-out', async () => {
+  const begin = chatNotifier.indexOf('    async function checkProactiveContacts()');
+  const end = chatNotifier.indexOf('    var FOLLOW_UP_LOCK_KEY', begin);
+  const keys = new Map([['chat_proactive_contact_fixture', 'true']]);
+  const latest = { role: 'user', time: 5, text: 'fixture history' };
+  const appended = [];
+  let pendingModel;
+  let calls = 0;
+  const global = {
+    navigator: { onLine: false },
+    PhoneStorage: {
+      getApiConfig: () => ({ apiKey: 'fixture-only' }),
+      result: { appendChatHistory(id, message) {
+        appended.push({ id, message });
+        return { ok: true };
+      } },
+    },
+    ChatPresencePolicy: { evaluateProactiveContact() {}, buildProactiveContactPrompt: () => 'fixture prompt' },
+    PhoneAPI: { completeJSON() { calls++; return new Promise(resolve => { pendingModel = resolve; }); } },
+  };
+  const context = {
+    global, document: { visibilityState: 'visible' }, console,
+    proactiveRequestPending: false, followUpRequestPending: false,
+    PROACTIVE_LOCK_KEY: 'lock', PROACTIVE_GLOBAL_COOLDOWN_MS: 24 * 60 * 60 * 1000,
+    currentDetailRoleId: () => '', safeGet: key => keys.get(key),
+    safeSet: (key, value) => { keys.set(key, value); return true; },
+    safeJsonParse: () => null, automaticStorageReady: () => true,
+    buildContactIndex: () => ({ fixture: {} }), ensureProactiveDependencies: async () => true,
+    chooseProactiveCandidate: () => ({ contact: { id: 'fixture' }, history: [latest], latest }),
+    historyForProactivePrompt: () => [], cleanProactiveMessage: text => text,
+    readHistory: () => [latest], newestMeaningfulMessage: rows => rows.at(-1), tick() {},
+  };
+  runInNewContext(chatNotifier.slice(begin, end), context);
+  await context.checkProactiveContacts();
+  assert.equal(calls, 0);
+  global.navigator.onLine = true;
+  const optedOut = context.checkProactiveContacts();
+  await new Promise(resolve => setImmediate(resolve));
+  assert.equal(calls, 1);
+  keys.set('chat_proactive_contact_fixture', 'false');
+  pendingModel({ ok: true, data: { send: true, text: 'discarded' } });
+  await optedOut;
+  assert.equal(appended.length, 0);
+  keys.set('chat_proactive_contact_fixture', 'true');
+  keys.delete('chat_proactive_global_attempt_at');
+  const accepted = context.checkProactiveContacts();
+  await new Promise(resolve => setImmediate(resolve));
+  assert.equal(calls, 2);
+  pendingModel({ ok: true, data: { send: true, text: 'stored' } });
+  await accepted;
+  await context.checkProactiveContacts();
+  assert.equal(calls, 2);
+  assert.equal(appended.length, 1);
+  assert.equal(appended[0].id, 'fixture');
+  assert.equal(appended[0].message.text, 'stored');
+});
+
 test('proactive contact notifier is loaded on home and navigation pages and precached by PWA', () => {
   assertPrecachedRevision(homePage, 'chat-notifier.js');
   assertPrecachedRevision(navPage, 'chat-notifier.js');
