@@ -565,8 +565,6 @@ function runQueueAssembleCli(t, specs, options = {}) {
     '  if (match) return json(fixture.evidence[match[1]].reviews);',
     '  match = suffix.match(/^\\/issues\\/(\\d+)\\/comments$/);',
     '  if (match) return json(fixture.evidence[match[1]].ownerComments || []);',
-    '  match = suffix.match(/^\\/issues\\/(\\d+)\\/comments$/);',
-    '  if (match) return json(fixture.evidence[match[1]].ownerComments || []);',
     '  match = suffix.match(/^\\/pulls\\/(\\d+)\\/files$/);',
     '  if (match) return json(fixture.evidence[match[1]].files);',
     '  match = suffix.match(/^\\/commits\\/([0-9a-f]{40})\\/check-runs$/);',
