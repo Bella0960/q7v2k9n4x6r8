@@ -18,7 +18,10 @@ const QA_RELEASE_STEP = 'Automatically select scope, validate and publish QA onc
 const SHA = /^[0-9a-f]{40}$/;
 const TASK_ID = /^[A-Z][A-Z0-9-]{1,63}$/;
 const RISK = /^F[1-4]$/;
-const CHECK_NAME = /(test|build|verify|gate|regression|browser|contract)/i;
+const CHECK_NAME = /(test|build|verify|gate|regression|browser|contract|tools?)/i;
+const OWNER_APPROVAL_MARKER = /<!--\\s*MAOMAO_OWNER_APPROVAL_V1\\s*([\\s\\S]*?)-->/g;
+const PRODUCTION_WORKER_CHECK = 'Workers Builds: mao';
+const PRODUCTION_WORKER_BRANCH = '__maomao_release_after_checkpoint_only__';
 const MARKER = /<!--\s*MAOMAO_TASK_V1\s*([\s\S]*?)-->/g;
 const BATCH_SCRIPT = new URL('./engineering-qa-batch.mjs', import.meta.url);
 
@@ -114,6 +117,39 @@ function latestReviews(reviews) {
   return [...latest.values()];
 }
 
+function latestOwnerApproval(comments, ownerLogin, taskId) {
+  const approvals = [];
+  for (const comment of comments) {
+    if (comment?.user?.login !== ownerLogin) continue;
+    const matches = [...String(comment.body ?? '').matchAll(new RegExp(OWNER_APPROVAL_MARKER.source, 'g'))];
+    if (!matches.length) continue;
+    const createdAt = Date.parse(comment.created_at ?? '') || 0;
+    if (matches.length !== 1) {
+      approvals.push({ valid: false, createdAt, reason: 'owner approval comment contains duplicate markers' });
+      continue;
+    }
+    let value;
+    try { value = JSON.parse(matches[0][1].trim()); }
+    catch {
+      approvals.push({ valid: false, createdAt, reason: 'owner approval comment contains invalid JSON' });
+      continue;
+    }
+    if (value?.taskId !== taskId) continue;
+    const valid = value.version === 1 &&
+      SHA.test(value.head ?? '') &&
+      ['approve', 'revoke'].includes(value.decision);
+    approvals.push({ valid, value, createdAt, reason: valid ? '' : 'owner approval payload is incomplete or invalid' });
+  }
+  approvals.sort((a, b) => a.createdAt - b.createdAt);
+  return approvals.at(-1) ?? null;
+}
+
+function isOutOfScopeProductionWorkerCheck(run, pr) {
+  return run?.name === PRODUCTION_WORKER_CHECK &&
+    String(run?.details_url ?? '').includes('/workers/services/view/mao/production/builds/') &&
+    pr?.head?.ref !== PRODUCTION_WORKER_BRANCH;
+}
+
 function latestBy(items, key, timeKey) {
   const latest = new Map();
   for (const item of items) {
@@ -127,7 +163,7 @@ function latestBy(items, key, timeKey) {
   return latest;
 }
 
-export function evaluateTaskEvidence({ pr, manifest, reviews = [], checkRuns = [], status = { state: 'pending', statuses: [] }, repository = DEFAULT_REPO }) {
+export function evaluateTaskEvidence({ pr, manifest, reviews = [], ownerComments = [], checkRuns = [], status = { state: 'pending', statuses: [] }, repository = DEFAULT_REPO }) {
   const reasons = [];
   if (pr?.state !== 'open') reasons.push('PR is not open');
   if (pr?.draft) reasons.push('PR is still draft');
@@ -150,11 +186,17 @@ export function evaluateTaskEvidence({ pr, manifest, reviews = [], checkRuns = [
   if (currentReviews.some(review => review.state === 'CHANGES_REQUESTED')) {
     reasons.push('a current-head reviewer requested changes');
   }
-  if (!currentReviews.some(review => review.state === 'APPROVED')) {
-    reasons.push('missing an approval on the exact current head from someone other than the PR author');
+  const ownerLogin = String(repository).split('/')[0];
+  const ownerApproval = latestOwnerApproval(ownerComments, ownerLogin, manifest?.id);
+  if (!ownerApproval || !ownerApproval.valid || ownerApproval.value?.decision !== 'approve' ||
+      ownerApproval.value?.head !== pr?.head?.sha) {
+    reasons.push(ownerApproval?.value?.decision === 'revoke'
+      ? 'repository owner revoked approval for this task head'
+      : 'missing repository-owner approval for the exact current PR head');
   }
 
-  const currentChecks = checkRuns.filter(run => !run?.head_sha || run.head_sha === pr?.head?.sha);
+  const currentChecks = checkRuns.filter(run =>
+    (!run?.head_sha || run.head_sha === pr?.head?.sha) && !isOutOfScopeProductionWorkerCheck(run, pr));
   const latestChecks = latestBy(currentChecks, 'name', 'started_at');
   for (const run of latestChecks.values()) {
     if (run?.status !== 'completed') {
@@ -268,8 +310,9 @@ async function getCheckRuns(repository, sha) {
   return pagedArray('/repos/' + repository + '/commits/' + sha + '/check-runs', 'check_runs');
 }
 async function fetchPrEvidence(repository, pr) {
-  const [reviews, checkRuns, status, files] = await Promise.all([
+  const [reviews, ownerComments, checkRuns, status, files] = await Promise.all([
     pagedArray('/repos/' + repository + '/pulls/' + pr.number + '/reviews'),
+    pagedArray('/repos/' + repository + '/issues/' + pr.number + '/comments'),
     getCheckRuns(repository, pr.head.sha),
     api('/repos/' + repository + '/commits/' + pr.head.sha + '/status'),
     getPrFiles(repository, pr.number)
@@ -277,7 +320,7 @@ async function fetchPrEvidence(repository, pr) {
   if (!Array.isArray(status?.statuses) || status.total_count > status.statuses.length) {
     fail('PR #' + pr.number + ' commit-status list is incomplete.');
   }
-  return { reviews, checkRuns, status, files };
+  return { reviews, ownerComments, checkRuns, status, files };
 }
 
 

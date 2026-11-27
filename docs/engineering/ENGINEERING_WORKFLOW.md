@@ -74,6 +74,29 @@ npm run eng:register -- <PR-number> <TASK-ID> <F1|F2|F3|F4> "<exact GitHub check
 - 同一 Task ID 重复、旧 merge base/head、缺少依赖、依赖环、API 分页不完整或 PR 文件清单与 Git diff 不匹配都会 fail-closed。
 - `D0` 纯文档任务不进入 QA 批次，也不使用 F1–F4 manifest；仍需 PR、冲突检查和文档一致性验证。
 
+### 唯一所有者审核授权（单人商业项目模式）
+
+MAOMAO 采用“唯一真人所有者 + 多 AI 执行窗口”模式，不要求第二个 GitHub 账号，不邀请外部账号取得代码权限，也不把 AI 冒充为 GitHub 真人 reviewer。
+
+AI 负责代码审查、风险分析、定向测试和证据记录；READY 前必须由仓库唯一所有者在 PR Conversation 留下绑定精确 head SHA 的授权评论。评论必须由仓库 owner 账号本人发布，不能由 PR 作者以外的虚构身份或 AI reviewer 名义代签。评论格式：
+
+```text
+<!-- MAOMAO_OWNER_APPROVAL_V1
+{
+  "version": 1,
+  "taskId": "TASK-ID",
+  "head": "40-character-current-head-sha",
+  "decision": "approve"
+}
+-->
+```
+
+如需撤销，对同一 Task ID 发布较新的相同格式评论，将 `decision` 改为 `revoke`。任何新提交都会改变 head SHA，旧授权自动失效，必须重新审查并由所有者重新授权。只有仓库 owner 账号发布的最新、格式有效、Task ID 与 head SHA 完全匹配的 approve 评论才有效。
+
+GitHub 的非作者 APPROVED review 不再是 READY 的必要条件；若存在当前 head 的 CHANGES_REQUESTED review，仍然阻断任务。仓库 owner 的明确授权不替代 AI 代码审查、自动化测试、文件所有权检查、F4 安全验收或单独的 QA 发布授权。
+
+`Workers Builds: mao` 的 production check 只适用于受保护生产发布分支 `__maomao_release_after_checkpoint_only__`。其他分支上的该 production-only check 标记为不适用；Cloudflare Preview、GitHub Actions、Netlify 和实际适用的其他检查仍按正常规则验收。不得将真实适用的失败检查一并忽略。
+
 ## 4. 唯一协调者如何组批
 
 只有唯一集成协调者可以启动：

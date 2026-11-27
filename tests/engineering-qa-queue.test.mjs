@@ -42,7 +42,13 @@ const checkRuns = [
   { name: 'Node Tests', head_sha: sha(2), status: 'completed', conclusion: 'success', completed_at: '2026-11-26T10:00:00Z' },
   { name: 'Vite Build', head_sha: sha(2), status: 'completed', conclusion: 'success', completed_at: '2026-11-26T10:00:00Z' }
 ];
-const status = { state: 'success', statuses: [] };
+const status = { state: 'success', statuses: [] };\nconst ownerComments = (overrides = {}) => [{
+  user: { login: 'Bella0960' },
+  created_at: '2026-11-27T10:00:00Z',
+  body: '<!-- MAOMAO_OWNER_APPROVAL_V1\\n' + JSON.stringify({
+    version: 1, taskId: 'CHAT-FIX-001', head: sha(2), decision: 'approve', ...overrides
+  }) + '\\n-->'
+}];
 
 test('parses one valid machine-readable task manifest', () => {
   const body = 'Description\n\n' + renderTaskManifest(manifest());
@@ -55,6 +61,7 @@ test('rejects duplicate, malformed, unsafe, and incomplete task manifests', () =
   assert.throws(() => renderTaskManifest(manifest({ id: '../unsafe' })), /Invalid MAOMAO/);
   assert.throws(() => renderTaskManifest(manifest({ requiredChecks: [] })), /Invalid MAOMAO/);
   assert.throws(() => renderTaskManifest(manifest({ requiredChecks: ['Deploy Preview'] })), /exact GitHub/);
+  assert.deepEqual(renderTaskManifest(manifest({ requiredChecks: ['engineering-tools'] })).includes('"engineering-tools"'), true);
 });
 test('updates the existing registry block without duplicating it', () => {
   const original = 'Task summary\n\n' + renderTaskManifest(manifest());
@@ -69,8 +76,80 @@ test('renamed PR paths include both old and new names for ownership comparison',
   ]), ['chat/detail.html', 'chat/new.js', 'chat/old.js']);
   assert.throws(() => pathSetFromPrFiles([{ filename: '../outside.js' }]), /unsafe path/);
 });
-test('ready evidence requires current-head approval and every named test/build check', () => {
-  const result = evaluateTaskEvidence({ pr: pr(), manifest: manifest(), reviews, checkRuns, status });
+test('single-owner approval is accepted from the repository owner on the exact current head', () => {
+  const result = evaluateTaskEvidence({
+    pr: pr({ user: { login: 'Bella0960' } }),
+    manifest: manifest(),
+    reviews: [],
+    ownerComments: ownerComments(),
+    checkRuns,
+    status
+  });
+  assert.deepEqual(result, { ready: true, reasons: [] });
+});
+test('owner approval for an older head or another task cannot approve the current task', () => {
+  for (const comments of [
+    ownerComments({ head: sha(3) }),
+    ownerComments({ taskId: 'OTHER-TASK' }),
+    [{ ...ownerComments()[0], user: { login: 'not-the-owner' } }]
+  ]) {
+    const result = evaluateTaskEvidence({
+      pr: pr({ user: { login: 'Bella0960' } }),
+      manifest: manifest(),
+      reviews: [],
+      ownerComments: comments,
+      checkRuns,
+      status
+    });
+    assert.equal(result.ready, false);
+    assert.ok(result.reasons.some(reason => reason.includes('repository-owner approval')));
+  }
+});
+test('a later owner revocation blocks an earlier approval', () => {
+  const first = ownerComments()[0];
+  const revoked = ownerComments({ decision: 'revoke' })[0];
+  revoked.created_at = '2026-11-27T11:00:00Z';
+  const result = evaluateTaskEvidence({
+    pr: pr({ user: { login: 'Bella0960' } }),
+    manifest: manifest(),
+    reviews: [],
+    ownerComments: [first, revoked],
+    checkRuns,
+    status
+  });
+  assert.equal(result.ready, false);
+  assert.ok(result.reasons.some(reason => reason.includes('revoked approval')));
+});
+test('production-only Worker check is not applicable to feature branches but still blocks on its release branch', () => {
+  const workerFailure = {
+    name: 'Workers Builds: mao',
+    details_url: 'https://dash.cloudflare.com/account/workers/services/view/mao/production/builds/123',
+    head_sha: sha(2),
+    status: 'completed',
+    conclusion: 'failure'
+  };
+  const featureBranch = evaluateTaskEvidence({
+    pr: pr({ user: { login: 'Bella0960' } }),
+    manifest: manifest(),
+    reviews: [],
+    ownerComments: ownerComments(),
+    checkRuns: [...checkRuns, workerFailure],
+    status
+  });
+  assert.equal(featureBranch.ready, true);
+  const releaseBranch = evaluateTaskEvidence({
+    pr: pr({ user: { login: 'Bella0960' }, head: { ...pr().head, ref: '__maomao_release_after_checkpoint_only__' } }),
+    manifest: manifest(),
+    reviews: [],
+    ownerComments: ownerComments(),
+    checkRuns: [...checkRuns, workerFailure],
+    status
+  });
+  assert.equal(releaseBranch.ready, false);
+  assert.ok(releaseBranch.reasons.some(reason => reason.includes('Workers Builds: mao')));
+});
+\ntest('ready evidence requires current-head approval and every named test/build check', () => {
+  const result = evaluateTaskEvidence({ pr: pr(), manifest: manifest(), reviews, ownerComments: ownerComments(), checkRuns, status });
   assert.deepEqual(result, { ready: true, reasons: [] });
 });
 test('a changed PR merge-base SHA blocks readiness until the task is re-registered', () => {
@@ -91,7 +170,7 @@ test('stale approvals, draft PRs, pending statuses, and failed checks block inte
     { pr: pr(), reviews, checkRuns: [checkRuns[0]], status }
   ];
   for (const item of cases) {
-    assert.equal(evaluateTaskEvidence({ manifest: manifest(), ...item }).ready, false);
+    assert.equal(evaluateTaskEvidence({ manifest: manifest(), ...item, ownerComments: ownerComments() }).ready, false);
   }
 });
 test('a latest change-request review blocks an older approval', () => {
@@ -384,11 +463,13 @@ function runQueueAssembleCli(t, specs, options = {}) {
     });
     evidence[number] = {
       head,
-      reviews: [{
-        user: { login: 'reviewer' },
-        state: 'APPROVED',
-        commit_id: head,
-        submitted_at: '2026-11-26T10:00:00Z'
+      reviews: [],
+      ownerComments: [{
+        user: { login: 'Bella0960' },
+        created_at: '2026-11-27T10:00:00Z',
+        body: '<!-- MAOMAO_OWNER_APPROVAL_V1\\n' + JSON.stringify({
+          version: 1, taskId: spec.id, head, decision: 'approve'
+        }) + '\\n-->'
       }],
       check_runs: [
         {
@@ -476,6 +557,8 @@ function runQueueAssembleCli(t, specs, options = {}) {
     '  if (match) return json(fixture.prs.find(pr => pr.number === Number(match[1])));',
     '  match = suffix.match(/^\\/pulls\\/(\\d+)\\/reviews$/);',
     '  if (match) return json(fixture.evidence[match[1]].reviews);',
+    '  match = suffix.match(/^\\/issues\\/(\\d+)\\/comments$/);',
+    '  if (match) return json(fixture.evidence[match[1]].ownerComments || []);',
     '  match = suffix.match(/^\\/pulls\\/(\\d+)\\/files$/);',
     '  if (match) return json(fixture.evidence[match[1]].files);',
     '  match = suffix.match(/^\\/commits\\/([0-9a-f]{40})\\/check-runs$/);',
