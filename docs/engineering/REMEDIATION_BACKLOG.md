@@ -4,7 +4,7 @@
 
 This backlog divides the full cleanup into independent, reviewable tasks. Agents must claim a Task ID and must not expand scope silently.
 
-Status vocabulary: OPEN, IN PROGRESS, FIXED, DEFERRED, NOT VERIFIED.
+Status vocabulary: OPEN, IN PROGRESS, FIXED, DEFERRED, NOT VERIFIED, PARTIALLY DONE.
 
 ## Phase 0 — Establish an accurate baseline
 
@@ -163,9 +163,17 @@ Acceptance:
 - No untracked IndexedDB database remains.
 
 ### DATA-002 — Complete backup coverage for MediaRepository
-**Priority:** P0 · **Status:** IN PROGRESS (2026-11-11: implementation is already present on main; automated execution/restore acceptance remains NOT VERIFIED)
+**Priority:** P0 · **Status:** PARTIALLY DONE (verified 2026-11-23 on `40b671bb`, Windows, Node 22.22.2)
 
-Evidence: current main `settings/js/backup.js` includes `maomao-assets` v2 stores `assets`, `blobs`, `refs`, and `image_records`; Blob payloads use Base64 with size limits; `atomicExport: true` excludes the entire database if any blob is skipped; `clearOnRestore: true` clears stores even when the backup store is empty. `tests/media-backup.test.mjs` contains 10 focused cases for MIME preservation, empty-store clearing, invalid Base64 handling, size-limit atomic exclusion, full four-store round trip, and reference integrity. The test file exists but its execution has not been verified in this environment.
+Verified on current main:
+- `settings/js/backup.js` registers `maomao-assets` v2 with all four stores: `assets` (keyPath `assetId`), `blobs` (keyPath `assetId`, `blobFields: ['blob']` → Base64 round trip), `refs` (keyPath `assetId`), `image_records` (keyPath `id`).
+- `atomicExport: true` discards the whole database when any blob is skipped, so an export can never contain assets/refs without their binary payload; the reason is written to `dbWarnings` and `__backup.warnings.databasesSkipped`.
+- `clearOnRestore: true` clears every store even when the backup store is an empty array, so a restore cannot leave stale assets behind.
+- `tests/media-backup.test.mjs` case 06 asserts an oversized blob produces `atomicExportFailed` with `data === null`; case 07 asserts a dump→restore round trip keeps 2 assets / 2 refs / 2 blobs / 1 image record byte-identical with intact reference relations. `npm run test:media:backup` → 10/10 pass (executed, not inferred).
+
+Still open — do not mark this task FIXED:
+- **Integrity hashes are absent.** `backup.js` contains no checksum/hash field; the export only carries `schema`, `complete`, `count` and `warnings`. Acceptance item 1 is therefore unmet.
+- **IndexedDB is not covered by the in-app rollback.** The pre-import restore point (`maomao-restore-point`) snapshots localStorage only — the import dialog states "本机恢复点只保障 localStorage". A failure during the IndexedDB phase is reported (failure count plus retained restore point) but not automatically rolled back, so "source data remains recoverable" depends on the user having saved a full backup first.
 
 Acceptance:
 - Export includes metadata, Blob payloads, references, and integrity hashes.
@@ -176,9 +184,16 @@ Acceptance:
 Dependency: DATA-001.
 
 ### DATA-003 — Fix audio Blob backup semantics
-**Priority:** P1 · **Status:** OPEN
+**Priority:** P1 · **Status:** PARTIALLY DONE (verified 2026-11-23 on `40b671bb`)
 
-Evidence: backup.js currently sets excludeFields: ['blob'] for audio store records, so the local music file itself is omitted from that backup target.
+Verified on current main:
+- `maomao-media-store/audio` keeps `excludeFields: ['blob']`, and the omission is explicit rather than silent: `__backup.warnings.audioMetadataOnly` is set, `complete` becomes false when audio metadata is present, and the export message appends "（本地音频元数据已包含，音频文件本身未打包）".
+- Records skipped for size or read failure are collected in `allSkipped`, written into the manifest (`recordsSkipped` plus per-record db/store/id/reason/bytes) and listed in the export message with a total count.
+
+Still open — do not mark this task FIXED:
+- The audio notice carries no file count and no total size, so "export UI lists skipped audio files and size" is not met.
+- No written decision between "include music in full backups" and "offer a separate large-media export"; `docs/engineering/STORAGE_AND_MIGRATION.md` still phrases it as an open question.
+- Restore reporting covers font presets and skipped records only; there is no audio-specific statement of what was restored.
 
 Acceptance:
 - Decide and document whether full backups include local audio or offer a separate “large media” export.
