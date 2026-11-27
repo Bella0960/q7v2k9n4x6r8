@@ -250,16 +250,6 @@ export function createAccountAuth({ store, env = {}, now = () => Date.now() }) {
     if (admin.account_id !== env.MAO_EXPECTED_FOUNDER_ID || admin.role !== 'super_admin') {
       throw new ApiError(403, 'QA_FOUNDER_MISMATCH', '管理员 001 的永久身份未通过安全核对');
     }
-    // Probe proves the binding targets the opt-in isolated authority with
-    // this exact founder ID, not an old gateway or a production account store.
-    const authority = await probeExistingIdentityAuthority(env);
-    if (!authority.connected || !authority.initialized || !authority.configured ||
-        authority.qaIsolatedAuthority !== true ||
-        authority.qaExpectedFounderId !== env.MAO_EXPECTED_FOUNDER_ID) {
-      throw new ApiError(503, 'QA_ADMIN_AUTHORITY_UNAVAILABLE',
-        '测试版独立管理员身份与隔离服务未通过安全核对，已停止管理操作');
-    }
-
     const token = cookieValue(request);
     if (!/^[A-Za-z0-9_-]{32,128}$/.test(token)) {
       throw new ApiError(401, 'ACCOUNT_SESSION_REQUIRED', '请重新登录 MAO 账号');
@@ -289,7 +279,7 @@ export function createAccountAuth({ store, env = {}, now = () => Date.now() }) {
         '独立管理员服务未返回确认结果，请先重新读取状态，不要重复提交');
     }
     const payload = await response.json().catch(() => null);
-    if (!payload || typeof payload !== 'object' || typeof payload.ok !== 'boolean') {
+    if (!payload || typeof payload !== 'object' || payload.ok !== response.ok) {
       throw new ApiError(503, 'QA_ADMIN_RESPONSE_INVALID', '独立管理员服务返回的数据无法核实');
     }
     // Construct a new JSON response: never forward identity-core Set-Cookie
@@ -365,7 +355,11 @@ export function createAccountAuth({ store, env = {}, now = () => Date.now() }) {
       throw error;
     }
     if (!created) throw new ApiError(409, 'ADMIN_ALREADY_INITIALIZED', '超级管理员已经初始化');
-    return await createSession(store.getMaoAccountById(account.id), request);
+    const founder = store.getMaoAccountById(account.id);
+    if (isolatedQaAuthorityFounderId(env) === account.id) {
+      return ok({ account: publicAccount(founder), qaSetupComplete: true, nextStep: 'qa_login' });
+    }
+    return await createSession(founder, request);
   }
 
   async function register(request) {
@@ -1039,14 +1033,17 @@ export function createAccountAuth({ store, env = {}, now = () => Date.now() }) {
         const initialized = delegated ? authority.initialized : store.hasMaoSuperAdminAccount();
         const qaSetup = delegated && qaIsolatedSetupEnabled(env);
         const qaCoreFounder = !delegated ? isolatedQaAuthorityFounderId(env) : null;
+        const qaIdentityCore = usesExistingAccountAuthority(env) &&
+          env.MAO_QA_AUTHORITY_WORKER === 'maomao-identity-core';
         return ok({
           initialized,
-          configured: qaSetup ? authority.configured : !delegated &&
+          configured: delegated ? qaIdentityCore && authority.connected && authority.configured :
             String(env.MAO_SUPER_ADMIN_BOOTSTRAP_SECRET || '').length >= 32 &&
             String(env.DEVICE_SECRET_PEPPER || '').length >= 32,
           identityMode: delegated ? 'delegated' : 'local',
           bootstrapAllowed: !delegated || qaSetup,
           qaSetupAllowed: qaSetup,
+          qaIdentityCore,
           qaIsolatedAuthority: !!qaCoreFounder,
           qaExpectedFounderId: qaCoreFounder || undefined,
           identityAuthorityConnected: delegated ? authority.connected : undefined,

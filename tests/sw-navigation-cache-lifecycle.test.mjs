@@ -56,7 +56,7 @@ function createHarness({ cachedResponse = null, fetchImpl, putImpl, matchImpl } 
   const openCalls = [];
 
   const cache = {
-    match: async request => (cachedResponse || null),
+    match: async request => (matchImpl ? matchImpl(request) : cachedResponse),
     put(request, response) {
       putCalls.push({ request, response });
       if (putImpl) return putImpl(request, response);
@@ -108,8 +108,8 @@ function createHarness({ cachedResponse = null, fetchImpl, putImpl, matchImpl } 
 
   assert.equal(typeof listeners.fetch, 'function', 'sw.js 必须注册 fetch 监听');
 
-  function dispatchNavigation() {
-    const request = { method: 'GET', mode: 'navigate', url: NAV_URL };
+  function dispatchNavigation(url = NAV_URL) {
+    const request = { method: 'GET', mode: 'navigate', url };
     const event = {
       request,
       responsePromise: null,
@@ -150,7 +150,9 @@ test('场景1：公共账号入口优先使用新网络响应，缓存写入由 
   const lifecycleState = trackState(event.lifecycle[0]);
   assert.equal(harness.fetchCalls.length, 1, '公共账号入口必须先向 Worker 请求最新页面');
 
+  const responseState = trackState(event.responsePromise);
   await flushAsync();
+  assert.equal(responseState.value, 'pending');
   assert.equal(lifecycleState.value, 'pending', '网络尚未返回时 waitUntil 不应结束');
 
   networkGate.resolve(htmlResponse('fresh-page'));
@@ -300,4 +302,30 @@ test('场景6：网络返回非 2xx 时原样返回页面且不写缓存', async
   assert.equal(harness.putCalls.length, 0, 'response.ok 为 false 时不得写缓存');
   await flushAsync();
   assert.equal(lifecycleState.value, 'fulfilled', '非 2xx 路径的生命周期应正常结束');
+});
+
+test('offline private navigation never reads any cached HTML', async () => {
+  const harness = createHarness({
+    cachedResponse: htmlResponse('stale-account-page'),
+    fetchImpl: () => Promise.reject(new Error('offline'))
+  });
+  const event = harness.dispatchNavigation(ORIGIN + '/chat/chat/chat.html');
+  const response = await event.responsePromise;
+  assert.equal(response.status, 503);
+  assert.equal(response.headers.get('cache-control'), 'no-store');
+  assert.deepEqual(harness.openCalls, []);
+  assert.deepEqual(harness.putCalls, []);
+});
+
+test('public navigation never caches private or redirected HTML', async () => {
+  for (const response of [
+    new Response('private', { headers: { 'content-type': 'text/html', 'cache-control': 'private, no-store' } }),
+    Object.defineProperty(htmlResponse('redirected'), 'redirected', { value: true })
+  ]) {
+    const harness = createHarness({ fetchImpl: async () => response });
+    const event = harness.dispatchNavigation();
+    assert.equal(await event.responsePromise, response);
+    await Promise.all(event.lifecycle);
+    assert.deepEqual(harness.putCalls, []);
+  }
 });

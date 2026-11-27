@@ -1,8 +1,34 @@
 /* 小手机 PWA Service Worker
- * 页面与静态资源均采用缓存优先+后台更新，断网/慢网时秒开。
+ * 静态资源缓存优先。私有页面每次联网验证，公开账号入口支持离线回退。
  */
-const CACHE_NAME = 'phone-app-pwa-v240';
+const CACHE_NAME = 'phone-app-pwa-v312';
 const FONT_ASSET_CACHE = 'maomao-font-assets-v1';
+function cacheablePublicResponse(response) {
+  return !!(response && response.ok && !response.redirected &&
+    !/(?:^|[,\s])(?:no-store|private)(?:[,\s]|$)/i.test(
+      String(response.headers && response.headers.get('cache-control') || '')));
+}
+// Navigation HTML must not cache a JSON/API/error payload with a 200 status.
+// Keep static image, script and style caching on its existing independent path.
+// Do not retain a stale HTML fallback in a JavaScript, CSS or image cache entry.
+function cacheableStaticAsset(response, request) {
+  if (!cacheablePublicResponse(response)) return false;
+  const path = new URL(request.url).pathname.toLowerCase();
+  const type = String(response.headers && response.headers.get('content-type') || '').toLowerCase();
+  if (/^text\/html(?:;|\s|$)/.test(type)) return false;
+  if (/\.css$/.test(path) || request.destination === 'style') return /^text\/css(?:;|\s|$)/.test(type);
+  if (/\.(?:js|mjs)$/.test(path) || request.destination === 'script') {
+    return /^(?:text|application)\/(?:javascript|ecmascript)(?:;|\s|$)/.test(type);
+  }
+  if (/\.(?:png|jpe?g|webp|gif|svg|avif|ico)$/.test(path) || request.destination === 'image') {
+    return /^image\//.test(type);
+  }
+  return true;
+}
+function cacheablePublicNavigationHtml(response) {
+  return cacheablePublicResponse(response) && /^\s*text\/html\s*(?:;|$)/i.test(
+    String(response.headers && response.headers.get('content-type') || ''));
+}
 // v196 release: sweep orphaned role-owned media refs during avatar cleanup.
 const APP_SHELL = [
   './',
@@ -69,7 +95,7 @@ const APP_SHELL = [
   './games/games.html',
   './games/cooking.html',
   './games/css/cooking.css?v=20261025v3',
-  './games/js/cooking.js?v=20261025v3',
+  './games/js/cooking.js?v=20261124v4',
   './games/js/interrogation-v20.js?v=20',
   './games/assets/tidal-archive-room-v18.webp',
   './cafe/cafe.html',
@@ -110,6 +136,7 @@ const APP_SHELL = [
   'shared/js/phone/chat-send-policy.js?v=20261029v2',
   'shared/js/phone/chat-context-policy.js?v=20261107vision1',
   './shared/js/phone/chat-presence-policy.js?v=20261102v17',
+  './shared/js/phone/chat-heart-policy.js?v=20261126mind1',
   './shared/js/phone/role-public-timeline.js?v=20261102v1',
   './shared/js/phone/group-chat-policy.js?v=20261102v5',
   './shared/js/phone/chat-followup-policy.js?v=20261102v1',
@@ -162,7 +189,14 @@ self.addEventListener('install', event => {
       const resources = Array.from(new Set(APP_SHELL.concat(pageEntries)))
         .filter(url => url === './account/index.html' || url === './account/bootstrap.html' ||
           (url !== './' && url !== '/' && !/\.html(?:\?|$)/i.test(url)));
-      await Promise.all(resources.map(url => cache.add(url).catch(() => undefined)));
+      await Promise.all(resources.map(url => {
+        if (url === './account/index.html' || url === './account/bootstrap.html') {
+          return fetch(url, { cache: 'no-store' }).then(response => {
+            if (cacheablePublicNavigationHtml(response)) return cache.put(url, response);
+          }).catch(() => undefined);
+        }
+        return cache.add(url).catch(() => undefined);
+      }));
     }).then(() => self.skipWaiting())
   );
 });
@@ -270,22 +304,33 @@ self.addEventListener('fetch', event => {
 
   // Protected app documents must reach the Worker on every navigation so
   // account disable/revocation cannot be bypassed by a stale offline HTML cache.
-  // On network loss, fall back only to the public account entry, never cached app pages.
+  // Never replace a protected URL with a cached login page when the network drops:
+  // that impersonates a logout and breaks relative resource resolution.
   const accountPath = new URL('account/', self.registration.scope).pathname;
-  const isPublicAccountPage = url.pathname === accountPath ||
+  const isPublicAccountPage = url.pathname === accountPath.slice(0, -1) ||
+    url.pathname === accountPath ||
     url.pathname === accountPath + 'index.html' ||
     url.pathname === accountPath + 'bootstrap.html';
   if (req.mode === 'navigate' && !isPublicAccountPage) {
     event.respondWith((async function () {
       try {
-        return await fetch(req);
+        // Always reach the Worker account guard; never reuse a previous 302.
+        return await fetch(req, { cache: 'no-store' });
       } catch {
-        const entry = new URL('account/index.html', self.registration.scope);
-        const cachedEntry = await caches.match(entry.href).catch(function () { return null; });
-        return cachedEntry || new Response('当前处于离线状态，请联网验证 MAO 账号后继续。', {
-          status: 503,
-          headers: { 'Content-Type': 'text/plain; charset=UTF-8', 'Cache-Control': 'no-store' }
-        });
+        // No private HTML may be read from CacheStorage. Equally, do not inject
+        // public sign-in HTML into a private route just because fetch failed.
+        return new Response(
+          '<!doctype html><html lang="zh-CN"><meta charset="utf-8">' +
+          '<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">' +
+          '<title>暂时无法连接</title><body style="margin:0;padding:12vh 8vw;background:#fafafa;color:#333;' +
+          'font:15px/1.8 -apple-system,BlinkMacSystemFont,sans-serif">' +
+          '<h1 style="font-size:19px;font-weight:500">连接暂时中断</h1>' +
+          '<p>登录状态尚未确认，没有退出账号。请恢复网络后重新打开当前页面。</p>' +
+          '<button onclick="location.reload()" style="padding:9px 20px;border:1px solid #bbb;' +
+          'border-radius:9px;background:#fff;color:#333">重新连接</button></body></html>',
+          { status: 503, headers: { 'Content-Type': 'text/html; charset=UTF-8',
+            'Cache-Control': 'no-store', 'Retry-After': '5' } }
+        );
       }
     })());
     return;
@@ -297,7 +342,7 @@ self.addEventListener('fetch', event => {
   // may fetch app HTML without a navigation, and cached account-injected meta
   // tags from a different login must never be reused across users.
   if (!isPublicAccountPage && (url.pathname === '/' || /\.html$/i.test(url.pathname))) {
-    event.respondWith(fetch(req));
+    event.respondWith(fetch(req, { cache: 'no-store' }));
     return;
   }
 
@@ -305,7 +350,7 @@ self.addEventListener('fetch', event => {
     event.respondWith((async function () {
       var cacheWritePromise = null;
       var networkPromise = fetch(req, { cache: 'no-store' }).then(function (response) {
-        if (response && response.ok) {
+        if (cacheablePublicNavigationHtml(response)) {
           var copy = response.clone();
           cacheWritePromise = caches.open(CACHE_NAME)
             .then(function (cache) { return cache.put(req, copy); })
@@ -322,8 +367,10 @@ self.addEventListener('fetch', event => {
       if (fresh) return fresh;
 
       // Only when the network genuinely fails, show a cached public sign-in.
-      var cached = await caches.match(req).catch(function () { return null; });
-      if (cached) return cached;
+      var cached = await caches.open(CACHE_NAME).then(function (cache) {
+        return cache.match(req);
+      }).catch(function () { return null; });
+      if (cacheablePublicNavigationHtml(cached)) return cached;
 
       return new Response('此页面暂时无法连接，请检查网络后重试。', {
         status: 503,
@@ -350,16 +397,22 @@ self.addEventListener('fetch', event => {
   }
 
   // 静态文件缓存优先，并在后台更新缓存。
-  event.respondWith(
-    caches.match(req).then(cached => {
-      const fresh = fetch(req).then(response => {
-        if (response && response.ok) {
-          const copy = response.clone();
-          caches.open(CACHE_NAME).then(cache => cache.put(req, copy));
-        }
-        return response;
-      }).catch(() => cached);
-      return cached || fresh;
-    })
-  );
+  const update = caches.open(CACHE_NAME).then(async cache => {
+    const cached = await cache.match(req).catch(() => null);
+    let write;
+    const fresh = fetch(req).then(response => {
+      if (cacheableStaticAsset(response, req)) {
+        write = cache.put(req, response.clone()).catch(() => undefined);
+      }
+      return response;
+    }).catch(() => null);
+    return { cached, fresh, updateDone: fresh.then(() => write) };
+  }).catch(() => ({ cached: null, fresh: fetch(req).catch(() => null) }));
+  event.waitUntil(update.then(({ updateDone }) => updateDone));
+  event.respondWith(update.then(async ({ cached, fresh }) => {
+    return cacheableStaticAsset(cached, req) ? cached : await fresh || new Response('', {
+      status: 503,
+      headers: { 'Cache-Control': 'no-store' }
+    });
+  }));
 });

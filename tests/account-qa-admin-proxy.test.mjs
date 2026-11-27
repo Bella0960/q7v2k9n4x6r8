@@ -38,23 +38,24 @@ function fixture({ role = 'super_admin', disabled = false, wrongAuthority = fals
         origin: request.headers.get('origin'),
         body: request.method === 'POST' ? await request.text() : ''
       });
-      if (url.pathname.startsWith('/api/admin/') && authorityError === 'forbidden') {
+      if (url.pathname !== '/api/admin/bootstrap/status' && url.pathname.startsWith('/api/admin/') && authorityError === 'forbidden') {
         return Response.json({ ok: false, error: { code: 'DELEGATED_ACCOUNT_MANAGED_CENTRALLY',
           message: '管理权限尚未接通' } }, {
           status: 403, headers: { 'set-cookie': 'MAO_SESSION=forbidden-cookie; HttpOnly' }
         });
       }
-      if (url.pathname.startsWith('/api/admin/') && authorityError === 'invalid') {
+      if (url.pathname !== '/api/admin/bootstrap/status' && url.pathname.startsWith('/api/admin/') && authorityError === 'invalid') {
         return new Response('not-json', { status: 200, headers: { 'content-type': 'text/plain' } });
       }
-      if (url.pathname.startsWith('/api/admin/') && authorityError === 'offline') {
+      if (url.pathname !== '/api/admin/bootstrap/status' && url.pathname.startsWith('/api/admin/') && authorityError === 'offline') {
         throw new Error('synthetic QA identity connection loss');
       }
       if (url.pathname === '/api/accounts/me') {
         return Response.json({ ok: true, account });
       }
       if (url.pathname === '/api/admin/bootstrap/status') {
-        assert.equal(request.headers.get('x-mao-identity-bridge'), BRIDGE_SECRET);
+        assert.equal(request.headers.get('x-mao-identity-bridge'), null);
+        assert.equal(request.headers.get('authorization'), null);
         return Response.json({
           ok: true, identityMode: 'local',
           initialized: true, configured: true, bootstrapAllowed: true,
@@ -106,7 +107,7 @@ test('isolated QA account directory uses server binding and never leaks authorit
   assert.equal(payload.ok, true);
   assert.equal(payload.accounts[0].id, FOUNDER_ID);
   assert.deepEqual(calls.map(call => call.path), [
-    '/api/accounts/me', '/api/admin/bootstrap/status', '/api/admin/accounts'
+    '/api/admin/bootstrap/status', '/api/accounts/me', '/api/admin/accounts'
   ]);
   const adminCall = calls[2];
   assert.equal(adminCall.search, '?limit=50');
@@ -144,9 +145,9 @@ test('delegated management switch and unlisted routes always fail closed', async
 test('an authority without the isolated QA founder proof cannot access admin data', async () => {
   const { calls, invoke } = fixture({ wrongAuthority: true });
   await assert.rejects(invoke('/api/admin/accounts'), error =>
-    error.code === 'QA_ADMIN_AUTHORITY_UNAVAILABLE');
+    error.code === 'QA_IDENTITY_AUTHORITY_UNAVAILABLE');
   assert.deepEqual(calls.map(call => call.path), [
-    '/api/accounts/me', '/api/admin/bootstrap/status'
+    '/api/admin/bootstrap/status'
   ]);
 });
 
@@ -154,7 +155,7 @@ test('a non-super-admin session never reaches an admin directory or mutation', a
   const { calls, invoke } = fixture({ role: 'user' });
   await assert.rejects(invoke('/api/admin/accounts'), error =>
     error.code === 'ADMIN_ONLY');
-  assert.deepEqual(calls.map(call => call.path), ['/api/accounts/me']);
+  assert.deepEqual(calls.map(call => call.path), ['/api/admin/bootstrap/status', '/api/accounts/me']);
 });
 
 test('a forwarded QA 403 stays an API permission error, never a login redirect', async () => {
@@ -192,7 +193,7 @@ test('a misbound authority with the wrong founder ID cannot receive privileged r
     await assert.rejects(
       invoke(method === 'GET' ? '/api/admin/accounts' : '/api/admin/invites', method,
         method === 'POST' ? { targetAccountId: 'MAO-SYNTHACCOUNT001' } : undefined),
-      error => error.code === 'QA_ADMIN_AUTHORITY_UNAVAILABLE'
+      error => error.code === 'QA_IDENTITY_AUTHORITY_UNAVAILABLE'
     );
   }
   assert.equal(calls.filter(call => call.path === '/api/admin/accounts' ||

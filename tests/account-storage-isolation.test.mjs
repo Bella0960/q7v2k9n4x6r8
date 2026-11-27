@@ -388,7 +388,7 @@ test('无法安装账号存储命名空间时阻止继续加载页面', () => {
 });
 
 test('Worker 只对已授权账号页面注入数据命名空间，并禁止缓存个人 HTML', () => {
-  assert.match(workerSource, /authPayload\?\.account\?\.status !== 'active'/);
+  assert.match(workerSource, /const accountStatus = authPayload\?\.account\?\.status;[\s\S]*?accountStatus !== 'active'/);
   assert.match(workerSource, /url\.pathname\.startsWith\('\/admin\/'\) && authorizedAccount\.role !== 'super_admin'/);
   assert.match(workerSource, /meta name="mao-account-id"/);
   assert.match(workerSource, /mao-account-role/);

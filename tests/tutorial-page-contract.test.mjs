@@ -66,7 +66,7 @@ test('guide documents the merged chat features and correctly separates unverifie
   assert.match(guideScript, /此前的手机打不开反馈仍需在安装版和普通浏览器分别实测/);
 });
 
-test('all 29 desktop app shortcuts have a matching app guide and quick-open entry', () => {
+test('all 29 general desktop app shortcuts have a matching app guide and quick-open entry', () => {
   const tiles = [...home.matchAll(/data-href="([^"]+)" data-drag="(app_[^"]+)" data-name="([^"]+)"/g)]
     .map((match) => ({ path: match[1], id: match[2], name: match[3] }))
     .filter((item) => item.id.startsWith('app_') && item.id !== 'app_admin_center');
@@ -130,7 +130,7 @@ test('tutorial workflow enforces a guide update when user-facing app pages chang
 });
 
 test('PWA app shell caches the full guide bundle and has a matching test command', () => {
-  assert.ok(serviceWorkerVersion >= 203, 'tutorial cache must not regress below v203');
+  assert.ok(serviceWorkerVersion >= 206, 'tutorial cache must not regress below v206');
   assert.ok(serviceWorker.includes("'./tutorial/tutorial.html'"));
   assert.ok(serviceWorker.includes("'./tutorial/tutorial.js?v=20261111v3'"));
   assert.equal(packageJson.scripts['test:tutorial'], 'node --test tests/tutorial-page-contract.test.mjs');
@@ -147,6 +147,8 @@ test('account release candidate guide documents the existing login path and QA s
   assert.match(guideScript, /"id"\s*:\s*"account-qa"/);
   assert.match(guideScript, /已有账号 · 登录/);
   assert.match(guideScript, /管理员中心（QA 待验收）/);
+  assert.match(home, /data-href="admin\/admin-center\.html"[^>]* hidden>/);
+  assert.ok(existsSync(resolve(root, "admin/admin-center.html")));
   assert.match(guideScript, /"href"\s*:\s*"\.\.\/account\/index\.html"/);
   assert.match(guideScript, /本机备份不等于云端账号的可恢复备份/);
   assert.match(guideScript, /不得对正式账号执行停用、重置或清空/);

@@ -45,10 +45,7 @@ export async function initializeIsolatedQaAuthority({ env = {}, store, request }
   if (!qaIsolatedSetupEnabled(env)) {
     throw new ApiError(403, 'QA_SETUP_DISABLED', 'QA 独立身份初始化尚未启用');
   }
-  // Never accept a QA credential setup request on either production hostname.
-  // The unique existing QA workers.dev origin is the only allowed browser entry.
-  if (new URL(request.url).hostname !==
-      'maomao-aw-qa-20261114.miamor520000.workers.dev') {
+  if (new URL(request.url).origin !== 'https://preview.mao520.com') {
     throw new ApiError(403, 'QA_SETUP_WRONG_ORIGIN',
       'QA 初始化必须通过唯一隔离测试入口执行');
   }
@@ -89,8 +86,7 @@ export async function initializeIsolatedQaAuthority({ env = {}, store, request }
     throw new ApiError(409, 'QA_AUTHORITY_NOT_EMPTY_OR_NOT_READY',
       '独立 QA 身份库未通过空库和安全配置校验，已阻止初始化');
   }
-  // No browser cookie is forwarded; the core creates its own server-side
-  // session during bootstrap, but the browser must separately log in to QA.
+  // Setup sends no browser session to the authority. The browser signs in separately.
   let response;
   try {
     response = await authority.fetch(new Request(INTERNAL_ORIGIN + '/api/admin/bootstrap', {

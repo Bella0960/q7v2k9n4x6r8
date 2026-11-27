@@ -19,6 +19,19 @@ import { createSchedulerGate } from './worker/lib/scheduler-gate.js';
 
 const INSTANCE_NAME = 'maomao-global';
 
+// Redirect only when the account store or central authority explicitly confirms
+// a missing/revoked session. Never cache this redirect as an app route response.
+function redirectToVerifiedLogin(url, reason = '') {
+  const target = new URL('/account/index.html', url);
+  if (reason === 'disabled') target.searchParams.set('disabled', '1');
+  if (reason === 'switched') target.searchParams.set('switched', '1');
+  return new Response(null, { status: 302, headers: {
+    location: target.href,
+    'cache-control': 'private, no-store, max-age=0',
+    vary: 'Cookie'
+  } });
+}
+
 function accountAuthenticationUnavailable() {
   // A temporary identity-service failure is not proof that the user logged out.
   // Never serve account-owned HTML when authority cannot verify the session.
@@ -234,18 +247,29 @@ export default {
         const authPayload = await authResponse.json().catch(() => ({}));
         if (!authResponse.ok) {
           const errorCode = authPayload?.error?.code;
-          if (authResponse.status === 401 ||
-              (authResponse.status === 403 &&
-                (errorCode === 'ACCOUNT_DISABLED' || errorCode === 'IDENTITY_AUTHORITY_CHANGED'))) {
-            const target = new URL('/account/index.html', url);
-            if (errorCode === 'ACCOUNT_DISABLED') target.searchParams.set('disabled', '1');
-            if (errorCode === 'IDENTITY_AUTHORITY_CHANGED') target.searchParams.set('switched', '1');
-            return Response.redirect(target, 302);
+          const confirmedMissingSession = authResponse.status === 401 &&
+            ['ACCOUNT_SESSION_REQUIRED', 'LOGIN_REQUIRED'].includes(errorCode);
+          const confirmedBlockedOrSwitched = authResponse.status === 403 &&
+            ['ACCOUNT_DISABLED', 'IDENTITY_AUTHORITY_CHANGED'].includes(errorCode);
+          if (confirmedMissingSession || confirmedBlockedOrSwitched) {
+            return redirectToVerifiedLogin(url,
+              errorCode === 'ACCOUNT_DISABLED' ? 'disabled' :
+              errorCode === 'IDENTITY_AUTHORITY_CHANGED' ? 'switched' : '');
           }
-          // 403 from an identity authority or 5xx is not a confirmed logout.
+          // An unexpected 401, transient 403 or identity-service 5xx does NOT
+          // establish logout. Fail closed with a no-store 503, not an entry redirect.
           return accountAuthenticationUnavailable();
         }
-        if (authPayload?.account?.status !== 'active') {
+        const accountStatus = authPayload?.account?.status;
+        if (accountStatus === 'pending_invite' ||
+            accountStatus === 'disabled' || accountStatus === 'revoked') {
+          // The central authority confirmed a real account that is not
+          // permitted to enter private pages. This is not a service outage.
+          return redirectToVerifiedLogin(url,
+            accountStatus === 'disabled' || accountStatus === 'revoked' ? 'disabled' : '');
+        }
+        if (accountStatus !== 'active') {
+          // Missing or unfamiliar identity data is not proof of logout.
           return accountAuthenticationUnavailable();
         }
         authorizedAccount = authPayload.account;
@@ -258,13 +282,20 @@ export default {
     }
 
     // html_handling="none" 时显式把站点根路径映射到构建后的首页（沿用 main 的路由修复）。
+    let assetRequest = request;
+    if (isHtmlDocument && authorizedAccount) {
+      const headers = new Headers(request.headers);
+      headers.delete('if-none-match');
+      headers.delete('if-modified-since');
+      assetRequest = new Request(request, { headers });
+    }
     if (url.pathname === "/" && request.method === "GET") {
       const indexUrl = new URL("/index.html", url);
-      const response = await env.ASSETS.fetch(new Request(indexUrl, request));
+      const response = await env.ASSETS.fetch(new Request(indexUrl, assetRequest));
       return authorizedAccount ? await injectAccountScope(response, authorizedAccount) : response;
     }
     if (env.ASSETS) {
-      const response = await env.ASSETS.fetch(request);
+      const response = await env.ASSETS.fetch(assetRequest);
       return isHtmlDocument && authorizedAccount
         ? await injectAccountScope(response, authorizedAccount)
         : response;

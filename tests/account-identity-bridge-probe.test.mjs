@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { probeExistingIdentityAuthority } from '../worker/lib/identity-bridge.js';
+import { callIdentityAuthority, probeExistingIdentityAuthority } from '../worker/lib/identity-bridge.js';
 
 const SECRET = 'qa-internal-bridge-key-'.padEnd(40, 'x');
 const OFFLINE = { connected: false, initialized: false, configured: false };
@@ -26,7 +26,7 @@ test('QA gateway bootstrap probe authenticates the server-only service request',
     return Response.json({ ok: true, initialized: true, configured: true, qaIsolatedAuthority: true, qaExpectedFounderId: 'MAO-SYNTHFOUNDER001' });
   } });
   assert.deepEqual(await probeExistingIdentityAuthority(env),
-    { connected: true, initialized: true, configured: true, qaIsolatedAuthority: true, qaExpectedFounderId: 'MAO-SYNTHFOUNDER001' });
+    { connected: true, initialized: true, configured: true });
   assert.equal(calls, 1);
 });
 
@@ -83,10 +83,41 @@ test('an apparently ready identity authority without the QA proof remains untrus
       fetch: async () => Response.json(candidate)
     }));
     assert.equal(r.connected, true, 'availability remains separately observable');
-    assert.equal(r.qaIsolatedAuthority, candidate.qaIsolatedAuthority === true);
-    assert.equal(r.qaExpectedFounderId, candidate.qaExpectedFounderId || null);
-    const isAuthorizedQaFounder = r.qaIsolatedAuthority === true &&
-      r.qaExpectedFounderId === 'MAO-SYNTHFOUNDER001';
-    assert.equal(isAuthorizedQaFounder, false, 'unattested or wrong-founder authority must fail closed');
+    assert.equal(r.qaIsolatedAuthority, undefined, 'gateway never attests an isolated founder');
+    assert.equal(r.qaExpectedFounderId, undefined);
+    const isolatedEnv = {
+      ...delegated({ fetch: async () => Response.json(candidate) }),
+      MAO_IDENTITY_AUTHORITY_MODE: 'existing_worker',
+      MAO_QA_AUTHORITY_WORKER: 'maomao-identity-core',
+      MAO_EXPECTED_FOUNDER_ID: 'MAO-SYNTHFOUNDER001'
+    };
+    assert.deepEqual(await probeExistingIdentityAuthority(isolatedEnv), OFFLINE);
+  }
+});
+
+test('an unverified QA binding receives neither a password nor a session token', async () => {
+  const calls = [];
+  const env = {
+    ...delegated({ fetch: async request => {
+      calls.push(request);
+      return Response.json({ ok: true, initialized: true, configured: true, identityMode: 'local' });
+    } }, ''),
+    MAO_IDENTITY_AUTHORITY_MODE: 'existing_worker',
+    MAO_QA_AUTHORITY_WORKER: 'maomao-identity-core',
+    MAO_EXPECTED_FOUNDER_ID: 'MAO-SYNTHFOUNDER001'
+  };
+  for (const operation of ['authenticate', 'status', 'logout']) {
+    await assert.rejects(callIdentityAuthority(env, operation, {
+      identifier: 'fixture', password: 'qa-fixture-password',
+      sessionToken: 'syntheticSessionToken'.padEnd(40, '1')
+    }), error => error.code === 'QA_IDENTITY_AUTHORITY_UNAVAILABLE');
+  }
+  assert.equal(calls.length, 3);
+  for (const call of calls) {
+    assert.equal(new URL(call.url).pathname, '/api/admin/bootstrap/status');
+    assert.equal(call.method, 'GET');
+    assert.equal(call.headers.get('authorization'), null);
+    assert.equal(call.headers.get('cookie'), null);
+    assert.equal(call.body, null);
   }
 });

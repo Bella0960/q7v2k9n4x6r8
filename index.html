@@ -29,6 +29,7 @@
   <style>
     /* ===== 添加挂件：跳转独立挂件管理页（desktop/widgets.html） ===== */
     .edit-add-btn { margin-right: 8px; }
+    [data-drag="app_admin_center"][hidden] { display: none; }
   </style>
 </head>
   <body class="maomao-home">
@@ -790,6 +791,7 @@
             currentLayout.pages[pageIndex].splice(settingsIndex >= 0 ? settingsIndex + 1 : currentLayout.pages[pageIndex].length, 0, id);
           }
         } else {
+          tile.remove();
           currentLayout.pages = (currentLayout.pages || []).map(function (page) {
             return page.filter(function (item) { return item !== id; });
           });

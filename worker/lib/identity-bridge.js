@@ -101,6 +101,12 @@ async function callExistingAccountWorker(env, operation, body) {
   if (operation !== 'authenticate' && !SESSION_TOKEN_RE.test(token)) {
     throw new ApiError(401, 'LOGIN_REQUIRED', '原管理员登录会话无效，请重新登录');
   }
+  if (env.MAO_QA_AUTHORITY_WORKER === 'maomao-identity-core') {
+    const authority = await probeExistingIdentityAuthority(env);
+    if (!authority.connected || !authority.configured || !authority.initialized) {
+      throw new ApiError(503, 'QA_IDENTITY_AUTHORITY_UNAVAILABLE', '独立 QA 身份服务尚未通过隔离校验');
+    }
+  }
   const headers = operation === 'authenticate'
     ? { 'content-type': 'application/json', origin: INTERNAL_ORIGIN }
     : operation === 'logout'
@@ -138,6 +144,10 @@ async function callExistingAccountWorker(env, operation, body) {
   }
   if (operation === 'logout') return { loggedOut: true };
   const account = validateAuthorityAccount(payload.account);
+  if (env.MAO_QA_AUTHORITY_WORKER === 'maomao-identity-core' &&
+      account.role === 'super_admin' && account.id !== env.MAO_EXPECTED_FOUNDER_ID) {
+    throw new ApiError(403, 'IDENTITY_AUTHORITY_CHANGED', '独立 QA 管理员身份不一致');
+  }
   if (operation === 'status') {
     if (account.id !== body?.accountId) {
       throw new ApiError(403, 'IDENTITY_AUTHORITY_CHANGED', '唯一账号身份已改变');
@@ -197,38 +207,56 @@ export async function callIdentityAuthority(env, operation, body) {
  * A Worker Preview's Service Binding targets the authority's deployed Worker.
  */
 export async function probeExistingIdentityAuthority(env) {
-  // The deployed gateway requires this server-only header for every route,
-  // including its read-only bootstrap probe. Never probe anonymously.
+  const unavailable = { connected: false, initialized: false, configured: false };
+  // The isolated QA core has its own account system and provides a read-only
+  // bootstrap status. It does NOT require the retired gateway's bridge secret.
+  // Keep this selector after the one-time QA setup flag is disabled.
+  const expectedQaFounder = String(env?.MAO_EXPECTED_FOUNDER_ID || '');
+  const isolatedQaCore = usesExistingAccountAuthority(env) &&
+    env.MAO_QA_AUTHORITY_WORKER === 'maomao-identity-core';
   const secret = String(env?.MAO_IDENTITY_BRIDGE_SECRET || '');
-  if (!usesDelegatedIdentity(env) || secret.length < 32 ||
-      typeof env.MAO_IDENTITY_AUTHORITY?.fetch !== 'function') {
-    return { connected: false, initialized: false, configured: false };
+  if (!usesDelegatedIdentity(env) ||
+      typeof env.MAO_IDENTITY_AUTHORITY?.fetch !== 'function' ||
+      (isolatedQaCore ? !ACCOUNT_ID.test(expectedQaFounder) : secret.length < 32)) {
+    return unavailable;
   }
   try {
+    // The legacy gateway still needs its private header; do not weaken it.
+    // The isolated QA core can be probed without copying an old gateway key.
+    const headers = isolatedQaCore
+      ? { accept: 'application/json' }
+      : { accept: 'application/json', [BRIDGE_AUTH_HEADER]: secret };
     const response = await env.MAO_IDENTITY_AUTHORITY.fetch(
       new Request(INTERNAL_ORIGIN + '/api/admin/bootstrap/status', {
-        method: 'GET',
-        headers: { accept: 'application/json', [BRIDGE_AUTH_HEADER]: secret }
+        method: 'GET', headers
       })
     );
-    if (!response.ok) return { connected: false, initialized: false, configured: false };
+    if (!response.ok) return unavailable;
     const data = await response.json();
     if (data?.ok !== true ||
         typeof data.initialized !== 'boolean' ||
         typeof data.configured !== 'boolean') {
-      return { connected: false, initialized: false, configured: false };
+      return unavailable;
     }
-    // Expose the authority's own QA isolation attestation to privileged callers.
-    // Connectivity and a matching Worker name alone never prove storage isolation.
+    // Wrong service bindings must never be reported as a ready QA authority.
+    if (isolatedQaCore && (
+      data.identityMode !== 'local' ||
+      data.bootstrapAllowed !== true ||
+      data.qaIsolatedAuthority !== true ||
+      data.qaExpectedFounderId !== expectedQaFounder
+    )) return unavailable;
     return {
       connected: true,
       initialized: data.initialized,
       configured: data.configured,
-      qaIsolatedAuthority: data.qaIsolatedAuthority === true,
-      qaExpectedFounderId: typeof data.qaExpectedFounderId === 'string'
-        ? data.qaExpectedFounderId : null
+      ...(isolatedQaCore ? {
+        // The private service-bound response was already validated above.
+        // Admin operations require this exact proof, not merely connectivity.
+        qaIsolatedAuthority: data.qaIsolatedAuthority === true,
+        qaExpectedFounderId: data.qaExpectedFounderId
+      } : {})
     };
   } catch {
-    return { connected: false, initialized: false, configured: false };
+    return unavailable;
   }
 }

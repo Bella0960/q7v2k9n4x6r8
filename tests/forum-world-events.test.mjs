@@ -121,7 +121,7 @@ test('existing mobile forum actually uses world arcs, selected settings and role
   assert.match(settings,/id="worldAutoContinue"/);
   assert.match(settings,/cfg\.worldAutoContinue/);
   assert.match(sw,/forum\/forum-world-events\.js\?v=20261111v1/);
-  assert.match(sw,/phone-app-pwa-v206/);
+  assert.ok(Number(sw.match(/phone-app-pwa-v(\d+)/)?.[1]) >= 206);
 });
 
 test('all modified inlined code parses for mobile browser execution',()=>{

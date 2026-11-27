@@ -5,7 +5,7 @@ import { qaIsolatedSetupEnabled, isolatedQaAuthorityFounderId, resolveQaAuthorit
 const F = 'MAO-SYNTHFOUNDER001';
 const SECRET = 's'.repeat(40);
 const shadow = { id: F, username: 'qaowner001', role: 'super_admin', status: 'active' };
-const request = (overrides={}) => new Request('https://maomao-aw-qa-20261114.miamor520000.workers.dev/api/admin/bootstrap', {method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({bootstrapSecret:SECRET,username:shadow.username,password:'qa-only-password-123',confirmPassword:'qa-only-password-123',...overrides})});
+const request = (overrides={}) => new Request('https://preview.mao520.com/api/admin/bootstrap', {method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({bootstrapSecret:SECRET,username:shadow.username,password:'qa-only-password-123',confirmPassword:'qa-only-password-123',...overrides})});
 const goodStatus = () => Response.json({ok:true,identityMode:'local',initialized:false,configured:true,bootstrapAllowed:true,qaIsolatedAuthority:true,qaExpectedFounderId:F});
 const goodCreate = () => Response.json({ok:true,account:{...shadow,founderNumber:'001'}},{headers:{'set-cookie':'MAO_SESSION=qa-secret-cookie; HttpOnly; Secure; SameSite=Lax'}});
 function fixture(overrides={}) {
