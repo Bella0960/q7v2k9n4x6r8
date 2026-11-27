@@ -108,8 +108,8 @@ function createHarness({ cachedResponse = null, fetchImpl, putImpl, matchImpl } 
 
   assert.equal(typeof listeners.fetch, 'function', 'sw.js 必须注册 fetch 监听');
 
-  function dispatchNavigation(url = NAV_URL, mode = 'navigate') {
-    const request = { method: 'GET', mode, url };
+  function dispatchNavigation(url = NAV_URL, mode = 'navigate', headers = new Headers()) {
+    const request = { method: 'GET', mode, url, headers };
     const event = {
       request,
       responsePromise: null,
@@ -334,5 +334,27 @@ test('admin pages and API requests go directly to the network handler', () => {
     const event = harness.dispatchNavigation(ORIGIN + path);
     assert.equal(event.responsePromise, null);
     assert.equal(event.lifecycle.length, 0);
+  }
+});
+
+
+test('explicit ranges and cache validators reach the origin for public assets', () => {
+  const harness = createHarness({ matchImpl: () => assert.fail('must not read CacheStorage') });
+  for (const headers of [{ range: 'bytes=0-2' }, { 'if-none-match': '"revision"' }]) {
+    const event = harness.dispatchNavigation(ORIGIN + '/asset.txt', 'same-origin', new Headers(headers));
+    assert.equal(event.responsePromise, null);
+  }
+  assert.equal(harness.putCalls.length, 0);
+});
+
+test('static no-store and partial responses do not populate CacheStorage', async () => {
+  for (const response of [
+    new Response('private', { headers: { 'cache-control': 'no-store' } }),
+    new Response('partial', { status: 206 }),
+  ]) {
+    const harness = createHarness({ fetchImpl: () => Promise.resolve(response) });
+    const event = harness.dispatchNavigation(ORIGIN + '/asset.txt', 'same-origin');
+    assert.equal(await event.responsePromise, response);
+    assert.equal(harness.putCalls.length, 0);
   }
 });

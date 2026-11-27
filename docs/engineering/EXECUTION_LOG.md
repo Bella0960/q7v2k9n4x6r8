@@ -12,6 +12,8 @@ This is the durable checkpoint for owner-assigned, multi-step work. Update it af
 - Workers Builds API: all three original build IDs returned stopped/skipped before initialization, with no log lines or events. The production check is inapplicable to these branches under the engineering workflow. The upstream skip reason remains NOT VERIFIED.
 - #369 on current main: the eight adapter files are present. The aggregator is the only runtime caller of the seven adapters; no production page, SW precache entry, initialization entry or test was found loading the aggregator. Vite's generic static copy can still expose the files by path. Keep the live repository base, media adapter and PhoneStorage APIs. Rebase any future deletion independently and verify the built asset delta and the #369 guards before removing the files.
 
+- Follow-up: the Chromium bubbles run passed 39 scenarios. Its one 503 was injected by the test on the mocked chat completions call and did not traverse the Service Worker. Conditional and Range requests for public assets now use origin HTTP semantics. Private document compatibility on #564 is tracked separately.
+
 ## 2026-11-22 · ARCH-002 · Chat HTTP error body timeout
 
 - Base: main `a5415d7e`. An HTTP error with an unfinished body left the chat request pending because the response branch disabled all timeouts before awaiting the body.

@@ -233,6 +233,10 @@ self.addEventListener('fetch', event => {
     return;
   }
 
+  // Forward explicit HTTP validators and byte ranges to the origin unchanged.
+  if (['range', 'if-range', 'if-none-match', 'if-modified-since', 'if-match', 'if-unmodified-since']
+    .some(name => req.headers.has(name))) return;
+
   // 页面导航采用“缓存优先、后台更新”：
   // 已缓存的应用立即打开，不让慢网络/VPN 阻塞页面；缓存未命中时才等待网络。
   // 绝不把 index.html 当作其他应用的兜底页面，避免点开应用却重新显示桌面。
@@ -291,9 +295,9 @@ self.addEventListener('fetch', event => {
   event.respondWith(
     caches.match(req).then(cached => {
       const fresh = fetch(req).then(response => {
-        if (response && response.ok) {
+        if (cacheablePublicResponse(response) && response.status !== 206) {
           const copy = response.clone();
-          caches.open(CACHE_NAME).then(cache => cache.put(req, copy));
+          caches.open(CACHE_NAME).then(cache => cache.put(req, copy)).catch(() => undefined);
         }
         return response;
       }).catch(() => cached);
