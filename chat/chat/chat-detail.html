@@ -11,7 +11,7 @@
     <link rel="stylesheet" href="../../shared/css/chat-beauty-runtime.css?v=20261031v1">
     <link rel="stylesheet" href="../call/call-overlay.css?v=20261105v1">
     <script src="../../shared/js/phone/phone_storage.js"></script>
-    <script src="../../shared/js/phone/chat-history-atomic.js?v=20261118v3"></script>
+    <script src="../../shared/js/phone/chat-history-atomic.js?v=20261128atomic2"></script>
     <script src="../../shared/js/phone/storage/repository.js"></script>
     <script src="../../shared/js/phone/storage/media-repository.js?v=20261107v2"></script>
     <script src="../../shared/js/phone/role-avatar-library.js?v=20261113v1"></script>
@@ -22,7 +22,7 @@
     <script src="../../shared/js/phone/role-gallery-image-autonomy.js?v=20261111v2"></script>
     <script src="../../shared/js/phone/role_family_cards.js?v=20261028v3"></script>
     <script src="../../shared/js/phone/memory_recall.js?v=20261127group1"></script>
-    <script src="../../shared/js/phone/phone_stream.js"></script>
+    <script src="../../shared/js/phone/phone_stream.js?v=20261128atomic2"></script>
     <script src="../../shared/js/phone/chat-message-policy.js?v=20261029v5"></script>
     <script src="../../shared/js/phone/chat-send-policy.js?v=20261029v2"></script>
     <script src="../../shared/js/phone/chat-context-policy.js?v=legacy-memory-scope1"></script>
@@ -2844,7 +2844,7 @@
             function snapshot(list, raw) {
                 _lastReadChatRaw = raw;
                 _hasReadChatPrimary = true;
-                if (trackSnapshot) singleChatTurnSnapshots.set(list, raw);
+                singleChatTurnSnapshots.set(list, raw);
                 return list;
             }
             if (!currentCharacter || currentCharacter.id == null ||
@@ -2861,6 +2861,7 @@
                     var parsed = JSON.parse(raw);
                     if (!Array.isArray(parsed)) throw new Error('chat history is not an array');
                     _chatHistoryUnreadable = false;
+                    ensureChatHistoryReady([]);
                     return snapshot(removeLegacyStickerCaptions(parsed), raw);
                 }
                 _chatHistoryUnreadable = false;
@@ -2872,31 +2873,58 @@
                 return [];
             }
             if (_chatHistoryUnreadable) return [];
-            // The v2 duplicate is a compatibility fallback only when the primary
-            // key is genuinely absent; PhoneStorage now enforces this fail-closed rule.
-            if (_storage && typeof _storage.getChatHistory === 'function') {
-                try {
-                    var legacy = _storage.getChatHistory(currentCharacter.id);
-                    if (Array.isArray(legacy) && legacy.length) {
-                        return snapshot(removeLegacyStickerCaptions(legacy), null);
-                    }
-                } catch (err) {
-                    _chatHistoryUnreadable = true;
-                    _hasReadChatPrimary = false;
-                    return [];
-                }
-            }
             const initial = getInitialMessages();
-            _lastReadChatRaw = null;
-            _hasReadChatPrimary = true;
-            if (!saveMessages(initial)) return [];
-            var initialRaw = null;
-            try { initialRaw = localStorage.getItem(storageKey); } catch (err) {
-                _chatHistoryUnreadable = true;
-                _hasReadChatPrimary = false;
-                return [];
+            ensureChatHistoryReady(initial);
+            // Render only verified history after initialization. A temporary welcome
+            // snapshot must never replace a legacy history discovered inside the lock.
+            return snapshot([], null);
+        }
+
+        var chatHistoryInitialization = null;
+        function ensureChatHistoryReady(initial) {
+            if (!chatHistoryInitialization) {
+                const id = String(currentCharacter.id);
+                const atomic = window.ChatHistoryAtomic;
+                chatHistoryInitialization = atomic && atomic.initializeIfAbsent
+                    ? atomic.initializeIfAbsent(id, initial || getInitialMessages()).then(async function (result) {
+                        if (!result.ok) return result;
+                        const prefix = 'chat_stream_checkpoint_' + encodeURIComponent(id) + ':';
+                        const keys = [];
+                        for (let i = 0; i < localStorage.length; i++) {
+                            const key = localStorage.key(i);
+                            if (key && key.startsWith(prefix)) keys.push(key);
+                        }
+                        for (const key of keys) {
+                            let checkpoint;
+                            try { checkpoint = JSON.parse(localStorage.getItem(key)); } catch (error) { continue; }
+                            if (!checkpoint || !checkpoint.message || !checkpoint.message.text) continue;
+                            if (!checkpoint.recoverable) {
+                                if (!checkpoint.owner || !navigator.locks || !navigator.locks.query) continue;
+                                const lockState = await navigator.locks.query();
+                                const ownerAlive = lockState.held.some(lock =>
+                                    lock.name.startsWith('maomao:chat-history-peer:') &&
+                                    lock.name.endsWith(':' + checkpoint.owner));
+                                if (ownerAlive) continue;
+                            }
+                            const message = checkpoint.message;
+                            const recovered = await atomic.appendManyIf(id, [message], function (latest) {
+                                const anchorPresent = checkpoint.anchor
+                                    ? latest.some(item => JSON.stringify(item) === JSON.stringify(checkpoint.anchor))
+                                    : latest.length === 0;
+                                return anchorPresent && !latest.some(item => item && item.turnId === message.turnId && item.mid !== message.mid);
+                            });
+                            if (recovered.ok || (recovered.error && recovered.error.code === 'STALE_CONTEXT')) {
+                                localStorage.removeItem(key);
+                            }
+                        }
+                        setTimeout(function () {
+                            if (currentCharacter && String(currentCharacter.id) === id) renderAllMessages();
+                        }, 0);
+                        return result;
+                    })
+                    : Promise.resolve({ ok: false });
             }
-            return snapshot(initial, initialRaw);
+            return chatHistoryInitialization;
         }
 
         // 失败提示冷却：按错误类型分，60 秒窗口内同类失败只提示一次；成功后重置。
@@ -2987,12 +3015,15 @@
 
         // Async append/replace operations share the per-conversation Web Lock.
         // Never fall back to a stale full-history overwrite when the lock is unavailable.
-        async function appendChatSafely(messages, guard) {
+        async function appendChatSafely(messages, guard, receipt) {
             if (_chatHistoryUnreadable || !_hasReadChatPrimary ||
                 !currentCharacter || storageKey !== 'chat_history_' + currentCharacter.id) {
                 if (typeof showToast === 'function') showToast('会话记录不可安全写入，请刷新后重试');
                 return false;
             }
+            var ready = await ensureChatHistoryReady();
+            if (!ready || !ready.ok) return false;
+            messages.forEach(ensureMid);
             var atomic = window.ChatHistoryAtomic;
             if (!atomic || typeof atomic.appendManyIf !== 'function') {
                 if (typeof showToast === 'function') showToast('浏览器暂不支持安全保存聊天，请更新浏览器');
@@ -3003,6 +3034,7 @@
             try { saved = await atomic.appendManyIf(currentCharacter.id, messages, guard); }
             catch (error) { saved = { ok: false }; }
             _chatHistoryLastWriteMayHavePersisted = !!(saved && saved.meta && saved.meta.writeMayHavePersisted);
+            if (receipt) receipt.writeMayHavePersisted = _chatHistoryLastWriteMayHavePersisted;
             if (!saved || !saved.ok) {
                 if (typeof showToast === 'function') {
                     showToast(saved && saved.meta && saved.meta.writeMayHavePersisted
@@ -3027,6 +3059,8 @@
                 if (typeof showToast === 'function') showToast('会话记录不可安全写入，请刷新后重试');
                 return false;
             }
+            var ready = await ensureChatHistoryReady();
+            if (!ready || !ready.ok) return false;
             var saved;
             _chatHistoryLastWriteMayHavePersisted = false;
             try { saved = await window.ChatHistoryAtomic.replaceIfUnchanged(currentCharacter.id, expected, next); }
@@ -3052,60 +3086,19 @@
             return true;
         }
 
-        function saveMessages(list) {
-            const guardedTurn = singleChatTurnSnapshots.has(list);
-            const expectedPrimary = guardedTurn ? singleChatTurnSnapshots.get(list) : _lastReadChatRaw;
-            if (!Array.isArray(list) || !_hasReadChatPrimary || _chatHistoryUnreadable ||
-                !currentCharacter || storageKey !== 'chat_history_' + currentCharacter.id) {
-                if (typeof showToast === 'function' && _shouldWarnAgain('chat-save')) {
-                    showToast('聊天记录不可安全保存，原记录已保留');
-                }
-                return false;
+        async function saveMessages(list) {
+            const raw = singleChatTurnSnapshots.has(list)
+                ? singleChatTurnSnapshots.get(list) : _lastReadChatRaw;
+            let expected;
+            try {
+                if (raw === null) {
+                    const initialized = await ensureChatHistoryReady();
+                    if (!initialized.ok) return false;
+                    expected = initialized.value;
+                } else expected = JSON.parse(raw);
             }
-            if (guardedTurn && !singleChatTurnIsCurrent(list)) return false;
-            var result = null;
-            var writer = (_storage && _storage.result) || (window.PhoneStorage && window.PhoneStorage.result);
-            if (writer && typeof writer.saveChatHistory === 'function') {
-                try { result = writer.saveChatHistory(currentCharacter.id, list, expectedPrimary); }
-                catch (error) { result = null; }
-            } else {
-                // Compatibility fallback for isolated legacy fixtures only. The live app
-                // loads PhoneStorage.result and uses its expected-primary/readback contract.
-                try {
-                    var before = localStorage.getItem(storageKey);
-                    if (before !== expectedPrimary) {
-                        if (typeof showToast === 'function') showToast('其他窗口更新了聊天记录，请刷新后再操作');
-                        return false;
-                    }
-                    var serialized = JSON.stringify(list);
-                    localStorage.setItem(storageKey, serialized);
-                    result = localStorage.getItem(storageKey) === serialized ? { ok: true } : { ok: false };
-                } catch (error) { result = { ok: false }; }
-            }
-            _chatHistoryLastWriteMayHavePersisted = !!(result && result.meta && result.meta.writeMayHavePersisted);
-            if (result && result.ok && _verifyHistoryRoundTrip(list)) {
-                _chatHistoryLastWriteMayHavePersisted = false;
-                try {
-                    _lastReadChatRaw = localStorage.getItem(storageKey);
-                    _hasReadChatPrimary = true;
-                } catch (error) {
-                    _hasReadChatPrimary = false;
-                    return false;
-                }
-                if (guardedTurn) singleChatTurnSnapshots.set(list, _lastReadChatRaw);
-                _resetWarnCooldown('chat-save');
-                return true;
-            }
-            if (result && result.error && result.error.code === 'CONFLICT') {
-                if (typeof showToast === 'function') showToast('其他窗口更新了聊天记录，本次保存已取消');
-                return false;
-            }
-            if (_shouldWarnAgain('chat-save') && typeof showToast === 'function') {
-                showToast(result && result.meta && result.meta.writeMayHavePersisted
-                    ? '聊天记录写入状态无法确认，请刷新检查原记录'
-                    : '聊天记录未能保存，请检查本地存储空间');
-            }
-            return false;
+            catch (error) { return false; }
+            return replaceChatSafely(expected, list);
         }
 
         function singleChatTurnIsCurrent(list) {
@@ -4224,12 +4217,14 @@
                 }
                 if (!m.mid || !m.time) { ensureMid(m); midAdded = true; }
             });
-            if (midAdded || reasoningRemoved) saveMessages(list);
+
             const cleaned = list.filter(m => {
                 const t = String((m && (m.text || m.content)) || '');
                 return !(t.indexOf('定位失败') !== -1 || t.indexOf('Timeout expired') !== -1);
             });
-            if (cleaned.length !== list.length) saveMessages(cleaned);
+            if (midAdded || reasoningRemoved || cleaned.length !== list.length) {
+                saveMessages(cleaned).catch(function () {});
+            }
             return cleaned.filter(m => {
                 if (window.ChatMessagePolicy && typeof window.ChatMessagePolicy.isHiddenFromOnlineTimeline === 'function') {
                     return !window.ChatMessagePolicy.isHiddenFromOnlineTimeline(m);
@@ -5337,34 +5332,37 @@
         // 在 pagehide 里把它落库为一条 assistant 消息，从而变成未读 + 顶部弹窗，
         // 还原 QQ/微信里"你切出去对方消息照到"的真实感。
         let inflightSnapshot = null;
-        let singleChatPartialSaved = false;
 
-        // 页面被切走（返回列表/刷空间/发动态）时：如果 AI 还在说话，
-        // 把已经流出来的那半截消息立刻落库。localStorage 写入是同步的，
-        // 在页面卸载前一定完成，下一页轮询时就能读到未读 + 弹窗。
-        window.addEventListener('pagehide', function () {
+        // Persist a recoverable journal while the page is alive. pagehide only
+        // marks the existing journal recoverable; it never starts an unawaited lock.
+        let streamCheckpoint = null;
+        function writeStreamCheckpoint() {
+            if (!streamCheckpoint || !inflightSnapshot) return;
+            const message = Object.assign({}, inflightSnapshot, {
+                mid: streamCheckpoint.mid, turnId: streamCheckpoint.mid,
+                role: 'assistant', time: streamCheckpoint.time
+            });
+            message.text = stripInternalReasoning(String(message.text || ''))
+                .replace(/<narratage\b[^>]*>[\s\S]*?(?:<\/narratage\s*>|$)/gi, '')
+                .replace(/<\/?narratage\b[^>]*>/gi, '').trim();
             try {
-                if (!aiSending || !inflightSnapshot || singleChatPartialSaved) return;
-                var raw = String(inflightSnapshot.text || '').trim();
-                if (!raw) return;
-                var cleaned = stripInternalReasoning(raw)
-                    .replace(/<narratage\b[^>]*>[\s\S]*?(?:<\/narratage\s*>|$)/gi, '')
-                    .replace(/<\/?narratage\b[^>]*>/gi, '')
-                    .replace(/\[中译[:：][^\]]{0,800}\]/g, '')
-                    .replace(/\n{3,}/g, '\n\n')
-                    .trim();
-                if (!cleaned) return;
-                var list = loadMessages();
-                list.push({
-                    role: 'assistant',
-                    text: cleaned,
-                    time: Date.now(),
-                    voiceMode: inflightSnapshot.voiceMode || 'online',
-                    name: inflightSnapshot.groupName,
-                    memberId: inflightSnapshot.memberId
-                });
-                if (saveMessages(list) && !isGroupChat) singleChatPartialSaved = true;
-            } catch (e) {}
+                localStorage.setItem(streamCheckpoint.key, JSON.stringify({
+                    message: message, anchor: streamCheckpoint.anchor, owner: window.ChatHistoryAtomic.writerId, recoverable: false
+                }));
+            } catch (error) {
+                if (typeof showToast === 'function') showToast('回复检查点保存失败，请保留当前页面');
+            }
+        }
+        window.addEventListener('pagehide', function () {
+            if (!streamCheckpoint) return;
+            try {
+                const raw = localStorage.getItem(streamCheckpoint.key);
+                if (raw) {
+                    const checkpoint = JSON.parse(raw);
+                    checkpoint.recoverable = true;
+                    localStorage.setItem(streamCheckpoint.key, JSON.stringify(checkpoint));
+                }
+            } catch (error) {}
         });
 
         // 3. 核心真实 AI 聊天发送逻辑 (含历史记录、人设构造与 15 秒超时控制)
@@ -5381,7 +5379,6 @@
                 aiSending = false;
                 singleChatSendPending = false;
                 inflightSnapshot = null;
-                singleChatPartialSaved = false;
             }
         }
 
@@ -6579,7 +6576,13 @@
 
             // R4 渲染回调：交给 PhoneStream 每帧节流调用（正则清洗 + DOM 写入 + 滚动）
             // 引擎已抽离至 shared/js/phone/phone_stream.js（三段式超时/SSE 解析/残留收尾）
-            function paintStreamLive(text) {
+            const checkpointId = 'stream:' + Date.now() + ':' + Math.random().toString(36).slice(2);
+            streamCheckpoint = isRegen ? null : {
+                mid: checkpointId, time: Date.now(),
+                anchor: historyList.length ? JSON.parse(JSON.stringify(historyList[historyList.length - 1])) : null,
+                key: 'chat_stream_checkpoint_' + encodeURIComponent(String(currentCharacter.id)) + ':' + checkpointId
+            };
+            function checkpointStream(text) {
                 // 保留原始累计文本：若流引擎意外抛错，收尾仍可走既有清洗与落库流程。
                 lastPaintedStreamText = typeof text === 'string' ? text : '';
                 // 同步快照，供 pagehide 时把半截消息落库
@@ -6598,6 +6601,9 @@
                     groupName: groupReplyPick ? groupReplyPick.name : undefined,
                     memberId: groupReplyPick && groupReplyPick.id != null ? String(groupReplyPick.id) : undefined
                 };
+                writeStreamCheckpoint();
+            }
+            function paintStreamLive(text) {
                 /* 推理标签可能先于正文到达；在真正有可见聊天文字前，不创建气泡。 */
                 var tmpText = stripInternalReasoning(extractVoiceCallMarker(text).text);
                 tmpText = tmpText
@@ -6656,6 +6662,7 @@
                     temperature: config.temperature != null ? config.temperature : 0.7,
                     maxTokens: config.maxTokens,
                     topP: config.topP,
+                    onCheckpoint: checkpointStream,
                     onPaint: paintStreamLive
                 });
                 if (!streamResult || typeof streamResult !== 'object') {
@@ -6869,7 +6876,7 @@
                     var replyMessages = [];
                     if (fullText && window.ChatMessagePolicy && typeof window.ChatMessagePolicy.buildReplyMessages === 'function') {
                         var replyTurnTime = Date.now();
-                        var replyTurnId = 't' + replyTurnTime + Math.random().toString(36).slice(2, 6);
+                        var replyTurnId = streamCheckpoint ? streamCheckpoint.mid : 't' + replyTurnTime + Math.random().toString(36).slice(2, 6);
                         replyMessages = window.ChatMessagePolicy.buildReplyMessages(fullText, getActiveReplyBubbleMode(), {
                             turnId: replyTurnId,
                             time: replyTurnTime,
@@ -7032,6 +7039,19 @@
                                 try { ChatNotifier.markSeen(aliasRoleId, lastVisibleMessage.time); } catch (e) {}
                             }
                         }
+                        if (streamCheckpoint) {
+                            try {
+                                if (!replySaveFailed) localStorage.removeItem(streamCheckpoint.key);
+                                else {
+                                    const checkpoint = JSON.parse(localStorage.getItem(streamCheckpoint.key));
+                                    if (checkpoint) {
+                                        checkpoint.recoverable = true;
+                                        localStorage.setItem(streamCheckpoint.key, JSON.stringify(checkpoint));
+                                    }
+                                }
+                            } catch (error) {}
+                        }
+                        streamCheckpoint = null;
                         inflightSnapshot = null;
                         // 一轮流式回复可能先生成多个临时节点，收尾时统一移除，再追加已落库消息。
                         for (var sn = 0; sn < streamNodes.length; sn++) {
@@ -7733,8 +7753,8 @@
 
         // 只携带白名单字段，避免把本地状态（mid/status/translation/isError）带过去引发二次余额逻辑
         async function forwardMessage(resolved, targetId, targetName) {
-            var historyStorage = _storage && _storage.result;
-            if (!historyStorage || typeof historyStorage.appendChatHistory !== 'function' || !targetId) {
+            var historyStorage = window.ChatHistoryAtomic;
+            if (!historyStorage || !targetId) {
                 if (typeof showToast === 'function') showToast('目标会话或存储不可用，转发未完成');
                 return;
             }
@@ -7783,7 +7803,8 @@
             }
             ensureMid(fwd);
             // Read the target only after any media await, so intervening messages are included.
-            var saved = historyStorage.appendChatHistory(targetId, fwd);
+            var ready = await historyStorage.initializeIfAbsent(targetId, []);
+            var saved = ready.ok ? await historyStorage.appendIf(targetId, fwd) : ready;
             if (!saved.ok) {
                 var unverified = saved.meta && saved.meta.writeMayHavePersisted;
                 if (linkedImageRef && !unverified) {
@@ -8238,7 +8259,17 @@
         }
 
         // 红包/转账卡片点击：拆红包 / 收款（防重复领取，金额强转数字防字符串拼接）
-        function handlePayCardClick(event) {
+        async function handlePayCardClick(event) {
+            const locks = navigator.locks;
+            if (!locks) { showToast('浏览器无法安全锁定钱包，未收款'); return; }
+            try {
+                await locks.request('maomao-wallet-workData-v1', { mode: 'exclusive' }, async function () {
+                    await new Promise(resolve => setTimeout(resolve, 0));
+                    return handlePayCardClickUnderLock(event);
+                });
+            } catch (error) { showToast('钱包操作失败，请检查交易记录'); }
+        }
+        async function handlePayCardClickUnderLock(event) {
             const cardEl = event && event.currentTarget;
             if (!cardEl) return;
             const mid = cardEl.getAttribute('data-mid') || '';
@@ -8306,7 +8337,7 @@
             if (wd.history.some(function (entry) { return entry && String(entry.paymentId || '') === String(paymentId); })) {
                 var duplicatePreviousStatus = msg.status;
                 msg.status = isRed ? 'opened' : 'received';
-                var duplicateStatusSaved = saveMessages(list);
+                var duplicateStatusSaved = await saveMessages(list);
                 if (!duplicateStatusSaved) msg.status = duplicatePreviousStatus;
                 renderAllMessages();
                 showToast(duplicateStatusSaved
@@ -8346,7 +8377,7 @@
                 }
             }
             msg.status = isRed ? 'opened' : 'received';
-            var chatStatusSaved = saveMessages(list);
+            var chatStatusSaved = await saveMessages(list);
             if (!chatStatusSaved) {
                 statusSnapshots.forEach(function (snapshot) {
                     if (snapshot.status == null) delete snapshot.message.status;
@@ -8931,8 +8962,8 @@
         })();
 
     </script>
-    <script src="js/chat-extras.js?t=20261127snapshot1"></script>
-    <script src="../call/call-overlay.js?v=20261105v1"></script>
+    <script src="js/chat-extras.js?t=20261128atomic2"></script>
+    <script src="../call/call-overlay.js?v=20261128atomic2"></script>
     <script>
     function openNarrationModal() {
         var m = document.createElement('div');

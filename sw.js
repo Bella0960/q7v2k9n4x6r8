@@ -1,7 +1,7 @@
 /* 小手机 PWA Service Worker
  * 静态资源和公开登录页可缓存；受保护页面每次经 Worker 校验。
  */
-const CACHE_NAME = 'phone-app-pwa-v211';
+const CACHE_NAME = 'phone-app-pwa-v212';
 const FONT_ASSET_CACHE = 'maomao-font-assets-v1';
 // v196 release: sweep orphaned role-owned media refs during avatar cleanup.
 const APP_SHELL = [
@@ -66,7 +66,7 @@ const APP_SHELL = [
   './chat/date/journey.html',
   './chat/chat/chat-detail.html',
   './chat/chat/chat-settings.html',
-  './chat/chat/js/chat-extras.js?t=20261127snapshot1',
+  './chat/chat/js/chat-extras.js?t=20261128atomic2',
   './worldbook/characters/characters.html',
   './worldbook/characters/js/characters-manager.js?v=20261107v11',
   './travel/dream-travel.html',
@@ -92,7 +92,7 @@ const APP_SHELL = [
   'shared/js/font-loader.js',
   'shared/js/native-feel.js',
   'shared/js/phone/phone_storage.js',
-  './shared/js/phone/chat-history-atomic.js?v=20261118v3',
+  './shared/js/phone/chat-history-atomic.js?v=20261128atomic2',
   './shared/js/phone/phone_context.js?v=20261102npc1',
   'shared/js/phone/chat-message-policy.js?v=20261029v5',
   './shared/js/phone/chat-image-vision.js?v=20261113v1',
@@ -103,7 +103,7 @@ const APP_SHELL = [
   './shared/js/phone/role-public-timeline.js?v=20261102v1',
   './shared/js/phone/group-chat-policy.js?v=20261102v5',
   './shared/js/phone/chat-followup-policy.js?v=20261102v1',
-  'shared/js/phone/phone_stream.js',
+  'shared/js/phone/phone_stream.js?v=20261128atomic2',
   'shared/js/phone/memory_recall.js?v=20261127group1',
   'shared/js/phone/memory_space_v2.js?v=20261024v1',
   './shared/js/chat-notifier.js?v=20261102v3',

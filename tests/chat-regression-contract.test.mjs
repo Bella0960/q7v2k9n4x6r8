@@ -1014,20 +1014,15 @@ test('shared policy is loaded by both relevant pages and precached for PWA', () 
   assert.ok(contractFiles.includes('tests/role-gallery-image-autonomy.test.mjs'));
 });
 
-test('chat detail retains the legacy load/save entry points and role-scoped storage', () => {
+test('chat detail keeps role-scoped reads and uses locked conditional saves', () => {
   assert.match(detail, /function loadMessages\(trackSnapshot = false\)/);
-  assert.match(detail, /function saveMessages\(list\)/);
-  assert.match(detail, /_storage\.getChatHistory\(currentCharacter\.id\)/);
-  // 主写入必须带上读取基线：PhoneStorage 以此做 expected-primary 冲突检测。
-  assert.match(detail, /saveChatHistory\(currentCharacter\.id, list, expectedPrimary\)/);
-  assert.match(detail, /localStorage\.getItem\(storageKey\)/);
-  assert.match(detail, /localStorage\.setItem\(storageKey, serialized\)/);
-  const saveStart = detail.indexOf('function saveMessages(list)');
-  const saveEnd = detail.indexOf('function singleChatTurnIsCurrent', saveStart);
-  assert.ok(saveStart >= 0 && saveEnd > saveStart);
-  const save = detail.slice(saveStart, saveEnd);
-  assert.match(save, /if \(!Array\.isArray\(list\) \|\| !_hasReadChatPrimary \|\| _chatHistoryUnreadable \|\|[\s\S]*?return false;/);
-  assert.match(save, /if \(result && result\.ok && _verifyHistoryRoundTrip\(list\)\) \{[\s\S]*?return true;/);
+  assert.match(detail, /async function saveMessages\(list\)/);
+  assert.match(detail, /initializeIfAbsent\(id, initial/);
+  const start = detail.indexOf('async function saveMessages(list)');
+  const save = detail.slice(start, detail.indexOf('function singleChatTurnIsCurrent', start));
+  assert.match(save, /singleChatTurnSnapshots.get\(list\)/);
+  assert.match(save, /replaceChatSafely\(expected, list\)/);
+  assert.doesNotMatch(save, /setItem|saveChatHistory/);
 });
 
 test('online rendering and search preserve date/silent filtering and error exclusion', () => {
@@ -1108,7 +1103,7 @@ test('memory marker parsing and weighted memory semantics remain present', () =>
 
 test('chat extras keeps its current bridge dependency until a replacement is migrated', () => {
   for (const symbol of [
-    'loadMessages', 'saveMessages', 'appendMessageToDOM', 'sendMsg',
+    'loadMessages', 'appendChatSafely', 'replaceChatSafely', 'appendMessageToDOM', 'sendMsg',
     'showToast', 'currentCharacter', 'chatMessages'
   ]) {
     assert.ok(extras.includes(symbol), `chat-extras bridge symbol missing: ${symbol}`);
@@ -1124,15 +1119,15 @@ test('offline date mode shares the existing history key and marks scene messages
   assert.match(date, /_storage\.getChatHistory\(roleId\)/);
   assert.match(date, /_storage\.saveChatHistory\(roleId, list\)/);
   assert.match(journey, /var historyKey = 'chat_history_' \+ roleId/);
-  assert.match(journey, /storage\.appendChatHistory\(roleId, entry\)/);
+  assert.match(journey, /await storage\.appendIf\(roleId, entry\)/);
   assert.match(journey, /if\(!saved \|\| !saved\.ok\)[\s\S]*?return false;/);
   assert.match(journey, /String\(message\.journeyId\|\|''\)===journeyId/);
   assert.doesNotMatch(journey, /(?:localStorage\.setItem\(historyKey|saveHistory\(list\))/);
   assert.doesNotMatch(journey, /PhoneStorage\.saveChatHistory\(/);
 });
 
-test('journey stage retries failed writes and resumes without duplicating saved history', () => {
-  const begin = journey.indexOf('  function appendJourneyMessage(');
+test('journey stage retries failed writes and resumes without duplicating saved history', async () => {
+  const begin = journey.indexOf('  async function appendJourneyMessage(');
   const end = journey.indexOf('  var storageWarned', begin);
   const rows = [];
   const state = { startedAt: 123, scene: 'fixture', sentStages: [] };
@@ -1140,19 +1135,19 @@ test('journey stage retries failed writes and resumes without duplicating saved 
   const context = {
     state, roleId: 'role-a', fallbackMessages: ['fixture'], stages: [{ at: 0 }],
     loadHistory: () => rows.slice(), saveState() {}, showStorageWarning() {},
-    window: { PhoneStorage: { result: { appendChatHistory(id, entry) {
+    window: { ChatHistoryAtomic: { initializeIfAbsent: async () => ({ ok: true }), appendIf: async function(id, entry) {
       assert.equal(id, 'role-a');
       if (allowWrite) rows.push(entry);
       return { ok: allowWrite };
-    } } } },
+    } } },
   };
   runInNewContext(journey.slice(begin, end), context);
-  assert.equal(context.appendJourneyMessage(0), false);
+  assert.equal(await context.appendJourneyMessage(0), false);
   assert.equal(state.sentStages.length, 0);
   allowWrite = true;
-  assert.equal(context.appendJourneyMessage(0), true);
+  assert.equal(await context.appendJourneyMessage(0), true);
   state.sentStages.length = 0;
-  assert.equal(context.appendJourneyMessage(0), true);
+  assert.equal(await context.appendJourneyMessage(0), true);
   assert.equal(rows.length, 1);
   assert.equal(rows[0].journeyId, '123');
   assert.equal(rows[0].journeyStage, 0);
@@ -1451,7 +1446,7 @@ test('chat detail persists voice habits per character and per group session with
   assert.match(detail, /maxMessages: 80/);
   assert.match(detail, /var presenceMode = isGroupChat/);
   assert.match(detail, /voiceMode: presenceMode \|\| 'online'/);
-  assert.match(detail, /voiceMode: inflightSnapshot\.voiceMode \|\| 'online'/);
+  assert.match(detail, /Object\.assign\(\{\}, inflightSnapshot/);
   assert.match(detail, /localStorage\.removeItem\(voiceProfileKey\)/);
   assert.match(detail, /buildVoiceHabitPrompt\(voiceHabitProfile\)/);
   assert.match(detail, /buildEmotionContinuityPrompt/);
@@ -2421,7 +2416,7 @@ test('chat detail: a failed AI reply save leaves copyable on-screen text but not
 
 test('chat detail: payment ledger success is independent from chat-card status persistence', () => {
   assert.match(detail, /if \(!saveWorkData\(wd\)\) return/);
-  assert.match(detail, /var chatStatusSaved = saveMessages\(list\)/);
+  assert.match(detail, /var chatStatusSaved = await saveMessages\(list\)/);
   assert.match(detail, /款项已入账，但聊天卡片状态没有保存/);
   assert.match(detail, /duplicateStatusSaved\s*\? '这笔款项已经入账'/);
   assert.match(detail, /msg\.status = isRed \? 'opened' : 'received'/);
@@ -2550,8 +2545,8 @@ test('group turn effects settle once and undo staged changes in reverse order', 
   assert.deepEqual(observed, ['second', 'first', 'private']);
 });
 
-test('chat extras: plus-menu cards persist only with a versioned history snapshot', () => {
-  const start = extras.indexOf('  function insertChatMessage(msg) {');
+test('chat extras: plus-menu cards persist only through locked append', async () => {
+  const start = extras.indexOf('  async function insertChatMessage(msg) {');
   const end = extras.indexOf('\n  // 隐藏指令', start);
   assert.ok(start >= 0 && end > start, 'extension message insertion helper must exist');
   const history = [{ mid: 'existing', text: '已保存的旧消息' }];
@@ -2567,10 +2562,10 @@ test('chat extras: plus-menu cards persist only with a versioned history snapsho
       if (!message.mid) message.mid = 'test-mid-' + (++midSequence);
       return message.mid;
     },
-    saveMessages: (messages) => {
-      attempts.push({ sameSnapshot: messages === history, copy: JSON.parse(JSON.stringify(messages)) });
-      // The real saveMessages rejects copied arrays which lost their version baseline.
-      return trackedSnapshots.has(messages) && allowWrite;
+    appendChatSafely: async (messages) => {
+      attempts.push({ copy: JSON.parse(JSON.stringify(messages)) });
+      if (allowWrite) history.push(...messages);
+      return allowWrite;
     },
     appendMessageToDOM: (message) => rendered.push(message),
     showToast: (message) => toasts.push(message),
@@ -2582,31 +2577,31 @@ test('chat extras: plus-menu cards persist only with a versioned history snapsho
   );
 
   const card = { role: 'user', type: 'location', location: { label: '公园' } };
-  assert.equal(sandbox.insertExtensionMessage(card), false);
+  assert.equal(await sandbox.insertExtensionMessage(card), false);
   assert.equal(history.length, 1, 'failed save must roll back the versioned snapshot');
-  assert.equal(attempts[0].sameSnapshot, true, 'save must receive the exact tracked array');
-  assert.equal(attempts[0].copy.length, 2, 'save attempt included the previous conversation');
+  assert.equal(attempts[0].copy.length, 1, 'append submits only the new card');
+  assert.equal(attempts[0].copy[0].mid, card.mid);
   assert.equal(rendered.length, 0, 'failed card must not be displayed as delivered');
   assert.match(toasts[0], /保存失败.*未发送/);
   assert.equal(sandbox.chatMessages.scrollTop, 0);
 
   allowWrite = true;
-  assert.equal(sandbox.insertExtensionMessage(card), true);
+  assert.equal(await sandbox.insertExtensionMessage(card), true);
   assert.equal(history.length, 2, 'a successful card is committed once');
   assert.equal(rendered.length, 1, 'a successful save displays exactly one card');
-  assert.equal(attempts[1].sameSnapshot, true);
-  assert.equal(attempts[1].copy[1].mid, card.mid, 'the stable bubble ID is stored before DOM rendering');
+
+  assert.equal(attempts[1].copy[0].mid, card.mid, 'the stable bubble ID is stored before DOM rendering');
   assert.equal(sandbox.chatMessages.scrollTop, 120);
 
   // Even a throwing store must not create phantom gift/voice/location cards.
-  sandbox.saveMessages = () => { throw new Error('storage blocked'); };
-  assert.equal(sandbox.insertExtensionMessage({ role: 'user', type: 'gift' }), false);
+  sandbox.appendChatSafely = () => { throw new Error('storage blocked'); };
+  assert.equal(await sandbox.insertExtensionMessage({ role: 'user', type: 'gift' }), false);
   assert.equal(rendered.length, 1, 'thrown write errors must not render an extra card');
   assert.equal(history.length, 2, 'thrown writes must restore the previous in-memory history');
 
   // Stale-tab optimistic concurrency rejection must also roll back its message.
-  sandbox.saveMessages = () => false;
-  assert.equal(sandbox.insertExtensionMessage({ role: 'user', type: 'voice' }), false);
+  sandbox.appendChatSafely = () => false;
+  assert.equal(await sandbox.insertExtensionMessage({ role: 'user', type: 'voice' }), false);
   assert.equal(history.length, 2);
   assert.equal(rendered.length, 1);
 });
@@ -2646,10 +2641,12 @@ test('chat extras: image batches retain the versioned history, roll back errors 
     compressChatImage: async (file) => file,
     imageMessageId: () => 'image-mid-' + (++sequence),
     loadMessages: () => history,
-    saveMessages: (list) => {
-      attempts.push({ tracked: baseline.has(list), ids: list.map(msg => msg.mid) });
+    _chatHistoryLastWriteMayHavePersisted: false,
+    appendChatSafely: async (list) => {
+      attempts.push({ tracked: list.every(message => !history.includes(message)), ids: list.map(msg => msg.mid) });
       if (throwOnWrite) throw new Error('storage quota blocked');
-      return baseline.has(list) && writeAllowed;
+      if (writeAllowed) history.push(...list);
+      return writeAllowed;
     },
     renderAllMessages: () => renders.push('rendered'),
     sendSilentInstruction: (text, mids) => aiCalls.push({ text, mids: Array.from(mids) }),
@@ -2663,8 +2660,8 @@ test('chat extras: image batches retain the versioned history, roll back errors 
 
   await sandbox.sendImageBatch([image('one.jpg'), image('two.jpg')]);
   assert.equal(attempts.length, 1);
-  assert.equal(attempts[0].tracked, true, 'copying history loses the storage baseline');
-  assert.equal(attempts[0].ids.length, 3, 'two images are included in the save attempt');
+  assert.equal(attempts[0].tracked, true, 'batch submits fresh messages through the append writer');
+  assert.equal(attempts[0].ids.length, 2, 'two images are included in the save attempt');
   assert.equal(history.length, 1, 'failed save must not mutate the visible history');
   assert.equal(renders.length, 0, 'unsaved images must not appear in chat');
   assert.equal(aiCalls.length, 0, 'AI must not see unsaved images');
@@ -2687,7 +2684,16 @@ test('chat extras: image batches retain the versioned history, roll back errors 
   assert.equal(history.length, 2, 'throwing save must roll back only the new image');
   assert.equal(renders.length, 1);
   assert.equal(aiCalls.length, 1);
-  assert.equal(cleanup.filter(item => item.op === 'ref').length, 3);
+  assert.equal(cleanup.filter(item => item.op === 'ref').length, 2, 'uncertain throws retain possibly referenced images');
+  const releasedBefore = cleanup.length;
+  sandbox.appendChatSafely = async (_messages, _guard, receipt) => {
+    receipt.writeMayHavePersisted = true;
+    return false;
+  };
+  await sandbox.sendImageBatch([image('uncertain.jpg')]);
+  assert.equal(cleanup.length, releasedBefore, 'uncertain writes must retain media references');
+  assert.equal(renders.length, 1, 'uncertain images are not shown as delivered');
+
 });
 
 test('chat plus-menu forward reuses the canonical target resolver and atomic append', async () => {
@@ -2750,7 +2756,10 @@ test('chat plus-menu forward reuses the canonical target resolver and atomic app
     escapeHtml: (text) => String(text),
     document: { getElementById: (id) => id === 'forwardCopy' ? copyButton : null },
     navigator: { clipboard: { writeText: async () => {} } },
-    window: { prompt: () => {} },
+    window: { prompt: () => {}, ChatHistoryAtomic: {
+      initializeIfAbsent: async () => ({ ok: true }),
+      appendIf: async (id, msg) => context._storage.result.appendChatHistory(id, msg)
+    } },
     Date, String, Array
   };
   runInNewContext(
@@ -2845,27 +2854,27 @@ test('chat plus-menu script is refreshed in the page and PWA together', async ()
 });
 
 test('chat extras: every extension card send gates AI dispatch on successful persistence', () => {
-  const helperStart = extras.indexOf('  function insertChatMessage(msg) {');
+  const helperStart = extras.indexOf('  async function insertChatMessage(msg) {');
   const helperEnd = extras.indexOf('\n  // 隐藏指令', helperStart);
   assert.ok(helperStart >= 0 && helperEnd > helperStart);
   const callers = extras.slice(helperEnd);
   const writes = [...callers.matchAll(/\binsertChatMessage\(/g)];
   assert.ok(writes.length >= 13, 'must inspect all existing extension-card send paths');
   for (const item of writes) {
-    assert.equal(callers.slice(item.index - 5, item.index), 'if (!',
+    assert.equal(callers.slice(item.index - 11, item.index), 'if (!await ',
       'an extension card call must return early before any downstream AI dispatch when unsaved');
   }
   const callStart = callers.indexOf('function consumeCallResult()');
   const callEnd = callers.indexOf("window.addEventListener('load', consumeCallResult)", callStart);
   assert.ok(callStart >= 0 && callEnd > callStart);
   const deferredCall = callers.slice(callStart, callEnd);
-  const saveGate = deferredCall.indexOf("if (!insertChatMessage({ role: 'user', type: 'call'");
+  const saveGate = deferredCall.indexOf("if (!await insertChatMessage(record))");
   const clearPending = deferredCall.indexOf('sessionStorage.removeItem(key)');
   assert.ok(saveGate >= 0 && clearPending > saveGate,
     'pending call result must only be cleared after successful message persistence');
 });
 
-test('chat extras: outgoing payment ledger reconciles chat write failure and page reload', () => {
+test('chat extras: outgoing payment ledger reconciles chat write failure and page reload', async () => {
   const start = extras.indexOf('  // A wallet debit and a chat card');
   const end = extras.indexOf("  if (payConfirmBtn) payConfirmBtn.addEventListener('click', submitPayMessage)", start);
   assert.ok(start >= 0 && end > start, 'outgoing payment code must remain independently testable');
@@ -2897,7 +2906,9 @@ test('chat extras: outgoing payment ledger reconciles chat write failure and pag
         return true;
       },
       loadMessages: () => history,
-      saveMessages: (next) => {
+      saveMessages: () => { throw new Error('legacy writer forbidden'); },
+      appendChatSafely: async (messages) => {
+        const next = history.concat(messages);
         effects.chatWrites.push(next);
         if (options.chatSave === 'fail') return false;
         history = next;
@@ -2929,7 +2940,7 @@ test('chat extras: outgoing payment ledger reconciles chat write failure and pag
   }
 
   const success = fixture();
-  success.actions.submitPayMessage();
+  await success.actions.submitPayMessage();
   const successfulWallet = success.wallet();
   const successfulCard = success.history()[1];
   assert.equal(successfulWallet.balance, 954.5);
@@ -2943,7 +2954,7 @@ test('chat extras: outgoing payment ledger reconciles chat write failure and pag
   assert.equal(success.effects.closes, 1);
 
   const failedChat = fixture({ chatSave: 'fail' });
-  failedChat.actions.submitPayMessage();
+  await failedChat.actions.submitPayMessage();
   assert.equal(failedChat.wallet().balance, 1000, 'refund balances the failed debit');
   assert.equal(failedChat.wallet().history[0].status, 'reversed');
   assert.equal(failedChat.history().length, 1);
@@ -2955,14 +2966,14 @@ test('chat extras: outgoing payment ledger reconciles chat write failure and pag
   assert.equal(failedChat.wallet().balance, 1000, 'a repeated compensation must not refund twice');
 
   const noDebit = fixture({ failDebit: true });
-  noDebit.actions.submitPayMessage();
+  await noDebit.actions.submitPayMessage();
   assert.equal(noDebit.wallet().balance, 1000);
   assert.equal(noDebit.wallet().history.length, 0);
   assert.equal(noDebit.effects.chatWrites.length, 0, 'no card before a verified debit');
   assert.equal(noDebit.effects.ai.length, 0);
 
   const uncertain = fixture({ chatSave: 'written-but-unverified' });
-  uncertain.actions.submitPayMessage();
+  await uncertain.actions.submitPayMessage();
   assert.equal(uncertain.wallet().balance, 954.5);
   assert.equal(uncertain.wallet().history[0].status, 'sent');
   assert.equal(uncertain.history().length, 2);
@@ -2970,11 +2981,11 @@ test('chat extras: outgoing payment ledger reconciles chat write failure and pag
   assert.equal(uncertain.effects.closes, 0, 'do not claim successful delivery');
 
   const recover = fixture({ chatSave: 'fail', failRefund: true });
-  recover.actions.submitPayMessage();
+  await recover.actions.submitPayMessage();
   assert.equal(recover.wallet().balance, 954.5);
   assert.equal(recover.wallet().history[0].status, 'pending-chat');
   assert.equal(recover.effects.ai.length, 0);
-  recover.actions.submitPayMessage();
+  await recover.actions.submitPayMessage();
   assert.equal(recover.wallet().history.length, 1, 'no second debit while payment is pending');
 
   const otherEntry = {
@@ -2987,39 +2998,39 @@ test('chat extras: outgoing payment ledger reconciles chat write failure and pag
   recover.storeWallet(beforeRecovery);
   recover.allowRefund();
   recover.advance(121000);
-  recover.actions.recoverOutgoingPayments();
+  await recover.actions.recoverOutgoingPayments();
   assert.equal(recover.wallet().balance, 995, 'only current role payment is refunded');
   assert.equal(recover.wallet().history[0].status, 'reversed');
   assert.equal(recover.wallet().history[1].status, 'pending-chat', 'other role remains untouched');
-  recover.actions.recoverOutgoingPayments();
+  await recover.actions.recoverOutgoingPayments();
   assert.equal(recover.wallet().balance, 995, 'reopening cannot refund the same payment again');
 
   const corruptedChat = fixture({ chatSave: 'fail' });
   corruptedChat.storeChatRaw('{invalid-json');
-  corruptedChat.actions.submitPayMessage();
+  await corruptedChat.actions.submitPayMessage();
   assert.equal(corruptedChat.wallet().balance, 954.5);
   assert.equal(corruptedChat.wallet().history[0].status, 'pending-chat',
     'unreadable history cannot prove the card is absent, so no automatic refund');
   assert.equal(corruptedChat.effects.ai.length, 0);
   corruptedChat.advance(121000);
-  corruptedChat.actions.recoverOutgoingPayments();
+  await corruptedChat.actions.recoverOutgoingPayments();
   assert.equal(corruptedChat.wallet().balance, 954.5, 'reload must not refund unreadable history');
   assert.equal(corruptedChat.wallet().history[0].status, 'pending-chat');
   assert.match(corruptedChat.effects.toasts.at(-1), /聊天记录无法核实/);
 
   const brokenWallet = fixture();
   brokenWallet.storeWalletRaw('{invalid-wallet');
-  brokenWallet.actions.submitPayMessage();
+  await brokenWallet.actions.submitPayMessage();
   assert.equal(brokenWallet.effects.chatWrites.length, 0, 'never send a card against corrupt wallet data');
   assert.equal(brokenWallet.effects.walletWrites.length, 0, 'never overwrite damaged wallet data with a default');
   assert.equal(brokenWallet.effects.ai.length, 0);
   assert.match(brokenWallet.effects.toasts.at(-1), /钱包数据损坏/);
-  brokenWallet.actions.recoverOutgoingPayments();
+  await brokenWallet.actions.recoverOutgoingPayments();
   assert.match(brokenWallet.effects.toasts.at(-1), /自动恢复已暂停/);
 
   const invalidBalance = fixture();
   invalidBalance.storeWalletRaw(JSON.stringify({ balance: '1000', history: [] }));
-  invalidBalance.actions.submitPayMessage();
+  await invalidBalance.actions.submitPayMessage();
   assert.equal(invalidBalance.effects.walletWrites.length, 0, 'string-valued balance must not authorize debit');
   assert.equal(invalidBalance.effects.chatWrites.length, 0);
 });
@@ -3057,7 +3068,8 @@ test('chat extras: two tabs cannot debit the same shared wallet concurrently', a
       getWorkData: () => JSON.parse(stored.get('workData')),
       saveWorkData: (wallet) => { stored.set('workData', JSON.stringify(wallet)); return true; },
       loadMessages: () => history,
-      saveMessages: (next) => { history = next; return true; },
+      saveMessages: () => { throw new Error('legacy writer forbidden'); },
+      appendChatSafely: async (messages) => { history = history.concat(messages); return true; },
       closePayDrawer: () => {},
       renderAllMessages: () => { rendered.push(id); },
       sendSilentInstruction: () => { responses.push(id); },
@@ -3103,4 +3115,33 @@ test('chat extras: unsupported lock mechanism fails closed before wallet writes'
   assert.equal(writes, 0);
   assert.equal(ai, 0);
   assert.match(messages[0], /无法安全锁定钱包/);
+});
+
+test('pending call-result retry keeps its mid and timestamp after an uncertain append', async () => {
+  const start = extras.indexOf('  async function consumeCallResult()');
+  const end = extras.indexOf("  window.addEventListener('load', consumeCallResult)", start);
+  const values = new Map([['call_result_role-a', JSON.stringify({ type: 'voice', connected: true, duration: 4 })]]);
+  const records = new Map();
+  let allowConfirmation = false;
+  let sequence = 0;
+  const sandbox = {
+    currentCharacter: { id: 'role-a' },
+    sessionStorage: { getItem: key => values.get(key) || null, setItem: (key, value) => values.set(key, value), removeItem: key => values.delete(key) },
+    formatCallDuration: () => '00:04',
+    ensureMid: record => record.mid ||= 'call-' + (++sequence),
+    showToast: () => {},
+    insertChatMessage: async record => {
+      const saved = records.get(record.mid);
+      if (saved) assert.equal(JSON.stringify(record), saved);
+      records.set(record.mid, JSON.stringify(record));
+      return allowConfirmation;
+    }
+  };
+  runInNewContext(extras.slice(start, end), sandbox);
+  await sandbox.consumeCallResult();
+  assert.ok(values.has('call_result_role-a'));
+  allowConfirmation = true;
+  await sandbox.consumeCallResult();
+  assert.equal(records.size, 1);
+  assert.equal(values.has('call_result_role-a'), false);
 });

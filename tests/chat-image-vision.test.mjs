@@ -303,6 +303,10 @@ test('forwarding an asset-backed chat image adds a destination chat reference', 
       return { ok: true };
     } } },
   };
+  context.window = { ChatHistoryAtomic: {
+    initializeIfAbsent: async () => ({ ok: true }),
+    appendIf: async (id, message) => context._storage.result.appendChatHistory(id, message)
+  } };
   runInNewContext(chatDetailSource.slice(start, end), context);
   const image = { type: 'image', assetId: 'fixture-image', text: 'fixture' };
   const resolved = { message: image, text: image.text, count: 1 };

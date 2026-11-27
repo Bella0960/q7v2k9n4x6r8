@@ -469,7 +469,7 @@
       mini.hidden = false;
     }
 
-    function addCallRecord() {
+    async function addCallRecord() {
       var visibleMessages = currentMessages();
       var record = {
         role: 'user',
@@ -493,7 +493,7 @@
         var history = readHistory();
         // Never mutate a potentially shared history array before persistence succeeds.
         var next = Array.isArray(history) ? history.concat([record]) : null;
-        if (!next || typeof saveMessages !== 'function' || saveMessages(next) !== true) {
+        if (!next || typeof appendChatSafely !== 'function' || !await appendChatSafely([record])) {
           if (typeof showToast === 'function') showToast('通话已结束，但通话记录保存失败');
           return false;
         }
@@ -519,7 +519,9 @@
       if (connectTimer) global.clearTimeout(connectTimer);
       if (tickTimer) global.clearInterval(tickTimer);
       duration = connected ? Math.max(0, Math.floor((Date.now() - connectedAt) / 1000)) : 0;
-      addCallRecord();
+      addCallRecord().catch(function () {
+        if (typeof showToast === 'function') showToast('通话记录保存失败');
+      });
       layer.remove();
       mini.remove();
       global.document.removeEventListener('keydown', onKeydown);

@@ -198,6 +198,9 @@
                     var delta = json.choices && json.choices[0] && json.choices[0].delta && json.choices[0].delta.content;
                     if (typeof delta === 'string' && delta) {
                         fullText += delta;
+                        // Optional synchronous journal checkpoint, independent of background
+                        // requestAnimationFrame throttling. History commits remain caller-owned.
+                        if (typeof opts.onCheckpoint === 'function') opts.onCheckpoint(fullText);
                         schedulePaint();
                     }
                 };

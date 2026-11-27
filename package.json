@@ -54,7 +54,8 @@
     "eng:register": "node scripts/engineering-qa-queue.mjs register",
     "eng:batch:auto": "node scripts/engineering-qa-queue.mjs assemble",
     "test:chat:storage": "node --test tests/chat-phone-storage-primary-guard.test.mjs",
-    "test:chat:atomic": "node --test tests/chat-history-atomic.test.mjs"
+    "test:chat:atomic": "node --test tests/chat-history-atomic.test.mjs",
+    "test:chat:atomic:browser": "node tests/chat-atomic-multipage.browser.mjs"
   },
   "devDependencies": {
     "playwright": "^1.64.1",

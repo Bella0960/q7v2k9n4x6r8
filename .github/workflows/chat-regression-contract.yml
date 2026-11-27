@@ -54,6 +54,8 @@ jobs:
         run: |
           npm run test:chat:reply
           npm run test:chat:bubbles
+          npm run test:chat:atomic
+          npm run test:chat:atomic:browser
           npm run test:chat:contract
           npm run test:desktop:layout
           npm run test:bugfix:blockers

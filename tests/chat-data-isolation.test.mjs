@@ -26,7 +26,8 @@ const shakePageSource = read('chat/shake/shake.html');
 
 function extractFunction(source, name) {
   const marker = 'function ' + name + '(';
-  const start = source.indexOf(marker);
+  let start = source.indexOf(marker);
+  if (source.slice(start - 6, start) === 'async ') start -= 6;
   if (start < 0) throw new Error('未找到函数：' + name);
   let depth = 0;
   let started = false;
@@ -431,6 +432,16 @@ function loadHistoryFunctions(storageSlots) {
       return 'chat_history_' + (sandbox.currentCharacter && sandbox.currentCharacter.id);
     }
   });
+  for (const [id, list] of Object.entries(storageSlots)) {
+    localStorage.setItem('chat_history_' + id, JSON.stringify(list));
+  }
+  sandbox.ensureChatHistoryReady = async () => ({ ok: true, value: [] });
+  sandbox.replaceChatSafely = async (expected, next) => {
+    const id = sandbox.currentCharacter.id;
+    const actual = JSON.parse(localStorage.getItem('chat_history_' + id) || '[]');
+    if (JSON.stringify(actual) !== JSON.stringify(expected)) return false;
+    return sandbox._storage.result.saveChatHistory(id, next).ok;
+  };
   const code = ['_messageIdentity', '_readBackHistory', '_verifyHistoryRoundTrip', 'loadMessages', 'saveMessages']
     .map((name) => extractFunction(chatDetailSource, name))
     .join('\n');
@@ -438,7 +449,7 @@ function loadHistoryFunctions(storageSlots) {
   return sandbox;
 }
 
-test('名片：卡片快照只写入当前会话历史，不在其他会话出现', () => {
+test('名片：卡片快照只写入当前会话历史，不在其他会话出现', async () => {
   const slots = {};
   const sandbox = loadHistoryFunctions(slots);
   const card = {
@@ -452,13 +463,13 @@ test('名片：卡片快照只写入当前会话历史，不在其他会话出�
   sandbox.currentCharacter = { id: 'roleA' };
   const listA = sandbox.loadMessages();
   listA.push(card);
-  assert.equal(sandbox.saveMessages(listA), true);
+  assert.equal(await sandbox.saveMessages(listA), true);
   // 读回值来自隔离 VM realm，先转成本 realm 再比对结构。
   assert.deepEqual(JSON.parse(JSON.stringify(sandbox.loadMessages())), [card]);
   assert.match(JSON.stringify(slots.roleA), /卡片甲/);
 
   sandbox.currentCharacter = { id: 'roleB' };
-  assert.deepEqual(sandbox.loadMessages(), []);
+  assert.deepEqual(JSON.parse(JSON.stringify(sandbox.loadMessages())), []);
   assert.equal(JSON.stringify(slots.roleB || []).includes('卡片甲'), false);
   // 首次读取会初始化一个空主键（新行为）；关键是 roleB 不得含 roleA 的卡片快照。
   const roleBRaw = sandbox.localStorage.getItem('chat_history_roleB');
@@ -817,6 +828,10 @@ function loadJourneyMessageWriter(storage, saved = []) {
       return JSON.parse(JSON.stringify(persisted));
     }
   } : null;
+  sandbox.window.ChatHistoryAtomic = storage ? {
+    initializeIfAbsent: async () => ({ ok: true }),
+    appendIf: async (id, entry) => sandbox.window.PhoneStorage.result.appendChatHistory(id, entry)
+  } : null;
   const source = extractFunction(journeyPageSource, 'appendJourneyMessage') + '\nappendJourneyMessage;';
   const append = runInNewContext(source, sandbox, { filename: 'chat/date/journey.html#appendJourneyMessage' });
   return {
@@ -829,7 +844,7 @@ function loadJourneyMessageWriter(storage, saved = []) {
   };
 }
 
-test('赴约行程：阶段消息写入失败时不标记已发送，并在下一帧重试', () => {
+test('赴约行程：阶段消息写入失败时不标记已发送，并在下一帧重试', async () => {
   let allowSave = false;
   const writer = loadJourneyMessageWriter({
     saveChatHistory(id, list, persist) {
@@ -840,13 +855,13 @@ test('赴约行程：阶段消息写入失败时不标记已发送，并在下�
     }
   });
 
-  writer.append(0);
+  await writer.append(0);
   assert.deepEqual(writer.state.sentStages, [], '失败时不能写入 sentStages');
   assert.equal(writer.read().length, 0);
   assert.equal(writer.warnings, 1);
 
   allowSave = true;
-  writer.append(0);
+  await writer.append(0);
   assert.deepEqual(writer.state.sentStages, [0]);
   assert.equal(writer.read().length, 1);
   assert.equal(writer.read()[0].mode, 'journey');
@@ -854,7 +869,7 @@ test('赴约行程：阶段消息写入失败时不标记已发送，并在下�
   assert.equal(writer.attempts, 2);
 });
 
-test('赴约行程：历史中已存在相同 journeyId/stage 时不重复插入', () => {
+test('赴约行程：历史中已存在相同 journeyId/stage 时不重复插入', async () => {
   const existing = [{
     role: 'assistant',
     type: 'text',
@@ -871,7 +886,7 @@ test('赴约行程：历史中已存在相同 journeyId/stage 时不重复插入
     }
   }, existing);
 
-  writer.append(0);
+  await writer.append(0);
   assert.equal(writer.read().length, 1);
   assert.deepEqual(writer.state.sentStages, [0]);
   assert.equal(writer.attempts, 0);
