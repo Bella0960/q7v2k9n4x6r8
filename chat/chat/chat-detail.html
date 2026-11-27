@@ -2838,6 +2838,7 @@
         var _chatHistoryUnreadable = false;
         var _lastReadChatRaw = null;
         var _hasReadChatPrimary = false;
+        var _chatHistoryLastWriteMayHavePersisted = false;
         const singleChatTurnSnapshots = new WeakMap();
         function loadMessages(trackSnapshot = false) {
             function snapshot(list, raw) {
@@ -2998,8 +2999,10 @@
                 return false;
             }
             var saved;
+            _chatHistoryLastWriteMayHavePersisted = false;
             try { saved = await atomic.appendManyIf(currentCharacter.id, messages, guard); }
             catch (error) { saved = { ok: false }; }
+            _chatHistoryLastWriteMayHavePersisted = !!(saved && saved.meta && saved.meta.writeMayHavePersisted);
             if (!saved || !saved.ok) {
                 if (typeof showToast === 'function') {
                     showToast(saved && saved.meta && saved.meta.writeMayHavePersisted
@@ -3025,8 +3028,10 @@
                 return false;
             }
             var saved;
+            _chatHistoryLastWriteMayHavePersisted = false;
             try { saved = await window.ChatHistoryAtomic.replaceIfUnchanged(currentCharacter.id, expected, next); }
             catch (error) { saved = { ok: false }; }
+            _chatHistoryLastWriteMayHavePersisted = !!(saved && saved.meta && saved.meta.writeMayHavePersisted);
             if (!saved || !saved.ok) {
                 if (typeof showToast === 'function') {
                     showToast(saved && saved.error && saved.error.code === 'CONFLICT'
@@ -3077,7 +3082,9 @@
                     result = localStorage.getItem(storageKey) === serialized ? { ok: true } : { ok: false };
                 } catch (error) { result = { ok: false }; }
             }
+            _chatHistoryLastWriteMayHavePersisted = !!(result && result.meta && result.meta.writeMayHavePersisted);
             if (result && result.ok && _verifyHistoryRoundTrip(list)) {
+                _chatHistoryLastWriteMayHavePersisted = false;
                 try {
                     _lastReadChatRaw = localStorage.getItem(storageKey);
                     _hasReadChatPrimary = true;
@@ -6730,12 +6737,47 @@
                 return;
             }
 
-            // 重试后 API 失败：先把同一条用户消息重新标记为失败并落库，
-            // 再按既有 _isRepeatedSystemError 去重规则处理错误提示。
+            // Re-read the authoritative history after the network wait. This is the
+            // baseline for any replacement; it includes messages written by other tabs.
+            var aiWriteBaseline = loadMessages();
+            if (_chatHistoryUnreadable || !Array.isArray(aiWriteBaseline)) {
+                if (typeof showToast === 'function') showToast('聊天记录暂时无法安全读取，本轮回复未写入');
+                return;
+            }
+            aiWriteBaseline = JSON.parse(JSON.stringify(aiWriteBaseline));
+            historyList = JSON.parse(JSON.stringify(aiWriteBaseline));
+            if (isRegen && opts && opts.regenTargetMid) {
+                var regenTargetIdForWrite = String(opts.regenTargetMid);
+                var regenBeforeWrite = historyList.length;
+                if (window.ChatMessagePolicy && typeof window.ChatMessagePolicy.removeTurnFromHistory === 'function') {
+                    historyList = window.ChatMessagePolicy.removeTurnFromHistory(historyList, regenTargetIdForWrite);
+                } else {
+                    var regenWriteParsed = window.ChatMessagePolicy && typeof window.ChatMessagePolicy.parseBubbleId === 'function'
+                        ? window.ChatMessagePolicy.parseBubbleId(regenTargetIdForWrite)
+                        : { mid: regenTargetIdForWrite.split('#')[0] };
+                    historyList = historyList.filter(function (message) {
+                        return ensureMid(message) !== regenWriteParsed.mid;
+                    });
+                }
+                if (historyList.length === regenBeforeWrite) {
+                    if (typeof showToast === 'function') showToast('旧回复已变化，重新生成已取消，请刷新聊天');
+                    return;
+                }
+            }
+            // Retry failure marking is a guarded replacement of the same stored MID.
             var retryRemarked = false;
             if (!streamResult.ok && failureTarget && (!fullText || isGroupChat)) {
-                retryRemarked = _markUserSendFailed(historyList, failureTarget.mid, failureTarget.time,
+                var marked = _markUserSendFailed(historyList, failureTarget.mid, failureTarget.time,
                     streamResult.error && streamResult.error.kind === 'empty' ? 'empty-reply' : 'api-error');
+                if (marked) {
+                    if (await replaceChatSafely(aiWriteBaseline, historyList)) {
+                        retryRemarked = true;
+                        aiWriteBaseline = loadMessages();
+                        historyList = JSON.parse(JSON.stringify(aiWriteBaseline));
+                    } else {
+                        historyList = JSON.parse(JSON.stringify(aiWriteBaseline));
+                    }
+                }
             }
 
             var groupTurnEffects = createGroupTurnEffects();
@@ -6861,9 +6903,39 @@
                         aiRoleGalleryMessages.forEach(function (galleryMessage) { historyList.push(galleryMessage); });
                         window.__groupPrivateCardPending = false;
                         transferDecisionSnapshots = applyTransferDecisionMarkers(historyList, parsedTransferDecision.amounts);
-                        var replySaved = saveMessages(historyList);
+                        var aiNewMessages = replyMessages.concat(aiStickerMessages, aiRoleGalleryMessages);
+                        aiNewMessages.forEach(function (message) { ensureMid(message); });
+                        var needsHistoryReplacement = isGroupChat || isRegen ||
+                            (transferDecisionSnapshots && transferDecisionSnapshots.length > 0);
+                        var replySaved = needsHistoryReplacement
+                            ? await replaceChatSafely(aiWriteBaseline, historyList)
+                            : (aiNewMessages.length ? await appendChatSafely(aiNewMessages) : true);
+                        if (!replySaved && _chatHistoryLastWriteMayHavePersisted) {
+                            // A write can commit before a storage adapter throws. Confirm by
+                            // reading the primary key; retain media references unless absence
+                            // is proven. Replacement must match the exact committed prefix.
+                            var observedAfterUncertainWrite = loadMessages();
+                            var confirmedAfterUncertainWrite = false;
+                            if (needsHistoryReplacement) {
+                                confirmedAfterUncertainWrite = observedAfterUncertainWrite.length >= historyList.length &&
+                                    JSON.stringify(observedAfterUncertainWrite.slice(0, historyList.length)) === JSON.stringify(historyList);
+                            } else {
+                                confirmedAfterUncertainWrite = aiNewMessages.length > 0 && aiNewMessages.every(function (message) {
+                                    return observedAfterUncertainWrite.some(function (item) {
+                                        return item && String(item.mid || '') === String(message.mid || '') &&
+                                            JSON.stringify(item) === JSON.stringify(message);
+                                    });
+                                });
+                            }
+                            if (confirmedAfterUncertainWrite) {
+                                replySaved = true;
+                                historyList = observedAfterUncertainWrite;
+                                _chatHistoryLastWriteMayHavePersisted = false;
+                            }
+                        }
                         var replySaveFailed = !replySaved;
-                        groupTurnEffects.finalize(replySaved && streamResult.ok);
+                        if (replySaved) historyList = loadMessages();
+                        await groupTurnEffects.finalize(replySaved && streamResult.ok);
                         var avatarRoleId = aliasRoleId || currentCharacter.id;
                         if (replySaved && !isGroupChat && window.RoleAvatarLibrary &&
                             typeof window.RoleAvatarLibrary.addAsset === 'function') {
@@ -6944,9 +7016,9 @@
                             aiRoleGalleryMessages = [];
                             // Regeneration never deleted the saved old turn, so a
                             // failed replacement write must not retry a filtered history.
-                            if (!isRegen) {
-                                try { saveMessages(historyList); } catch (rollbackError) {}
-                            }
+                            // The guarded writer either committed the exact replacement or
+                            // refused it. Never issue a second whole-history rollback write.
+                            historyList = loadMessages();
                             if (streamBubble && fullText) streamBubble.textContent = fullText;
                             if (typeof showToast === 'function') showToast('AI 回复尚未保存。上方文字暂留在当前页面，请先复制保留，再检查存储空间。');
                         } else {
@@ -7063,7 +7135,7 @@
                             const tipMsg = { role: 'system_error', isError: true, text: tipText, time: Date.now() };
                             historyList.push(tipMsg);
                             // 保存成功才渲染气泡；写失败则回退历史并用 toast 保留可见提示。
-                            const tipSaved = saveMessages(historyList);
+                            const tipSaved = await appendChatSafely([tipMsg]);
                             if (!tipSaved) {
                                 historyList.pop();
                                 if (typeof showToast === 'function') showToast(tipText);
@@ -7080,7 +7152,7 @@
                         const errorMsg = { role: 'system_error', isError: true, text: errText, time: Date.now() };
                         historyList.push(errorMsg);
                         // 保存成功才渲染气泡；写失败则回退历史并用 toast 保留可见提示。
-                        const errSaved = saveMessages(historyList);
+                        const errSaved = await appendChatSafely([errorMsg]);
                         if (!errSaved) {
                             historyList.pop();
                             if (typeof showToast === 'function') showToast(errText);
@@ -7100,7 +7172,7 @@
                 // 收尾处理自身的异常：仅记录，不伪装成网络错误
                 console.error('[chat-detail] 流式收尾处理异常:', postErr);
             } finally {
-                groupTurnEffects.finalize(false);
+                void groupTurnEffects.finalize(false);
             }
 
             aiSending = false;   // R3：所有出口统一解锁
@@ -8315,10 +8387,20 @@
                 registerUndo: function (restore) { undo.push(restore); },
                 afterSave: function (persist) { afterSave.push(persist); },
                 finalize: function (saved) {
-                    if (settled) return;
+                    if (settled) return Promise.resolve(false);
                     settled = true;
-                    if (saved) afterSave.forEach(function (persist) { persist(); });
-                    else undo.reverse().forEach(function (restore) { restore(); });
+                    if (!saved) {
+                        undo.reverse().forEach(function (restore) {
+                            try { restore(); } catch (error) { console.warn('[GroupChat] rollback failed:', error); }
+                        });
+                        return Promise.resolve(false);
+                    }
+                    return afterSave.reduce(function (chain, persist) {
+                        return chain.then(function () { return persist(); });
+                    }, Promise.resolve()).then(function () { return true; }).catch(function (error) {
+                        console.warn('[GroupChat] after-save effect failed:', error);
+                        return false;
+                    });
                 }
             };
         }
@@ -8440,12 +8522,14 @@
                 }
                 return '';
             });
-            function saveGroupPrivateRoleMessageSafely(id, message) {
-                var versioned = window.PhoneStorage && window.PhoneStorage.result;
-                if (!versioned || typeof versioned.appendChatHistory !== 'function') return false;
+            async function saveGroupPrivateRoleMessageSafely(id, message) {
+                var atomic = window.ChatHistoryAtomic;
+                if (!atomic || typeof atomic.appendIf !== 'function') return false;
+                var saved;
+                try { saved = await atomic.appendIf(id, message); }
+                catch (error) { return false; }
+                if (!saved || !saved.ok) return false;
                 try {
-                    var saved = versioned.appendChatHistory(id, message);
-                    if (!saved || !saved.ok) return false;
                     var key = 'chat_history_' + id;
                     var verifiedRaw = localStorage.getItem(key);
                     var verified = JSON.parse(verifiedRaw);
@@ -8457,12 +8541,13 @@
                     return false;
                 }
             }
+
             var settings = getGroupSettings();
             var privateMarkerQueued = false;
             text = text.replace(/\[群私聊[:：]([^:：\]]+)[:：]([^\]]{1,300})\]/g, function (marker, targetKey, privateText) {
                 if (privateMarkerQueued || isRegeneration) return '';
                 privateMarkerQueued = true;
-                turnEffects.afterSave(function () {
+                turnEffects.afterSave(async function () {
                     var activeGroup = loadGroupById(currentGroup.id);
                     if (!activeGroup || (activeGroup.settings && activeGroup.settings.allowPrivateMessages === false)) return;
                     var activeSpeaker = (activeGroup.members || []).find(function (member) {
@@ -8482,7 +8567,7 @@
                     var privateMessageText = String(privateText).trim().slice(0, 300);
                     var privateMsg = { role: 'assistant', name: displayName, text: privateMessageText, time: Date.now(), fromGroupId: String(currentGroup.id), privateFromGroup: true };
                     ensureMid(privateMsg);
-                    var privateSaved = saveGroupPrivateRoleMessageSafely(targetId, privateMsg);
+                    var privateSaved = await saveGroupPrivateRoleMessageSafely(targetId, privateMsg);
                     if (!privateSaved) {
                         if (typeof showToast === 'function') showToast('群私聊消息没有保存成功，未显示已发送状态');
                         return '';
@@ -8496,11 +8581,11 @@
                     ensureMid(groupPrivateMessage);
                     var previousGroupLength = historyList.length;
                     historyList.push(groupPrivateMessage);
-                    if (!saveMessages(historyList)) {
-                        historyList.length = previousGroupLength;
+                    if (!await appendChatSafely([groupPrivateMessage])) {
                         if (typeof showToast === 'function') showToast('私聊已保存，但群聊中的私聊入口没有保存成功');
                         return '';
                     }
+                    historyList.push(groupPrivateMessage);
                     window.__groupPrivateCardPending = true;
                     showGroupPrivatePopup(displayName, targetId, privateMessageText);
                 });
