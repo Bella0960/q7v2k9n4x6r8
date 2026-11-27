@@ -277,7 +277,7 @@ test('registers a task from the current PR and persists exact checks and depende
     body: 'Task summary',
     html_url: 'https://github.com/Bella0960/q7v2k9n4x6r8/pull/10',
     head: { sha: sha(2), repo: { full_name: repository } },
-    base: { sha: sha(4), ref: 'main', repo: { full_name: repository } }
+    base: { sha: sha(3), ref: 'main', repo: { full_name: repository } }
   };
   const stub = `
 import { writeFileSync } from 'node:fs';
@@ -291,10 +291,12 @@ globalThis.fetch = async (input, init = {}) => {
   let payload;
   if (method === 'GET' && path === '/repos/' + repository + '/pulls/10') {
     payload = currentPr;
+  } else if (method === 'GET' && path === '/repos/' + repository + '/git/ref/heads/main') {
+    payload = { object: { sha: '${sha(4)}' } };
   } else if (method === 'GET' && path === '/repos/' + repository + '/compare/' + '${sha(4)}' + '...' + '${sha(2)}') {
-    payload = { status: 'diverged', ahead_by: 2, merge_base_commit: { sha: '${sha(1)}' } };
+    payload = { status: 'diverged', ahead_by: 2, merge_base_commit: { sha: '${sha(1)}' }, files: [{ filename: 'chat/chat/detail.html' }] };
   } else if (method === 'GET' && path === '/repos/' + repository + '/pulls/10/files') {
-    payload = [{ filename: 'chat/chat/detail.html' }];
+    payload = [{ filename: 'main-only.txt' }, { filename: 'chat/chat/detail.html' }];
   } else if (method === 'PATCH' && path === '/repos/' + repository + '/pulls/10') {
     const patch = JSON.parse(init.body);
     payload = { ...currentPr, body: patch.body };
@@ -336,6 +338,7 @@ globalThis.fetch = async (input, init = {}) => {
 
   const calls = JSON.parse(readFileSync(logPath, 'utf8'));
   assert.equal(calls.filter(call => call.method === 'GET' && call.path.endsWith('/pulls/10')).length, 2);
+  assert.equal(calls.filter(call => call.method === 'GET' && call.path.endsWith('/git/ref/heads/main')).length, 2);
   const patch = calls.find(call => call.method === 'PATCH');
   assert.ok(patch);
   const savedBody = JSON.parse(patch.body).body;
