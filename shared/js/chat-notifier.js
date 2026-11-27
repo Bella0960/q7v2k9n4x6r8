@@ -525,7 +525,8 @@
     }
 
     async function checkProactiveContacts() {
-        if (proactiveRequestPending || followUpRequestPending || document.visibilityState === 'hidden' || currentDetailRoleId()) return;
+        if (proactiveRequestPending || followUpRequestPending || global.navigator?.onLine === false ||
+            document.visibilityState === 'hidden' || currentDetailRoleId()) return;
         var now = Date.now();
         var lockAt = Number(safeGet(PROACTIVE_LOCK_KEY)) || 0;
         if (lockAt && now - lockAt >= 0 && now - lockAt < 20 * 60 * 1000) return;
@@ -548,18 +549,18 @@
         if (currentLockAt && Date.now() - currentLockAt >= 0 &&
             Date.now() - currentLockAt < 20 * 60 * 1000) return;
         var candidate = chooseProactiveCandidate(Date.now());
-        if (!candidate) return;
+        if (!candidate || global.navigator?.onLine === false ||
+            safeGet('chat_proactive_contact_' + candidate.contact.id) !== 'true') return;
         var config = global.PhoneStorage && global.PhoneStorage.getApiConfig
             ? global.PhoneStorage.getApiConfig() : {};
         if (!config || !String(config.apiKey || '').trim()) return;
 
         proactiveRequestPending = true;
         var requestAt = Date.now();
-        safeSet(PROACTIVE_LOCK_KEY, String(requestAt));
-        safeSet('chat_proactive_global_attempt_at', String(requestAt));
-        safeSet('chat_proactive_last_attempt_' + candidate.contact.id, String(requestAt));
-
         try {
+            if (!safeSet(PROACTIVE_LOCK_KEY, String(requestAt)) ||
+                !safeSet('chat_proactive_global_attempt_at', String(requestAt))) return;
+            safeSet('chat_proactive_last_attempt_' + candidate.contact.id, String(requestAt));
             var voiceProfile = null;
             try {
                 var voiceKey = 'chat_voice_habits_v1_' +
@@ -918,7 +919,8 @@
         tick();
     }
     async function checkFollowUpTasks() {
-        if (followUpRequestPending || proactiveRequestPending || document.visibilityState === 'hidden') return;
+        if (followUpRequestPending || proactiveRequestPending || global.navigator?.onLine === false ||
+            document.visibilityState === 'hidden') return;
         var now = Date.now();
         var lockAt = Number(safeGet(FOLLOW_UP_LOCK_KEY)) || 0;
         if (lockAt && now - lockAt >= 0 && now - lockAt < 2 * 60 * 1000) return;
@@ -959,6 +961,7 @@
         followUpSchedulerStarted = true;
         checkFollowUpTasks();
         setInterval(checkFollowUpTasks, PROACTIVE_CHECK_MS);
+        global.addEventListener('online', checkFollowUpTasks);
         global.addEventListener('visibilitychange', function () {
             if (document.visibilityState === 'visible') checkFollowUpTasks();
         });
@@ -969,6 +972,7 @@
         proactiveSchedulerStarted = true;
         checkProactiveContacts();
         setInterval(checkProactiveContacts, PROACTIVE_CHECK_MS);
+        global.addEventListener('online', checkProactiveContacts);
         startFollowUpScheduler();
         global.addEventListener('visibilitychange', function () {
             if (document.visibilityState === 'visible') checkProactiveContacts();
