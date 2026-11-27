@@ -113,6 +113,8 @@
     for (var i = start; i < cutoff; i++) {
       var m = history[i] || {};
       if (m.isError || m.role === 'system_error') continue;
+      if (options.groupPublicOnly && (m.type === 'group_game_private' || m.type === 'group_private' ||
+          m.visibility === 'role_only' || m.visibility === 'private')) continue;
       var role = m.role;
       if (['sent','user','received','assistant'].indexOf(role) < 0) continue;
       var content = cleanText(m.text || m.content || m.desc || '');

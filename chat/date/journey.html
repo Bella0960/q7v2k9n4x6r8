@@ -218,6 +218,8 @@ button:focus-visible,a:focus-visible,input:focus-visible{outline:1px solid #777;
   var state = null;
   var animationId = 0;
   var navigating = false;
+  var nextUnverifiedStage = 0;
+  var nextSaveAttemptAt = 0;
   function loadHistory(){
     try {
       if(window.PhoneStorage && typeof window.PhoneStorage.getChatHistory==='function') {
@@ -226,35 +228,6 @@ button:focus-visible,a:focus-visible,input:focus-visible{outline:1px solid #777;
       }
     } catch(e) {}
     try { var arr=JSON.parse(localStorage.getItem(historyKey)||'[]'); return Array.isArray(arr)?arr:[]; } catch(e) { return []; }
-  }
-  function saveHistory(list){
-    try {
-      if(!Array.isArray(list)) throw new Error('聊天记录格式无效');
-      var wrote=false, verified;
-      if(window.PhoneStorage && typeof window.PhoneStorage.saveChatHistory==='function') {
-        wrote=window.PhoneStorage.saveChatHistory(roleId,list)===true;
-        if(!wrote) throw new Error('PhoneStorage 写入失败');
-        if(typeof window.PhoneStorage.getChatHistory!=='function') throw new Error('缺少聊天记录读回接口');
-        verified=window.PhoneStorage.getChatHistory(roleId);
-      } else {
-        localStorage.setItem(historyKey,JSON.stringify(list));
-        wrote=true;
-        verified=JSON.parse(localStorage.getItem(historyKey)||'null');
-      }
-      var expected=list.length?list[list.length-1]:null;
-      var actual=Array.isArray(verified)&&verified.length?verified[verified.length-1]:null;
-      if(!wrote || !Array.isArray(verified) || verified.length!==list.length ||
-          (expected && (!actual || actual.role!==expected.role || actual.type!==expected.type ||
-            actual.time!==expected.time || actual.text!==expected.text ||
-            actual.mode!==expected.mode || actual.journeyId!==expected.journeyId ||
-            actual.journeyStage!==expected.journeyStage))) {
-        throw new Error('聊天记录写入后校验失败');
-      }
-      return true;
-    } catch(error) {
-      console.error('[Journey] chat history persistence failed:',error);
-      return false;
-    }
   }
   function saveState(){ try { localStorage.setItem(stateKey,JSON.stringify(state)); } catch(e) {} }
   function loadState(){ try { var s=JSON.parse(localStorage.getItem(stateKey)||'null'); return s && typeof s==='object' ? s : null; } catch(e) { return null; } }
@@ -297,7 +270,6 @@ button:focus-visible,a:focus-visible,input:focus-visible{outline:1px solid #777;
       saveState();
       return true;
     }
-    if(state.sentStages.indexOf(stageIndex)!==-1) return true;
 
     var messageList=Array.isArray(state.messages)?state.messages:fallbackMessages;
     var text=String(messageList[stageIndex]||generateFallbackText(stageIndex)).trim();
@@ -308,12 +280,14 @@ button:focus-visible,a:focus-visible,input:focus-visible{outline:1px solid #777;
       entry.type='location';
       entry.location={label:'已开启位置共享：正在前往'+state.scene+' · 预计30秒到达'};
     }
-    list.push(entry);
-    if(!saveHistory(list)){
+    var storage = window.PhoneStorage && window.PhoneStorage.result;
+    var saved = storage && typeof storage.appendChatHistory === 'function'
+      ? storage.appendChatHistory(roleId, entry) : null;
+    if(!saved || !saved.ok){
       showStorageWarning();
       return false;
     }
-    state.sentStages.push(stageIndex);
+    if(state.sentStages.indexOf(stageIndex)===-1) state.sentStages.push(stageIndex);
     saveState();
     return true;
   }
@@ -374,13 +348,23 @@ button:focus-visible,a:focus-visible,input:focus-visible{outline:1px solid #777;
     var stageIndex=0;
     for(var i=0;i<stages.length;i++){if(elapsed>=stages[i].at)stageIndex=i;}
     if(state.lastStage!==stageIndex){state.lastStage=stageIndex;saveState();updateStage(stageIndex);}
-    // 保存失败时在后续帧重试；appendJourneyMessage 会先检查历史避免重复写入。
-    if(stageIndex<4) appendJourneyMessage(stageIndex);
-    if(elapsed>=totalDuration){gotoStory();return;}
+    // A reload may cross more than one stage. Resume from verified history.
+    if(Date.now() >= nextSaveAttemptAt){
+      while(nextUnverifiedStage < 4 && nextUnverifiedStage <= stageIndex){
+        if(!appendJourneyMessage(nextUnverifiedStage)){
+          nextSaveAttemptAt = Date.now() + 250;
+          break;
+        }
+        nextUnverifiedStage++;
+      }
+    }
+    if(elapsed>=totalDuration && nextUnverifiedStage===4){gotoStory();return;}
     animationId=window.requestAnimationFrame(tick);
   }
   function startJourney(scene){
     if(!roleId || !character){ alert('没有找到这个角色，请先回到聊天页选择角色。'); return; }
+    nextUnverifiedStage = 0;
+    nextSaveAttemptAt = 0;
     state={scene:scene,startedAt:Date.now(),status:'travelling',sentStages:[],lastStage:-1,messages:fallbackMessages.slice()};
     startedJourneyId=String(state.startedAt);
     try { localStorage.setItem(modeKey,'offline-short'); } catch(e) {}

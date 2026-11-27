@@ -149,6 +149,7 @@ test('heart prompt is optional, persona-bound, and isolates group speakers', () 
 test('chat detail wires speaker identity, verified saves, scoped reads, and the heart prompt', () => {
   const detail = read('chat/chat/chat-detail.html');
   const serviceWorker = read('sw.js');
+const pwaCacheVersion = Number((serviceWorker.match(/^const CACHE_NAME = 'phone-app-pwa-v(\d+)'/m)?.[1] || 0));
   const packageJson = JSON.parse(read('package.json'));
   assert.ok(detail.includes('chat-heart-policy.js?v=20261126mind1'));
   assert.match(detail, /row\.dataset\.memberId\s*=\s*String\(msg\.memberId\)/);
@@ -157,6 +158,6 @@ test('chat detail wires speaker identity, verified saves, scoped reads, and the 
   assert.match(detail, /ChatHeartPolicy\.readHistory/);
   assert.match(detail, /ChatHeartPolicy\.buildPrompt/);
   assert.ok(serviceWorker.includes('chat-heart-policy.js?v=20261126mind1'));
-  assert.match(serviceWorker, /phone-app-pwa-v206/);
+  assert.ok(pwaCacheVersion >= 206, 'PWA cache version must not regress below v206');
   assert.ok(packageJson.scripts['test:chat:contract'].includes('tests/chat-heart-policy.test.mjs'));
 });

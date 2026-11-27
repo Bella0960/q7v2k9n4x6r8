@@ -13,15 +13,22 @@
     if (!msg || typeof msg !== 'object') return false;
     if (!msg.time) msg.time = Date.now();
     if (!msg.role) msg.role = 'user';
-    // Build a fresh snapshot: a failed write must not mutate a shared history array.
+    var history;
+    var originalLength;
     var saved = false;
     try {
-      var history = loadMessages();
-      if (Array.isArray(history)) saved = saveMessages(history.concat([msg])) === true;
+      history = loadMessages(true);
+      if (Array.isArray(history)) {
+        originalLength = history.length;
+        ensureMid(msg);
+        history.push(msg);
+        saved = saveMessages(history) === true;
+      }
     } catch (error) {
       saved = false;
     }
     if (!saved) {
+      if (originalLength !== undefined) history.length = originalLength;
       if (typeof showToast === 'function') showToast('聊天记录保存失败，消息未发送');
       return false;
     }
@@ -599,9 +606,21 @@
 
     if (!messages.length) return;
 
-    var history = loadMessages();
-    var next = history.concat(messages);
-    if (!saveMessages(next)) {
+    var history;
+    var originalLength;
+    var saved = false;
+    try {
+      history = loadMessages(true);
+      if (Array.isArray(history)) {
+        originalLength = history.length;
+        messages.forEach(function (message) { history.push(message); });
+        saved = saveMessages(history) === true;
+      }
+    } catch (error) {
+      saved = false;
+    }
+    if (!saved) {
+      if (originalLength !== undefined) history.length = originalLength;
       await storedAssets.reduce(function (chain, item) {
         return chain.then(function () {
           return chatImageMediaRepo.removeRef(item.assetId, 'chat-message', item.mid).then(function (released) {
@@ -1211,16 +1230,51 @@
     else window.prompt('复制消息文本',text);
   }
   function coreForward() {
-    var list=loadMessages()||[], last=list[list.length-1]; if(!last){showToast&&showToast('没有可转发的消息');return;}
-    var text=String(last.text||last.message||last.content||last.description||'[特殊消息]');
-    var chars=[];try{chars=JSON.parse(localStorage.getItem('characters')||'[]');}catch(e){}
-    var html='<div class="x-core-list">';
-    if(!Array.isArray(chars)||!chars.length) html+='<div class="x-core-muted">未找到可选角色列表。你可以先复制消息文本。</div>';
-    else chars.forEach(function(c,i){var name=c.name||c.nickname||('会话 '+(i+1));html+='<button data-forward="'+i+'">'+escapeHtml(name)+'</button>';});
-    html+='</div><div class="x-core-actions"><button class="x-btn x-btn-ghost" id="forwardCopy">复制文本</button></div>';
-    openModal('转发到其他会话',html);
-    modalBody.querySelectorAll('[data-forward]').forEach(function(b){b.onclick=function(){var idx=Number(b.dataset.forward), c=chars[idx];var key=c.id||c.characterId||c.name||c.nickname;var targetKey='chatMessages_'+key;try{var target=JSON.parse(localStorage.getItem(targetKey)||'[]');target.push({role:'user',type:'forwarded',text:text,forwarded:true,time:Date.now()});localStorage.setItem(targetKey,JSON.stringify(target));showToast&&showToast('已尝试转发到 '+(c.name||c.nickname||'目标会话'));}catch(e){showToast&&showToast('转发失败，请检查会话存储规则');}closeModal();};});
-    var cp=document.getElementById('forwardCopy');if(cp)cp.onclick=function(){closeModal();if(navigator.clipboard&&navigator.clipboard.writeText)navigator.clipboard.writeText(text).then(function(){showToast&&showToast('已复制，可粘贴发送');});else window.prompt('复制消息文本',text);};
+    var list = loadMessages() || [], last = list[list.length - 1];
+    if (!last) { if (typeof showToast === 'function') showToast('没有可转发的消息'); return; }
+    // Keep the same financial-message restriction as the existing long-press forward sheet.
+    if (last.type === 'redpacket' || last.type === 'transfer') {
+      if (typeof showToast === 'function') showToast('红包/转账不支持转发');
+      return;
+    }
+    // Reuse the verified target resolver and append-only, media-aware forward implementation.
+    // Never write the obsolete chatMessages_<id> key: it is not the active conversation.
+    if (typeof getForwardTargets !== 'function' || typeof forwardMessage !== 'function') {
+      if (typeof showToast === 'function') showToast('转发功能暂不可用');
+      return;
+    }
+    var text = String(last.text || last.message || last.content || last.description || '[特殊消息]');
+    var targets = getForwardTargets();
+    if (!Array.isArray(targets)) targets = [];
+    var html = '<div class="x-core-list">';
+    if (!targets.length) html += '<div class="x-core-muted">暂无可转发的会话。你可以先复制消息文本。</div>';
+    else targets.forEach(function (t, i) {
+      html += '<button data-forward="' + i + '">' + escapeHtml(t.name || ('会话 ' + (i + 1))) + '</button>';
+    });
+    html += '</div><div class="x-core-actions"><button class="x-btn x-btn-ghost" id="forwardCopy">复制文本</button></div>';
+    openModal('转发到其他会话', html);
+    modalBody.querySelectorAll('[data-forward]').forEach(function (b) {
+      b.onclick = async function () {
+        var target = targets[Number(b.dataset.forward)];
+        if (!target || !target.id || b.disabled) return;
+        b.disabled = true; // A double tap must not append the same forwarded message twice.
+        closeModal();
+        try {
+          await forwardMessage({ message: last, text: text, count: 1 }, target.id, target.name || '目标会话');
+        } catch (error) {
+          if (typeof showToast === 'function') showToast('转发失败，请检查会话存储规则');
+        }
+      };
+    });
+    var cp = document.getElementById('forwardCopy');
+    if (cp) cp.onclick = function () {
+      closeModal();
+      if (navigator.clipboard && navigator.clipboard.writeText) {
+        navigator.clipboard.writeText(text).then(function () {
+          if (typeof showToast === 'function') showToast('已复制，可粘贴发送');
+        }).catch(function () { window.prompt('复制消息文本', text); });
+      } else window.prompt('复制消息文本', text);
+    };
   }
   // 给现有加号面板补充入口；不重复创建已有按钮
   function addPlusEntry(feat,label) {

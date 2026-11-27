@@ -62,6 +62,34 @@
         var arr = safeJsonParse(safeGet('chat_history_' + roleId));
         return Array.isArray(arr) ? arr : [];
     }
+    // 自动任务的主记录读取边界：只有可读且形状正确的 chat_history_<id> 才算数。
+    // 缺失、解析失败、结构不对或存储不可读一律返回 null，避免自动任务基于
+    // 旧副本或坏数据发起付费请求，也避免把一条新消息写进错误的上下文。
+    function readAutomaticHistory(roleId) {
+        if (typeof roleId !== 'string' || !roleId.trim()) return null;
+        var raw = null;
+        try { raw = localStorage.getItem('chat_history_' + roleId); }
+        catch (error) { return null; }
+        if (raw === null) return null;
+        var parsed = null;
+        try { parsed = JSON.parse(raw); }
+        catch (error) { return null; }
+        return Array.isArray(parsed) ? parsed : null;
+    }
+    function automaticStorageReady() {
+        // 账号作用域声明与运行时不一致时禁止自动写入，避免写到别的账号。
+        var declared = null;
+        try {
+            var meta = global.document && typeof global.document.querySelector === 'function'
+                ? global.document.querySelector('meta[name="mao-account-id"]') : null;
+            declared = meta && String(meta.content || '').trim();
+        } catch (error) { declared = null; }
+        var scope = global.__MAO_ACCOUNT_SCOPE__;
+        if (declared && (!scope || scope.ready !== true || scope.accountId !== declared)) return false;
+        // 自动写入必须能拿到跨标签互斥锁；没有 Web Locks 就不自动落库。
+        return !!(global.navigator && global.navigator.locks &&
+            typeof global.navigator.locks.request === 'function');
+    }
     function readCharacters() {
         var arr = safeJsonParse(safeGet('ai_custom_characters'));
         return Array.isArray(arr) ? arr : [];
@@ -371,6 +399,7 @@
 
     function ensureProactiveDependencies() {
         if (global.PhoneStorage && global.PhoneAPI && typeof global.PhoneAPI.completeJSON === 'function' &&
+            global.ChatHistoryAtomic && typeof global.ChatHistoryAtomic.appendIf === 'function' &&
             global.ChatPresencePolicy && typeof global.ChatPresencePolicy.evaluateProactiveContact === 'function') {
             return Promise.resolve(true);
         }
@@ -389,6 +418,13 @@
             return loadProactiveScript(
                 proactiveAsset('shared/js/phone/chat-presence-policy.js?v=20261102v17'),
                 function () { return !!global.ChatPresencePolicy && typeof global.ChatPresencePolicy.evaluateProactiveContact === 'function'; }
+            );
+        }).then(function (ok) {
+            if (!ok) return false;
+            // 自动写入与人工写入必须共用同一把会话锁和同一套 mid 幂等规则。
+            return loadProactiveScript(
+                proactiveAsset('shared/js/phone/chat-history-atomic.js?v=20261118v1'),
+                function () { return !!global.ChatHistoryAtomic && typeof global.ChatHistoryAtomic.appendIf === 'function'; }
             );
         }).then(function (ok) {
             if (!ok) proactiveDependenciesPromise = null;
@@ -450,7 +486,8 @@
             if (!contact || contact.isGroup || safeGet('chat_proactive_contact_' + id) !== 'true') return;
             if (blocked.indexOf(String(id)) !== -1) return;
 
-            var history = readHistory(id);
+            var history = readAutomaticHistory(id);
+            if (!history) return;
             var intervalMs = proactiveIntervalHours(id) * 60 * 60 * 1000;
             var roleAttemptAt = Number(safeGet('chat_proactive_last_attempt_' + id)) || 0;
             var evaluation = global.ChatPresencePolicy.evaluateProactiveContact(history, {
@@ -519,8 +556,11 @@
         return text;
     }
 
+    // 存储不可安全写入时不发起付费请求：守卫必须位于函数体首行。
     async function checkProactiveContacts() {
-        if (proactiveRequestPending || followUpRequestPending || document.visibilityState === 'hidden' || currentDetailRoleId()) return;
+        if (!automaticStorageReady()) return;
+        if (proactiveRequestPending || followUpRequestPending || global.navigator?.onLine === false ||
+            document.visibilityState === 'hidden' || currentDetailRoleId()) return;
         var now = Date.now();
         var lockAt = Number(safeGet(PROACTIVE_LOCK_KEY)) || 0;
         if (lockAt && now - lockAt >= 0 && now - lockAt < 20 * 60 * 1000) return;
@@ -534,7 +574,7 @@
             now - globalAttemptAt < PROACTIVE_GLOBAL_COOLDOWN_MS) return;
 
         var ready = await ensureProactiveDependencies();
-        if (!ready || !global.ChatPresencePolicy ||
+        if (!ready || !automaticStorageReady() || !global.ChatPresencePolicy ||
             typeof global.ChatPresencePolicy.evaluateProactiveContact !== 'function' ||
             typeof global.ChatPresencePolicy.buildProactiveContactPrompt !== 'function' ||
             !global.PhoneAPI || typeof global.PhoneAPI.completeJSON !== 'function') return;
@@ -543,18 +583,18 @@
         if (currentLockAt && Date.now() - currentLockAt >= 0 &&
             Date.now() - currentLockAt < 20 * 60 * 1000) return;
         var candidate = chooseProactiveCandidate(Date.now());
-        if (!candidate) return;
+        if (!candidate || global.navigator?.onLine === false ||
+            safeGet('chat_proactive_contact_' + candidate.contact.id) !== 'true') return;
         var config = global.PhoneStorage && global.PhoneStorage.getApiConfig
             ? global.PhoneStorage.getApiConfig() : {};
         if (!config || !String(config.apiKey || '').trim()) return;
 
         proactiveRequestPending = true;
         var requestAt = Date.now();
-        safeSet(PROACTIVE_LOCK_KEY, String(requestAt));
-        safeSet('chat_proactive_global_attempt_at', String(requestAt));
-        safeSet('chat_proactive_last_attempt_' + candidate.contact.id, String(requestAt));
-
         try {
+            if (!safeSet(PROACTIVE_LOCK_KEY, String(requestAt)) ||
+                !safeSet('chat_proactive_global_attempt_at', String(requestAt))) return;
+            safeSet('chat_proactive_last_attempt_' + candidate.contact.id, String(requestAt));
             var voiceProfile = null;
             try {
                 var voiceKey = 'chat_voice_habits_v1_' +
@@ -593,7 +633,8 @@
             if (document.visibilityState === 'hidden') return;
 
             // 请求期间若用户又发了消息，放弃这条过时的主动联系。
-            var freshHistory = readHistory(candidate.contact.id);
+            var freshHistory = readAutomaticHistory(candidate.contact.id);
+            if (!freshHistory) return;
             var freshLatest = newestMeaningfulMessage(freshHistory);
             if (!freshLatest || freshLatest.time !== candidate.latest.time ||
                 freshLatest.text !== candidate.latest.text) return;
@@ -605,11 +646,10 @@
                 voiceMode: 'online',
                 proactiveContact: true
             };
-            freshHistory.push(newMessage);
-            var saved = global.PhoneStorage && typeof global.PhoneStorage.saveChatHistory === 'function'
-                ? global.PhoneStorage.saveChatHistory(candidate.contact.id, freshHistory)
-                : safeSet('chat_history_' + candidate.contact.id, freshHistory);
-            if (!saved) return;
+            // 自动写入与人工写入共用同一把会话锁与 mid 幂等规则：
+            // 不会覆盖其他窗口刚写入的消息，同一 mid 重放也不会产生重复气泡。
+            var saved = await global.ChatHistoryAtomic.appendIf(String(candidate.contact.id), newMessage);
+            if (!saved || !saved.ok) return;
             tick();
         } catch (error) {
             // 自动联系失败不打断当前页面；本次尝试已有冷却记录，避免重复消耗 API。
@@ -790,12 +830,6 @@
             lastUser: lastUser
         };
     }
-    function saveFollowUpHistory(id, history) {
-        if (global.PhoneStorage && typeof global.PhoneStorage.saveChatHistory === 'function') {
-            return !!global.PhoneStorage.saveChatHistory(id, history);
-        }
-        return safeSet('chat_history_' + id, history);
-    }
     function followUpContactList() {
         var contacts = buildContactIndex();
         var result = [];
@@ -873,9 +907,10 @@
         if (scope === 'private' && safeGet('chat_followup_enabled_' + contact.id) !== 'true') return;
         if (scope === 'group') {
             var currentGroup = readGroups().find(function (item) { return item && String(item.id) === String(contact.id); });
-            if (!currentGroup || !currentGroup.settings || currentGroup.settings.followUpEnabled !== true) return;
+            if (!currentGroup || !currentGroup.settings || currentGroup.settings.followUpEnabled !== true || currentGroup.settings.chatMode === 'offline') return;
         }
-        var freshHistory = readHistory(contact.id);
+        var freshHistory = readAutomaticHistory(contact.id);
+        if (!freshHistory) return;
         var freshMessages = followUpMessages(freshHistory);
         var freshLast = freshMessages[freshMessages.length - 1];
         if (!freshLast || Number(freshLast.time || freshLast.timestamp) !== candidate.lastAssistantAt ||
@@ -899,8 +934,9 @@
             followUpRound: candidate.round,
             followUpTopic: candidate.topic
         };
-        freshHistory.push(newMessage);
-        if (!saveFollowUpHistory(contact.id, freshHistory)) return;
+        // 追访消息同样走会话锁与 mid 幂等，避免与其他窗口的写入互相覆盖。
+        var saved = await global.ChatHistoryAtomic.appendIf(String(contact.id), newMessage);
+        if (!saved || !saved.ok) return;
         try {
             if (typeof global.CustomEvent === 'function') {
                 global.dispatchEvent(new global.CustomEvent('maomao:followup-message', {
@@ -921,20 +957,24 @@
         saveFollowUpState(scope, contact.id, state);
         tick();
     }
+    // 存储不可安全写入时不发起付费请求：守卫必须位于函数体首行。
     async function checkFollowUpTasks() {
-        if (followUpRequestPending || proactiveRequestPending || document.visibilityState === 'hidden') return;
+        if (!automaticStorageReady()) return;
+        if (followUpRequestPending || proactiveRequestPending || global.navigator?.onLine === false ||
+            document.visibilityState === 'hidden') return;
         var now = Date.now();
         var lockAt = Number(safeGet(FOLLOW_UP_LOCK_KEY)) || 0;
         if (lockAt && now - lockAt >= 0 && now - lockAt < 2 * 60 * 1000) return;
         var enabled = followUpContactList();
         if (!enabled.length) return;
         var ready = await ensureFollowUpDependencies();
-        if (!ready || !global.ChatFollowUpPolicy || !global.PhoneAPI ||
+        if (!ready || !automaticStorageReady() || !global.ChatFollowUpPolicy || !global.PhoneAPI ||
             typeof global.PhoneAPI.completeJSON !== 'function') return;
         if (document.visibilityState === 'hidden') return;
         var candidates = [];
         enabled.forEach(function (entry) {
-            var history = readHistory(entry.contact.id);
+            var history = readAutomaticHistory(entry.contact.id);
+            if (!history) return;
             var candidate = getFollowUpCandidate(entry.scope, entry.contact, history, Date.now());
             if (candidate) candidates.push(candidate);
         });
@@ -963,6 +1003,7 @@
         followUpSchedulerStarted = true;
         checkFollowUpTasks();
         setInterval(checkFollowUpTasks, PROACTIVE_CHECK_MS);
+        global.addEventListener('online', checkFollowUpTasks);
         global.addEventListener('visibilitychange', function () {
             if (document.visibilityState === 'visible') checkFollowUpTasks();
         });
@@ -973,6 +1014,7 @@
         proactiveSchedulerStarted = true;
         checkProactiveContacts();
         setInterval(checkProactiveContacts, PROACTIVE_CHECK_MS);
+        global.addEventListener('online', checkProactiveContacts);
         startFollowUpScheduler();
         global.addEventListener('visibilitychange', function () {
             if (document.visibilityState === 'visible') checkProactiveContacts();

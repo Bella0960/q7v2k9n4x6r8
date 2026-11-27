@@ -92,6 +92,8 @@ function loadSaveMessages(sandbox) {
 }
 
 function createSandboxBase() {
+  // 预置一份与 _lastReadChatRaw 一致的空历史，模拟"已经安全读过主键"的页面。
+  const store = new Map([['chat_history_role-1', '[]']]);
   return {
     currentCharacter: { id: 'role-1' },
     storageKey: 'chat_history_role-1',
@@ -99,9 +101,28 @@ function createSandboxBase() {
     _resetWarnCooldown: () => {},
     _shouldWarnAgain: () => false,
     _chatHistoryUnreadable: false,
+    // 现网写入门禁需要读取基线 + 主键可读标记，否则 saveMessages 会直接拒绝。
+    _hasReadChatPrimary: true,
+    _lastReadChatRaw: '[]',
+    _chatHistoryLastWriteMayHavePersisted: false,
     singleChatTurnSnapshots: new WeakMap(),
-    console: { warn: () => {} }
+    console: { warn: () => {} },
+    // 现网写入通道会同时看 _storage.result 与 window.PhoneStorage。
+    window: {},
+    localStorage: {
+      getItem: (key) => (store.has(key) ? store.get(key) : null),
+      setItem: (key, value) => { store.set(key, String(value)); },
+      removeItem: (key) => { store.delete(key); }
+    },
+    __store: store
   };
+}
+
+// 被抽取的聊天代码块现在包含 await：必须用 AsyncFunction 才能真正执行，
+// 否则语法阶段就会失败，测不到任何安全语义。
+const AsyncFunction = Object.getPrototypeOf(async function () {}).constructor;
+async function runWithContext(context, body) {
+  await new AsyncFunction('context', 'with (context) { ' + body + ' }')(context);
 }
 
 function loadEnsureMid() {
@@ -130,7 +151,7 @@ function loadRetryHelpers() {
   );
 }
 
-function loadRetryLifecycleHelpers(saveMessages) {
+function loadRetryLifecycleHelpers(saveMessages, replaceChatSafely) {
   const start = chatDetail.indexOf('function _locateRetryMessage(');
   const end = chatDetail.indexOf('\n        // 一键重试', start);
   assert.ok(start >= 0 && end > start, 'retry lifecycle helpers should be isolated');
@@ -138,11 +159,13 @@ function loadRetryLifecycleHelpers(saveMessages) {
     chatDetail.slice(start, end) +
     '\n({ _locateRetryMessage: _locateRetryMessage, _prepareRetryMessage: _prepareRetryMessage,' +
     ' _locateUserMessageIndex: _locateUserMessageIndex, _markUserSendFailed: _markUserSendFailed });',
-    { saveMessages: saveMessages || (() => true) }
+    { saveMessages: saveMessages || (() => true),
+      // _markUserSendFailed 现在以“先落库再生效”的方式写标记，夹具需提供同一通道。
+      replaceChatSafely: replaceChatSafely || (async () => true) }
   );
 }
 
-function runErrorTipBranch(marker, options) {
+async function runErrorTipBranch(marker, options) {
   const renders = [];
   const toasts = [];
   const saves = [];
@@ -153,12 +176,15 @@ function runErrorTipBranch(marker, options) {
     errText: options.text,
     _isRepeatedSystemError: loadSystemErrorDedupe(),
     saveMessages: (list) => { saves.push(clone(list)); return !!options.saved; },
+    // 现网写入走会话锁适配器；夹具记录调用瞬间的完整历史快照。
+    appendChatSafely: async () => { saves.push(clone(context.historyList)); return !!options.saved; },
+    replaceChatSafely: async (expected, next) => { saves.push(clone(next)); return !!options.saved; },
     appendMessageToDOM: (msg) => renders.push(clone(msg)),
     showToast: (message) => toasts.push(String(message)),
     _vl: null,
     vlRefresh: () => { throw new Error('virtual list refresh should not run in this branch'); }
   };
-  new Function('context', 'with (context) { ' + extractBracedBlock(chatDetail, marker) + ' }')(context);
+  await runWithContext(context, extractBracedBlock(chatDetail, marker));
   return { historyList, renders, toasts, saves };
 }
 
@@ -167,63 +193,62 @@ test('saveMessages reports success only after a matching read-back from the exis
     { role: 'assistant', text: '欢迎', time: 1 },
     { role: 'user', text: '你好', time: 2, mid: 'm2' }
   ];
+  const KEY = 'chat_history_role-1';
+
+  // 主写入通道返回 ok；真正的成功判定仍以主键读回为准。
+  function sandboxWithWriter(write) {
+    const sb = createSandboxBase();
+    sb._storage = {
+      result: {
+        saveChatHistory: (id, list) => {
+          const outcome = write(list, sb.__store);
+          return outcome === false
+            ? { ok: false, error: { code: 'DB_UNAVAILABLE' } }
+            : { ok: true };
+        }
+      }
+    };
+    return sb;
+  }
 
   // 正常写入并读回一致
-  let stored = null;
-  const okSandbox = createSandboxBase();
-  okSandbox._storage = {
-    saveChatHistory: (id, list) => { stored = clone(list); return true; },
-    getChatHistory: () => clone(stored)
-  };
+  const okSandbox = sandboxWithWriter((list, store) => { store.set(KEY, JSON.stringify(list)); });
   assert.equal(loadSaveMessages(okSandbox)(target), true);
 
-  // 底层写入报成功，但读回为空（静默未持久化）
-  const emptySandbox = createSandboxBase();
-  emptySandbox._storage = {
-    saveChatHistory: () => true,
-    getChatHistory: () => []
-  };
+  // 底层报成功，但主键没有真正落盘（静默未持久化）
+  const emptySandbox = sandboxWithWriter(() => true);
   assert.equal(loadSaveMessages(emptySandbox)(target), false);
 
   // 读回条数一致但内容不一致
-  const wrongSandbox = createSandboxBase();
-  wrongSandbox._storage = {
-    saveChatHistory: () => true,
-    getChatHistory: () => clone([target[0], { role: 'user', text: '被吞掉的内容', time: 2, mid: 'm2' }])
-  };
+  const wrongSandbox = sandboxWithWriter((list, store) => {
+    store.set(KEY, JSON.stringify([target[0], { role: 'user', text: '被吞掉的内容', time: 2, mid: 'm2' }]));
+  });
   assert.equal(loadSaveMessages(wrongSandbox)(target), false);
 
   // 读回条数不一致
-  const shortSandbox = createSandboxBase();
-  shortSandbox._storage = {
-    saveChatHistory: () => true,
-    getChatHistory: () => clone(target.slice(0, 1))
-  };
+  const shortSandbox = sandboxWithWriter((list, store) => {
+    store.set(KEY, JSON.stringify(target.slice(0, 1)));
+  });
   assert.equal(loadSaveMessages(shortSandbox)(target), false);
 
-  // 底层写入返回 false / 抛异常 / 读取抛异常
-  const rejectSandbox = createSandboxBase();
-  rejectSandbox._storage = { saveChatHistory: () => false, getChatHistory: () => clone(target) };
+  // 底层写入返回失败
+  const rejectSandbox = sandboxWithWriter(() => false);
   assert.equal(loadSaveMessages(rejectSandbox)(target), false);
 
-  const throwSandbox = createSandboxBase();
-  throwSandbox._storage = {
-    saveChatHistory: () => { throw new Error('quota exceeded'); },
-    getChatHistory: () => clone(target)
-  };
+  // 底层写入抛异常
+  const throwSandbox = sandboxWithWriter(() => { throw new Error('quota exceeded'); });
   assert.equal(loadSaveMessages(throwSandbox)(target), false);
 
-  const readThrowSandbox = createSandboxBase();
-  readThrowSandbox._storage = {
-    saveChatHistory: () => true,
-    getChatHistory: () => { throw new Error('read failed'); }
-  };
+  // 读取抛异常
+  const readThrowSandbox = sandboxWithWriter((list, store) => { store.set(KEY, JSON.stringify(list)); });
+  readThrowSandbox.localStorage.getItem = () => { throw new Error('read failed'); };
   assert.equal(loadSaveMessages(readThrowSandbox)(target), false);
 });
 
 test('saveMessages read-back verification also covers the localStorage fallback channel', () => {
   const target = [{ role: 'user', text: '你好', time: 2, mid: 'm2' }];
-  const store = {};
+  // 预置与 _lastReadChatRaw 一致的主键，模拟已经安全读取过的会话。
+  const store = { 'chat_history_role-1': '[]' };
   const workingLocalStorage = {
     getItem: (key) => (Object.prototype.hasOwnProperty.call(store, key) ? store[key] : null),
     setItem: (key, value) => { store[key] = String(value); },
@@ -262,11 +287,21 @@ test('saveMessages read-back verification also covers the localStorage fallback 
   assert.equal(loadSaveMessages(staleSandbox)(target), false);
 });
 
-function runMissingApiKeyBranch(options) {
+async function runMissingApiKeyBranch(options) {
   const saves = [];
   const renders = [];
   let quoteClears = 0;
   const input = { value: options.inputValue == null ? '未发送原文' : options.inputValue, style: {} };
+  // 夹具模拟真实存储：只有成功写入才会改变"已持久化历史"。
+  let stored = clone(options.history || [{ role: 'assistant', text: '旧消息' }]);
+  let attempt = 0;
+  const saveResultsAt = () => {
+    const list = options.saveResults || [];
+    if (!list.length) return false;
+    const value = !!list[Math.min(attempt, list.length - 1)];
+    attempt += 1;
+    return value;
+  };
   const context = {
     apiKey: '',
     isRegen: !!options.isRegen,
@@ -284,10 +319,25 @@ function runMissingApiKeyBranch(options) {
     ensureMid: loadEnsureMid(),
     _isRepeatedSystemError: loadSystemErrorDedupe(),
     input,
-    loadMessages: () => clone(options.history || [{ role: 'assistant', text: '旧消息' }]),
+    loadMessages: () => clone(stored),
     saveMessages: (list) => {
       saves.push(clone(list));
-      return options.saveResults[Math.min(saves.length - 1, options.saveResults.length - 1)];
+      return saveResultsAt();
+    },
+    // 真实实现按会话快照追加；夹具同步维护"已持久化历史"，因为代码成功后
+    // 会重新 loadMessages() 作为权威顺序。
+    appendChatSafely: async (messages) => {
+      const next = stored.concat(messages);
+      saves.push(clone(next));
+      const ok = saveResultsAt();
+      if (ok) stored = clone(next);
+      return ok;
+    },
+    replaceChatSafely: async (expected, next) => {
+      saves.push(clone(next));
+      const ok = saveResultsAt();
+      if (ok) stored = clone(next);
+      return ok;
     },
     acceptGroupUserMessage: () => true,
     appendMessageToDOM: (msg) => renders.push(msg),
@@ -300,12 +350,12 @@ function runMissingApiKeyBranch(options) {
   };
   const sendStart = chatDetail.indexOf('async function sendMsg(opts)');
   const branch = extractBlock(chatDetail, 'if (!apiKey)', '\n            baseUrl = baseUrl.replace', sendStart);
-  new Function('context', 'with (context) { ' + branch + ' }')(context);
+  await runWithContext(context, branch);
   return { saves, renders, input, quoteClears, context };
 }
 
-test('missing API key: a failed user-message save stops the send and writes no error record', () => {
-  const result = runMissingApiKeyBranch({ saveResults: [false] });
+test('missing API key: a failed user-message save stops the send and writes no error record', async () => {
+  const result = await runMissingApiKeyBranch({ saveResults: [false] });
   assert.equal(result.saves.length, 1, '只有用户消息的一次写入尝试');
   assert.equal(result.saves[0].length, 2);
   assert.equal(result.saves[0][1].role, 'user');
@@ -317,8 +367,8 @@ test('missing API key: a failed user-message save stops the send and writes no e
   assert.equal(result.context.groupAutoFollowupToken, 5, '群聊防重复占位必须回滚');
 });
 
-test('missing API key: a failed second save never leaves an error bubble that storage does not contain', () => {
-  const result = runMissingApiKeyBranch({ saveResults: [true, false] });
+test('missing API key: a failed second save never leaves an error bubble that storage does not contain', async () => {
+  const result = await runMissingApiKeyBranch({ saveResults: [true, false] });
   assert.equal(result.saves.length, 2);
   assert.equal(result.renders.length, 1);
   assert.equal(result.renders[0].role, 'user');
@@ -326,8 +376,8 @@ test('missing API key: a failed second save never leaves an error bubble that st
   assert.equal(result.input.value, '');
 });
 
-test('missing API key: successful saves keep the existing user-then-error behavior', () => {
-  const result = runMissingApiKeyBranch({ saveResults: [true, true] });
+test('missing API key: successful saves keep the existing user-then-error behavior', async () => {
+  const result = await runMissingApiKeyBranch({ saveResults: [true, true] });
   assert.equal(result.saves.length, 2);
   assert.equal(result.renders.length, 2);
   assert.equal(result.renders[0].role, 'user');
@@ -338,14 +388,14 @@ test('missing API key: successful saves keep the existing user-then-error behavi
   assert.equal(result.quoteClears, 1);
 });
 
-test('missing API key without a new user message never renders an unsaved error record', () => {
-  const result = runMissingApiKeyBranch({ isRegen: true, saveResults: [false] });
+test('missing API key without a new user message never renders an unsaved error record', async () => {
+  const result = await runMissingApiKeyBranch({ isRegen: true, saveResults: [false] });
   assert.equal(result.saves.length, 1);
   assert.equal(result.renders.length, 0);
 });
 
-test('new failed user messages persist a stable mid without duplicating the record on the second save', () => {
-  const result = runMissingApiKeyBranch({ saveResults: [true, true] });
+test('new failed user messages persist a stable mid without duplicating the record on the second save', async () => {
+  const result = await runMissingApiKeyBranch({ saveResults: [true, true] });
   const user = result.saves[0][1];
   assert.equal(user.role, 'user');
   assert.ok(typeof user.mid === 'string' && user.mid.length > 0, '用户消息必须带稳定 mid');
@@ -354,21 +404,21 @@ test('new failed user messages persist a stable mid without duplicating the reco
   assert.equal(result.saves[0].filter((m) => m.role === 'user').length, 1);
 });
 
-test('missing API key: repeated regen/contextOnly triggers do not accumulate the same system_error', () => {
-  const first = runMissingApiKeyBranch({ isRegen: true, saveResults: [true] });
+test('missing API key: repeated regen/contextOnly triggers do not accumulate the same system_error', async () => {
+  const first = await runMissingApiKeyBranch({ isRegen: true, saveResults: [true] });
   assert.equal(first.saves.length, 1);
   assert.equal(first.saves[0].filter((m) => m.role === 'system_error').length, 1);
 
   const stored = clone(first.saves[first.saves.length - 1]);
-  const second = runMissingApiKeyBranch({ isRegen: true, history: stored, saveResults: [true] });
+  const second = await runMissingApiKeyBranch({ isRegen: true, history: stored, saveResults: [true] });
   assert.equal(second.saves.length, 0, '相同错误已在历史尾部时不再重复写入');
   assert.equal(second.renders.length, 0, '不得重复渲染相同错误提示');
   assert.equal(stored.filter((m) => m.role === 'system_error').length, 1);
 
-  const contextFirst = runMissingApiKeyBranch({ contextOnly: true, saveResults: [true] });
+  const contextFirst = await runMissingApiKeyBranch({ contextOnly: true, saveResults: [true] });
   assert.equal(contextFirst.saves.length, 1);
   const contextStored = clone(contextFirst.saves[contextFirst.saves.length - 1]);
-  const contextSecond = runMissingApiKeyBranch({ contextOnly: true, history: contextStored, saveResults: [true] });
+  const contextSecond = await runMissingApiKeyBranch({ contextOnly: true, history: contextStored, saveResults: [true] });
   assert.equal(contextSecond.saves.length, 0, 'contextOnly 重复触发同样不得累积');
   assert.equal(contextStored.filter((m) => m.role === 'system_error').length, 1);
 });
@@ -418,7 +468,7 @@ test('retry locates legacy failed messages without mid by time and never migrate
   assert.equal(list[0].text, '旧失败消息');
 });
 
-test('streaming interruption tip is written and rendered only when persistence succeeds', () => {
+test('streaming interruption tip is written and rendered only when persistence succeeds', async () => {
   const text = '连接中断（30 秒未收到新内容），以上为已收到的回复';
   const history = [
     { role: 'assistant', text: '欢迎', time: 1 },
@@ -426,7 +476,7 @@ test('streaming interruption tip is written and rendered only when persistence s
     { role: 'assistant', text: '已收到的半截回复', time: 3 }
   ];
 
-  const failed = runErrorTipBranch('if (!_isRepeatedSystemError(historyList, tipText)) {', {
+  const failed = await runErrorTipBranch('if (!_isRepeatedSystemError(historyList, tipText)) {', {
     history, text, saved: false
   });
   assert.equal(failed.historyList.filter((m) => m.role === 'system_error').length, 0,
@@ -435,7 +485,7 @@ test('streaming interruption tip is written and rendered only when persistence s
   assert.deepEqual(failed.toasts, [text], '保存失败时用 toast 保留可见提示');
   assert.equal(failed.saves.length, 1);
 
-  const saved = runErrorTipBranch('if (!_isRepeatedSystemError(historyList, tipText)) {', {
+  const saved = await runErrorTipBranch('if (!_isRepeatedSystemError(historyList, tipText)) {', {
     history, text, saved: true
   });
   assert.equal(saved.historyList.filter((m) => m.role === 'system_error').length, 1);
@@ -445,14 +495,14 @@ test('streaming interruption tip is written and rendered only when persistence s
   assert.deepEqual(saved.toasts, []);
 });
 
-test('zero-content API error bubble is written and rendered only when persistence succeeds', () => {
+test('zero-content API error bubble is written and rendered only when persistence succeeds', async () => {
   const text = '连接失败: 503 Service Unavailable';
   const history = [
     { role: 'assistant', text: '欢迎', time: 1 },
     { role: 'user', text: '在吗', time: 2, mid: 'm2' }
   ];
 
-  const failed = runErrorTipBranch('if (!_isRepeatedSystemError(historyList, errText)) {', {
+  const failed = await runErrorTipBranch('if (!_isRepeatedSystemError(historyList, errText)) {', {
     history, text, saved: false
   });
   assert.equal(failed.historyList.filter((m) => m.role === 'system_error').length, 0);
@@ -460,7 +510,7 @@ test('zero-content API error bubble is written and rendered only when persistenc
   assert.deepEqual(failed.toasts, [text]);
   assert.equal(failed.saves.length, 1);
 
-  const saved = runErrorTipBranch('if (!_isRepeatedSystemError(historyList, errText)) {', {
+  const saved = await runErrorTipBranch('if (!_isRepeatedSystemError(historyList, errText)) {', {
     history, text, saved: true
   });
   assert.equal(saved.historyList.filter((m) => m.role === 'system_error').length, 1);
@@ -470,9 +520,12 @@ test('zero-content API error bubble is written and rendered only when persistenc
   assert.deepEqual(saved.toasts, []);
 });
 
-test('retry API failure re-marks the same user message instead of creating a new one', () => {
+test('retry API failure re-marks the same user message instead of creating a new one', async () => {
   const writes = [];
-  const helpers = loadRetryLifecycleHelpers((list) => { writes.push(clone(list)); return true; });
+  const helpers = loadRetryLifecycleHelpers(
+    (list) => { writes.push(clone(list)); return true; },
+    async (expected, next) => { writes.push(clone(next)); return true; }
+  );
   const original = [
     { role: 'assistant', text: '欢迎', time: 1, mid: 'm1' },
     { role: 'user', text: '在吗', time: 2, mid: 'm2' }
@@ -484,10 +537,13 @@ test('retry API failure re-marks the same user message instead of creating a new
     failureTarget: { mid: 'm2', time: 2 },
     fullText: '',
     isGroupChat: false,
-    _markUserSendFailed: helpers._markUserSendFailed
+    _markUserSendFailed: helpers._markUserSendFailed,
+    // 重试路径现在以读回结果为准：记录会话快照即可验证"只标记、不新增"。
+    appendChatSafely: async () => { writes.push(clone(historyList)); return true; },
+    replaceChatSafely: async (expected, next) => { writes.push(clone(next)); return true; },
+    loadMessages: () => clone(historyList)
   };
-  new Function('context', 'with (context) { ' +
-    extractBlock(chatDetail, 'var retryRemarked = false;', '\n            try {') + ' }')(context);
+  await runWithContext(context, extractBlock(chatDetail, 'var retryRemarked = false;', '\n            var groupTurnEffects = createGroupTurnEffects();'));
 
   assert.equal(historyList.length, 2, '不得新增第二条用户消息');
   assert.equal(historyList.filter((m) => m.role === 'user').length, 1);
@@ -500,22 +556,24 @@ test('retry API failure re-marks the same user message instead of creating a new
 
   // API 成功时不得误打失败标记。
   const okList = clone(original);
-  new Function('context', 'with (context) { ' +
-    extractBlock(chatDetail, 'var retryRemarked = false;', '\n            try {') + ' }')({
+  await runWithContext({
     historyList: okList,
     streamResult: { ok: true },
     failureTarget: { mid: 'm2', time: 2 },
     fullText: '',
     isGroupChat: false,
     _markUserSendFailed: helpers._markUserSendFailed
-  });
+  }, extractBlock(chatDetail, 'var retryRemarked = false;', '\n            var groupTurnEffects = createGroupTurnEffects();'));
   assert.equal(okList[1].sendFailed, undefined);
   assert.equal(writes.length, 1, '成功路径不得写入失败标记');
 });
 
 test('two consecutive retry failures keep exactly one failed user message', () => {
   const writes = [];
-  const helpers = loadRetryLifecycleHelpers((list) => { writes.push(clone(list)); return true; });
+  const helpers = loadRetryLifecycleHelpers(
+    (list) => { writes.push(clone(list)); return true; },
+    async (expected, next) => { writes.push(clone(next)); return true; }
+  );
   const list = [
     { role: 'assistant', text: '欢迎', time: 1, mid: 'm1' },
     { role: 'user', text: '在吗', time: 2, mid: 'm2', sendFailed: true, sendFailedReason: 'missing-api-key' }
@@ -553,7 +611,7 @@ test('retry API failure re-marks legacy messages without mid by time and never m
   assert.equal(list[1].text, '旧失败消息');
 });
 
-test('blocked send also stops when the user message cannot be persisted', () => {
+test('blocked send also stops when the user message cannot be persisted', async () => {
   const saves = [];
   const renders = [];
   let quoteClears = 0;
@@ -575,6 +633,8 @@ test('blocked send also stops when the user message cannot be persisted', () => 
     acceptGroupUserMessage: () => true,
     loadMessages: () => clone([{ role: 'assistant', text: '旧消息' }]),
     saveMessages: (list) => { saves.push(clone(list)); return false; },
+    appendChatSafely: async () => { saves.push(clone(context.historyList || [])); return false; },
+    replaceChatSafely: async (expected, next) => { saves.push(clone(next)); return false; },
     appendMessageToDOM: (msg) => renders.push(msg),
     vlRefresh: () => {},
     updateSendBtnState: () => {},
@@ -588,7 +648,7 @@ test('blocked send also stops when the user message cannot be persisted', () => 
     'if (isBlocked(aliasRoleId) && !isRegen && !contextOnly) {',
     '\n            const config = getAiConfig();'
   );
-  new Function('context', 'with (context) { ' + branch + ' }')(context);
+  await runWithContext(context, branch);
   assert.equal(saves.length, 1);
   assert.equal(renders.length, 0);
   assert.equal(input.value, '未发送原文');
@@ -610,7 +670,7 @@ test('shared context policy filters sendFailed messages out of the model context
   ]);
 });
 
-test('chat detail fallback context mapping also filters sendFailed messages', () => {
+test('chat detail fallback context mapping also filters sendFailed messages', async () => {
   const forEachStart = chatDetail.indexOf('recentHistory.forEach(m => {');
   assert.ok(forEachStart >= 0, 'fallback mapping should exist');
   const forEachEnd = chatDetail.indexOf('\n                });', forEachStart);
@@ -626,7 +686,7 @@ test('chat detail fallback context mapping also filters sendFailed messages', ()
     currentGroup: null,
     stripInternalReasoning: (raw) => String(raw || '')
   };
-  new Function('context', 'with (context) { ' + forEachBlock + ' }')(context);
+  await runWithContext(context, forEachBlock);
   assert.deepEqual(context.apiMessages, [{ role: 'user', content: '正常发送' }]);
 });
 

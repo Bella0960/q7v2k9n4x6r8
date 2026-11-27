@@ -1,7 +1,7 @@
 /* 小手机 PWA Service Worker
- * 页面与静态资源均采用缓存优先+后台更新，断网/慢网时秒开。
+ * 静态资源和公开登录页可缓存；受保护页面每次经 Worker 校验。
  */
-const CACHE_NAME = 'phone-app-pwa-v206';
+const CACHE_NAME = 'phone-app-pwa-v211';
 const FONT_ASSET_CACHE = 'maomao-font-assets-v1';
 // v196 release: sweep orphaned role-owned media refs during avatar cleanup.
 const APP_SHELL = [
@@ -66,7 +66,7 @@ const APP_SHELL = [
   './chat/date/journey.html',
   './chat/chat/chat-detail.html',
   './chat/chat/chat-settings.html',
-  './chat/chat/js/chat-extras.js?t=20261107imagevision1',
+  './chat/chat/js/chat-extras.js?t=20261127snapshot1',
   './worldbook/characters/characters.html',
   './worldbook/characters/js/characters-manager.js?v=20261107v11',
   './travel/dream-travel.html',
@@ -92,18 +92,19 @@ const APP_SHELL = [
   'shared/js/font-loader.js',
   'shared/js/native-feel.js',
   'shared/js/phone/phone_storage.js',
+  './shared/js/phone/chat-history-atomic.js?v=20261118v3',
   './shared/js/phone/phone_context.js?v=20261102npc1',
   'shared/js/phone/chat-message-policy.js?v=20261029v5',
   './shared/js/phone/chat-image-vision.js?v=20261113v1',
   'shared/js/phone/chat-send-policy.js?v=20261029v2',
-  'shared/js/phone/chat-context-policy.js?v=20261107vision1',
+  'shared/js/phone/chat-context-policy.js?v=legacy-memory-scope1',
   './shared/js/phone/chat-presence-policy.js?v=20261102v17',
   './shared/js/phone/chat-heart-policy.js?v=20261126mind1',
   './shared/js/phone/role-public-timeline.js?v=20261102v1',
   './shared/js/phone/group-chat-policy.js?v=20261102v5',
   './shared/js/phone/chat-followup-policy.js?v=20261102v1',
   'shared/js/phone/phone_stream.js',
-  'shared/js/phone/memory_recall.js?v=20261024v2',
+  'shared/js/phone/memory_recall.js?v=20261127group1',
   'shared/js/phone/memory_space_v2.js?v=20261024v1',
   './shared/js/chat-notifier.js?v=20261102v3',
   'shared/js/phone/storage/repository.js',
@@ -129,6 +130,22 @@ const APP_SHELL = [
   './assets/avatar-cat-dark.svg'
 ];
 
+function isPublicAccountPath(path, scope) {
+  const accountPath = new URL('account/', scope).pathname;
+  return path === accountPath.slice(0, -1) || path === accountPath ||
+    path === accountPath + 'index.html' || path === accountPath + 'bootstrap.html';
+}
+
+function isAppHtml(path, scope) {
+  return path === '/' || path === new URL(scope).pathname || /\.html$/i.test(path);
+}
+
+function cacheablePublicResponse(response) {
+  if (!response || !response.ok || response.redirected) return false;
+  const control = response.headers.get('cache-control') || '';
+  return !/\b(?:private|no-store)\b/i.test(control);
+}
+
 self.addEventListener('install', event => {
   event.waitUntil(
     caches.open(CACHE_NAME).then(async cache => {
@@ -146,8 +163,20 @@ self.addEventListener('install', event => {
         // 清单不可用时仍继续安装已有核心资源，不阻塞整个 PWA。
       }
 
-      const resources = Array.from(new Set(APP_SHELL.concat(pageEntries)));
-      await Promise.all(resources.map(url => cache.add(url).catch(() => undefined)));
+      const scope = self.registration.scope;
+      const resources = Array.from(new Set(APP_SHELL.concat(pageEntries, [
+        './account/index.html', './account/bootstrap.html'
+      ])));
+      await Promise.all(resources.map(path => {
+        const url = new URL(path, scope);
+        if (url.origin !== self.location.origin) return;
+        if (isPublicAccountPath(url.pathname, scope)) {
+          return fetch(url.href, { cache: 'no-store' }).then(response =>
+            cacheablePublicResponse(response) ? cache.put(url.href, response) : undefined
+          ).catch(() => undefined);
+        }
+        if (!isAppHtml(url.pathname, scope)) return cache.add(path).catch(() => undefined);
+      }));
     }).then(() => self.skipWaiting())
   );
 });
@@ -175,8 +204,7 @@ self.addEventListener('fetch', event => {
   if (url.origin !== self.location.origin) return;
 
   // Administrator pages and diagnostics must always reach the server's session gate.
-  if (url.pathname.startsWith('/admin/') || url.pathname === '/api/admin/cloud' ||
-      url.pathname.startsWith('/api/admin/cloud/')) return;
+  if (url.pathname.startsWith('/admin/') || url.pathname.startsWith('/api/')) return;
 
   // User-imported fonts are cached once by font-loader.js and served as same-origin
   // font resources. Keep this cache separate from the versioned app-shell cache.
@@ -195,15 +223,25 @@ self.addEventListener('fetch', event => {
     return;
   }
 
+  const scope = self.registration.scope;
+  const isPublicAccountPage = isPublicAccountPath(url.pathname, scope);
+  if (!isPublicAccountPage && (url.pathname === '/' || isAppHtml(url.pathname, scope) || req.mode === 'navigate')) {
+    event.respondWith(fetch(req, { cache: 'no-store' }).catch(() => new Response(
+      '此页面暂时无法连接，请检查网络后重试。',
+      { status: 503, headers: { 'Content-Type': 'text/plain; charset=UTF-8', 'Cache-Control': 'no-store' } }
+    )));
+    return;
+  }
+
   // 页面导航采用“缓存优先、后台更新”：
   // 已缓存的应用立即打开，不让慢网络/VPN 阻塞页面；缓存未命中时才等待网络。
   // 绝不把 index.html 当作其他应用的兜底页面，避免点开应用却重新显示桌面。
-  if (req.mode === 'navigate') {
+  if (isPublicAccountPage) {
     event.respondWith((async function () {
       var cachedPromise = caches.match(req).catch(function () { return null; });
       var cacheWritePromise = null;
       var networkPromise = fetch(req).then(function (response) {
-        if (response && response.ok) {
+        if (cacheablePublicResponse(response)) {
           var copy = response.clone();
           // 写回缓存单独成 Promise：失败只影响缓存，不影响已成功的网络响应。
           cacheWritePromise = caches.open(CACHE_NAME)

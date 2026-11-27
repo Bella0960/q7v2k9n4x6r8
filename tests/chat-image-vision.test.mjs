@@ -1,11 +1,14 @@
+import { runInNewContext } from 'node:vm';
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import path from 'node:path';
 import vm from 'node:vm';
 
-const visionSource = fs.readFileSync(path.join(process.cwd(), 'shared/js/phone/chat-image-vision.js'), 'utf8');
-const contextSource = fs.readFileSync(path.join(process.cwd(), 'shared/js/phone/chat-context-policy.js'), 'utf8');
+// Normalise source line endings before multi-line contract assertions so Windows CRLF checkouts behave identically.
+const readSource = (file) => fs.readFileSync(path.join(process.cwd(), file), 'utf8').replace(/\r\n/g, '\n');
+const visionSource = readSource('shared/js/phone/chat-image-vision.js');
+const contextSource = readSource('shared/js/phone/chat-context-policy.js');
 
 function createVision() {
   const window = {};
@@ -183,17 +186,11 @@ test('context policy emits OpenAI-compatible multimodal user content only when a
 });
 
 
-const chatDetailSource = fs.readFileSync(
-  path.join(process.cwd(), 'chat/chat/chat-detail.html'), 'utf8'
-);
-const chatExtrasSource = fs.readFileSync(
-  path.join(process.cwd(), 'chat/chat/js/chat-extras.js'), 'utf8'
-);
-const avatarLibrarySource = fs.readFileSync(
-  path.join(process.cwd(), 'shared/js/phone/role-avatar-library.js'), 'utf8'
-);
-const serviceWorkerSource = fs.readFileSync(path.join(process.cwd(), 'sw.js'), 'utf8');
-const characterManagerSource = fs.readFileSync(path.join(process.cwd(), 'worldbook/characters/js/characters-manager.js'), 'utf8');
+const chatDetailSource = readSource('chat/chat/chat-detail.html');
+const chatExtrasSource = readSource('chat/chat/js/chat-extras.js');
+const avatarLibrarySource = readSource('shared/js/phone/role-avatar-library.js');
+const serviceWorkerSource = readSource('sw.js');
+const characterManagerSource = readSource('worldbook/characters/js/characters-manager.js');
 const packageJson = JSON.parse(fs.readFileSync(path.join(process.cwd(), 'package.json'), 'utf8'));
 
 test('chat plus-image upload stores Blob assets and chat history stores only asset references', () => {
@@ -258,7 +255,7 @@ test('deleted chat images release only chat references after single or bulk dele
   const single = chatDetailSource.slice(chatDetailSource.indexOf('function deleteOneMessage(bubbleId)'));
   const bulk = chatDetailSource.slice(chatDetailSource.indexOf("document.getElementById('selectDeleteBtn').addEventListener"));
   for (const handler of [single, bulk]) {
-    const save = handler.indexOf('if (!saveMessages(keep))');
+    const save = handler.indexOf('if (!await replaceChatSafely(originalSnapshot, keep))');
     const release = handler.indexOf('releaseDeletedChatImageReferences(removedMessages)');
     assert.ok(save >= 0 && release > save, 'reference cleanup must follow a successful save');
     assert.match(handler.slice(save, release), /删除失败[\s\S]*?return;/);
@@ -272,20 +269,52 @@ test('PWA shell and package contracts include the chat vision runtime', () => {
   const currentCacheVersion = Number(serviceWorkerSource.match(/^const CACHE_NAME = 'phone-app-pwa-v(\d+)'/m)?.[1] || 0);
   assert.ok(currentCacheVersion >= 203, 'PWA app shell must not regress below feature minimum v203');
   assert.ok(serviceWorkerSource.includes('chat-image-vision.js?v=20261113v1'));
-  assert.ok(serviceWorkerSource.includes('chat-context-policy.js?v=20261107vision1'));
-  assert.ok(serviceWorkerSource.includes('chat-extras.js?t=20261107imagevision1'));
+  const contextRevision = chatDetailSource.match(/chat-context-policy\.js\?v=[\w-]+/)?.[0];
+  assert.ok(contextRevision, 'chat detail must load a versioned context policy');
+  assert.ok(serviceWorkerSource.includes(contextRevision), 'PWA must precache the loaded context policy');
+  const extrasRevision = chatDetailSource.match(/chat-extras\.js\?t=[\w-]+/)?.[0];
+  assert.ok(extrasRevision, 'chat detail must load a versioned extension script');
+  assert.ok(serviceWorkerSource.includes(extrasRevision), 'PWA must precache the loaded extension script');
   assert.ok(packageJson.scripts['test:chat:image-vision']);
   assert.ok(packageJson.scripts['test:chat:contract'].includes('tests/chat-image-vision.test.mjs'));
 });
 
 
-test('forwarding an asset-backed chat image adds a destination chat reference', () => {
-  assert.match(chatDetailSource,
-    /async function forwardMessage\(resolved, targetId, targetName\)\s*\{\s*var msg = resolved\.message;/);
-  assert.ok(chatDetailSource.includes("_chatImageMediaRepo.addRef(fwd.assetId, 'chat-message', String(fwd.mid))"));
-  assert.ok(chatDetailSource.includes('fwd.assetId = String(msg.assetId)'));
-  assert.ok(chatDetailSource.includes('if (linkedImageRef)'));
-  assert.ok(chatDetailSource.includes('await _chatImageMediaRepo.removeRef(fwd.assetId'));
+test('forwarding an asset-backed chat image adds a destination chat reference', async () => {
+  const start = chatDetailSource.indexOf('async function forwardMessage(resolved, targetId, targetName)');
+  const end = chatDetailSource.indexOf('// 点 AI 头像', start);
+  assert.ok(start >= 0 && end > start);
+  const refs = new Set(['source']);
+  const writes = [];
+  let failure = false;
+  let sequence = 0;
+  const context = {
+    aliasRoleId: 'source', chatTitle: { textContent: 'source' },
+    plainTextOf: message => message.text,
+    ensureMid(message) { message.mid ||= 'forward-' + ++sequence; },
+    _chatImageMediaRepo: {
+      async addRef(asset, kind, mid) { assert.equal(asset, 'fixture-image'); assert.equal(kind, 'chat-message'); refs.add(mid); return { ok: true }; },
+      async removeRef(asset, kind, mid) { assert.equal(asset, 'fixture-image'); assert.equal(kind, 'chat-message'); refs.delete(mid); },
+    },
+    _storage: { result: { appendChatHistory(id, message) {
+      assert.ok(refs.has(message.mid));
+      if (failure) return { ok: false, error: { code: 'QUOTA_EXCEEDED' } };
+      writes.push({ id, message });
+      return { ok: true };
+    } } },
+  };
+  runInNewContext(chatDetailSource.slice(start, end), context);
+  const image = { type: 'image', assetId: 'fixture-image', text: 'fixture' };
+  const resolved = { message: image, text: image.text, count: 1 };
+  await context.forwardMessage(resolved, 'target', 'target');
+  assert.equal(writes.length, 1);
+  assert.equal(writes[0].id, 'target');
+  assert.equal(writes[0].message.assetId, image.assetId);
+  assert.deepEqual([...refs], ['source', 'forward-1']);
+  failure = true;
+  await context.forwardMessage(resolved, 'target', 'target');
+  assert.equal(writes.length, 1);
+  assert.deepEqual([...refs], ['source', 'forward-1']);
 });
 
 test('paired avatar markers resolve two distinct current images and never collapse into two unrelated singles', () => {

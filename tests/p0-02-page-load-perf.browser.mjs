@@ -52,6 +52,16 @@ function startServer() {
         res.end(body);
         return;
       }
+      // The account rollout is separate; this public fixture exercises the real SW cache policy.
+      if (urlPath === '/account/index.html' || urlPath === '/account/bootstrap.html') {
+        res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8' });
+        res.end('<!doctype html><title>Public account fixture</title><p>Public sign-in fixture</p>');
+        return;
+      }
+      if (state.privateUnavailable && urlPath === '/chat/chat/chat.html') {
+        req.socket.destroy();
+        return;
+      }
       const rel = urlPath === '/' ? 'index.html' : urlPath.replace(/^\//, '');
       const filePath = path.join(root, rel);
       if (!filePath.startsWith(root)) {
@@ -132,6 +142,8 @@ async function cacheStats(page, expectedUrls = []) {
     const registration = registrations.find((item) => item.active && item.active.scriptURL.includes('/sw.js')) || null;
     return {
       keys,
+      privateDocuments: entries.map(entry => new URL(entry.url).pathname)
+        .filter(path => path === '/' || (/\.html$/i.test(path) && !['/account/index.html', '/account/bootstrap.html'].includes(path))),
       cacheName,
       entries: entries.length,
       controlled: !!navigator.serviceWorker.controller,
@@ -167,7 +179,7 @@ async function waitForPrecache(page, minEntries) {
   }, minEntries, { timeout: 20000 });
 }
 
-async function sectionA(browser, baseUrl, report, expectedPrecacheUrls) {
+async function sectionA(browser, baseUrl, report, expectedPrecacheUrls, state) {
   const context = await browser.newContext({ viewport: { width: 390, height: 844 } });
   await context.addInitScript(() => {
     if (localStorage.getItem('__seeded')) return;
@@ -191,32 +203,34 @@ async function sectionA(browser, baseUrl, report, expectedPrecacheUrls) {
   checks.push(['首访只有一次文档导航', navCountAtSwReady === 1, { navigations: navCountAtSwReady }]);
   checks.push(['首访文档未被 reload', navEntries.length === 1 && navEntries[0] === 'navigate', { navEntries }]);
   checks.push(['首访页面已受 SW 控制', stats.controlled === true, { controlled: stats.controlled }]);
-  checks.push(['活动 SW 缓存完整覆盖 APP_SHELL 与全部 HTML 页面清单', stats.missing.length === 0,
-    { cacheName: stats.cacheName, entries: stats.entries, expected: stats.expectedCount, activeState: stats.activeState, missing: stats.missing }]);
+  checks.push(['活动 SW 缓存包含静态资源和公开登录页，排除私有 HTML', stats.missing.length === 0 && stats.privateDocuments.length === 0,
+    { cacheName: stats.cacheName, entries: stats.entries, expected: stats.expectedCount, activeState: stats.activeState, missing: stats.missing, privateDocuments: stats.privateDocuments }]);
 
-  // 离线仍能打开聊天页
-  await page.goto(baseUrl + '/index.html', { waitUntil: 'load' });
-  await sleep(400);
   await context.setOffline(true);
-  let offlineOk = false;
-  let offlineDetail = null;
+  state.privateUnavailable = true;
+  let offlineDetail;
   try {
-    await page.goto(baseUrl + '/chat/chat/chat.html', { waitUntil: 'domcontentloaded', timeout: 10000 });
-    await page.waitForSelector('#chatListContainer', { timeout: 6000 });
-    const textLength = await page.evaluate(() => (document.body.textContent || '').trim().length);
-    offlineOk = textLength > 0 && page.url().includes('/chat/chat/chat.html');
-    offlineDetail = { textLength, url: page.url() };
-  } catch (error) {
-    offlineDetail = { error: String(error).slice(0, 120) };
+    const publicPage = await page.goto(baseUrl + '/account/index.html', { waitUntil: 'domcontentloaded', timeout: 10000 });
+    const publicText = await page.locator('body').textContent();
+    const privatePage = await page.goto(baseUrl + '/chat/chat/chat.html', { waitUntil: 'domcontentloaded', timeout: 10000 });
+    offlineDetail = {
+      publicStatus: publicPage.status(), publicSignIn: publicText.includes('Public sign-in fixture'),
+      privateStatus: privatePage.status(), chatRendered: await page.locator('#chatListContainer').count(),
+      url: page.url()
+    };
+  } finally {
+    state.privateUnavailable = false;
+    await context.setOffline(false);
   }
-  await context.setOffline(false);
-  checks.push(['离线仍能打开聊天页', offlineOk, offlineDetail]);
+  checks.push(['离线登录公开页可打开，私有聊天安全拒绝', offlineDetail.publicStatus === 200 &&
+    offlineDetail.publicSignIn && offlineDetail.privateStatus === 503 && offlineDetail.chatRendered === 0 &&
+    offlineDetail.url.endsWith('/chat/chat/chat.html'), offlineDetail]);
 
   report.A = { checks, navCount: navCountAtSwReady, precache: stats, offline: offlineDetail, requests: null };
   await context.close();
 }
 
-async function sectionB(browser, baseUrl, report) {
+async function sectionB(browser, baseUrl, report, expectedPrecacheCount) {
   const context = await browser.newContext({ viewport: { width: 390, height: 844 } });
   await context.addInitScript(CLICK_PROBE);
   await context.addInitScript(() => {
@@ -226,7 +240,7 @@ async function sectionB(browser, baseUrl, report) {
   });
   const page = await context.newPage();
   await page.goto(baseUrl + '/index.html', { waitUntil: 'load' });
-  await waitForPrecache(page, 150);
+  await waitForPrecache(page, expectedPrecacheCount);
   await sleep(500);
 
   const measurements = [];
@@ -356,7 +370,7 @@ async function sectionC(browser, baseUrl, report) {
   await context.close();
 }
 
-const { server, pages } = await startServer();
+const { server, pages, state } = await startServer();
 const baseUrl = `http://127.0.0.1:${server.address().port}`;
 const swSource = await readFile(resolve(root, 'sw.js'), 'utf8');
 const appShellMatch = swSource.match(/const APP_SHELL = \[([\s\S]*?)\n\];/);
@@ -364,8 +378,8 @@ if (!appShellMatch) throw new Error('Unable to read APP_SHELL from sw.js');
 const appShellPaths = Array.from(appShellMatch[1].matchAll(/['"]([^'"]+)['"]/g), (match) => match[1]);
 const expectedPrecacheUrls = Array.from(new Set(
   appShellPaths
-    .concat(pages.map((page) => './' + page))
-    .filter((path) => path !== './')
+    .filter((path) => path !== './' && !/\.html(?:\?|$)/i.test(path))
+    .concat('./account/index.html', './account/bootstrap.html')
     .map((path) => new URL(path, baseUrl + '/').href)
 ));
 const report = {};
@@ -373,9 +387,9 @@ let browser;
 let failed = false;
 const failures = [];
 try {
-  browser = await chromium.launch({ channel: 'msedge', headless: true });
-  await sectionA(browser, baseUrl, report, expectedPrecacheUrls);
-  await sectionB(browser, baseUrl, report);
+  browser = await chromium.launch({ headless: true, ...(process.env.PERF_CHROMIUM_EXECUTABLE ? { executablePath: process.env.PERF_CHROMIUM_EXECUTABLE } : { channel: 'msedge' }) });
+  await sectionA(browser, baseUrl, report, expectedPrecacheUrls, state);
+  await sectionB(browser, baseUrl, report, expectedPrecacheUrls.length);
   await sectionC(browser, baseUrl, report);
   for (const key of ['A', 'B', 'C']) {
     for (const [name, ok, detail] of report[key].checks) {
