@@ -526,12 +526,5 @@ Do not parallelize:
 - Multiple agents editing CLAUDE.md, AGENTS.md, or the handbook.
 - Multiple agents modifying .github/workflows or package scripts concurrently.
 
-## Recommended first assignments to other AIs
-
-1. Agent A: GOV-002 — app/page/route/cross-module ownership map, read-only.
-2. Agent B: DATA-001 — IndexedDB/localStorage database registry and backup gaps, read-only.
-3. Agent C: DATA-005 — all chat-history reader/writer call-site matrix, read-only.
-4. Agent D: CI-002 + CI-003 — GitHub workflow and release-template review, propose patch only.
-5. Agent E: PERF-001 — image asset inventory and safe optimization recommendations, no replacements yet.
 
 Only after these reports are reviewed should implementation tasks be assigned.
