@@ -1910,6 +1910,18 @@ test('Service Worker navigation does not abort slow mobile page requests', () =>
   assert.equal(serviceWorker.includes('controller.abort()'), false);
 });
 
+test('Cloudflare Worker gates private HTML and admin routes before asset access', () => {
+  const worker = read('worker.js');
+  const guardStart = worker.indexOf('if (isHtmlDocument && !isPublicAccountDocument)');
+  const assetStart = worker.indexOf('if (url.pathname === "/" && request.method === "GET")', guardStart);
+  assert.ok(guardStart >= 0 && assetStart > guardStart);
+  const guard = worker.slice(guardStart, assetStart);
+  assert.match(guard, /new URL\('\/api\/accounts\/me', url\)/);
+  assert.match(guard, /account\?\.status !== 'active'/);
+  assert.match(guard, /Response\.redirect\(new URL\('\/account\/index\.html', url\), 302\)/);
+  assert.match(guard, /url\.pathname\.startsWith\('\/admin\/'\) && authorizedAccount\.role !== 'super_admin'/);
+});
+
 test('Cloudflare Worker preserves explicit HTML routes and maps only the root to the desktop index', () => {
   const wranglerRaw = read('wrangler.jsonc');
   // Strip BOM and normalize Windows line endings before removing the JSONC comment.
