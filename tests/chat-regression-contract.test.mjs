@@ -2749,12 +2749,37 @@ test('chat plus-menu forward reuses the canonical target resolver and atomic app
   assert.match(toast.at(-1), /红包\/转账不支持转发/);
 });
 
-test('chat plus-menu script is refreshed in the page and PWA together', () => {
+test('chat plus-menu script is refreshed in the page and PWA together', async () => {
   const loaded = detail.match(/js\/chat-extras\.js\?t=([\w-]+)/)?.[1];
   const cached = serviceWorker.match(/chat\/chat\/js\/chat-extras\.js\?t=([\w-]+)/)?.[1];
-  assert.equal(loaded, '20261122cards4', 'chat details must load the repaired helper');
+  assert.ok(loaded, 'chat details must load a versioned extension script');
+  assert.notEqual(loaded, '20261107imagevision1', 'the original main revision lacks the snapshot fix');
   assert.equal(cached, loaded, 'PWA must precache exactly the script loaded by the page');
-  assert.ok(pwaCacheVersion >= 298, 'the old cached helper must be invalidated');
+
+  const activeCache = 'phone-app-pwa-v' + pwaCacheVersion;
+  const oldMainCache = 'phone-app-pwa-v' + 206;
+  const oldBeforeSnapshotCache = 'phone-app-pwa-v' + 208;
+  const fontCache = 'maomao-font-assets-v1';
+  assert.ok(pwaCacheVersion > 208, 'the snapshot release must use a new cache generation');
+
+  const listeners = {};
+  const deleted = [];
+  let claimed = false;
+  runInNewContext(serviceWorker, {
+    self: {
+      addEventListener(type, listener) { listeners[type] = listener; },
+      clients: { claim() { claimed = true; } }
+    },
+    caches: {
+      keys: async () => [oldMainCache, oldBeforeSnapshotCache, activeCache, fontCache],
+      delete: async key => { deleted.push(key); }
+    }
+  });
+  let activation;
+  listeners.activate({ waitUntil(promise) { activation = promise; } });
+  await activation;
+  assert.deepEqual(deleted, [oldMainCache, oldBeforeSnapshotCache]);
+  assert.equal(claimed, true);
 });
 
 test('chat extras: every extension card send gates AI dispatch on successful persistence', () => {
