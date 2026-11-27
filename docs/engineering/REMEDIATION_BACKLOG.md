@@ -307,6 +307,73 @@ Acceptance:
 - Settings gallery supports per-character and public/private filtering, and generation/persistence failures are visible.
 - Tests cover prompt construction, record persistence, privacy filtering, backup inclusion, and chat command/render contracts.
 
+### ROLE-MIND-001 — Complete role-scoped heart history and persona-aligned generation
+**Priority:** P1 · **Status:** IN PROGRESS
+
+Scope:
+- Extract heart marker parsing, prompt rules, and history persistence into a shared chat policy.
+- Store bounded heart history by conversation ID and actual speaker ID; group members must never share a history bucket.
+- Read legacy direct-chat `latest_heart_<roleId>` values without deleting them. Do not attribute the old shared group key to any member.
+- Commit heart history only after the visible AI reply has been successfully persisted; verify storage readback and surface failures.
+- Clicking a group member's avatar reads only that member's history. Legacy group messages without a member ID may resolve by a unique member name only.
+- Keep heart optional and consistent with the already-loaded persona, worldbook, memory, and relationship context.
+
+Acceptance:
+- Unit tests cover parsing, direct legacy compatibility, group isolation, bounded history, corrupt data, storage failure, and prompt constraints.
+- Chat detail keeps the existing message schema and role/group IDs; no history or user data is deleted.
+- PWA cache is advanced and the new policy is pre-cached.
+- Node contract tests and Vite build pass. Browser/real-device behavior is reported separately and is not inferred from static tests.
+
+Out of scope for this task: changing emotion scoring, proactive-contact scheduling, group governance permissions, or chat message schemas.
+
+### ROLE-BEHAVIOR-001 — Unify the per-turn role behavior context
+**Priority:** P1 · **Status:** PLANNED · **Depends on:** ROLE-MIND-001
+
+Current source already contains voice-habit profiling, short-term emotion continuity, recent self-authored life-note extraction, autonomy prompting, and proactive-contact policy. These are separate capabilities, not a reason to create a second parallel personality engine.
+
+Scope:
+- Reuse `ChatPresencePolicy` and compose one bounded per-turn behavior context for the active role/speaker.
+- Preserve role and group-speaker isolation; narration/offline modes keep their existing exclusions.
+- Keep persona, worldbook, relationship protocol, and confirmed memory as higher-priority sources.
+- Avoid forced message quotas, repeated questions, fabricated activities, permanent emotional labels, or additional model/API calls.
+- Keep aggregate voice-profile semantics; do not store raw chat samples.
+
+Acceptance:
+- Tests cover direct/group speaker selection, voice-profile cache invalidation, emotion cue expiry, life-note recency, narration exclusions, and prompt ordering.
+- Existing prompt source order, model request count, and message schema remain compatible.
+- Node chat contract, Vite build, and browser viewport checks pass.
+
+### ROLE-ACTION-001 — Unify role action parsing and execution
+**Priority:** P1 · **Status:** PLANNED · **Depends on:** ROLE-BEHAVIOR-001
+
+Current action markers and side effects are distributed through the large chat-detail controller. Group relationship, group interaction, and group management markers use different handlers and state paths.
+
+Scope:
+- Inventory every existing action marker before changing behavior; preserve current marker compatibility.
+- Separate narrative/action description from state-changing operations.
+- Add one dispatcher/registry with explicit actor, target, permission, feature-switch, and current-state validation.
+- Execute state changes only after the visible reply has persisted; enforce idempotency, readback verification, and rollback.
+- Reuse existing group permission and relationship policies; do not create a second authorization system.
+- A model-generated marker is never an authorization credential by itself.
+
+Acceptance:
+- Tests cover unauthorized actors, stale or ambiguous targets, duplicate markers, regeneration, failed reply persistence, failed action persistence, rollback, and successful state readback.
+- No state-changing action occurs from an uncommitted/failed reply.
+- Existing group, wallet, call, poll, chain, and media marker behavior remains compatible.
+
+### ROLE-LIFE-001 — Complete role life-event continuity
+**Priority:** P2 · **Status:** PLANNED · **Depends on:** ROLE-BEHAVIOR-001
+
+Scope:
+- Reconcile existing life-line, life-event, footprint, and recent-note sources instead of creating duplicate storage.
+- Model event lifecycle explicitly: planned, active, completed, cancelled, or rescheduled.
+- Keep event ownership role-scoped and group-member-scoped where applicable.
+- Never present a plan as completed or revive a cancelled/expired event without new evidence.
+
+Acceptance:
+- Tests cover state transitions, expiry, duplicate events, role isolation, group isolation, and cross-page read consistency.
+- No new database or destructive migration without a separately approved migration plan.
+
 ## Phase 3 — Shared architecture and feature safety
 
 ### ARCH-001 — Reduce chat-detail coupling

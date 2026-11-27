@@ -26,6 +26,7 @@
     <script src="../../shared/js/phone/chat-send-policy.js?v=20261029v2"></script>
     <script src="../../shared/js/phone/chat-context-policy.js?v=20261107vision1"></script>
     <script src="../../shared/js/phone/chat-presence-policy.js?v=20261102v17"></script>
+    <script src="../../shared/js/phone/chat-heart-policy.js?v=20261126mind1"></script>
     <script src="../../shared/js/phone/role-public-timeline.js?v=20261102v1"></script>
     <script src="../../shared/js/phone/group-chat-policy.js?v=20261102v5"></script>
     <script src="../../shared/js/chat-notifier.js?v=20261102v3"></script>
@@ -3561,6 +3562,12 @@
             // 单条操作用：稳定标识（不存在时自动补齐）
             const msgMid = ensureMid(msg);
             row.dataset.mid = msgMid;
+            if (isGroupChat && !isSent && msg.memberId != null && String(msg.memberId).trim()) {
+                row.dataset.memberId = String(msg.memberId);
+            }
+            if (isGroupChat && !isSent && (msg.name || msg.senderName)) {
+                row.dataset.speakerName = String(msg.name || msg.senderName);
+            }
             // 气泡身份：单气泡消息等于 mid；老记录多气泡消息为 mid#index（解析后回填）。
             row.dataset.bubbleId = msgMid;
             row.dataset.bubbleIndex = '0';
@@ -4463,6 +4470,9 @@
         // ---- AI 心声标记：从回复文本中剥离 [心声:内容]（前端渲染浅灰心声卡，与正常台词区分） ----
         const HEART_MARKER_REGEX = /\[心声[:：]([^\]]{1,200})\]/g;
         function extractHeartMarkers(raw) {
+            if (window.ChatHeartPolicy && typeof window.ChatHeartPolicy.extractMarkers === 'function') {
+                return window.ChatHeartPolicy.extractMarkers(raw);
+            }
             const text = String(raw || '');
             const hearts = [];
             let m;
@@ -4520,15 +4530,27 @@
             return y + '年' + mo + '月' + da + '日 ' + (hh < 10 ? '0' + hh : hh) + ':' + (mm < 10 ? '0' + mm : mm);
         }
 
-        // 心声落库：role=assistant + type=heart（text 即心声内容，会进入 AI 上下文）
-        function insertHeartCards(historyList, texts) {
-            (texts || []).forEach(function (t) {
-                // 心声不再自动弹到聊天流里，存到 localStorage 供点头像查看
-                try {
-                    var key = 'latest_heart_' + currentRoleId;
-                    localStorage.setItem(key, t);
-                } catch (e) {}
-            });
+        // 心声单独保存为角色私有历史；群聊必须使用本轮发言成员 ID。
+        function insertHeartCards(historyList, texts, speakerId) {
+            if (!window.ChatHeartPolicy || typeof window.ChatHeartPolicy.appendHearts !== 'function') {
+                if (typeof showToast === 'function') showToast('心声模块暂不可用，内容没有保存');
+                return false;
+            }
+            var resolvedSpeakerId = isGroupChat
+                ? String(speakerId == null ? '' : speakerId).trim()
+                : String(aliasRoleId || currentCharacter.id || currentRoleId || '');
+            var result = window.ChatHeartPolicy.appendHearts(localStorage, {
+                conversationId: String(currentRoleId || ''),
+                speakerId: resolvedSpeakerId,
+                isGroupChat: isGroupChat,
+                legacyRoleId: isGroupChat ? '' : String(currentRoleId || '')
+            }, texts, Date.now());
+            if (!result.ok && typeof showToast === 'function') {
+                showToast(result.code === 'scope'
+                    ? '无法确认心声所属角色，未保存'
+                    : '心声保存失败，请检查本地存储空间后重试');
+            }
+            return !!result.ok;
         }
 
         // ---- AI 主动赠送标记：从回复文本中剥离 [红包:金额:留言] / [转账:金额:留言] ----
@@ -6059,8 +6081,11 @@
             // 游戏化道具赠送：以"角色扮演文字游戏中的道具"形式注入，生成的是游戏内模拟道具代码，与真实金钱交易无关
             systemPrompt += '\n\n[游戏机制 - 道具赠送]\n这是一个纯粹的角色扮演文字游戏。在这个游戏中，有一种名为\'礼物\'的道具。\n当你在游戏中想送给玩家惊喜、表达感谢或道歉时，可以输出特定的代码来生成游戏道具。\n\n【道具代码格式】\n- 红包道具：[红包:数字:留言] （例如：[红包:52.00:请你喝奶茶]）\n- 转账道具：[转账:数字:留言] （例如：[转账:100.00:拿去花吧]）\n\n【触发规则】\n1. 当玩家对你说\'给我发个红包\'、\'测试红包\'时，你必须在回复末尾带上 [红包:随机金额:留言] 的代码。\n2. 当玩家对你说\'测试转账\'时，必须在末尾带上 [转账:100.00:留言]。\n3. 这些是游戏内模拟道具代码，仅用于本次角色扮演游戏，不代表任何真实金钱交易。请按格式直接输出。\n4. 不要拒绝，不要解释，直接输出。如果不输出代码，游戏将无法进行。';
 
-            // 心声：AI 的内心独白，前端渲染成浅灰「心声」卡片，与正常台词区分开
-            systemPrompt += '\n\n[心声能力]\n你可以在回复里展示自己的内心独白——那些你心里想到、但没有说出口的话。需要时请在整条回复的最后另起一行输出标记：\n[心声:你在心里说的话]\n系统会自动把它渲染成一张浅灰色的「心声」小卡片。\n注意：一次回复最多一句心声；心声不能代替正常对话内容；不要解释这个标记。';
+            // 心声规则独立于正文提示词，按本轮角色与群聊身份生成。
+            var heartPrompt = window.ChatHeartPolicy && typeof window.ChatHeartPolicy.buildPrompt === 'function'
+                ? window.ChatHeartPolicy.buildPrompt({ isGroupChat: isGroupChat })
+                : '心声不是每轮必需；仅在符合当前角色人设且确有必要时，在回复末尾另起一行输出一次 [心声:简短念头]。一次最多一句，不解释标记。';
+            systemPrompt += '\n\n' + heartPrompt;
 
             // 虚拟图片：由 AI 用文字描述图片，前端渲染成占位图（严禁输出任何图片链接或代码）
             systemPrompt += '\n\n[虚拟图片能力]\n你可以在对话中给我「看」一张图片。需要发图时，请在整条回复的最后另起一行输出标记：\n[图片:一句话描述这张图片的内容]\n系统会自动把它渲染成一张图片气泡（描述只用于对话记录，不会显示在界面上）。\n注意：绝对不要输出任何图片链接、URL、Markdown 图片语法或 base64 代码，只允许输出上面这种标记；一次回复最多一张。';
@@ -6926,8 +6951,9 @@
                     } else if (roleFamilyCardChanged) {
                         renderAllMessages();
                     }
-                    if (parsedHeart.hearts.length) {
-                        insertHeartCards(historyList, parsedHeart.hearts);
+                    if (streamResult.ok && replySaved && fullText && parsedHeart.hearts.length) {
+                        insertHeartCards(historyList, parsedHeart.hearts,
+                            isGroupChat && groupReplyPick ? groupReplyPick.id : aliasRoleId);
                     }
                     if (parsedImg.images.length) {
                         insertVImageCards(historyList, parsedImg.images);
@@ -7597,16 +7623,55 @@
         }
 
         
-        // 点 AI 头像 → 弹出心里话
+        // 点 AI 头像 → 读取该条消息所属角色的心声历史。
         chatMessages.addEventListener('click', function (e) {
             var avatar = e.target.closest('.msg-row.received .msg-avatar');
             if (!avatar) return;
-            var heartText = '';
-            try { heartText = localStorage.getItem('latest_heart_' + currentRoleId) || ''; } catch (err) {}
+            var row = avatar.closest('.msg-row.received');
+            var speakerId = '';
+            if (isGroupChat) {
+                speakerId = String(row && row.dataset.memberId || '').trim();
+                if (!speakerId && row) {
+                    var speakerName = String(row.dataset.speakerName ||
+                        (row.querySelector('.msg-sender') && row.querySelector('.msg-sender').textContent) || '').trim();
+                    var members = currentGroup && Array.isArray(currentGroup.members) ? currentGroup.members : [];
+                    var matches = members.filter(function (member) {
+                        return member && (groupMemberDisplayName(member) === speakerName ||
+                            String(member.name || '').trim() === speakerName);
+                    });
+                    // Legacy messages without memberId are readable only when the name is unique.
+                    if (matches.length === 1 && matches[0].id != null) speakerId = String(matches[0].id);
+                }
+            } else {
+                speakerId = String(aliasRoleId || currentCharacter.id || currentRoleId || '');
+            }
+
             var hc = document.getElementById('heartContent');
             var ho = document.getElementById('heartOverlay');
             if (hc && ho) {
-                hc.textContent = heartText || 'TA 现在没有心里话';
+                hc.style.maxHeight = '48vh';
+                hc.style.overflowY = 'auto';
+                hc.style.whiteSpace = 'pre-wrap';
+                var result = null;
+                if (speakerId && window.ChatHeartPolicy &&
+                    typeof window.ChatHeartPolicy.readHistory === 'function') {
+                    result = window.ChatHeartPolicy.readHistory(localStorage, {
+                        conversationId: String(currentRoleId || ''),
+                        speakerId: speakerId,
+                        isGroupChat: isGroupChat,
+                        legacyRoleId: isGroupChat ? '' : String(currentRoleId || '')
+                    });
+                }
+                if (!speakerId && isGroupChat) {
+                    hc.textContent = '无法确认这条消息属于哪位成员，暂时无法读取心声';
+                } else if (!result || !result.ok) {
+                    hc.textContent = '心声暂时无法读取，请稍后重试';
+                } else {
+                    hc.textContent = result.records.map(function (record) {
+                        var date = Number(record.createdAt) > 0 ? formatHeartTime(record.createdAt) + '\n' : '';
+                        return date + record.text;
+                    }).join('\n\n') || 'TA 现在没有心里话';
+                }
                 ho.style.display = 'flex';
             }
         });
