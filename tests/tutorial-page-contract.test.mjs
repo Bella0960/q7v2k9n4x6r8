@@ -69,7 +69,7 @@ test('guide documents the merged chat features and correctly separates unverifie
 test('all 29 desktop app shortcuts have a matching app guide and quick-open entry', () => {
   const tiles = [...home.matchAll(/data-href="([^"]+)" data-drag="(app_[^"]+)" data-name="([^"]+)"/g)]
     .map((match) => ({ path: match[1], id: match[2], name: match[3] }))
-    .filter((item) => item.id.startsWith('app_'));
+    .filter((item) => item.id.startsWith('app_') && item.id !== 'app_admin_center');
   const appGuideIds = [...guideScript.matchAll(/id:'(app-[^']+)'/g)].map((match) => match[1]);
   const appEntries = [...guideScript.matchAll(/\['([^']+)',\s*'([^']+\.html)',\s*'[^']+'\]/g)]
     .map((match) => ({ name: match[1], path: match[2] }));
@@ -150,4 +150,10 @@ test('account release candidate guide documents the existing login path and QA s
   assert.match(guideScript, /"href"\s*:\s*"\.\.\/account\/index\.html"/);
   assert.match(guideScript, /本机备份不等于云端账号的可恢复备份/);
   assert.match(guideScript, /不得对正式账号执行停用、重置或清空/);
+});
+
+test('creator admin shortcut is hidden by default and only enabled for the verified super admin', () => {
+  assert.match(home, /data-drag="app_admin_center"[^>]*hidden/);
+  assert.match(home, /roleMeta\.content === 'super_admin'/);
+  assert.match(home, /function configureCreatorAdminShortcut/);
 });
