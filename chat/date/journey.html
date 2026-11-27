@@ -218,6 +218,8 @@ button:focus-visible,a:focus-visible,input:focus-visible{outline:1px solid #777;
   var state = null;
   var animationId = 0;
   var navigating = false;
+  var nextUnverifiedStage = 0;
+  var nextSaveAttemptAt = 0;
   function loadHistory(){
     try {
       if(window.PhoneStorage && typeof window.PhoneStorage.getChatHistory==='function') {
@@ -346,13 +348,23 @@ button:focus-visible,a:focus-visible,input:focus-visible{outline:1px solid #777;
     var stageIndex=0;
     for(var i=0;i<stages.length;i++){if(elapsed>=stages[i].at)stageIndex=i;}
     if(state.lastStage!==stageIndex){state.lastStage=stageIndex;saveState();updateStage(stageIndex);}
-    // 保存失败时在后续帧重试；appendJourneyMessage 会先检查历史避免重复写入。
-    if(stageIndex<4) appendJourneyMessage(stageIndex);
-    if(elapsed>=totalDuration){gotoStory();return;}
+    // A reload may cross more than one stage. Resume from verified history.
+    if(Date.now() >= nextSaveAttemptAt){
+      while(nextUnverifiedStage < 4 && nextUnverifiedStage <= stageIndex){
+        if(!appendJourneyMessage(nextUnverifiedStage)){
+          nextSaveAttemptAt = Date.now() + 250;
+          break;
+        }
+        nextUnverifiedStage++;
+      }
+    }
+    if(elapsed>=totalDuration && nextUnverifiedStage===4){gotoStory();return;}
     animationId=window.requestAnimationFrame(tick);
   }
   function startJourney(scene){
     if(!roleId || !character){ alert('没有找到这个角色，请先回到聊天页选择角色。'); return; }
+    nextUnverifiedStage = 0;
+    nextSaveAttemptAt = 0;
     state={scene:scene,startedAt:Date.now(),status:'travelling',sentStages:[],lastStage:-1,messages:fallbackMessages.slice()};
     startedJourneyId=String(state.startedAt);
     try { localStorage.setItem(modeKey,'offline-short'); } catch(e) {}
