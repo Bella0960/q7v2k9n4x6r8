@@ -7,13 +7,13 @@ import { fileURLToPath } from 'node:url';
 
 const root=resolve(dirname(fileURLToPath(import.meta.url)),'..');
 const read=p=>readFileSync(resolve(root,p),'utf8');
-const readLf=p=>read(p).replace(/\\r\\n/g,'\\n');
+const readLf=p=>read(p).replace(/\r\n/g,'\n');
 const code=read('forum/forum-world-events.js');
 const home=readLf('forum/forum.html');
 const detail=readLf('forum/forum-detail.html');
 const settings=readLf('forum/forum-settings.html');
 const sw=read('sw.js');
-const pwaCacheVersion = Number((sw.match(/^const CACHE_NAME = 'phone-app-pwa-v(\\d+)'/m)?.[1] || 0));
+const pwaCacheVersion = Number((sw.match(/^const CACHE_NAME = 'phone-app-pwa-v(\d+)'/m)?.[1] || 0));
 const env={window:{}};
 runInNewContext(code,env);
 const W=env.window.ForumWorldEvents;
