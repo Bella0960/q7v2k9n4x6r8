@@ -4,6 +4,15 @@
 
 This is the durable checkpoint for owner-assigned, multi-step work. Update it after meaningful milestones and before ending a session.
 
+## 2026-11-28 · CHAT-CORE-STORAGE-CLOSEOUT-001 · IN PROGRESS
+
+- Baselines rechecked: main 5512689cb842d38441a96e23beeb3f8a5d2622b8; #562 65de7a4b8f009efa154161f45273d2122b2e0e8e.
+- Restored documented legacy user-memory compatibility in the shared policy and page fallback. With a valid active role, unscoped records remain global and explicitly scoped records stay isolated. Missing group speaker identity injects neither. No data writes or migration.
+- Updated the obsolete exclusion expectations while preserving role isolation and read-only assertions. Targeted legacy prompt and chat regression tests passed 139/139.
+- Storage closeout remains IN PROGRESS. Call inventory additionally found chat/call/call-overlay.js relying on synchronous saveMessages. Changing saveMessages to async requires migrating that consumer together with extras, initial-history setup, render cleanup, pagehide and payment status callers. No claim of complete write-channel unification or concurrency acceptance.
+- External storage callers in wallet/shop.html and wallet/takeout.html remain outside this task's migration scope.
+- Next required work: migrate core producers to shared Web Lock, preserve initial/legacy history, conditional replacements and failure semantics, add real Chromium multi-page race coverage, run affected checks/build, and update #562 registration and evidence. No changes to #563/#564/#565, merge or deployment.
+
 ## 2026-11-28 · CHAT-CORE-RISK-ACCEPTANCE-001
 
 - GitHub baseline: main `5512689cb842d38441a96e23beeb3f8a5d2622b8`. Live QA receipt: `4b49c0a95ea8cfedc8aa2007c061a1f6f6771431`.

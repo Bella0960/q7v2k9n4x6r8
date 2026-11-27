@@ -36,7 +36,7 @@ for (const loadPolicy of [true, false]) {
       const message = runInNewContext(block + '\nconst systemPrompt = [' + promptSlot + '].join("\\n");\n(' + outbound + ')', env);
       assert.equal(message.role, 'system');
       for (const value of ['A_ONLY', 'B_ONLY', 'UNOWNED', 'GROUP_SHARED']) {
-        assert.equal(message.content.includes(value), value === expected, JSON.stringify({group, id, loadPolicy, value}));
+        assert.equal(message.content.includes(value), (value === expected || (value === 'UNOWNED' && !!id)), JSON.stringify({group, id, loadPolicy, value}));
       }
     });
   }

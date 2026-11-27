@@ -170,7 +170,7 @@
     var activeRoleId = String(roleId || '');
     if (!activeRoleId) return [];
     return memories.filter(function (memory) {
-      return memory && memory.sourceRoleId != null && String(memory.sourceRoleId) === activeRoleId;
+      return memory && (memory.sourceRoleId == null || String(memory.sourceRoleId) === activeRoleId);
     });
   }
 

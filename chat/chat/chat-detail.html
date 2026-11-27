@@ -5882,7 +5882,7 @@
             try {
                 const um = JSON.parse(localStorage.getItem('user_memory') || '[]');
                 if (Array.isArray(um) && um.length) {
-                    // Keep legacy facts on disk and include only entries attributed to this character.
+                    // Legacy unscoped facts remain global when a valid active role is known.
                     const activeMemoryRoleId = isGroupChat
                         ? (groupReplyPick && groupReplyPick.id != null ? String(groupReplyPick.id) : '')
                         : String(aliasRoleId || currentRoleId || '');
@@ -5892,9 +5892,9 @@
                     )
                         ? window.ChatContextPolicy.filterUserMemoriesForRole(um, activeMemoryRoleId)
                         : um.filter(function(m) {
-                            // Strict fallback: discard legacy entries without an exact role source ID.
-                            return activeMemoryRoleId && m && m.sourceRoleId != null &&
-                                String(m.sourceRoleId) === activeMemoryRoleId;
+                            // Match the shared policy for legacy global and role-scoped facts.
+                            return activeMemoryRoleId && m && (m.sourceRoleId == null ||
+                                String(m.sourceRoleId) === activeMemoryRoleId);
                         });
                     userMemoryText = roleScoped.slice(-30).map(function(m){ return '· ' + (m.text || m.content || ''); }).join('\n');
                 }
