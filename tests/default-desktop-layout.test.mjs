@@ -8,7 +8,7 @@ const widgetManager = readFileSync(new URL('../desktop/widgets.html', import.met
 const desktopCss = readFileSync(new URL('../desktop/css/styles.css', import.meta.url), 'utf8');
 const mobileCss = readFileSync(new URL('../shared/css/mobile-fit.css', import.meta.url), 'utf8');
 const serviceWorker = readFileSync(new URL('../sw.js', import.meta.url), 'utf8');
-const pwaCacheVersion = Number((serviceWorker.match(/^const CACHE_NAME = 'phone-app-pwa-v(\\d+)'/m)?.[1] || 0));
+const pwaCacheVersion = Number((serviceWorker.match(/^const CACHE_NAME = 'phone-app-pwa-v(\d+)'/m)?.[1] || 0));
 const desktopScript = readFileSync(new URL('../desktop/js/script.js', import.meta.url), 'utf8');
 
 function extractDefaultPages(source) {
