@@ -152,8 +152,8 @@ async function withGitPaths(repo,pullRequests){
  if(!shas.length)return current;
  // Keep the checkout and its refs intact. Fetch only when the live base/head commits are absent.
  const objects=runGit(['cat-file','--batch-check=%(objecttype)'],
-  {input:shas.join('\\n')+'\\n',env:{...process.env,GIT_NO_LAZY_FETCH:'1'}});
- if(objects.trimEnd().split('\\n').some(type=>type!=='commit')){
+  {input:shas.join('\n')+'\n',env:{...process.env,GIT_NO_LAZY_FETCH:'1'}});
+ if(objects.trimEnd().split('\n').some(type=>type!=='commit')){
   try{
    runGit(['fetch','--quiet','--no-tags','--no-write-fetch-head','--filter=blob:none',
     '--stdin','https://github.com/'+repo+'.git'],{input:shas.join('\\n')+'\\n',timeout:120000});
