@@ -147,14 +147,43 @@ const SEEDED_POST = {
   comments: [],
   likes: 0,
   owner: 'seed',
-  aiCommentBatch: 'v1'
+  aiCommentBatch: 'v1',
+  created: 0
 };
+
+/**
+ * 固定滚动夹具：单条帖子在 430×932 下内容高度不足以产生滚动距离，
+ * 这里补足 6 条确定性数据，让三档视口都出现真实可滚动区域。
+ * SEEDED_POST 的 created=0 保证它始终排在最前，详情页用例不受影响。
+ */
+const SCROLL_FIXTURE_POSTS = [
+  '列表密度与留白',
+  '一天里最安静的时刻',
+  '关于重复与新鲜感',
+  '最近读到的一段话',
+  '城市夜里的步行路线',
+  '一件想留到以后再说的事'
+].map((title, index) => ({
+  id: `scroll_fixture_${String(index + 2).padStart(2, '0')}`,
+  name: `夹具作者 ${index + 2}`,
+  avatar: '夹',
+  topic: '日常交流',
+  title,
+  body: `滚动夹具固定内容第 ${index + 2} 条，用于验证论坛列表在足量帖子下产生真实滚动距离，不依赖随机数值或网络数据。`,
+  comments: [],
+  likes: 0,
+  owner: 'seed',
+  aiCommentBatch: 'v1',
+  created: index + 1
+}));
+
+const SEEDED_POSTS = [SEEDED_POST, ...SCROLL_FIXTURE_POSTS];
 
 async function runViewport(browser, baseUrl, viewport) {
   const context = await browser.newContext({ viewport, serviceWorkers: 'block' });
   await context.addInitScript((seed) => {
-    localStorage.setItem('forum_posts', JSON.stringify([seed]));
-  }, SEEDED_POST);
+    localStorage.setItem('forum_posts', JSON.stringify(seed));
+  }, SEEDED_POSTS);
   const page = await context.newPage();
   const checks = [];
   const add = (name, ok, measured) => checks.push({ name, ok: !!ok, measured });
@@ -265,6 +294,9 @@ async function runViewport(browser, baseUrl, viewport) {
     return {
       before: area.scrollTop,
       max: area.scrollHeight - area.clientHeight,
+      scrollHeight: area.scrollHeight,
+      clientHeight: area.clientHeight,
+      postCount: document.querySelectorAll('.post[data-post]').length,
       cx: Math.round((r.left + r.width / 2) * 100) / 100,
       cy: Math.round((r.top + Math.min(r.height, 200) / 3) * 100) / 100
     };
@@ -334,6 +366,10 @@ async function runViewport(browser, baseUrl, viewport) {
   await sleep(500);
   add('home-line.center.clicking.returns-home', isIndex(), { afterPath: pathOf(), hitStack: lineStack, bar: barGeom });
 
+  // 清理本轮种植的论坛夹具，避免污染同上下文的后续检查。
+  await page.evaluate(() => {
+    try { localStorage.removeItem('forum_posts'); } catch (error) { /* ignore */ }
+  });
   await context.close();
   return { viewport, checks };
 }
