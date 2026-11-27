@@ -143,7 +143,8 @@ Before a significant migration release: full backup test, migration canary, regr
 
 ### 10.2 Multiple windows: parallel work with exclusive file ownership
 
-- Independent modules or disjoint file sets may be developed and tested in parallel. Each window owns its Task ID, branch, and declared paths.
+- MAOMAO is a single-owner commercial project: the repository owner is the only human authority; parallel windows are AI execution contexts, not additional human developers or GitHub accounts. AI windows perform implementation, independent code review, risk analysis, and tests, but never impersonate GitHub reviewers. The owner grants the exact-head integration approval through the documented owner-approval marker.
+- Independent modules or disjoint file sets may be developed and tested in parallel. Each AI window owns its Task ID, branch, and declared paths.
 - Two windows must never edit the same HTML, JS, CSS, test, shared module, or configuration file concurrently. If a task touches a shared API, storage contract, route registry, Worker, Service Worker, package/build config, workflow, or account boundary, appoint one implementation owner and let other windows review or prepare isolated tests.
 - Treat `AGENTS.md`, `RELEASE_POLICY.md`, `DEVELOPMENT_GOVERNANCE.md`, `REMEDIATION_BACKLOG.md`, `EXECUTION_LOG.md`, package manifests, global test runners, and QA workflows as single-owner files. The integration coordinator alone updates the shared execution log; individual windows keep their task evidence in their own PRs.
 - Do not wait idly for an unrelated QA run. Continue independent implementation, focused tests, code review, and defect diagnosis while the release queue is occupied.
@@ -177,13 +178,13 @@ GitHub open PRs are the shared task registry across development windows. The reg
 - After opening the PR, register it with:
 
 ```sh
-npm run eng:register -- <PR-number> <TASK-ID> <QA-baseline-SHA> <F1|F2|F3|F4> "<exact GitHub check name>" ["<another exact check name>"] [--depends-on=TASK-ID,TASK-ID]
+npm run eng:register -- <PR-number> <TASK-ID> <F1|F2|F3|F4> "<exact GitHub check name>" ["<another exact check name>"] [--depends-on=TASK-ID,TASK-ID]
 ```
 
 - Registration adds exactly one `MAOMAO_TASK_V1` block to the PR description and records the exact PR head SHA, QA baseline, risk, named checks, and dependencies. It does not approve, merge, or deploy the PR.
 - Re-run `eng:register` after every new commit. The registered head SHA is immutable evidence; an older manifest must never be treated as current.
 - Registration starts with `status: "submitted"`. The coordinator computes readiness from the live evidence; do not mark a task ready manually to bypass review or checks.
-- A PR is eligible only when it is open, non-draft, in this repository, based on an allowed branch, approved on its exact current head by a reviewer other than its author, has every named required check successful, has no other failing/pending check or status, has complete file pagination, and its changed-file list exactly matches the pinned Git diff. Duplicate Task IDs, missing dependencies, dependency cycles, stale heads, and incomplete scans fail closed.
+- A PR is eligible only when it is open, non-draft, in this repository, based on an allowed branch, has a valid repository-owner approval comment bound to its exact current head and Task ID, has every named required check successful, has no other applicable failing/pending check or status, has complete file pagination, and its changed-file list exactly matches the pinned PR-merge-base-to-head Git diff. A current-head CHANGES_REQUESTED review still blocks. A second GitHub account or non-author APPROVED review is not required. Duplicate Task IDs, missing dependencies, dependency cycles, stale heads, and incomplete scans fail closed.
 - Documentation-only `D0` changes do not enter the QA release batch and do not use the `F1`–`F4` manifest. They still require a narrow PR, ownership review, and documentation checks.
 
 **Conflict scan**
