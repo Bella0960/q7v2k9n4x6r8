@@ -24,7 +24,7 @@
     <script src="../../shared/js/phone/phone_stream.js"></script>
     <script src="../../shared/js/phone/chat-message-policy.js?v=20261029v5"></script>
     <script src="../../shared/js/phone/chat-send-policy.js?v=20261029v2"></script>
-    <script src="../../shared/js/phone/chat-context-policy.js?v=20261107vision1"></script>
+    <script src="../../shared/js/phone/chat-context-policy.js?v=legacy-memory-scope1"></script>
     <script src="../../shared/js/phone/chat-presence-policy.js?v=20261102v17"></script>
     <script src="../../shared/js/phone/chat-heart-policy.js?v=20261126mind1"></script>
     <script src="../../shared/js/phone/role-public-timeline.js?v=20261102v1"></script>
@@ -5766,17 +5766,19 @@
             try {
                 const um = JSON.parse(localStorage.getItem('user_memory') || '[]');
                 if (Array.isArray(um) && um.length) {
-                    // User facts saved by older builds may be global; new extracted memories are stored
-                    // in chat_memories_<roleId>. Keep scoped legacy entries with their own character.
-                    const activeMemoryRoleId = String(aliasRoleId || currentRoleId || '');
+                    // Keep legacy facts on disk and include only entries attributed to this character.
+                    const activeMemoryRoleId = isGroupChat
+                        ? (groupReplyPick && groupReplyPick.id != null ? String(groupReplyPick.id) : '')
+                        : String(aliasRoleId || currentRoleId || '');
                     const roleScoped = (
                         window.ChatContextPolicy &&
                         typeof window.ChatContextPolicy.filterUserMemoriesForRole === 'function'
                     )
                         ? window.ChatContextPolicy.filterUserMemoriesForRole(um, activeMemoryRoleId)
                         : um.filter(function(m) {
-                            // Compatibility fallback: legacy entries without a role ID remain globally visible.
-                            return !m.sourceRoleId || String(m.sourceRoleId) === activeMemoryRoleId;
+                            // Strict fallback: discard legacy entries without an exact role source ID.
+                            return activeMemoryRoleId && m && m.sourceRoleId != null &&
+                                String(m.sourceRoleId) === activeMemoryRoleId;
                         });
                     userMemoryText = roleScoped.slice(-30).map(function(m){ return '· ' + (m.text || m.content || ''); }).join('\n');
                 }
