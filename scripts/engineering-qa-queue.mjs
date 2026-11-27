@@ -18,7 +18,10 @@ const QA_RELEASE_STEP = 'Automatically select scope, validate and publish QA onc
 const SHA = /^[0-9a-f]{40}$/;
 const TASK_ID = /^[A-Z][A-Z0-9-]{1,63}$/;
 const RISK = /^F[1-4]$/;
-const CHECK_NAME = /(test|build|verify|gate|regression|browser|contract)/i;
+const CHECK_NAME = /(test|build|verify|gate|regression|browser|contract|tools?)/i;
+const OWNER_APPROVAL_MARKER = /<!--\s*MAOMAO_OWNER_APPROVAL_V1\s*([\s\S]*?)-->/g;
+const PRODUCTION_WORKER_CHECK = 'Workers Builds: mao';
+const PRODUCTION_WORKER_BRANCH = '__maomao_release_after_checkpoint_only__';
 const MARKER = /<!--\s*MAOMAO_TASK_V1\s*([\s\S]*?)-->/g;
 const BATCH_SCRIPT = new URL('./engineering-qa-batch.mjs', import.meta.url);
 
@@ -114,6 +117,39 @@ function latestReviews(reviews) {
   return [...latest.values()];
 }
 
+function latestOwnerApproval(comments, ownerLogin, taskId) {
+  const approvals = [];
+  for (const comment of comments) {
+    if (comment?.user?.login !== ownerLogin) continue;
+    const matches = [...String(comment.body ?? '').matchAll(new RegExp(OWNER_APPROVAL_MARKER.source, 'g'))];
+    if (!matches.length) continue;
+    const createdAt = Date.parse(comment.created_at ?? '') || 0;
+    if (matches.length !== 1) {
+      approvals.push({ valid: false, createdAt, reason: 'owner approval comment contains duplicate markers' });
+      continue;
+    }
+    let value;
+    try { value = JSON.parse(matches[0][1].trim()); }
+    catch {
+      approvals.push({ valid: false, createdAt, reason: 'owner approval comment contains invalid JSON' });
+      continue;
+    }
+    if (value?.taskId !== taskId) continue;
+    const valid = value.version === 1 &&
+      SHA.test(value.head ?? '') &&
+      ['approve', 'revoke'].includes(value.decision);
+    approvals.push({ valid, value, createdAt, reason: valid ? '' : 'owner approval payload is incomplete or invalid' });
+  }
+  approvals.sort((a, b) => a.createdAt - b.createdAt);
+  return approvals.at(-1) ?? null;
+}
+
+function isOutOfScopeProductionWorkerCheck(run, pr) {
+  return run?.name === PRODUCTION_WORKER_CHECK &&
+    String(run?.details_url ?? '').includes('/workers/services/view/mao/production/builds/') &&
+    pr?.head?.ref !== PRODUCTION_WORKER_BRANCH;
+}
+
 function latestBy(items, key, timeKey) {
   const latest = new Map();
   for (const item of items) {
@@ -127,7 +163,7 @@ function latestBy(items, key, timeKey) {
   return latest;
 }
 
-export function evaluateTaskEvidence({ pr, manifest, reviews = [], checkRuns = [], status = { state: 'pending', statuses: [] }, repository = DEFAULT_REPO }) {
+export function evaluateTaskEvidence({ pr, manifest, reviews = [], ownerComments = [], checkRuns = [], status = { state: 'pending', statuses: [] }, repository = DEFAULT_REPO }) {
   const reasons = [];
   if (pr?.state !== 'open') reasons.push('PR is not open');
   if (pr?.draft) reasons.push('PR is still draft');
@@ -136,6 +172,7 @@ export function evaluateTaskEvidence({ pr, manifest, reviews = [], checkRuns = [
     reasons.push('PR head/base must both belong to the source repository');
   }
   if (pr?.head?.sha !== manifest?.head) reasons.push('registered head SHA is stale');
+  if (pr?.merge_base_sha !== manifest?.base) reasons.push('registered PR merge-base SHA is stale or does not match the current PR merge base');
   if (!manifest || !['submitted', 'ready'].includes(manifest.status)) reasons.push('task is not submitted');
   const statusContexts = Array.isArray(status?.statuses) ? status.statuses : [];
   if (statusContexts.length && status?.state !== 'success') {
@@ -149,11 +186,17 @@ export function evaluateTaskEvidence({ pr, manifest, reviews = [], checkRuns = [
   if (currentReviews.some(review => review.state === 'CHANGES_REQUESTED')) {
     reasons.push('a current-head reviewer requested changes');
   }
-  if (!currentReviews.some(review => review.state === 'APPROVED')) {
-    reasons.push('missing an approval on the exact current head from someone other than the PR author');
+  const ownerLogin = String(repository).split('/')[0];
+  const ownerApproval = latestOwnerApproval(ownerComments, ownerLogin, manifest?.id);
+  if (!ownerApproval || !ownerApproval.valid || ownerApproval.value?.decision !== 'approve' ||
+      ownerApproval.value?.head !== pr?.head?.sha) {
+    reasons.push(ownerApproval?.value?.decision === 'revoke'
+      ? 'repository owner revoked approval for this task head'
+      : 'missing repository-owner approval for the exact current PR head');
   }
 
-  const currentChecks = checkRuns.filter(run => !run?.head_sha || run.head_sha === pr?.head?.sha);
+  const currentChecks = checkRuns.filter(run =>
+    (!run?.head_sha || run.head_sha === pr?.head?.sha) && !isOutOfScopeProductionWorkerCheck(run, pr));
   const latestChecks = latestBy(currentChecks, 'name', 'started_at');
   for (const run of latestChecks.values()) {
     if (run?.status !== 'completed') {
@@ -207,7 +250,7 @@ function isAncestor(base, head, label) {
   if (!result.ok) fail(label + ': base is not an ancestor of head.');
 }
 function gitChangedPaths(base, head) {
-  return git(['diff', '--name-only', '-z', '--no-renames', '--no-ext-diff', base, head, '--'],
+  return git(['--literal-pathspecs', 'diff', '--name-only', '-z', '--no-renames', '--no-ext-diff', base, head, '--'],
     'Task path comparison').stdout.split('\0').filter(Boolean).sort();
 }
 function equalPaths(a, b) {
@@ -267,8 +310,9 @@ async function getCheckRuns(repository, sha) {
   return pagedArray('/repos/' + repository + '/commits/' + sha + '/check-runs', 'check_runs');
 }
 async function fetchPrEvidence(repository, pr) {
-  const [reviews, checkRuns, status, files] = await Promise.all([
+  const [reviews, ownerComments, checkRuns, status, files] = await Promise.all([
     pagedArray('/repos/' + repository + '/pulls/' + pr.number + '/reviews'),
+    pagedArray('/repos/' + repository + '/issues/' + pr.number + '/comments'),
     getCheckRuns(repository, pr.head.sha),
     api('/repos/' + repository + '/commits/' + pr.head.sha + '/status'),
     getPrFiles(repository, pr.number)
@@ -276,7 +320,7 @@ async function fetchPrEvidence(repository, pr) {
   if (!Array.isArray(status?.statuses) || status.total_count > status.statuses.length) {
     fail('PR #' + pr.number + ' commit-status list is incomplete.');
   }
-  return { reviews, checkRuns, status, files };
+  return { reviews, ownerComments, checkRuns, status, files };
 }
 
 
@@ -394,7 +438,7 @@ function parseArgs(args) {
 }
 
 async function registerTask(repository, args) {
-  const [numberText, id, base, risk, ...extraArgs] = args;
+  const [numberText, id, risk, ...extraArgs] = args;
   const number = Number(numberText);
   if (!Number.isSafeInteger(number) || number < 1) fail('PR number must be a positive integer.');
   const dependencyArgs = extraArgs.filter(value => value.startsWith('--depends-on='));
@@ -409,29 +453,34 @@ async function registerTask(repository, args) {
   if (dependencyArgs.length && (!dependencyArgs[0].slice('--depends-on='.length).trim() || dependsOn.some(value => !value))) {
     fail('--depends-on must contain a comma-separated list of Task IDs.');
   }
-  if (!TASK_ID.test(id ?? '') || !SHA.test(base ?? '') || !RISK.test(risk ?? '') || !requiredChecks.length) {
-    fail('Usage: npm run eng:register -- <PR-number> <TASK-ID> <QA-baseline-SHA> <F1|F2|F3|F4> "<exact test check name>" [...] [--depends-on=TASK-ID,TASK-ID]');
+  if (!TASK_ID.test(id ?? '') || !RISK.test(risk ?? '') || !requiredChecks.length) {
+    fail('Usage: npm run eng:register -- <PR-number> <TASK-ID> <F1|F2|F3|F4> "<exact test check name>" [...] [--depends-on=TASK-ID,TASK-ID]');
   }
-  const manifest = validateManifest({
-    version: 1, id, status: 'submitted', base,
-    head: '0'.repeat(40), risk, requiredChecks, dependsOn
-  });
   const pr = await api('/repos/' + repository + '/pulls/' + number);
   if (pr.state !== 'open' || pr.head?.repo?.full_name !== repository || pr.base?.repo?.full_name !== repository) {
     fail('Registration requires an open PR whose head and base both belong to ' + repository + '.');
   }
-  manifest.head = pr.head.sha;
-  if (!SHA.test(manifest.head)) fail('PR head SHA is not a full commit SHA.');
-  const comparison = await api('/repos/' + repository + '/compare/' + base + '...' + manifest.head);
-  if (comparison.status !== 'ahead' || !(comparison.ahead_by > 0)) {
-    fail('The declared QA baseline must be an ancestor of the task head and the task must contain changes.');
+  const head = pr.head?.sha;
+  const baseBranchSha = pr.base?.sha;
+  if (!SHA.test(head ?? '') || !SHA.test(baseBranchSha ?? '')) {
+    fail('The current PR base branch SHA and head SHA must both be full commit SHAs.');
   }
+  const comparison = await api('/repos/' + repository + '/compare/' + baseBranchSha + '...' + head);
+  const prMergeBase = comparison.merge_base_commit?.sha;
+  if (!SHA.test(prMergeBase ?? '') ||
+      !['ahead', 'diverged'].includes(comparison.status) || !(comparison.ahead_by > 0)) {
+    fail('GitHub could not confirm a non-empty PR diff and its exact merge-base SHA; registration stopped.');
+  }
+  const manifest = validateManifest({
+    version: 1, id, status: 'submitted', base: prMergeBase,
+    head, risk, requiredChecks, dependsOn
+  });
   const files = await getPrFiles(repository, number);
   if (!files.length) fail('Cannot register an empty PR.');
   const body = replaceTaskManifest(pr.body ?? '', manifest);
   const latest = await api('/repos/' + repository + '/pulls/' + number);
-  if (latest.head?.sha !== manifest.head || latest.state !== 'open' ||
-      latest.body !== pr.body || latest.base?.ref !== pr.base?.ref) {
+  if (latest.head?.sha !== head || latest.state !== 'open' ||
+      latest.body !== pr.body || latest.base?.ref !== pr.base?.ref || latest.base?.sha !== baseBranchSha) {
     fail('PR body, base, or head changed during registration; no overwrite was made. Rerun eng:register.');
   }
   const updated = await api('/repos/' + repository + '/pulls/' + number, { method: 'PATCH', body: { body } });
@@ -440,8 +489,8 @@ async function registerTask(repository, args) {
     pr: number,
     url: updated.html_url,
     task: id,
-    baseline: base,
-    head: manifest.head,
+    prMergeBase,
+    head,
     risk,
     requiredChecks: manifest.requiredChecks,
     dependsOn: manifest.dependsOn,
@@ -483,17 +532,28 @@ async function collectReadyTasks(repository, baseline, pullRequests) {
       blocked.push({ ...latestOpenPrMetadata(pr), state: 'blocked', reasons: ['task manifest changed while the queue was collecting evidence; rerun registration and scan'] });
       continue;
     }
-    const result = evaluateTaskEvidence({ pr: latestPr, manifest, ...evidence, repository });
+    let prWithMergeBase;
+    try {
+      ensureCommit(latestPr.base?.sha, 'PR #' + pr.number + ' current base branch SHA');
+      ensureCommit(latestPr.head?.sha, 'PR #' + pr.number + ' current head SHA');
+      const mergeBaseSha = gitText(['merge-base', latestPr.base.sha, latestPr.head.sha],
+        'PR #' + pr.number + ' current merge-base SHA').trim();
+      if (!SHA.test(mergeBaseSha)) fail('PR #' + pr.number + ' current merge-base did not resolve to a full SHA.');
+      prWithMergeBase = { ...latestPr, merge_base_sha: mergeBaseSha };
+    } catch (error) {
+      blocked.push({ ...latestOpenPrMetadata(pr), state: 'blocked', reasons: [clean(error.message)] });
+      continue;
+    }
+    const result = evaluateTaskEvidence({ pr: prWithMergeBase, manifest, ...evidence, repository });
     if (!result.ready) {
       blocked.push({ ...latestOpenPrMetadata(pr), state: 'blocked', reasons: result.reasons });
       continue;
     }
     try {
-      ensureCommit(manifest.base, 'PR #' + pr.number + ' registered base');
+      ensureCommit(manifest.base, 'PR #' + pr.number + ' registered merge base');
       ensureCommit(manifest.head, 'PR #' + pr.number + ' registered head');
       ensureCommit(baseline, 'Current deployed QA baseline');
-      isAncestor(manifest.base, manifest.head, 'PR #' + pr.number + ' task ancestry');
-      isAncestor(manifest.base, baseline, 'PR #' + pr.number + ' base-to-QA ancestry');
+      isAncestor(manifest.base, manifest.head, 'PR #' + pr.number + ' merge-base-to-head ancestry');
       const apiPaths = pathSetFromPrFiles(evidence.files);
       const gitPaths = gitChangedPaths(manifest.base, manifest.head);
       if (!gitPaths.length || !equalPaths(apiPaths, gitPaths)) {
@@ -502,7 +562,7 @@ async function collectReadyTasks(repository, baseline, pullRequests) {
       registered.push({
         id: manifest.id,
         status: 'ready',
-        base: manifest.base,
+        prMergeBase: manifest.base,
         head: manifest.head,
         paths: gitPaths,
         pr: latestOpenPrMetadata(pr),
@@ -540,6 +600,8 @@ async function collectReadyTasks(repository, baseline, pullRequests) {
   return { ready: [...active], blocked };
 }
 
+function taskPrMergeBase(task) { return task?.prMergeBase ?? task?.prBase ?? task?.base; }
+
 function candidateReceiptPath(baseline) {
   const gitPath = gitText(['rev-parse', '--git-path', 'maomao-qa-batch-receipts'], 'Locate candidate receipt directory');
   return join(resolve(gitPath), 'qa-batch-' + baseline + '.json');
@@ -557,11 +619,11 @@ function readCandidateReceipt(repository, baseline, branch) {
   const tasks = receipt?.tasks;
   const taskIds = receipt?.taskIds;
   const qa = receipt?.qaSourceReceipt;
-  if (!receipt || receipt.version !== 1 || receipt.repository !== repository ||
+  if (!receipt || ![1, 2].includes(receipt.version) || receipt.repository !== repository ||
       receipt.baseline !== baseline || receipt.branch !== branch || !SHA.test(receipt.candidate ?? '') ||
       !Array.isArray(tasks) || !tasks.length || !Array.isArray(taskIds) ||
       taskIds.length !== tasks.length ||
-      tasks.some(task => !TASK_ID.test(task?.id ?? '') || !SHA.test(task?.base ?? '') ||
+      tasks.some(task => !TASK_ID.test(task?.id ?? '') || !SHA.test(taskPrMergeBase(task) ?? '') ||
         !SHA.test(task?.head ?? '') || !Array.isArray(task?.paths) ||
         task.paths.some(path => typeof path !== 'string' || !path || path.startsWith('/') ||
           path.split('/').some(part => !part || part === '.' || part === '..')) ||
@@ -587,6 +649,25 @@ function writeCandidateReceipt(receipt) {
   writeFileSync(temporary, JSON.stringify(receipt, null, 2) + '\n', { flag: 'wx' });
   renameSync(temporary, path);
   return path;
+}
+
+function isCommitAncestor(base, head, label) {
+  return git(['merge-base', '--is-ancestor', base, head], label, true).ok;
+}
+
+function verifyCandidateTaskProvenance(baseline, candidate, task) {
+  const prMergeBase = taskPrMergeBase(task);
+  const messages = gitText(['log', '--format=%B', baseline + '..' + candidate],
+    task.id + ' candidate provenance');
+  const lines = new Set(messages.split(/\r?\n/).map(line => line.trim()));
+  const expected = [
+    'Task-ID: ' + task.id,
+    'Task-PR-Merge-Base-SHA: ' + prMergeBase,
+    'Task-PR-Head-SHA: ' + task.head
+  ];
+  if (expected.some(line => !lines.has(line))) {
+    fail(task.id + ' saved candidate lacks immutable PR merge-base/head provenance; refusing to resume it.');
+  }
 }
 
 function localBranchSha(ref) {
@@ -654,7 +735,11 @@ async function resumeCandidate(repository, baseline, branch, stored, { push = fa
     git(['cat-file', '-e', receipt.candidate + '^{commit}'], 'Saved candidate object verification');
     isAncestor(baseline, receipt.candidate, 'Saved candidate QA baseline');
     for (const task of receipt.tasks) {
-      isAncestor(task.head, receipt.candidate, task.id + ' saved candidate ancestry');
+      // Legacy v1 candidates used the source PR head as a merge parent. New
+      // single-parent candidates retain the exact PR merge-base/head in trailers.
+      if (!isCommitAncestor(task.head, receipt.candidate, task.id + ' saved candidate ancestry')) {
+        verifyCandidateTaskProvenance(baseline, receipt.candidate, task);
+      }
     }
   }
 
@@ -687,7 +772,7 @@ async function resumeCandidate(repository, baseline, branch, stored, { push = fa
     candidate: receipt.candidate,
     candidateUrl: 'https://github.com/' + repository + '/tree/' + branch,
     includedTasks: receipt.tasks.map(task => ({
-      id: task.id, base: task.base, head: task.head, paths: task.paths,
+      id: task.id, prMergeBase: taskPrMergeBase(task), head: task.head, paths: task.paths,
       dependsOn: task.dependsOn, pr: task.prNumber
     })),
     ownershipWarnings: receipt.ownershipWarnings ?? [],
@@ -762,7 +847,7 @@ async function assembleReadyBatch(repository, baseline, { push = false } = {}) {
   try {
     for (let index = 0; index < ready.length; index++) {
       const task = ready[index];
-      const record = { id: task.id, status: 'ready', base: task.base, head: task.head, paths: task.paths, dependsOn: task.dependsOn };
+      const record = { id: task.id, status: 'ready', prMergeBase: task.prMergeBase, head: task.head, paths: task.paths, dependsOn: task.dependsOn };
       writeFileSync(join(temp, String(index + 1).padStart(3, '0') + '.json'), JSON.stringify(record));
     }
     const result = spawnSync(process.execPath, [fileURLToPath(BATCH_SCRIPT), temp, baseline, branch, JSON.stringify(qaSourceReceipt)], {
@@ -818,14 +903,14 @@ async function assembleReadyBatch(repository, baseline, { push = false } = {}) {
     }
     const includedTasks = receipt.tasks.map(task => ({
       id: task.id,
-      base: task.base,
+      prMergeBase: task.prMergeBase ?? task.prBase ?? task.base,
       head: task.head,
       paths: task.paths,
       dependsOn: task.dependsOn,
       pr: ready.find(item => item.id === task.id)?.pr ?? null
     }));
     const candidateReceipt = {
-      version: 1,
+      version: 2,
       repository,
       baseline,
       branch,
@@ -833,7 +918,7 @@ async function assembleReadyBatch(repository, baseline, { push = false } = {}) {
       taskIds: receipt.tasks.map(task => task.id),
       tasks: receipt.tasks.map(task => ({
         id: task.id,
-        base: task.base,
+        prMergeBase: task.prMergeBase ?? task.prBase ?? task.base,
         head: task.head,
         paths: task.paths,
         dependsOn: task.dependsOn ?? [],
@@ -907,7 +992,7 @@ async function main() {
     console.log(JSON.stringify(await invalidateCandidate(repository, baseline, match[1], { deleteRemote }), null, 2));
     return;
   }
-  fail('Usage: npm run eng:register -- <PR-number> <TASK-ID> <QA-baseline-SHA> <F1|F2|F3|F4> "exact test check name" [...] [--depends-on=TASK-ID,TASK-ID] | validate-baseline <qa-source-sha> | assemble <qa-baseline-sha> [--push] | invalidate <qa-baseline-sha> --confirm-candidate=<candidate-sha> [--delete-remote]');
+  fail('Usage: npm run eng:register -- <PR-number> <TASK-ID> <F1|F2|F3|F4> "exact test check name" [...] [--depends-on=TASK-ID,TASK-ID] | validate-baseline <qa-source-sha> | assemble <qa-baseline-sha> [--push] | invalidate <qa-baseline-sha> --confirm-candidate=<candidate-sha> [--delete-remote]');
 }
 
 if (process.argv[1] && import.meta.url === pathToFileURL(resolve(process.argv[1])).href) {

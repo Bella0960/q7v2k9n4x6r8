@@ -33,7 +33,8 @@ const pr = (overrides = {}) => ({
   draft: false,
   user: { login: 'author' },
   head: { sha: sha(2), ref: 'CHAT-FIX-001/fix', repo: { full_name: 'Bella0960/q7v2k9n4x6r8' } },
-  base: { ref: 'main', repo: { full_name: 'Bella0960/q7v2k9n4x6r8' } },
+  base: { sha: sha(4), ref: 'main', repo: { full_name: 'Bella0960/q7v2k9n4x6r8' } },
+  merge_base_sha: sha(1),
   ...overrides
 });
 const reviews = [{ user: { login: 'reviewer' }, state: 'APPROVED', commit_id: sha(2), submitted_at: '2026-11-26T10:00:00Z' }];
@@ -42,6 +43,13 @@ const checkRuns = [
   { name: 'Vite Build', head_sha: sha(2), status: 'completed', conclusion: 'success', completed_at: '2026-11-26T10:00:00Z' }
 ];
 const status = { state: 'success', statuses: [] };
+const ownerComments = (overrides = {}) => [{
+  user: { login: 'Bella0960' },
+  created_at: '2026-11-27T10:00:00Z',
+  body: '<!-- MAOMAO_OWNER_APPROVAL_V1\n' + JSON.stringify({
+    version: 1, taskId: 'CHAT-FIX-001', head: sha(2), decision: 'approve', ...overrides
+  }) + '\n-->'
+}];
 
 test('parses one valid machine-readable task manifest', () => {
   const body = 'Description\n\n' + renderTaskManifest(manifest());
@@ -54,6 +62,7 @@ test('rejects duplicate, malformed, unsafe, and incomplete task manifests', () =
   assert.throws(() => renderTaskManifest(manifest({ id: '../unsafe' })), /Invalid MAOMAO/);
   assert.throws(() => renderTaskManifest(manifest({ requiredChecks: [] })), /Invalid MAOMAO/);
   assert.throws(() => renderTaskManifest(manifest({ requiredChecks: ['Deploy Preview'] })), /exact GitHub/);
+  assert.deepEqual(renderTaskManifest(manifest({ requiredChecks: ['engineering-tools'] })).includes('"engineering-tools"'), true);
 });
 test('updates the existing registry block without duplicating it', () => {
   const original = 'Task summary\n\n' + renderTaskManifest(manifest());
@@ -68,20 +77,100 @@ test('renamed PR paths include both old and new names for ownership comparison',
   ]), ['chat/detail.html', 'chat/new.js', 'chat/old.js']);
   assert.throws(() => pathSetFromPrFiles([{ filename: '../outside.js' }]), /unsafe path/);
 });
-test('ready evidence requires current-head approval and every named test/build check', () => {
-  const result = evaluateTaskEvidence({ pr: pr(), manifest: manifest(), reviews, checkRuns, status });
+test('single-owner approval is accepted from the repository owner on the exact current head', () => {
+  const result = evaluateTaskEvidence({
+    pr: pr({ user: { login: 'Bella0960' } }),
+    manifest: manifest(),
+    reviews: [],
+    ownerComments: ownerComments(),
+    checkRuns,
+    status
+  });
   assert.deepEqual(result, { ready: true, reasons: [] });
 });
-test('stale approvals, draft PRs, pending statuses, and failed checks block integration', () => {
+test('owner approval for an older head or another task cannot approve the current task', () => {
+  for (const comments of [
+    ownerComments({ head: sha(3) }),
+    ownerComments({ taskId: 'OTHER-TASK' }),
+    [{ ...ownerComments()[0], user: { login: 'not-the-owner' } }]
+  ]) {
+    const result = evaluateTaskEvidence({
+      pr: pr({ user: { login: 'Bella0960' } }),
+      manifest: manifest(),
+      reviews: [],
+      ownerComments: comments,
+      checkRuns,
+      status
+    });
+    assert.equal(result.ready, false);
+    assert.ok(result.reasons.some(reason => reason.includes('repository-owner approval')));
+  }
+});
+test('a later owner revocation blocks an earlier approval', () => {
+  const first = ownerComments()[0];
+  const revoked = ownerComments({ decision: 'revoke' })[0];
+  revoked.created_at = '2026-11-27T11:00:00Z';
+  const result = evaluateTaskEvidence({
+    pr: pr({ user: { login: 'Bella0960' } }),
+    manifest: manifest(),
+    reviews: [],
+    ownerComments: [first, revoked],
+    checkRuns,
+    status
+  });
+  assert.equal(result.ready, false);
+  assert.ok(result.reasons.some(reason => reason.includes('revoked approval')));
+});
+test('production-only Worker check is not applicable to feature branches but still blocks on its release branch', () => {
+  const workerFailure = {
+    name: 'Workers Builds: mao',
+    details_url: 'https://dash.cloudflare.com/account/workers/services/view/mao/production/builds/123',
+    head_sha: sha(2),
+    status: 'completed',
+    conclusion: 'failure'
+  };
+  const featureBranch = evaluateTaskEvidence({
+    pr: pr({ user: { login: 'Bella0960' } }),
+    manifest: manifest(),
+    reviews: [],
+    ownerComments: ownerComments(),
+    checkRuns: [...checkRuns, workerFailure],
+    status
+  });
+  assert.equal(featureBranch.ready, true);
+  const releaseBranch = evaluateTaskEvidence({
+    pr: pr({ user: { login: 'Bella0960' }, head: { ...pr().head, ref: '__maomao_release_after_checkpoint_only__' } }),
+    manifest: manifest(),
+    reviews: [],
+    ownerComments: ownerComments(),
+    checkRuns: [...checkRuns, workerFailure],
+    status
+  });
+  assert.equal(releaseBranch.ready, false);
+  assert.ok(releaseBranch.reasons.some(reason => reason.includes('Workers Builds: mao')));
+});
+test('ready evidence requires current-head approval and every named test/build check', () => {
+  const result = evaluateTaskEvidence({ pr: pr(), manifest: manifest(), reviews, ownerComments: ownerComments(), checkRuns, status });
+  assert.deepEqual(result, { ready: true, reasons: [] });
+});
+test('a changed PR merge-base SHA blocks readiness until the task is re-registered', () => {
+  const result = evaluateTaskEvidence({
+    pr: pr({ merge_base_sha: sha(3) }),
+    manifest: manifest(), reviews, ownerComments: ownerComments(), checkRuns, status
+  });
+  assert.equal(result.ready, false);
+  assert.ok(result.reasons.some(reason => reason.includes('PR merge-base SHA')));
+});
+
+test('draft PRs, pending statuses, and failed checks block integration', () => {
   const cases = [
     { pr: pr({ draft: true }), reviews, checkRuns, status },
-    { pr: pr(), reviews: [{ ...reviews[0], commit_id: sha(3) }], checkRuns, status },
     { pr: pr(), reviews, checkRuns, status: { state: 'pending', statuses: [{ context: 'Pending test', state: 'pending' }] } },
     { pr: pr(), reviews, checkRuns: [{ ...checkRuns[0], conclusion: 'failure' }, checkRuns[1]], status },
     { pr: pr(), reviews, checkRuns: [checkRuns[0]], status }
   ];
   for (const item of cases) {
-    assert.equal(evaluateTaskEvidence({ manifest: manifest(), ...item }).ready, false);
+    assert.equal(evaluateTaskEvidence({ manifest: manifest(), ...item, ownerComments: ownerComments() }).ready, false);
   }
 });
 test('a latest change-request review blocks an older approval', () => {
@@ -92,6 +181,7 @@ test('a latest change-request review blocks an older approval', () => {
       ...reviews,
       { user: { login: 'reviewer' }, state: 'CHANGES_REQUESTED', commit_id: sha(2), submitted_at: '2026-11-26T11:00:00Z' }
     ],
+    ownerComments: ownerComments(),
     checkRuns,
     status
   });
@@ -103,6 +193,7 @@ test('only required check contexts that actually passed count as evidence', () =
     pr: pr(),
     manifest: manifest(),
     reviews,
+    ownerComments: ownerComments(),
     checkRuns: [],
     status: { state: 'success', statuses: [{ context: 'Node Tests', state: 'success' }, { context: 'Vite Build', state: 'success' }] }
   });
@@ -115,6 +206,7 @@ test('allows successful named check-runs when the legacy commit-status API has n
     pr: pr({ base: { ref: 'integration/qa-stack', repo: { full_name: 'Bella0960/q7v2k9n4x6r8' } } }),
     manifest: manifest(),
     reviews,
+    ownerComments: ownerComments(),
     checkRuns,
     status: { state: 'pending', total_count: 0, statuses: [] }
   });
@@ -143,6 +235,7 @@ test('a later successful rerun replaces an older failed check with the same name
     pr: pr(),
     manifest: manifest(),
     reviews,
+    ownerComments: ownerComments(),
     checkRuns: [
       { name: 'Node Tests', head_sha: sha(2), status: 'completed', conclusion: 'failure', started_at: '2026-11-26T09:00:00Z' },
       { name: 'Node Tests', head_sha: sha(2), status: 'completed', conclusion: 'success', started_at: '2026-11-26T10:00:00Z' },
@@ -157,6 +250,7 @@ test('a later successful status context replaces an older failure for that conte
     pr: pr(),
     manifest: manifest(),
     reviews,
+    ownerComments: ownerComments(),
     checkRuns: [],
     status: {
       state: 'success',
@@ -183,7 +277,7 @@ test('registers a task from the current PR and persists exact checks and depende
     body: 'Task summary',
     html_url: 'https://github.com/Bella0960/q7v2k9n4x6r8/pull/10',
     head: { sha: sha(2), repo: { full_name: repository } },
-    base: { ref: 'main', repo: { full_name: repository } }
+    base: { sha: sha(4), ref: 'main', repo: { full_name: repository } }
   };
   const stub = `
 import { writeFileSync } from 'node:fs';
@@ -197,8 +291,8 @@ globalThis.fetch = async (input, init = {}) => {
   let payload;
   if (method === 'GET' && path === '/repos/' + repository + '/pulls/10') {
     payload = currentPr;
-  } else if (method === 'GET' && path === '/repos/' + repository + '/compare/' + '${sha(1)}' + '...' + '${sha(2)}') {
-    payload = { status: 'ahead', ahead_by: 1 };
+  } else if (method === 'GET' && path === '/repos/' + repository + '/compare/' + '${sha(4)}' + '...' + '${sha(2)}') {
+    payload = { status: 'diverged', ahead_by: 2, merge_base_commit: { sha: '${sha(1)}' } };
   } else if (method === 'GET' && path === '/repos/' + repository + '/pulls/10/files') {
     payload = [{ filename: 'chat/chat/detail.html' }];
   } else if (method === 'PATCH' && path === '/repos/' + repository + '/pulls/10') {
@@ -218,7 +312,7 @@ globalThis.fetch = async (input, init = {}) => {
   writeFileSync(stubPath, stub);
   const result = spawnSync(process.execPath, [
     '--import', stubPath, queueScript,
-    'register', '10', 'CHAT-FIX-001', sha(1), 'F2',
+    'register', '10', 'CHAT-FIX-001', 'F2',
     'Node Tests', 'Vite Build', '--depends-on=CHAT-BASE-001'
   ], {
     cwd,
@@ -235,6 +329,7 @@ globalThis.fetch = async (input, init = {}) => {
   assert.equal(receipt.status, 'submitted');
   assert.equal(receipt.pr, 10);
   assert.equal(receipt.task, 'CHAT-FIX-001');
+  assert.equal(receipt.prMergeBase, sha(1));
   assert.deepEqual(receipt.requiredChecks, ['Node Tests', 'Vite Build']);
   assert.deepEqual(receipt.dependsOn, ['CHAT-BASE-001']);
   assert.deepEqual(receipt.changedFiles, ['chat/chat/detail.html']);
@@ -248,6 +343,7 @@ globalThis.fetch = async (input, init = {}) => {
   assert.deepEqual(savedManifest.requiredChecks, ['Node Tests', 'Vite Build']);
   assert.deepEqual(savedManifest.dependsOn, ['CHAT-BASE-001']);
   assert.equal(savedManifest.head, sha(2));
+  assert.equal(savedManifest.base, sha(1));
 });
 
 function runQueueAssembleCli(t, specs, options = {}) {
@@ -285,7 +381,7 @@ function runQueueAssembleCli(t, specs, options = {}) {
   const wrapperScript = [
     '#!/bin/sh',
     'if [ "$1" = "remote" ] && [ "$2" = "get-url" ] && [ "$3" = "origin" ]; then',
-    '  printf "%s\\n" "https://github.com/' + repository + '"',
+    '  printf "%s\n" "https://github.com/' + repository + '"',
     '  exit 0',
     'fi',
     'if [ "$1" = "ls-remote" ] && [ "$2" = "--heads" ] && [ "$3" = "origin" ]; then',
@@ -334,7 +430,14 @@ function runQueueAssembleCli(t, specs, options = {}) {
 
   const prs = [];
   const evidence = {};
-  const taskBase = baseline;
+  let taskBase = baseline;
+  if (options.prBaseDiverged) {
+    git('switch', '-q', 'main');
+    writeFileSync(join(cwd, 'main-only.txt'), 'source-main-only change');
+    git('add', 'main-only.txt');
+    git('commit', '-qm', 'Source main advances independently of deployed QA');
+    taskBase = git('rev-parse', 'HEAD');
+  }
   for (let index = 0; index < specs.length; index++) {
     const spec = specs[index];
     const branch = 'task-' + spec.id.toLowerCase();
@@ -365,11 +468,13 @@ function runQueueAssembleCli(t, specs, options = {}) {
     });
     evidence[number] = {
       head,
-      reviews: [{
-        user: { login: 'reviewer' },
-        state: 'APPROVED',
-        commit_id: head,
-        submitted_at: '2026-11-26T10:00:00Z'
+      reviews: [],
+      ownerComments: [{
+        user: { login: 'Bella0960' },
+        created_at: '2026-11-27T10:00:00Z',
+        body: '<!-- MAOMAO_OWNER_APPROVAL_V1\n' + JSON.stringify({
+          version: 1, taskId: spec.id, head, decision: 'approve'
+        }) + '\n-->'
       }],
       check_runs: [
         {
@@ -457,6 +562,8 @@ function runQueueAssembleCli(t, specs, options = {}) {
     '  if (match) return json(fixture.prs.find(pr => pr.number === Number(match[1])));',
     '  match = suffix.match(/^\\/pulls\\/(\\d+)\\/reviews$/);',
     '  if (match) return json(fixture.evidence[match[1]].reviews);',
+    '  match = suffix.match(/^\\/issues\\/(\\d+)\\/comments$/);',
+    '  if (match) return json(fixture.evidence[match[1]].ownerComments || []);',
     '  match = suffix.match(/^\\/pulls\\/(\\d+)\\/files$/);',
     '  if (match) return json(fixture.evidence[match[1]].files);',
     '  match = suffix.match(/^\\/commits\\/([0-9a-f]{40})\\/check-runs$/);',
@@ -498,9 +605,12 @@ function runQueueAssembleCli(t, specs, options = {}) {
   }
   const candidateExists = spawnSync('git', ['show-ref', '--verify', '--quiet', candidateRef], { cwd }).status === 0;
   let candidateDeployedFile = null;
+  let candidateMainOnlyFile = null;
   if (receipt?.candidate) {
     const deployed = spawnSync('git', ['show', receipt.candidate + ':deployed.txt'], { cwd, encoding: 'utf8' });
     if (deployed.status === 0) candidateDeployedFile = deployed.stdout.trim();
+    const mainOnly = spawnSync('git', ['show', receipt.candidate + ':main-only.txt'], { cwd, encoding: 'utf8' });
+    if (mainOnly.status === 0) candidateMainOnlyFile = mainOnly.stdout.trim();
   }
   const gitCommand = (...args) => {
     const commandResult = spawnSync('git', args, { cwd, encoding: 'utf8' });
@@ -509,7 +619,7 @@ function runQueueAssembleCli(t, specs, options = {}) {
   };
   return {
     result, receipt, baseline, originalBaseline, latestQaSha, candidateExists,
-    candidateDeployedFile, cwd, candidateRef, receiptPath, remotePath, remoteSha, runQueue, git: gitCommand
+    candidateDeployedFile, candidateMainOnlyFile, cwd, candidateRef, receiptPath, remotePath, remoteSha, runQueue, git: gitCommand
   };
 }
 
@@ -594,6 +704,18 @@ test('accepts the latest successful release SHA, ignores newer verify-only runs,
   assert.equal(candidateDeployedFile, 'already deployed to QA');
 });
 
+test('applies a main-based PR delta onto the deployed QA baseline without importing unrelated main changes', t => {
+  const { result, receipt, latestQaSha, candidateDeployedFile, candidateMainOnlyFile } = runQueueAssembleCli(
+    t, [{ id: 'TASK-10' }], { advanceQaBaseline: true, useLatestAsInput: true, prBaseDiverged: true }
+  );
+  assert.equal(result.status, 0, result.stderr);
+  assert.equal(receipt.status, 'assembled-local');
+  assert.equal(receipt.baseline, latestQaSha);
+  assert.equal(candidateDeployedFile, 'already deployed to QA');
+  assert.equal(candidateMainOnlyFile, null);
+  assert.notEqual(receipt.includedTasks[0].prMergeBase, latestQaSha);
+});
+
 test('removes a local candidate when the successful QA release baseline changes during assembly', t => {
   const { result, receipt, baseline, latestQaSha, candidateExists } = runQueueAssembleCli(
     t, [{ id: 'TASK-10' }], {
@@ -664,7 +786,7 @@ test('CLI assemble persists an immutable candidate receipt and resumes the same 
   assert.ok(fixture.candidateExists);
   assert.ok(existsSync(fixture.receiptPath));
   const saved = JSON.parse(readFileSync(fixture.receiptPath, 'utf8'));
-  assert.equal(saved.version, 1);
+  assert.equal(saved.version, 2);
   assert.equal(saved.baseline, fixture.baseline);
   assert.equal(saved.branch, 'integration/qa-batch-' + fixture.baseline.slice(0, 12));
   assert.equal(saved.candidate, fixture.git('rev-parse', fixture.candidateRef));
@@ -775,6 +897,8 @@ test('ready-batch workflow archives a candidate before pushing and restores it b
   assert.match(workflow, /git bundle create/);
   assert.match(workflow, /retention-days: 90/);
   assert.match(workflow, /cancel-in-progress: false/);
+  assert.ok(workflow.includes('![1, 2].includes(receipt.version)'),
+    'candidate recovery must accept current v2 receipts as well as legacy v1 receipts');
 });
 
 test('CLI invalidate deletes a remote candidate only with exact SHA and explicit remote-delete confirmation', async t => {
