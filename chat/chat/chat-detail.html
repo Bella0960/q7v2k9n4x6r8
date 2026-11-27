@@ -26,6 +26,7 @@
     <script src="../../shared/js/phone/chat-message-policy.js?v=20261029v5"></script>
     <script src="../../shared/js/phone/chat-send-policy.js?v=20261029v2"></script>
     <script src="../../shared/js/phone/chat-context-policy.js?v=legacy-memory-scope1"></script>
+    <script src="../../shared/js/phone/worldbook-resolver.js?v=20261128wb1"></script>
     <script src="../../shared/js/phone/chat-presence-policy.js?v=20261102v17"></script>
     <script src="../../shared/js/phone/chat-heart-policy.js?v=20261126mind1"></script>
     <script src="../../shared/js/phone/role-public-timeline.js?v=20261102v1"></script>
@@ -5921,21 +5922,26 @@
             rpProtocol = rpProtocol.trim();
 
             // 世界书：召回当前话题相关条目；兼容旧版只有 content 的整本设定
+            // 绑定规则统一由 WorldbookResolver 决定（单聊与群聊同一套）：
+            //   · scope='global' 的书始终生效；
+            //   · scope='local'  的书只在本会话显式挂载（chat_worldbooks_<aliasRoleId>）时生效；
+            //   · 未挂载 / 挂载记录损坏 → 只给全局书（fail-closed，绝不串角色）。
             let worldbookText = '';
             try {
               const rawWB = localStorage.getItem('phone_worldbooks');
               if (rawWB) {
                 let wbList = JSON.parse(rawWB) || [];
                 if (!Array.isArray(wbList)) wbList = [];
-                if (isGroupChat) {
-                  const mountRaw = localStorage.getItem('chat_worldbooks_' + aliasRoleId);
-                  if (mountRaw != null) {
-                    const mounted = JSON.parse(mountRaw);
-                    if (Array.isArray(mounted)) {
-                      const mountedIds = mounted.map(function (id) { return String(id); });
-                      wbList = wbList.filter(function (book) { return book && mountedIds.indexOf(String(book.id)) !== -1; });
-                    }
-                  }
+                if (window.WorldbookResolver && typeof window.WorldbookResolver.resolve === 'function') {
+                  wbList = window.WorldbookResolver.resolve({
+                    books: wbList,
+                    contactId: aliasRoleId
+                  }).books;
+                } else {
+                  // 解析模块未加载时也必须保持"局部书不串"的底线
+                  wbList = wbList.filter(function (book) {
+                    return !book || typeof book !== 'object' || book.scope !== 'local';
+                  });
                 }
                 if (window.ChatContextPolicy &&
                     typeof window.ChatContextPolicy.buildWorldbookInjectionText === 'function') {
