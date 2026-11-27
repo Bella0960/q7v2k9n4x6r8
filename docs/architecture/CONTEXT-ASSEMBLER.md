@@ -1,8 +1,11 @@
 # CONTEXT-ASSEMBLER — MAOMAO 统一上下文组装规格
 
-**编号：** MAOMAO-CONTEXT-ASSEMBLER-001  
-**版本：** 1.0-draft  
-**优先级：** P0/P1  
+**编号：** MAOMAO-CONTEXT-ASSEMBLER-001
+
+**版本：** 1.0-draft
+
+**优先级：** P0/P1
+
 **状态：** TARGET；当前只有分散上下文路径与未完整接入的原型。
 
 ## 1. 目标与边界
@@ -59,7 +62,7 @@ ContextAssembler 是跨领域的上下文编排器，不是：
 - PhoneContext.gatherSnapshots() 在 main 审计快照中按作者读取动态但没有完整 visibility 检查，并会读取财务快照；跨应用上下文存在隐私风险。
 - PhoneContext 的记忆读取简化为取前 15 条，没有完整复用聊天的权重、状态和衰减规则。
 - PhoneEngine.refreshApp、refreshAll、saveAppResult 有实现，但没有找到生产业务调用者；PhoneApps 注册范围也有限。
-- 因此 PhoneEngine 是未完整接入的原型，不是已经运行的统一 AI 生成引擎。
+- 朋友圈页面实际调用 PhoneEngine.getCurrentContactId() 和 setCurrentContact() 读写选中角色。应用生成调度仍属局部原型。
 
 ### 2.5 在途修正
 
@@ -73,6 +76,7 @@ ContextAssembler 是跨领域的上下文编排器，不是：
 
 ~~~js
 ContextAssembler.build({
+  accountId,
   scene,
   actingRoleId,
   conversationId,
@@ -133,12 +137,13 @@ ContextAssembler.build({
 3. Resolve grants：取得当前场景允许访问的来源与字段。
 4. Authorize source queries：只对授权范围发起查询；不允许先读取无关私密数据。
 5. Filter：按 owner、visibility、参与者、来源和有效期过滤。
-6. Recall：调用对应领域的 MemoryService、WorldbookResolver、EventCore 查询。
-7. Rank and deduplicate：保留重要、确认、相关、未过期内容，去重并记录来源。
-8. Budget：按场景限制各 section 长度和 token 预算。
-9. Assemble：输出结构化 ContextResult。
-10. Format for task：由聊天或应用 AI Runtime 将结构化 sections 格式化为该任务的 Prompt。
-11. Revalidate：提交模型请求前确认账号/角色/会话 scope 未变化。
+6. 世界书召回：按当前发言角色及群的有效挂载召回。
+7. 记忆召回：调用 MemoryService，分别读取个人记忆及群共同记忆。
+8. 关系与状态：读取当前角色的定向关系与有效状态。
+9. 跨应用事件：从 EventCore 查询有权读取且与本轮相关的事实摘要。
+10. 当前应用数据：由场景适配器追加任务所需且已授权的业务字段。
+11. 去重与预算：按来源 ID 和版本去重，按相关性、确认状态及有效期排序，限制各区段及总 token 数。
+12. Prompt 组装：输出结构化 ContextResult，由聊天或应用 AI Runtime 格式化。在提交模型请求前重新验证账号、角色与会话 scope。
 
 权限必须在查询前确定，敏感来源应尽可能在数据读取层就被排除，而不是只在最终 Prompt 中删除。
 

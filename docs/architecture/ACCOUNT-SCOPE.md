@@ -1,8 +1,11 @@
 # ACCOUNT-SCOPE — MAOMAO 账号与数据身份隔离规格
 
-**编号：** MAOMAO-ACCOUNT-SCOPE-001  
-**版本：** 1.0-draft  
-**优先级：** P0  
+**编号：** MAOMAO-ACCOUNT-SCOPE-001
+
+**版本：** 1.0-draft
+
+**优先级：** P0
+
 **状态：** TARGET；当前 main 尚未完成本地账号隔离。
 
 ## 1. 目标
@@ -54,8 +57,8 @@ accountId
 | 字段 | 定义 | 约束 |
 |---|---|---|
 | accountId | 数据所属 MAO 账号 | 从可信 Worker 会话/已验证页面上下文取得；不能信任请求体或 localStorage 自报值 |
-| ownerType | 归属类别 | account / character / group / conversation |
-| ownerId | 对应类别的稳定 ID | 使用现有 accountId、roleId、groupId、conversationId；禁止用姓名、昵称、头像或数组索引 |
+| ownerType | 归属类别 | account / character / group / conversation / app |
+| ownerId | 对应类别的稳定 ID | 使用现有 accountId、roleId、groupId、conversationId 或已登记的应用空间 ID；禁止用姓名、昵称、头像或数组索引 |
 | appId | 产生或持有数据的应用 | 稳定小写应用标识；不是权限本身 |
 | recordId | 业务记录唯一 ID | 在其 owner 与 app 范围内稳定且可追溯 |
 
@@ -92,8 +95,10 @@ accountId
 | 群共同记忆 | group | 只对当前群的有效成员开放 |
 | 单聊消息与会话状态 | conversation | 保留现有会话/角色关联 |
 | 群聊消息 | conversation，并保留 groupId | 每条消息保留真实 memberId/发言者 |
-| 阅读进度、日记、音乐、咖啡馆、游戏 | 对应 character 或 account owner + appId | 按实际业务归属登记，不强制合并数据库 |
+| 阅读进度、日记、音乐、咖啡馆、游戏 | 按记录选择 character、account 或 app | 角色私有记录保留角色归属。明确设计为账号内共享的书架、店铺等使用 app，ownerId 为稳定应用空间 ID |
 | 公开动态、论坛帖子 | 来源业务 owner + 可见性 | 可见性与账号归属是两套独立校验 |
+
+四级归属为账号、角色、会话及群组、应用。应用空间必须登记所属账号、appId 和允许访问的主体及用途。共享空间中的角色私有记录仍按自身归属鉴权。
 
 **关键区别：** 数据属于哪个账号，不代表该账号内的每个角色都能读取；owner scope 与 read permission 必须分别校验。
 

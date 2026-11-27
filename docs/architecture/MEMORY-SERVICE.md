@@ -1,8 +1,11 @@
 # MEMORY-SERVICE — MAOMAO 角色记忆与用户资料记忆规格
 
-**编号：** MAOMAO-MEMORY-SERVICE-001  
-**版本：** 1.0-draft  
-**优先级：** P1  
+**编号：** MAOMAO-MEMORY-SERVICE-001
+
+**版本：** 1.0-draft
+
+**优先级：** P1
+
 **状态：** TARGET；当前已有记忆基础设施，但读写、召回与跨应用注入尚未统一。
 
 ## 1. 目标

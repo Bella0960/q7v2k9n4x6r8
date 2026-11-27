@@ -1,8 +1,11 @@
 # EVENT-CORE — MAOMAO 跨应用经历与共同事件规格
 
-**编号：** MAOMAO-EVENT-CORE-001  
-**版本：** 1.0-draft  
-**优先级：** P2  
+**编号：** MAOMAO-EVENT-CORE-001
+
+**版本：** 1.0-draft
+
+**优先级：** P2
+
 **状态：** TARGET；已有局部时间线/剧情模块，统一事件层仍在途。
 
 ## 1. 目标
@@ -51,7 +54,8 @@ EventCore 统一的是事件身份、来源、归属、可见性、幂等和读�
   ],
   relatedRoleIds: ["role_B"],
   visibility: "private",
-  summary: "角色 A 与 B 完成了一次共同游戏",
+  payloadVersion: 1,
+  payload: { summary: "角色 A 与 B 完成了一次共同游戏" },
   sourceRecordId: "game-record-id",
   provenance: "user-confirmed",
   memoryPolicy: "candidate",
@@ -68,7 +72,8 @@ EventCore 统一的是事件身份、来源、归属、可见性、幂等和读�
 - occurredAt 是业务发生时间；recordedAt 是系统记录时间，二者不能混淆。
 - participants 是参与者，不自动授予所有参与者读取私有事件的权限。
 - visibility 是明确权限，不得把缺省/未知值当公开。
-- summary 仅为最小必要摘要；原始业务内容仍由来源应用持有。
+- payloadVersion 管理各 eventType 的载荷版本，schemaVersion 管理事件外层结构。未知载荷版本保留以待兼容处理，排除出召回与派生流程。
+- payload 仅保存该类型登记的最小摘要字段，v1 使用 payload.summary。完整聊天、日记、媒体、游戏存档和财务数据留在各应用业务存储。
 - sourceRecordId 用于追溯原始业务记录。
 - provenance 区分 user-confirmed、system-derived、generated 等来源。
 - memoryPolicy 控制是否允许形成记忆候选，不代表事件自动成为记忆。
@@ -88,7 +93,8 @@ EventCore 统一的是事件身份、来源、归属、可见性、幂等和读�
 | sourceApp | source.appId |
 | sourceRecordId | source.recordId |
 | occurredAt | occurredAt |
-| summary | summary |
+| payloadVersion | 旧候选采用版本 1 的读取适配 |
+| payload.summary | 旧顶层 summary 只读映射，新增逻辑记录以 payload 为权威 |
 | relatedRoleIds | relatedRoleIds |
 | visibility | 当前只允许 private |
 | provenance | provenance |
