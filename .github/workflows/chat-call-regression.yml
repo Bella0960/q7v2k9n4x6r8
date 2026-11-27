@@ -9,8 +9,7 @@ on:
       - 'chat/chat/chat-detail.html'
       - 'chat/chat/js/chat-extras.js'
       - 'tests/chat-call-experience.test.mjs'
-      - 'package.json'
-      - '.github/workflows/chat-call-regression.yml'
+      - 'package-lock.json'
   push:
     branches: [main]
     paths:
@@ -19,7 +18,7 @@ on:
       - 'chat/chat/chat-detail.html'
       - 'chat/chat/js/chat-extras.js'
       - 'tests/chat-call-experience.test.mjs'
-      - 'package.json'
+      - 'package-lock.json'
       - '.github/workflows/chat-call-regression.yml'
 
 permissions:

@@ -11,6 +11,7 @@ function read(path) {
 
 const home = read('index.html');
 const serviceWorker = read('sw.js');
+const serviceWorkerVersion = Number(serviceWorker.match(/^const CACHE_NAME = 'phone-app-pwa-v(\\d+)'/m)?.[1] || 0);
 const guideHtml = read('tutorial/tutorial.html');
 const chatDetail = read('chat/chat/chat-detail.html');
 const guideScript = read('tutorial/tutorial.js');
@@ -129,7 +130,7 @@ test('tutorial workflow enforces a guide update when user-facing app pages chang
 });
 
 test('PWA app shell caches the full guide bundle and has a matching test command', () => {
-  assert.match(serviceWorker, /const CACHE_NAME = 'phone-app-pwa-v203'/);
+  assert.ok(serviceWorkerVersion >= 203, 'tutorial cache must not regress below v203');
   assert.ok(serviceWorker.includes("'./tutorial/tutorial.html'"));
   assert.ok(serviceWorker.includes("'./tutorial/tutorial.js?v=20261111v3'"));
   assert.equal(packageJson.scripts['test:tutorial'], 'node --test tests/tutorial-page-contract.test.mjs');

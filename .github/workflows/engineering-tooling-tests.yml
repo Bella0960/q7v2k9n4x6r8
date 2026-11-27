@@ -1,0 +1,57 @@
+name: Engineering tooling tests
+
+# Push is the bootstrap trigger for feature branches: this workflow is new in
+# GOV-006 and is not present on main yet, so it cannot receive this PR's
+# pull_request event until the definition is merged. One push run per commit
+# also avoids duplicate push + pull_request test runs.
+on:
+  push:
+    branches:
+      - '**'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: engineering-tooling-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  engineering-tools:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Record exact test identity
+        env:
+          PR_HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+        run: |
+          ACTUAL_SHA="$(git rev-parse HEAD)"
+          NODE_VERSION="$(node --version)"
+          {
+            echo "## Engineering tooling test identity"
+            echo "- Event: $GITHUB_EVENT_NAME"
+            echo "- Ref: $GITHUB_REF"
+            echo "- PR head SHA: ${PR_HEAD_SHA:-not-a-pull-request}"
+            echo "- Checked-out SHA: $ACTUAL_SHA"
+            echo "- Node.js: $NODE_VERSION"
+          } | tee -a "$GITHUB_STEP_SUMMARY"
+          if [ -n "${PR_HEAD_SHA:-}" ] && [ "$ACTUAL_SHA" != "$PR_HEAD_SHA" ]; then
+            echo "::error::Checkout SHA does not match the PR head SHA."
+            exit 1
+          fi
+      - name: Syntax checks
+        run: |
+          node --check scripts/engineering-pr-conflicts.mjs
+          node --check scripts/engineering-qa-batch.mjs
+          node --check scripts/engineering-qa-queue.mjs
+      - name: Focused engineering tests
+        run: |
+          node --test tests/engineering-pr-conflicts.test.mjs tests/engineering-qa-batch.test.mjs tests/engineering-qa-queue.test.mjs

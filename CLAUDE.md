@@ -2,7 +2,9 @@
 
 「小手机 (phone-simulator)」—— 纯原生 Web 项目，模拟一部手机：桌面浏览器显示带边框的手机机身（390×844），窄屏（≤480px）经 `shared/css/mobile-fit.css` 剥掉壳变全屏 PWA。内置聊天、论坛、钱包、咖啡馆、游戏等 App，全部围绕用户自定义的 **AI 角色** 运转（人设/世界书/记忆注入 prompt，调用 OpenAI 兼容 API 生成内容）。全站简体中文，黑白灰杂志风。
 
-> 工程协作入口：所有 AI/开发者先读根目录 AGENTS.md，再读 docs/engineering/README.md 及其架构、储存、开发治理和任务文档。当前事实以源码与工程手册为准；历史审查报告须按日期复核。
+> 工程协作入口：所有 AI/开发者先读根目录 AGENTS.md，再读 [统一 GOV-006 工程工作流](docs/engineering/ENGINEERING_WORKFLOW.md) 与 docs/engineering/README.md 及其架构、储存、开发治理和任务文档。不同模块可并行，文件所有权、PR 登记和 QA 组批统一按新工作流执行。当前事实以源码与工程手册为准；历史审查报告须按日期复核。
+
+> 发布与 QA 任务必须先读 `docs/engineering/RELEASE_POLICY.md`；本文历史架构与版本快照不得覆盖现行发布规范。
 
 ## 技术栈与架构
 

@@ -1,8 +1,10 @@
 # MAOMAO Engineering Remediation Backlog
 
+> Release instructions: always read the latest main [RELEASE_POLICY.md](RELEASE_POLICY.md). Historical workflow names, versions, and checkpoints are not active instructions.
+
 This backlog divides the full cleanup into independent, reviewable tasks. Agents must claim a Task ID and must not expand scope silently.
 
-Status vocabulary: OPEN, IN PROGRESS, FIXED, DEFERRED, NOT VERIFIED.
+Status vocabulary: OPEN, IN PROGRESS, FIXED, DEFERRED, NOT VERIFIED, PARTIALLY DONE.
 
 ## Phase 0 — Establish an accurate baseline
 
@@ -56,6 +58,43 @@ Acceptance:
 
 Execution semantics: “complete all” means all authorized work in the assigned scope, not silently activating deferred roadmap items or crossing approval boundaries. Blocked items must be recorded with the exact dependency and not disguised as completed.
 
+### GOV-006 — Fast parallel delivery and batched QA release
+**Priority:** P0 · **Status:** IN PROGRESS (2026-11-26)
+
+Purpose: reduce owner wait time as MAOMAO and its parallel development windows grow, while preserving all existing correctness, privacy, account, storage, and deployment safeguards.
+
+Verified baseline on 2026-11-26:
+- The public QA reusable entry separates `verify` from `release`, but both operations invoke the candidate test runner; the release operation then deploys. Running both for the same unchanged SHA repeats the test plan.
+- QA publication uses one non-cancelling serialized release group. Verification does not take the publish lock; concurrent publish requests still queue.
+- The inspected adaptive presentation selector currently supports only `library`, `diary`, `music`, `travel`, `cafe`, and `games`, and only a narrow HTML/CSS-only presentation diff. Other changes fall back to the standard test plan.
+- QA infrastructure PR #507 is still Draft/open; the current release policy says adaptive migration remains under acceptance.
+- Latest inspected verify run #45792397059 failed at gate 27/51, mapped to `tests/travel-storage.browser.mjs`; the release step was skipped. The root cause is NOT VERIFIED and must not be called a product defect without further evidence.
+
+Scope:
+- Establish one-task/one-branch ownership and safe parallel work across windows.
+- Define risk-based local checks and prohibit unnecessary full-suite repetition for low-risk changes.
+- Batch only READY tasks into one immutable approved QA candidate, with one release coordinator.
+- Avoid the duplicate verify-then-release test pass for the same SHA when a QA-only release is already authorized.
+- Define stage-specific failure diagnosis and safe retry rules.
+- Expand adaptive module coverage only as a separately tested, evidence-backed follow-up; do not lower the current fallback or security gates.
+
+Acceptance:
+- Every window records Task ID, base SHA, owned paths, risk lane, non-goals, checks, and PR/status.
+- Conflicting file ownership is serialized; independent work continues while QA is running.
+- A read-only GitHub PR conflict scanner compares branch/working-tree paths against all open PRs; exact path overlap blocks shared ownership, cross-cutting hotspots warn, and incomplete scans fail closed.
+- One coordinator forms the candidate from the currently deployed QA source plus only reviewed, ready changes.
+- The release queue remains serialized and non-cancelling; no parallel window deploys the same QA target.
+- The same unchanged candidate is not needlessly run through both verify and release.
+- Pure presentation fast-lane eligibility is explicit, module-mapped, browser-tested, and only used after the adaptive migration is accepted.
+- Failures are tied to a precise stage and evidence; no blind reruns, skipped gates, or fabricated results.
+- Release evidence records exact SHA, workflow run, deployed Worker version, and actual QA source receipt.
+
+Current blockers / follow-up:
+- Re-run the new engineering tooling suites on the PR head after the PR is integrated into the default branch; the new workflow file cannot run from a pull request before it exists on the base branch.
+- Cloudflare's production Worker check for the latest tooling commit reports a skipped build (build outcome `skipped`, no build log), not a compiler diagnostic. The check remains NOT VERIFIED and is not treated as a test pass.
+- Complete public validation and owner acceptance of QA infrastructure PR #507 before treating adaptive selection as generally active.
+- Release receipt, current QA baseline, and actual QA-only deployment remain separate acceptance evidence; no source-tooling test can substitute for them.
+
 ## Phase 1 — GitHub and build governance
 
 ### CI-001 — Verify APK automation stop and clear prior artifacts
@@ -92,7 +131,7 @@ Acceptance:
 ### CI-003 — Resolve npm package publish template
 **Priority:** P1 · **Status:** OPEN
 
-Evidence: npm-publish-github-packages.yml runs npm test and npm publish on release; package.json at baseline defines no generic test script and package is not evidently intended as a published library.
+Historical evidence: the obsolete npm publish workflow was removed by release hygiene PR #511. Package publication is not an active delivery channel. Follow RELEASE_POLICY.md.
 
 Acceptance:
 - Confirm whether publishing is a real product requirement.
@@ -124,9 +163,17 @@ Acceptance:
 - No untracked IndexedDB database remains.
 
 ### DATA-002 — Complete backup coverage for MediaRepository
-**Priority:** P0 · **Status:** IN PROGRESS (2026-11-11: implementation is already present on main; automated execution/restore acceptance remains NOT VERIFIED)
+**Priority:** P0 · **Status:** PARTIALLY DONE (verified 2026-11-23 on `40b671bb`, Windows, Node 22.22.2)
 
-Evidence: current main `settings/js/backup.js` includes `maomao-assets` v2 stores `assets`, `blobs`, `refs`, and `image_records`; Blob payloads use Base64 with size limits; `atomicExport: true` excludes the entire database if any blob is skipped; `clearOnRestore: true` clears stores even when the backup store is empty. `tests/media-backup.test.mjs` contains 10 focused cases for MIME preservation, empty-store clearing, invalid Base64 handling, size-limit atomic exclusion, full four-store round trip, and reference integrity. The test file exists but its execution has not been verified in this environment.
+Verified on current main:
+- `settings/js/backup.js` registers `maomao-assets` v2 with all four stores: `assets` (keyPath `assetId`), `blobs` (keyPath `assetId`, `blobFields: ['blob']` → Base64 round trip), `refs` (keyPath `assetId`), `image_records` (keyPath `id`).
+- `atomicExport: true` discards the whole database when any blob is skipped, so an export can never contain assets/refs without their binary payload; the reason is written to `dbWarnings` and `__backup.warnings.databasesSkipped`.
+- `clearOnRestore: true` clears every store even when the backup store is an empty array, so a restore cannot leave stale assets behind.
+- `tests/media-backup.test.mjs` case 06 asserts an oversized blob produces `atomicExportFailed` with `data === null`; case 07 asserts a dump→restore round trip keeps 2 assets / 2 refs / 2 blobs / 1 image record byte-identical with intact reference relations. `npm run test:media:backup` → 10/10 pass (executed, not inferred).
+
+Still open — do not mark this task FIXED:
+- **Integrity hashes are absent.** `backup.js` contains no checksum/hash field; the export only carries `schema`, `complete`, `count` and `warnings`. Acceptance item 1 is therefore unmet.
+- **IndexedDB is not covered by the in-app rollback.** The pre-import restore point (`maomao-restore-point`) snapshots localStorage only — the import dialog states "本机恢复点只保障 localStorage". A failure during the IndexedDB phase is reported (failure count plus retained restore point) but not automatically rolled back, so "source data remains recoverable" depends on the user having saved a full backup first.
 
 Acceptance:
 - Export includes metadata, Blob payloads, references, and integrity hashes.
@@ -137,9 +184,16 @@ Acceptance:
 Dependency: DATA-001.
 
 ### DATA-003 — Fix audio Blob backup semantics
-**Priority:** P1 · **Status:** OPEN
+**Priority:** P1 · **Status:** PARTIALLY DONE (verified 2026-11-23 on `40b671bb`)
 
-Evidence: backup.js currently sets excludeFields: ['blob'] for audio store records, so the local music file itself is omitted from that backup target.
+Verified on current main:
+- `maomao-media-store/audio` keeps `excludeFields: ['blob']`, and the omission is explicit rather than silent: `__backup.warnings.audioMetadataOnly` is set, `complete` becomes false when audio metadata is present, and the export message appends "（本地音频元数据已包含，音频文件本身未打包）".
+- Records skipped for size or read failure are collected in `allSkipped`, written into the manifest (`recordsSkipped` plus per-record db/store/id/reason/bytes) and listed in the export message with a total count.
+
+Still open — do not mark this task FIXED:
+- The audio notice carries no file count and no total size, so "export UI lists skipped audio files and size" is not met.
+- No written decision between "include music in full backups" and "offer a separate large-media export"; `docs/engineering/STORAGE_AND_MIGRATION.md` still phrases it as an open question.
+- Restore reporting covers font presets and skipped records only; there is no audio-specific statement of what was restored.
 
 Acceptance:
 - Decide and document whether full backups include local audio or offer a separate “large media” export.
@@ -252,6 +306,73 @@ Acceptance:
 - Legacy `type:image` messages using `img` continue rendering unchanged.
 - Settings gallery supports per-character and public/private filtering, and generation/persistence failures are visible.
 - Tests cover prompt construction, record persistence, privacy filtering, backup inclusion, and chat command/render contracts.
+
+### ROLE-MIND-001 — Complete role-scoped heart history and persona-aligned generation
+**Priority:** P1 · **Status:** IN PROGRESS
+
+Scope:
+- Extract heart marker parsing, prompt rules, and history persistence into a shared chat policy.
+- Store bounded heart history by conversation ID and actual speaker ID; group members must never share a history bucket.
+- Read legacy direct-chat `latest_heart_<roleId>` values without deleting them. Do not attribute the old shared group key to any member.
+- Commit heart history only after the visible AI reply has been successfully persisted; verify storage readback and surface failures.
+- Clicking a group member's avatar reads only that member's history. Legacy group messages without a member ID may resolve by a unique member name only.
+- Keep heart optional and consistent with the already-loaded persona, worldbook, memory, and relationship context.
+
+Acceptance:
+- Unit tests cover parsing, direct legacy compatibility, group isolation, bounded history, corrupt data, storage failure, and prompt constraints.
+- Chat detail keeps the existing message schema and role/group IDs; no history or user data is deleted.
+- PWA cache is advanced and the new policy is pre-cached.
+- Node contract tests and Vite build pass. Browser/real-device behavior is reported separately and is not inferred from static tests.
+
+Out of scope for this task: changing emotion scoring, proactive-contact scheduling, group governance permissions, or chat message schemas.
+
+### ROLE-BEHAVIOR-001 — Unify the per-turn role behavior context
+**Priority:** P1 · **Status:** PLANNED · **Depends on:** ROLE-MIND-001
+
+Current source already contains voice-habit profiling, short-term emotion continuity, recent self-authored life-note extraction, autonomy prompting, and proactive-contact policy. These are separate capabilities, not a reason to create a second parallel personality engine.
+
+Scope:
+- Reuse `ChatPresencePolicy` and compose one bounded per-turn behavior context for the active role/speaker.
+- Preserve role and group-speaker isolation; narration/offline modes keep their existing exclusions.
+- Keep persona, worldbook, relationship protocol, and confirmed memory as higher-priority sources.
+- Avoid forced message quotas, repeated questions, fabricated activities, permanent emotional labels, or additional model/API calls.
+- Keep aggregate voice-profile semantics; do not store raw chat samples.
+
+Acceptance:
+- Tests cover direct/group speaker selection, voice-profile cache invalidation, emotion cue expiry, life-note recency, narration exclusions, and prompt ordering.
+- Existing prompt source order, model request count, and message schema remain compatible.
+- Node chat contract, Vite build, and browser viewport checks pass.
+
+### ROLE-ACTION-001 — Unify role action parsing and execution
+**Priority:** P1 · **Status:** PLANNED · **Depends on:** ROLE-BEHAVIOR-001
+
+Current action markers and side effects are distributed through the large chat-detail controller. Group relationship, group interaction, and group management markers use different handlers and state paths.
+
+Scope:
+- Inventory every existing action marker before changing behavior; preserve current marker compatibility.
+- Separate narrative/action description from state-changing operations.
+- Add one dispatcher/registry with explicit actor, target, permission, feature-switch, and current-state validation.
+- Execute state changes only after the visible reply has persisted; enforce idempotency, readback verification, and rollback.
+- Reuse existing group permission and relationship policies; do not create a second authorization system.
+- A model-generated marker is never an authorization credential by itself.
+
+Acceptance:
+- Tests cover unauthorized actors, stale or ambiguous targets, duplicate markers, regeneration, failed reply persistence, failed action persistence, rollback, and successful state readback.
+- No state-changing action occurs from an uncommitted/failed reply.
+- Existing group, wallet, call, poll, chain, and media marker behavior remains compatible.
+
+### ROLE-LIFE-001 — Complete role life-event continuity
+**Priority:** P2 · **Status:** PLANNED · **Depends on:** ROLE-BEHAVIOR-001
+
+Scope:
+- Reconcile existing life-line, life-event, footprint, and recent-note sources instead of creating duplicate storage.
+- Model event lifecycle explicitly: planned, active, completed, cancelled, or rescheduled.
+- Keep event ownership role-scoped and group-member-scoped where applicable.
+- Never present a plan as completed or revive a cancelled/expired event without new evidence.
+
+Acceptance:
+- Tests cover state transitions, expiry, duplicate events, role isolation, group isolation, and cross-page read consistency.
+- No new database or destructive migration without a separately approved migration plan.
 
 ## Phase 3 — Shared architecture and feature safety
 
@@ -405,12 +526,5 @@ Do not parallelize:
 - Multiple agents editing CLAUDE.md, AGENTS.md, or the handbook.
 - Multiple agents modifying .github/workflows or package scripts concurrently.
 
-## Recommended first assignments to other AIs
-
-1. Agent A: GOV-002 — app/page/route/cross-module ownership map, read-only.
-2. Agent B: DATA-001 — IndexedDB/localStorage database registry and backup gaps, read-only.
-3. Agent C: DATA-005 — all chat-history reader/writer call-site matrix, read-only.
-4. Agent D: CI-002 + CI-003 — GitHub workflow and release-template review, propose patch only.
-5. Agent E: PERF-001 — image asset inventory and safe optimization recommendations, no replacements yet.
 
 Only after these reports are reviewed should implementation tasks be assigned.

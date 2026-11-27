@@ -189,6 +189,10 @@ self.addEventListener('fetch', event => {
   const url = new URL(req.url);
   if (url.origin !== self.location.origin) return;
 
+  // Administrator pages and diagnostics must always reach the server's session gate.
+  if (url.pathname.startsWith('/admin/') || url.pathname === '/api/admin/cloud' ||
+      url.pathname.startsWith('/api/admin/cloud/')) return;
+
   // Authenticated API responses are account-private; never store them in the shared origin cache.
   if (url.pathname === '/api' || url.pathname.startsWith('/api/')) return;
 

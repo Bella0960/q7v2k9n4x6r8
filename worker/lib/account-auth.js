@@ -1025,6 +1025,7 @@ export function createAccountAuth({ store, env = {}, now = () => Date.now() }) {
 
   return {
     getAuthenticatedAccount,
+    requireActiveAdmin,
     handle: async (request, path, method) => {
       // This same-origin, read-only POST probe checks the path used by the
       // founder form without accepting or logging any credentials.

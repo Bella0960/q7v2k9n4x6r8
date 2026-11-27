@@ -17,18 +17,9 @@ Do not force-push main. Never overwrite a newer main commit. Rebase/merge agains
 
 ## 2. Current automation inventory
 
-| Workflow | Current trigger | Purpose | Policy |
-|---|---|---|---|
-| deploy-cloudflare-worker.yml | Push to main with matching app/source paths; manual | Vite build and Cloudflare Worker static-asset deployment | Keep automatic website deployment |
-| chat-regression-contract.yml | Push/PR for chat-related paths; manual | npm run test:chat:contract | Keep and expand |
-| perf-gate.yml | Push/PR for chat/shared phone/perf paths; manual | Playwright performance budget gate | Keep; inspect runtime/cost and maintain |
-| build-android-apk.yml | Manual workflow_dispatch only | Build debug APK | Do not restore push trigger; output retained 3 days |
-| cleanup-apk-artifacts.yml | Manual workflow_dispatch only | Delete artifacts whose exact name is MAOMAO-Android-APK in this repo | Run manually to clean existing APK outputs; scope does not include other repos |
-| npm-publish-github-packages.yml | GitHub release created | Runs npm ci, npm test, npm publish | Unverified; package.json has no generic test script and the project is not currently operated as an npm package. Do not publish/release until the workflow is reviewed and explicitly approved |
+> 当前发布流程以 [2026-11-24 发布规范](RELEASE_POLICY.md) 为准；旧日期的版本、部署方式和测试范围不得当成现行指令。
 
-The previous APK artifact-upload failure reported GitHub Artifact storage quota reached. That failure happened after the Build debug APK step succeeded. The failed run itself had no uploaded artifact. The cleanup workflow is repository-scoped. If account-wide usage is still full after cleanup and GitHub's usage refresh window, inspect artifacts in other repositories/account scope.
-
-No routine workflow should upload an APK. Build APK only after an explicit need.
+The existing production deployment is manual-only; QA uses the reusable request path. Old per-version workflows and npm publishing are not routine release paths. Existing test implementations remain available until their replacement coverage has been verified. APK and APK cleanup remain manual-only.
 
 ## 3. Current quality commands and limitations
 
@@ -42,12 +33,7 @@ package.json currently exposes:
 
 tests/ contains two primary test entry scripts plus additional manual/reproduction scripts and fixtures. A green contract test does not mean every page or user journey was exercised.
 
-Required check for every code PR:
-1. npm ci
-2. npm run build
-3. the relevant test script(s)
-4. related performance gate if chat/shared phone behavior changes
-5. manual acceptance on affected views; for major storage/chat work, phone viewport and real-device browser testing.
+Required checks are risk-scoped according to RELEASE_POLICY.md. Preserve full safety gates for high-risk changes and actual affected-device verification; do not repeat identical build/test work.
 
 Do not cite npm run lint as evidence until a real linter is configured.
 
@@ -76,12 +62,14 @@ After merge:
 
 Parallel work is useful when tasks have clear file ownership and no shared schema changes.
 
-Recommended lanes:
-- A. Repository/docs/CI governance: AGENTS.md, docs/engineering, .github/workflows, package scripts.
-- B. Storage/backup audit: storage registry, backup.js, MediaRepository and database tests. Must not start chat cutover until backup gaps are closed.
-- C. Chat callers and compatibility inventory: read-only at first; produce a call-site matrix. Do not edit conversation storage until Lane B and the user approve migration design.
-- D. Asset optimization: assets/games/assets/music only, with before/after image QA and original preservation.
-- E. Feature fixes: one App at a time, scoped to its own files; no storage architecture changes without coordination.
+Illustrative work domains (not fixed agent assignments):
+- Repository governance and CI: `AGENTS.md`, `docs/engineering`, `.github/workflows`, and package scripts.
+- Storage and backup: storage registry, `backup.js`, `MediaRepository`, and database tests. Chat storage cutover remains blocked until backup gaps are closed and migration is approved.
+- Chat compatibility: inventory callers, tests, selectors, and persisted formats before changing shared conversation behavior.
+- Asset optimization: inspect assets under `assets/`, games, and music; preserve originals and verify visual quality before replacement.
+- App features: separate Task IDs/branches/PRs for disjoint app modules; shared files and contracts have one named owner.
+
+These are capability categories only. They do not assign work to “Agent A/B/C/D/E”, prescribe a fixed sequence, or authorize an agent to start a task. Current assignments, risk lanes, dependencies, and file ownership are governed exclusively by `docs/engineering/ENGINEERING_WORKFLOW.md`, the current approved backlog, and the owner's explicit requests. Independent tasks may proceed in parallel when ownership is disjoint.
 
 File ownership:
 - Each agent claims exact paths before modifying.
@@ -138,5 +126,113 @@ Rules:
 
 Website deploy is the normal release channel.
 APK build is manual and exceptional.
-Do not create GitHub releases or publish packages until npm-publish-github-packages.yml and package.json scripts have been reviewed and approved.
+Do not publish npm packages. Follow RELEASE_POLICY.md for QA and production releases.
 Before a significant migration release: full backup test, migration canary, regression checks, production deploy check, and rollback instructions.
+
+
+## 10. Fast delivery, multi-window coordination and batched QA (GOV-006)
+
+**Owner requirement (2026-11-26):** Optimize elapsed delivery time without weakening correctness, data safety, or the current `RELEASE_POLICY.md`. This section adds execution discipline; it does not replace release authorization or QA safety gates.
+
+### 10.1 One defect, one work package
+
+- A small bug is one bounded Task ID, one dedicated task branch, and one reviewable PR. Fix the root cause; do not add unrelated redesign, cleanup, architecture work, or extra features.
+- Before editing, record the task ID, exact expected behavior, base SHA, risk lane, owned paths, non-goals, and targeted checks in the PR description or task handoff.
+- Keep each task branch based on the current approved baseline. Never use a stale candidate as a new task's base merely because it is convenient.
+- A task is not complete because code was committed. It must have the required focused checks and an explicit state: READY FOR INTEGRATION, BLOCKED, or NOT VERIFIED.
+
+### 10.2 Multiple windows: parallel work with exclusive file ownership
+
+- MAOMAO is a single-owner commercial project: the repository owner is the only human authority; parallel windows are AI execution contexts, not additional human developers or GitHub accounts. AI windows perform implementation, independent code review, risk analysis, and tests, but never impersonate GitHub reviewers. The owner grants the exact-head integration approval through the documented owner-approval marker.
+- Independent modules or disjoint file sets may be developed and tested in parallel. Each AI window owns its Task ID, branch, and declared paths.
+- Two windows must never edit the same HTML, JS, CSS, test, shared module, or configuration file concurrently. If a task touches a shared API, storage contract, route registry, Worker, Service Worker, package/build config, workflow, or account boundary, appoint one implementation owner and let other windows review or prepare isolated tests.
+- Treat `AGENTS.md`, `RELEASE_POLICY.md`, `DEVELOPMENT_GOVERNANCE.md`, `REMEDIATION_BACKLOG.md`, `EXECUTION_LOG.md`, package manifests, global test runners, and QA workflows as single-owner files. The integration coordinator alone updates the shared execution log; individual windows keep their task evidence in their own PRs.
+- Do not wait idly for an unrelated QA run. Continue independent implementation, focused tests, code review, and defect diagnosis while the release queue is occupied.
+- Individual windows do not independently request QA deployments. They deliver a reviewed task branch/PR and its exact evidence to the integration coordinator.
+
+### 10.3 Risk lanes determine the minimum sufficient checks
+
+Choose by actual behavior and affected consumers, not by file extension alone.
+
+| Lane | Change type | Required local checks |
+|---|---|---|
+| D0 | Documentation-only; no runtime, workflow, or release behavior | Link/format and changed-document consistency checks. No product QA deployment. |
+| F1 | Pure visible copy, local spacing, typography, color, or presentation-only CSS | Diff proves no script, event handler, attribute, DOM structure, route, storage, resource URL, or shared behavior change; run the affected module contract and browser viewports (375/390/430px plus desktop shell). Build only when the changed path affects build output or the release gate requires it. |
+| F2 | Isolated functional bug in one module | New regression test plus affected existing contract tests and the module's relevant browser flow; run a build when runtime/build output changes. |
+| F3 | New feature, cross-module behavior, shared UI/API, or multiple dependent modules | Standard regression selection, integration checks, relevant browser flows, and build. |
+| F4 | Identity, account/session, permissions, chat/storage schemas, backup/restore, payment, cloud data, Worker/Cron/push, shared core, security, or release infrastructure | Full relevant safety, compatibility, backup/restore, integration, and release-infrastructure gates. No fast-lane downgrade. |
+
+- F1 is deliberately narrow. A structural HTML change, changed event/attribute, selector that changes behavior, new resource, shared stylesheet, or ambiguous diff is not F1.
+- The adaptive selector is not a universal project-wide fast lane. Its currently verified module/diff coverage must be checked in the current `RELEASE_POLICY.md` and QA candidate code. Unsupported modules or ambiguous diffs use the standard test plan. GOV-006 task batching does not itself expand adaptive coverage or bypass release gates.
+- QA infrastructure migration (including PR #507) is a separate workstream. Do not treat GOV-006 delivery as approval to lower or bypass the adaptive selector's fallback or security gates.
+
+### 10.4 PR-backed task registry and immutable candidate handoff (GOV-006)
+
+GitHub open PRs are the shared task registry across development windows. The registry is the machine-readable `MAOMAO_TASK_V1` block in each task PR; there is no separate task database and no coordinator-local JSON directory.
+
+**Task registration**
+
+- Each implementation task has one Task ID, one dedicated branch, one PR, an explicit risk lane (`F1`–`F4`), exact owned paths, non-goals, named required checks, and optional Task ID dependencies.
+- The coordinator reads the latest successful QA-only release receipt at `preview.mao520.com/qa-build-receipt.json` when assembling a batch and uses its exact 40-character source SHA as the deployed QA baseline. Task registration does not take this SHA. Never assume `main` is the deployed QA baseline; the two histories may diverge.
+- The task PR base must be `main`, `integration/*`, or `qa/*`. The manifest `base` is the exact Git merge-base of the current PR base SHA and PR head SHA, computed by `eng:register` and revalidated during queue scanning. It is neither the base-branch tip nor the deployed QA source SHA. The PR changed-file list must match the PR-merge-base-to-head Git diff.
+- After opening the PR, register it with:
+
+```sh
+npm run eng:register -- <PR-number> <TASK-ID> <F1|F2|F3|F4> "<exact GitHub check name>" ["<another exact check name>"] [--depends-on=TASK-ID,TASK-ID]
+```
+
+- Registration adds exactly one `MAOMAO_TASK_V1` block to the PR description and records the exact PR merge-base SHA, PR head SHA, risk, named checks, and dependencies. The deployed QA source SHA is read separately by the coordinator during batch assembly. Registration does not approve, merge, or deploy the PR.
+- Re-run `eng:register` after every new commit. The registered head SHA is immutable evidence; an older manifest must never be treated as current.
+- Registration starts with `status: "submitted"`. The coordinator computes readiness from the live evidence; do not mark a task ready manually to bypass review or checks.
+- A PR is eligible only when it is open, non-draft, in this repository, based on an allowed branch, has a valid repository-owner approval comment bound to its exact current head and Task ID, has every named required check successful, has no other applicable failing/pending check or status, has complete file pagination, and its changed-file list exactly matches the pinned PR-merge-base-to-head Git diff. A current-head CHANGES_REQUESTED review still blocks. A second GitHub account or non-author APPROVED review is not required. Duplicate Task IDs, missing dependencies, dependency cycles, stale heads, and incomplete scans fail closed.
+- Documentation-only `D0` changes do not enter the QA release batch and do not use the `F1`–`F4` manifest. They still require a narrow PR, ownership review, and documentation checks.
+
+**Conflict scan**
+
+- After a task has changes and before opening/updating its PR or assembling a batch, run `npm run eng:conflicts` from a complete source checkout with `origin/main` available. Run it again before candidate assembly when the working tree or PR set has changed.
+- The scanner compares committed, staged, unstaged, and untracked paths against all paginated open PRs using their pinned base/head commits. An exact file overlap is **BLOCK**; a shared runtime/Worker/workflow/build/release/governance hotspot is **SHARED** and needs one named owner; same-module overlap is **REVIEW**.
+- An incomplete API/Git scan exits non-zero and must never be treated as conflict-free. `GH_TOKEN` or `GITHUB_TOKEN` may be supplied for a reliable authenticated scan; never put credentials in files or logs.
+- The scanner is read-only. It does not edit branches, rebase, merge, close PRs, or dispatch QA.
+
+**One immutable candidate**
+
+- Only the integration coordinator runs the owner-only workflow `.github/workflows/engineering-ready-batch.yml` via `workflow_dispatch`. Supply `qa_baseline_sha` from the latest successful QA-only release receipt. Supply `resume_run_id` only to restore the exact saved candidate artifact from a previous failed batch run.
+- The workflow scans all open PRs, collects only evidence-complete registered tasks, verifies exact merge-base/head/owner-approval/check/path/dependency evidence, orders dependencies, performs a second ownership scan, and assembles one candidate from the exact deployed QA baseline by applying only each READY task's PR-merge-base-to-head delta. Conflicts stop candidate creation.
+- One baseline maps to one create-only branch: `integration/qa-batch-<first-12-baseline-sha>`. The candidate ref cannot overwrite an existing different SHA. The workflow archives the exact Git bundle and receipt for 90 days before pushing; a failed runner can resume the same candidate using its saved artifact.
+- The local equivalent is `npm run eng:batch:auto -- <current-deployed-QA-source-SHA> [--push]`. It requires a complete checkout, the correct source `origin`, and GitHub API access. Prefer the owner-only workflow for the shared coordinator run.
+- The old public `npm run eng:batch -- <task-directory> ...` local-directory workflow is deprecated and must not be used. Its npm alias remains temporarily in `package.json` because open PR #545 owns that shared file; remove the alias only in a separate conflict-free cleanup after that PR is resolved. `scripts/engineering-qa-batch.mjs` remains an internal assembly helper called by the PR-backed queue; do not invoke it as a separate manual task-directory workflow.
+- Candidate assembly/push is **not** a QA deployment. The batch workflow does not release, merge task PRs, deploy production, or update APKs.
+
+**Single QA release coordinator**
+
+- After the exact candidate is pushed, only the coordinator uses the fixed QA request path in `Bella0960/web-runtime-lab` and the current `RELEASE_POLICY.md`. A release request must name the exact candidate SHA and confirm `qa-only`.
+- Do not run `verify` and then `release` on the same unchanged candidate when QA publication is already authorized: the release runner executes the candidate gates itself. Use `verify` for a genuine no-deploy check or diagnosis.
+- The release queue remains serialized and non-cancelling. No individual development window may dispatch its own QA release. A P0 issue may be batched alone by the coordinator when waiting would materially harm the user.
+- After release, separately verify the successful fixed-workflow run, deployed QA Worker version, and live source receipt. A candidate push, green unit tests, or request-file commit is not a deployment receipt.
+
+**Existing work migration**
+
+- Existing open PRs, branches, code, and historical logs are not automatically deleted or included. Do not force-push, mass-close, or rebase old work blindly.
+- A legacy PR becomes batch-eligible only after its owner confirms its exact paths, registers the current PR merge-base and head, supplies valid owner approval for that exact head, and satisfies the current check/dependency evidence. It does not need to rebase its entire history onto the deployed QA baseline; only its reviewed PR delta is applied to that baseline. Stale version labels or old QA SHAs are not current release authority.
+
+### 10.5 Failure handling: diagnose once, repair the cause
+
+- Read the actual failed job and sanitized stage summary before retrying. Identify whether the failure is candidate/baseline preflight, a specific Node test, browser test, build, post-test safety guard, upload, or post-deployment readiness.
+- A product regression requires a narrow code/test repair, a new candidate SHA, and the affected local checks. Do not rerun unrelated local suites just to reproduce it.
+- An environment or transient failure must be distinguished from a product failure. Before retrying any release, verify whether deployment already occurred by checking the Worker version and exact QA source receipt. Never blindly repeat a job that may have uploaded.
+- The current reusable workflow runs the candidate gates inside one request job; rerunning that failed job can repeat the candidate suite. Do not describe a whole-job rerun as a single-test retry. Use bounded read-only retries only where the runner already permits them; never retry deployment mutations blindly.
+- Never delete tests, weaken assertions, skip a required gate, fabricate a pass, or label an unobserved browser/device check as verified.
+
+### 10.7 Read-only file-ownership conflict scan
+
+- After a task branch has changes and before opening/updating its PR or assembling an integration candidate, run `npm run eng:conflicts` from the source checkout. It compares committed, staged, unstaged, and untracked paths with all open PRs in the public source repository. Use a checkout with complete Git history and an up-to-date `origin/main`. GitHub supplies the paginated open-PR list, and the command computes each PR’s paths from its pinned base and head commits. Missing commits are fetched in one Git operation without moving branch refs. A zero-change checkout makes no ownership conclusion.
+- An exact path overlap is a **BLOCK** until owners coordinate. Changes in the same shared runtime, Worker, workflow, build-config, release-core, or engineering-governance hotspot are **SHARED** warnings requiring one named owner. Different files in the same feature submodule are **REVIEW** warnings, not automatic blockers.
+- The scanner reads PR metadata and filenames only. It does not read PR bodies/source contents, write GitHub state, rebase, merge, close PRs, or dispatch QA.
+- An incomplete API scan exits non-zero and must never be interpreted as “no conflicts”. A zero-change branch reports that no ownership conclusion was made.
+- The report is advisory, not a guarantee against semantic conflicts. Task owners still declare exact paths and the integration coordinator resolves ownership before merging.
+
+### 10.6 Owner-facing delivery
+
+- Do not ask the owner to repeat "continue" for work already authorized. Complete the bounded work package and keep independent work moving.
+- Progress messages are reserved for durable milestones or real blockers. The final report is concise: Task ID, root cause, files changed, focused checks and exact results, branch/PR, exact candidate SHA, and the actual QA receipt/version/link if deployed.
+- If QA is queued or blocked, state the exact queue/blocker and continue other independent tasks. Never present a historical QA version as the result of the current change.

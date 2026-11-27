@@ -8,7 +8,7 @@ const read = (file) => fs.readFileSync(path.join(root, file), 'utf8');
 const serviceWorker = read('sw.js');
 const desktopScript = read('desktop/js/script.js');
 const homePage = read('index.html');
-const pwaVersion = Number(serviceWorker.match(/^const CACHE_NAME = 'phone-app-pwa-v(\d+)'/m)?.[1] || 0);
+const pwaVersion = Number(serviceWorker.match(/^const CACHE_NAME = 'phone-app-pwa-v(\\d+)'/m)?.[1] || 0);
 assert.ok(pwaVersion >= 203, 'PWA shell must preserve at least the original icon preset cache version');
 const viteConfig = read('vite.config.js');
 
@@ -33,9 +33,16 @@ test('every desktop app shortcut is emitted as a real HTML page in the productio
   assert.ok(routes.length >= 20, 'the built desktop must retain all app shortcuts');
   assert.equal(new Set(routes).size, routes.length, 'desktop app routes must be unique');
   for (const route of routes) {
-    assert.ok(pageManifest.includes(route), 'app route missing from the PWA page manifest: ' + route);
+    // Admin HTML is a real, role-gated page, but must never enter public PWA precache.
+    if (route.startsWith('admin/')) {
+      assert.ok(!pageManifest.includes(route), 'role-restricted admin route leaked into PWA precache: ' + route);
+    } else {
+      assert.ok(pageManifest.includes(route), 'app route missing from the PWA page manifest: ' + route);
+    }
     assert.ok(fs.existsSync(path.join(root, 'dist', route)), 'app route missing from production build output: ' + route);
   }
+  assert.ok(pageManifest.every(route => !route.startsWith('admin/')),
+    'private admin HTML must not appear in the public PWA precache manifest');
 });
 
 test('service worker precaches all HTML routes listed by the build manifest', () => {
@@ -65,4 +72,12 @@ test('desktop app navigation has one valid capture-phase owner', () => {
 test('failed app navigation never falls back to the desktop index page', () => {
   assert.doesNotMatch(serviceWorker, /cached \|\| caches\.match\('\.\/index\.html'\)/);
   assert.match(serviceWorker, /status: 503/);
+});
+
+test('administrator pages and cloud diagnostics bypass the service worker cache', () => {
+  const adminGuard = serviceWorker.indexOf("url.pathname.startsWith('/admin/')");
+  const navigation = serviceWorker.indexOf("req.mode === 'navigate'");
+  assert.ok(adminGuard >= 0 && adminGuard < navigation);
+  assert.match(serviceWorker.slice(adminGuard, navigation),
+    /url\.pathname === '\/api\/admin\/cloud' \|\|\s+url\.pathname\.startsWith\('\/api\/admin\/cloud\/'\)\) return;/);
 });
