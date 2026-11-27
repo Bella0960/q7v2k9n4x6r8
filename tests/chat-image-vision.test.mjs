@@ -5,7 +5,7 @@ import path from 'node:path';
 import vm from 'node:vm';
 
 // Normalise source line endings before multi-line contract assertions so Windows CRLF checkouts behave identically.
-const readSource = (file) => fs.readFileSync(path.join(process.cwd(), file), 'utf8').replace(/\\r\\n/g, '\\n');
+const readSource = (file) => fs.readFileSync(path.join(process.cwd(), file), 'utf8').replace(/\r\n/g, '\n');
 const visionSource = readSource('shared/js/phone/chat-image-vision.js');
 const contextSource = readSource('shared/js/phone/chat-context-policy.js');
 
