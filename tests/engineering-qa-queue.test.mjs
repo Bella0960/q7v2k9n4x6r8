@@ -149,7 +149,7 @@ test('production-only Worker check is not applicable to feature branches but sti
   assert.equal(releaseBranch.ready, false);
   assert.ok(releaseBranch.reasons.some(reason => reason.includes('Workers Builds: mao')));
 });
-\ntest('ready evidence requires current-head approval and every named test/build check', () => {
+test('ready evidence requires current-head approval and every named test/build check', () => {
   const result = evaluateTaskEvidence({ pr: pr(), manifest: manifest(), reviews, ownerComments: ownerComments(), checkRuns, status });
   assert.deepEqual(result, { ready: true, reasons: [] });
 });
