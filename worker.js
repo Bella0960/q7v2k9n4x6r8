@@ -234,14 +234,18 @@ export default {
       }
     }
 
-    // html_handling="none" 时显式把站点根路径映射到构建后的首页（沿用 main 的路由修复）。
-    if (url.pathname === "/" && request.method === "GET") {
-      const indexUrl = new URL("/index.html", url);
-      const response = await env.ASSETS.fetch(new Request(indexUrl, request));
-      return authorizedAccount ? await injectAccountScope(response, authorizedAccount) : response;
-    }
     if (env.ASSETS) {
-      const response = await env.ASSETS.fetch(request);
+      let assetRequest = request;
+      if (isHtmlDocument && authorizedAccount) {
+        const headers = new Headers(request.headers);
+        for (const name of ['if-none-match', 'if-modified-since', 'if-range', 'range']) headers.delete(name);
+        assetRequest = new Request(request, { headers });
+      }
+      if (url.pathname === "/" && request.method === "GET") {
+        const indexUrl = new URL("/index.html", url);
+        assetRequest = new Request(indexUrl, assetRequest);
+      }
+      const response = await env.ASSETS.fetch(assetRequest);
       return isHtmlDocument && authorizedAccount
         ? await injectAccountScope(response, authorizedAccount)
         : response;

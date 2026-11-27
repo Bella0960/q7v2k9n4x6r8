@@ -369,6 +369,11 @@
         });
     }
 
+    function automaticStorageReady() {
+        var storage = global.PhoneStorage && global.PhoneStorage.result;
+        return !!storage && typeof storage.appendChatHistory === 'function';
+    }
+
     function ensureProactiveDependencies() {
         if (global.PhoneStorage && global.PhoneAPI && typeof global.PhoneAPI.completeJSON === 'function' &&
             global.ChatPresencePolicy && typeof global.ChatPresencePolicy.evaluateProactiveContact === 'function') {
@@ -534,7 +539,7 @@
             now - globalAttemptAt < PROACTIVE_GLOBAL_COOLDOWN_MS) return;
 
         var ready = await ensureProactiveDependencies();
-        if (!ready || !global.ChatPresencePolicy ||
+        if (!ready || !automaticStorageReady() || !global.ChatPresencePolicy ||
             typeof global.ChatPresencePolicy.evaluateProactiveContact !== 'function' ||
             typeof global.ChatPresencePolicy.buildProactiveContactPrompt !== 'function' ||
             !global.PhoneAPI || typeof global.PhoneAPI.completeJSON !== 'function') return;
@@ -605,11 +610,8 @@
                 voiceMode: 'online',
                 proactiveContact: true
             };
-            freshHistory.push(newMessage);
-            var saved = global.PhoneStorage && typeof global.PhoneStorage.saveChatHistory === 'function'
-                ? global.PhoneStorage.saveChatHistory(candidate.contact.id, freshHistory)
-                : safeSet('chat_history_' + candidate.contact.id, freshHistory);
-            if (!saved) return;
+            var saved = global.PhoneStorage.result.appendChatHistory(String(candidate.contact.id), newMessage);
+            if (!saved.ok) return;
             tick();
         } catch (error) {
             // 自动联系失败不打断当前页面；本次尝试已有冷却记录，避免重复消耗 API。
@@ -790,12 +792,6 @@
             lastUser: lastUser
         };
     }
-    function saveFollowUpHistory(id, history) {
-        if (global.PhoneStorage && typeof global.PhoneStorage.saveChatHistory === 'function') {
-            return !!global.PhoneStorage.saveChatHistory(id, history);
-        }
-        return safeSet('chat_history_' + id, history);
-    }
     function followUpContactList() {
         var contacts = buildContactIndex();
         var result = [];
@@ -873,7 +869,7 @@
         if (scope === 'private' && safeGet('chat_followup_enabled_' + contact.id) !== 'true') return;
         if (scope === 'group') {
             var currentGroup = readGroups().find(function (item) { return item && String(item.id) === String(contact.id); });
-            if (!currentGroup || !currentGroup.settings || currentGroup.settings.followUpEnabled !== true) return;
+            if (!currentGroup || !currentGroup.settings || currentGroup.settings.followUpEnabled !== true || currentGroup.settings.chatMode === 'offline') return;
         }
         var freshHistory = readHistory(contact.id);
         var freshMessages = followUpMessages(freshHistory);
@@ -899,8 +895,8 @@
             followUpRound: candidate.round,
             followUpTopic: candidate.topic
         };
-        freshHistory.push(newMessage);
-        if (!saveFollowUpHistory(contact.id, freshHistory)) return;
+        var saved = global.PhoneStorage.result.appendChatHistory(String(contact.id), newMessage);
+        if (!saved.ok) return;
         try {
             if (typeof global.CustomEvent === 'function') {
                 global.dispatchEvent(new global.CustomEvent('maomao:followup-message', {
@@ -929,7 +925,7 @@
         var enabled = followUpContactList();
         if (!enabled.length) return;
         var ready = await ensureFollowUpDependencies();
-        if (!ready || !global.ChatFollowUpPolicy || !global.PhoneAPI ||
+        if (!ready || !automaticStorageReady() || !global.ChatFollowUpPolicy || !global.PhoneAPI ||
             typeof global.PhoneAPI.completeJSON !== 'function') return;
         if (document.visibilityState === 'hidden') return;
         var candidates = [];

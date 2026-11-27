@@ -1126,8 +1126,38 @@ test('offline date mode shares the existing history key and marks scene messages
   assert.match(date, /_storage\.getChatHistory\(roleId\)/);
   assert.match(date, /_storage\.saveChatHistory\(roleId, list\)/);
   assert.match(journey, /var historyKey = 'chat_history_' \+ roleId/);
-  assert.match(journey, /await atomic\.appendIf\(roleId,entry,/);
+  assert.match(journey, /storage\.appendChatHistory\(roleId, entry\)/);
+  assert.match(journey, /if\(!saved \|\| !saved\.ok\)[\s\S]*?return false;/);
+  assert.match(journey, /String\(message\.journeyId\|\|''\)===journeyId/);
+  assert.doesNotMatch(journey, /(?:localStorage\.setItem\(historyKey|saveHistory\(list\))/);
   assert.doesNotMatch(journey, /PhoneStorage\.saveChatHistory\(/);
+});
+
+test('journey stage retries failed writes and resumes without duplicating saved history', () => {
+  const begin = journey.indexOf('  function appendJourneyMessage(');
+  const end = journey.indexOf('  var storageWarned', begin);
+  const rows = [];
+  const state = { startedAt: 123, scene: 'fixture', sentStages: [] };
+  let allowWrite = false;
+  const context = {
+    state, roleId: 'role-a', fallbackMessages: ['fixture'], stages: [{ at: 0 }],
+    loadHistory: () => rows.slice(), saveState() {}, showStorageWarning() {},
+    window: { PhoneStorage: { result: { appendChatHistory(id, entry) {
+      assert.equal(id, 'role-a');
+      if (allowWrite) rows.push(entry);
+      return { ok: allowWrite };
+    } } } },
+  };
+  runInNewContext(journey.slice(begin, end), context);
+  assert.equal(context.appendJourneyMessage(0), false);
+  assert.equal(state.sentStages.length, 0);
+  allowWrite = true;
+  assert.equal(context.appendJourneyMessage(0), true);
+  state.sentStages.length = 0;
+  assert.equal(context.appendJourneyMessage(0), true);
+  assert.equal(rows.length, 1);
+  assert.equal(rows[0].journeyId, '123');
+  assert.equal(rows[0].journeyStage, 0);
 });
 
 test('PhoneStorage remains backward-compatible and only compacts after a successful primary save', () => {
@@ -1843,9 +1873,11 @@ test('proactive contact is opt-in, foreground-only, daily-capped and reuses chat
   assert.match(chatNotifier, /PhoneAPI\.completeJSON/);
   assert.match(chatNotifier, /chat_proactive_global_attempt_at/);
   assert.match(chatNotifier, /proactiveContact: true/);
-  assert.match(chatNotifier, /ChatHistoryAtomic\.appendIf\(candidate\.contact\.id, newMessage/);
-  assert.match(chatNotifier, /ChatHistoryAtomic\.appendIf\(contact\.id, newMessage/);
-  assert.doesNotMatch(chatNotifier, /saveFollowUpHistory/);
+  assert.match(chatNotifier, /PhoneStorage\.result\.appendChatHistory\(String\(candidate\.contact\.id\), newMessage\)/);
+  assert.match(chatNotifier, /PhoneStorage\.result\.appendChatHistory\(String\(contact\.id\), newMessage\)/);
+  assert.doesNotMatch(chatNotifier, /saveFollowUpHistory|PhoneStorage\.saveChatHistory\(/);
+  assert.match(chatNotifier, /safeGet\('chat_proactive_contact_' \+ candidate\.contact\.id\) !== 'true'/);
+  assert.match(chatNotifier, /safeGet\('chat_followup_enabled_' \+ contact\.id\) !== 'true'/);
   assert.match(chatNotifier, /automaticStorageReady\(\)/);
   assert.match(chatNotifier, /tick\(\);/);
   assert.match(chatNotifier, /startProactiveScheduler\(\)/);
@@ -1961,6 +1993,47 @@ test('Cloudflare Worker preserves explicit HTML routes and maps only the root to
     'private HTML must bypass shared CacheStorage even without navigation');
 });
 
+
+test('Worker routes real requests and ignores conditional ranges only for protected HTML', async () => {
+  const { default: worker } = await import('../worker.js');
+  const account = { id: 'MAO-ABCDEFGHIJKL', status: 'active', role: 'user' };
+  const seen = [];
+  const env = {
+    CLOUD_DB: {
+      idFromName: name => name,
+      get: () => ({ fetch: async request => {
+        seen.push(['api', new URL(request.url).pathname]);
+        return Response.json({ account });
+      } }),
+    },
+    ASSETS: {
+      fetch: async request => {
+        seen.push(['asset', new URL(request.url).pathname, request.headers.has('if-none-match'), request.headers.has('range')]);
+        return new Response('<html><head></head><body>fixture</body></html>', {
+          headers: { 'content-type': 'text/html', etag: 'old' },
+        });
+      },
+    },
+  };
+  const request = path => new Request('https://example.test' + path, {
+    headers: { 'if-none-match': '"old"', range: 'bytes=0-9' },
+  });
+  for (const path of ['/', '/chat/chat/chat-detail.html?role=fixture']) {
+    const result = await worker.fetch(request(path), env);
+    assert.equal(result.status, 200);
+    assert.match(result.headers.get('cache-control'), /private.*no-store/);
+    assert.equal(result.headers.get('etag'), null);
+    assert.match(await result.text(), /name="mao-account-id" content="MAO-ABCDEFGHIJKL"/);
+  }
+  await worker.fetch(request('/account/index.html'), env);
+  await worker.fetch(request('/api/accounts/me'), env);
+  assert.deepEqual(seen, [
+    ['api', '/api/accounts/me'], ['asset', '/index.html', false, false],
+    ['api', '/api/accounts/me'], ['asset', '/chat/chat/chat-detail.html', false, false],
+    ['asset', '/account/index.html', true, true], ['api', '/api/accounts/me'],
+  ]);
+  assert.equal((await worker.fetch(request('/chat/chat/chat.html'), { ASSETS: env.ASSETS })).status, 302);
+});
 
 test('Messages chat-list theme is isolated, cache-busted, grayscale and hides inherited music UI', () => {
   const chatHome = read('chat/chat/chat.html');
@@ -2509,6 +2582,27 @@ test('chat detail: group interaction state and private-message entry require ver
   assert.match(detail, /if \(!privateSaved\)[\s\S]*?未显示已发送状态/);
 });
 
+
+test('group turn effects settle once and undo staged changes in reverse order', () => {
+  const start = detail.indexOf('        function createGroupTurnEffects()');
+  const end = detail.indexOf('        function processGroupInteractionMarkers(', start);
+  const context = {};
+  runInNewContext(detail.slice(start, end), context);
+  const observed = [];
+  const failed = context.createGroupTurnEffects();
+  failed.registerUndo(() => observed.push('first'));
+  failed.registerUndo(() => observed.push('second'));
+  failed.afterSave(() => observed.push('private'));
+  failed.finalize(false);
+  failed.finalize(true);
+  assert.deepEqual(observed, ['second', 'first']);
+  const accepted = context.createGroupTurnEffects();
+  accepted.registerUndo(() => observed.push('undo'));
+  accepted.afterSave(() => observed.push('private'));
+  accepted.finalize(true);
+  accepted.finalize(false);
+  assert.deepEqual(observed, ['second', 'first', 'private']);
+});
 
 test('chat extras: plus-menu cards persist only with a versioned history snapshot', () => {
   const start = extras.indexOf('  function insertChatMessage(msg) {');

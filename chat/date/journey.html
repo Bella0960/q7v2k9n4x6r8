@@ -227,35 +227,6 @@ button:focus-visible,a:focus-visible,input:focus-visible{outline:1px solid #777;
     } catch(e) {}
     try { var arr=JSON.parse(localStorage.getItem(historyKey)||'[]'); return Array.isArray(arr)?arr:[]; } catch(e) { return []; }
   }
-  function saveHistory(list){
-    try {
-      if(!Array.isArray(list)) throw new Error('聊天记录格式无效');
-      var wrote=false, verified;
-      if(window.PhoneStorage && typeof window.PhoneStorage.saveChatHistory==='function') {
-        wrote=window.PhoneStorage.saveChatHistory(roleId,list)===true;
-        if(!wrote) throw new Error('PhoneStorage 写入失败');
-        if(typeof window.PhoneStorage.getChatHistory!=='function') throw new Error('缺少聊天记录读回接口');
-        verified=window.PhoneStorage.getChatHistory(roleId);
-      } else {
-        localStorage.setItem(historyKey,JSON.stringify(list));
-        wrote=true;
-        verified=JSON.parse(localStorage.getItem(historyKey)||'null');
-      }
-      var expected=list.length?list[list.length-1]:null;
-      var actual=Array.isArray(verified)&&verified.length?verified[verified.length-1]:null;
-      if(!wrote || !Array.isArray(verified) || verified.length!==list.length ||
-          (expected && (!actual || actual.role!==expected.role || actual.type!==expected.type ||
-            actual.time!==expected.time || actual.text!==expected.text ||
-            actual.mode!==expected.mode || actual.journeyId!==expected.journeyId ||
-            actual.journeyStage!==expected.journeyStage))) {
-        throw new Error('聊天记录写入后校验失败');
-      }
-      return true;
-    } catch(error) {
-      console.error('[Journey] chat history persistence failed:',error);
-      return false;
-    }
-  }
   function saveState(){ try { localStorage.setItem(stateKey,JSON.stringify(state)); } catch(e) {} }
   function loadState(){ try { var s=JSON.parse(localStorage.getItem(stateKey)||'null'); return s && typeof s==='object' ? s : null; } catch(e) { return null; } }
   function setScene(value){
@@ -297,7 +268,6 @@ button:focus-visible,a:focus-visible,input:focus-visible{outline:1px solid #777;
       saveState();
       return true;
     }
-    if(state.sentStages.indexOf(stageIndex)!==-1) return true;
 
     var messageList=Array.isArray(state.messages)?state.messages:fallbackMessages;
     var text=String(messageList[stageIndex]||generateFallbackText(stageIndex)).trim();
@@ -308,12 +278,14 @@ button:focus-visible,a:focus-visible,input:focus-visible{outline:1px solid #777;
       entry.type='location';
       entry.location={label:'已开启位置共享：正在前往'+state.scene+' · 预计30秒到达'};
     }
-    list.push(entry);
-    if(!saveHistory(list)){
+    var storage = window.PhoneStorage && window.PhoneStorage.result;
+    var saved = storage && typeof storage.appendChatHistory === 'function'
+      ? storage.appendChatHistory(roleId, entry) : null;
+    if(!saved || !saved.ok){
       showStorageWarning();
       return false;
     }
-    state.sentStages.push(stageIndex);
+    if(state.sentStages.indexOf(stageIndex)===-1) state.sentStages.push(stageIndex);
     saveState();
     return true;
   }
