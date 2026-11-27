@@ -45,6 +45,18 @@ test('every desktop app shortcut is emitted as a real HTML page in the productio
     'private admin HTML must not appear in the public PWA precache manifest');
 });
 
+test('no test file freezes the PWA cache revision', () => {
+  // Cache revisions are bumped on purpose whenever precached assets change.
+  // Freezing one revision in a test turns every legal bump into a red suite and
+  // buries real regressions, so tests must assert a floor read from sw.js.
+  const revisionPattern = new RegExp('phone-app-pwa-v' + '\\d');
+  const frozen = fs.readdirSync(path.join(root, 'tests'))
+    .filter((file) => file.endsWith('.mjs'))
+    .filter((file) => revisionPattern.test(read(path.join('tests', file))));
+
+  assert.deepEqual(frozen, [], 'assert a minimum PWA cache version instead of a frozen revision');
+});
+
 test('service worker precaches all HTML routes listed by the build manifest', () => {
   assert.match(serviceWorker, /fetch\('\.\/pwa-pages\.json'/);
   assert.match(serviceWorker, /APP_SHELL\.concat\(pageEntries\)/);
