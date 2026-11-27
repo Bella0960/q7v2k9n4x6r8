@@ -91,8 +91,9 @@ test('command line scans exact Git paths across committed and working-tree chang
   const response=(data,next)=>new Response(JSON.stringify(data),{
    headers:next?{link:'<'+next+'>; rel="next"'}:{}
   });
+  if(url.includes('/git/ref/heads/main'))return response({object:{sha:'${base}'}});
   if(!url.includes('/pulls?'))throw new Error('Unexpected per-PR API request');
-  const pr={number:12,state:'open',head:{ref:'other',sha:'${head}'},base:{sha:'${base}'}};
+  const pr={number:12,state:'open',head:{ref:'other',sha:'${head}',repo:{full_name:'Bella0960/q7v2k9n4x6r8'}},base:{ref:'main',sha:'${base}',repo:{full_name:'Bella0960/q7v2k9n4x6r8'}}};
   return response(page?[pr]:[],page?null:url+'&page=2');
  };`;
  const args=['--import','data:text/javascript,'+encodeURIComponent(fetchStub),script,'--json'];
@@ -132,4 +133,55 @@ test('batch ownership audit can exclude only the PRs already selected for the ca
  });
  assert.equal(r.exactOverlapCount,1);
  assert.equal(r.findings[0].number,21);
+});
+
+
+test('uses the live base branch tip instead of a stale PR base SHA for ownership paths',t=>{
+ const directory=mkdtempSync(join(tmpdir(),'maomao-conflicts-live-base-'));
+ t.after(()=>rmSync(directory,{recursive:true,force:true}));
+ const git=(...args)=>execFileSync('git',args,{cwd:directory,encoding:'utf8',stdio:'pipe'}).trim();
+ const write=(path,value)=>writeFileSync(join(directory,path),value);
+ git('init','-q','-b','main');
+ git('config','user.email','test@example.invalid');
+ git('config','user.name','Test');
+ write('shared.txt','original');
+ git('add','.');
+ git('commit','-qm','Original base');
+ const oldBase=git('rev-parse','HEAD');
+ git('switch','-qc','other');
+ write('other.txt','PR-only');
+ git('add','other.txt');
+ git('commit','-qm','PR-only change');
+ git('switch','-q','main');
+ write('shared.txt','current main');
+ write('main-only.txt','main');
+ git('add','.');
+ git('commit','-qm','Advance current main');
+ const currentBase=git('rev-parse','HEAD');
+ git('switch','-qc','pr-head','main');
+ git('merge','--no-ff','-m','Bring current main into PR branch','other');
+ const prHead=git('rev-parse','HEAD');
+ git('switch','-qc','task','main');
+ write('main-only.txt','current task edit');
+ git('add','main-only.txt');
+ git('commit','-qm','Current task');
+ git('update-ref','refs/remotes/origin/main',currentBase);
+ const script=resolve('scripts/engineering-pr-conflicts.mjs');
+ const fetchStub=`globalThis.fetch=async input=>{
+  const url=new URL(String(input));
+  const response=data=>new Response(JSON.stringify(data),{headers:{'content-type':'application/json'}});
+  if(url.pathname.endsWith('/git/ref/heads/main'))return response({object:{sha:'${currentBase}'}});
+  if(url.pathname.endsWith('/pulls'))return response([{
+   number:13,state:'open',title:'PR with inherited main changes',
+   html_url:'https://github.com/Bella0960/q7v2k9n4x6r8/pull/13',
+   head:{ref:'pr-head',sha:'${prHead}',repo:{full_name:'Bella0960/q7v2k9n4x6r8'}},
+   base:{ref:'main',sha:'${oldBase}',repo:{full_name:'Bella0960/q7v2k9n4x6r8'}}
+  }]);
+  throw new Error('Unexpected GitHub request: '+url.pathname);
+ };`;
+ const result=execFileSync(process.execPath,['--import','data:text/javascript,'+encodeURIComponent(fetchStub),script,'--json'],{cwd:directory,encoding:'utf8'});
+ const report=JSON.parse(result);
+ assert.equal(report.exactOverlapCount,0);
+ assert.equal(report.findings.length,0);
+ assert.equal(report.openPullRequestCount,1);
 });
