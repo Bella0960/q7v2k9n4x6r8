@@ -375,22 +375,6 @@
   // 伴侣协议属于应用级设置，所有单聊与群聊共用同一份内容。
   var STORAGE_KEY = 'chat_rp_protocol_';
 
-  function migrateLegacyProtocol() {
-    try {
-      // 兼容旧版按角色保存的协议：只复制第一份可用内容，不删除旧键。
-      for (var i = 0; i < localStorage.length; i++) {
-        var key = localStorage.key(i);
-        if (!key || key === STORAGE_KEY || key.indexOf(STORAGE_KEY) !== 0) continue;
-        var value = localStorage.getItem(key);
-        if (value && value.trim()) {
-          localStorage.setItem(STORAGE_KEY, value);
-          return value;
-        }
-      }
-    } catch (e) {}
-    return '';
-  }
-
   var textarea = document.getElementById('protocolText');
 
   // ===== 升级版默认协议 =====
@@ -518,10 +502,9 @@
     '你就是她/他，你直接说话。'
   ].join('\n');
 
-  // 加载全局协议；若旧版本只保存过角色专属协议，则迁移一份为全局版本。
+  // 只读取用户明确保存的全局协议。
   try {
     var saved = localStorage.getItem(STORAGE_KEY);
-    if (saved == null || !saved.trim()) saved = migrateLegacyProtocol();
     textarea.value = saved != null && saved.trim() ? saved : DEFAULT_PROTOCOL;
   } catch (e) {
     textarea.value = DEFAULT_PROTOCOL;

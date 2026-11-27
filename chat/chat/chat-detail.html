@@ -20,7 +20,7 @@
     <script src="../../shared/js/phone/image-generation.js?v=20261106v1"></script>
     <script src="../../shared/js/phone/role-gallery-image-autonomy.js?v=20261111v2"></script>
     <script src="../../shared/js/phone/role_family_cards.js?v=20261028v3"></script>
-    <script src="../../shared/js/phone/memory_recall.js?v=20261024v2"></script>
+    <script src="../../shared/js/phone/memory_recall.js?v=20261127group1"></script>
     <script src="../../shared/js/phone/phone_stream.js"></script>
     <script src="../../shared/js/phone/chat-message-policy.js?v=20261029v5"></script>
     <script src="../../shared/js/phone/chat-send-policy.js?v=20261029v2"></script>
@@ -5557,9 +5557,7 @@
                 persona: 5000,      // 人设（在设定区与身份锁中各引用一次，实际占 2 份）
                 memory: 3000,       // 分层长期记忆
                 userMemory: 2000,   // [记住:...] 用户侧记忆
-                worldbook: 8000,    // 世界书全量
-                rpProtocol: 6000,   // RP 协议原文
-                rpComposed: 16000   // 协议变量替换后的整段（协议 + 人设 + 世界书展开）
+                worldbook: 8000     // 世界书全量
             };
             function capText(str, max) {
                 str = String(str || '');
@@ -5801,31 +5799,8 @@
                 const globalRpKey = 'chat_rp_protocol_';
                 rpProtocol = localStorage.getItem(globalRpKey) || '';
 
-                // 一次性兼容旧版角色专属协议：优先迁移当前聊天角色，其余旧键仅作回退。
-                if (!rpProtocol.trim()) {
-                    const legacyRpKeys = [];
-                    [aliasRoleId, currentCharacter && currentCharacter.id, roleId].forEach(function (id) {
-                        if (id != null && String(id).trim()) {
-                            const key = globalRpKey + String(id);
-                            if (legacyRpKeys.indexOf(key) === -1) legacyRpKeys.push(key);
-                        }
-                    });
-                    for (let i = 0; i < localStorage.length; i++) {
-                        const key = localStorage.key(i);
-                        if (key && key.indexOf(globalRpKey) === 0 && key !== globalRpKey &&
-                            legacyRpKeys.indexOf(key) === -1) legacyRpKeys.push(key);
-                    }
-                    for (let i = 0; i < legacyRpKeys.length; i++) {
-                        const legacyValue = localStorage.getItem(legacyRpKeys[i]) || '';
-                        if (legacyValue.trim()) {
-                            rpProtocol = legacyValue;
-                            localStorage.setItem(globalRpKey, legacyValue);
-                            break;
-                        }
-                    }
-                }
             } catch (e) {}
-            rpProtocol = capText(rpProtocol.trim(), CTX_CAP.rpProtocol);
+            rpProtocol = rpProtocol.trim();
 
             // 世界书：召回当前话题相关条目；兼容旧版只有 content 的整本设定
             let worldbookText = '';
@@ -5874,7 +5849,7 @@
             let systemPrompt;
             if (rpProtocol) {
                 // 协议存在：替换变量后置于 System Prompt 最顶端（最高优先级，覆盖底层默认规则）
-                systemPrompt = capText(applyProtocolVars(rpProtocol), CTX_CAP.rpComposed);
+                systemPrompt = applyProtocolVars(rpProtocol);
             } else {
                 // 协议不存在：使用原有的人设/用户信息/记忆/回复要求拼接逻辑
                 systemPrompt = [
@@ -6346,6 +6321,10 @@
             // Search older saved conversation locally. This adds no separate API call and only
             // injects a few relevant source excerpts when the current message matches.
             if (window.MemoryRecall && typeof window.MemoryRecall.buildHistoricalRecallText === 'function') {
+                const recallableHistory = isGroupChat ? historyList.map(function (m) {
+                    return m && m.type !== 'group_game_private' && m.type !== 'group_private' &&
+                        m.visibility !== 'role_only' && m.visibility !== 'private' ? m : null;
+                }) : historyList;
                 let recallQuery = text;
                 let recallOptions = {
                     excludeRecent: recentHistory.length,
@@ -6358,7 +6337,7 @@
                     typeof window.ChatContextPolicy.buildHistoricalRecallRequest === 'function'
                 ) {
                     const recallRequest = window.ChatContextPolicy.buildHistoricalRecallRequest(
-                        historyList,
+                        recallableHistory,
                         text,
                         recentHistory.length
                     );
@@ -6367,8 +6346,8 @@
                 } else {
                     // Compatibility fallback: preserve the original backwards query scan and limits.
                     if (!recallQuery) {
-                        for (let ri = historyList.length - 1; ri >= 0; ri--) {
-                            const entry = historyList[ri];
+                        for (let ri = recallableHistory.length - 1; ri >= 0; ri--) {
+                            const entry = recallableHistory[ri];
                             if (entry && (entry.role === 'user' || entry.role === 'sent') && (entry.text || entry.content)) {
                                 recallQuery = String(entry.text || entry.content);
                                 break;
@@ -6376,7 +6355,8 @@
                         }
                     }
                 }
-                const recalledText = window.MemoryRecall.buildHistoricalRecallText(historyList, recallQuery, recallOptions);
+                if (isGroupChat) recallOptions.groupPublicOnly = true;
+                const recalledText = window.MemoryRecall.buildHistoricalRecallText(recallableHistory, recallQuery, recallOptions);
                 if (recalledText) apiMessages[0].content += '\n\n' + recalledText;
             }
 

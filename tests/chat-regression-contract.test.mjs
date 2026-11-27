@@ -325,6 +325,20 @@ test('shared context policy preserves local historical recall query and budget r
   assert.match(detail, /if \(isGroupChat\) recallOptions\.groupPublicOnly = true/);
   assert.match(detail, /m\.type !== 'group_game_private'/);
   assert.match(detail, /m\.visibility !== 'role_only'/);
+  const recallWindow = {};
+  runInNewContext(memoryRecall, { window: recallWindow });
+  const historyWithPrivateEntries = [
+    { role: 'user', text: 'orchid schedule public' },
+    { role: 'assistant', text: 'orchid schedule private game', type: 'group_game_private' },
+    { role: 'assistant', text: 'orchid schedule private message', type: 'group_private' },
+    { role: 'assistant', text: 'orchid schedule role only', visibility: 'role_only' },
+    { role: 'assistant', text: 'orchid schedule private', visibility: 'private' },
+    { role: 'user', text: 'orchid schedule recent' },
+  ];
+  const recallOptions = { groupPublicOnly: true, excludeRecent: 1 };
+  const matches = recallWindow.MemoryRecall.searchHistoryMessages(historyWithPrivateEntries, 'orchid schedule', recallOptions);
+  assert.deepEqual(Array.from(matches, entry => entry.content), ['orchid schedule public']);
+  assertPrecachedRevision(detail, 'memory_recall.js');
 });
 
 test('shared context policy strictly excludes unscoped legacy memories from all roles', () => {
@@ -1071,7 +1085,9 @@ test('context budgets remain bounded without silently truncating the saved globa
   assert.match(detail, /systemPrompt = applyProtocolVars\(rpProtocol\);/);
   assert.doesNotMatch(detail, /capText\(applyProtocolVars\(rpProtocol\)/);
   assert.doesNotMatch(detail, /rpComposed: 16000/);
-  assert.match(detail, /recentHistory = roleModelHistory\.slice\(-memoryLimit\)/);
+  assert.match(detail, /ChatContextPolicy\.selectRecentHistory\(historyList, memoryLimit\)/);
+  assert.match(detail, /recentHistory = historyList\.slice\(-memoryLimit\)/);
+  assert.deepEqual(Array.from(contextPolicy.selectRecentHistory(['a', 'b', 'c'], 2)), ['b', 'c']);
   assert.match(detail, /buildHistoricalRecallText\(recallableHistory, recallQuery/);
   assert.match(detail, /maxItems: 2/);
   assert.match(detail, /maxChars: 540/);
