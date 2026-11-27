@@ -173,15 +173,15 @@ GitHub open PRs are the shared task registry across development windows. The reg
 **Task registration**
 
 - Each implementation task has one Task ID, one dedicated branch, one PR, an explicit risk lane (`F1`–`F4`), exact owned paths, non-goals, named required checks, and optional Task ID dependencies.
-- Read the latest successful QA-only release receipt at `preview.mao520.com/qa-build-receipt.json` and use its exact 40-character source SHA as the task baseline. Never assume `main` is the deployed QA baseline; the two histories may diverge.
-- The task PR base must be `main`, `integration/*`, or `qa/*`. For QA-based work, use an approved `integration/` or `qa/` branch that points to the same deployed QA baseline recorded in the manifest. The PR's changed-file list must match the manifest-baseline-to-head Git diff; a stale or mismatched base is blocked.
+- The coordinator reads the latest successful QA-only release receipt at `preview.mao520.com/qa-build-receipt.json` when assembling a batch and uses its exact 40-character source SHA as the deployed QA baseline. Task registration does not take this SHA. Never assume `main` is the deployed QA baseline; the two histories may diverge.
+- The task PR base must be `main`, `integration/*`, or `qa/*`. The manifest `base` is the exact Git merge-base of the current PR base SHA and PR head SHA, computed by `eng:register` and revalidated during queue scanning. It is neither the base-branch tip nor the deployed QA source SHA. The PR changed-file list must match the PR-merge-base-to-head Git diff.
 - After opening the PR, register it with:
 
 ```sh
 npm run eng:register -- <PR-number> <TASK-ID> <F1|F2|F3|F4> "<exact GitHub check name>" ["<another exact check name>"] [--depends-on=TASK-ID,TASK-ID]
 ```
 
-- Registration adds exactly one `MAOMAO_TASK_V1` block to the PR description and records the exact PR head SHA, QA baseline, risk, named checks, and dependencies. It does not approve, merge, or deploy the PR.
+- Registration adds exactly one `MAOMAO_TASK_V1` block to the PR description and records the exact PR merge-base SHA, PR head SHA, risk, named checks, and dependencies. The deployed QA source SHA is read separately by the coordinator during batch assembly. Registration does not approve, merge, or deploy the PR.
 - Re-run `eng:register` after every new commit. The registered head SHA is immutable evidence; an older manifest must never be treated as current.
 - Registration starts with `status: "submitted"`. The coordinator computes readiness from the live evidence; do not mark a task ready manually to bypass review or checks.
 - A PR is eligible only when it is open, non-draft, in this repository, based on an allowed branch, has a valid repository-owner approval comment bound to its exact current head and Task ID, has every named required check successful, has no other applicable failing/pending check or status, has complete file pagination, and its changed-file list exactly matches the pinned PR-merge-base-to-head Git diff. A current-head CHANGES_REQUESTED review still blocks. A second GitHub account or non-author APPROVED review is not required. Duplicate Task IDs, missing dependencies, dependency cycles, stale heads, and incomplete scans fail closed.
@@ -197,7 +197,7 @@ npm run eng:register -- <PR-number> <TASK-ID> <F1|F2|F3|F4> "<exact GitHub check
 **One immutable candidate**
 
 - Only the integration coordinator runs the owner-only workflow `.github/workflows/engineering-ready-batch.yml` via `workflow_dispatch`. Supply `qa_baseline_sha` from the latest successful QA-only release receipt. Supply `resume_run_id` only to restore the exact saved candidate artifact from a previous failed batch run.
-- The workflow scans all open PRs, collects only evidence-complete registered tasks, verifies exact head/review/check/path/dependency evidence, orders dependencies, performs a second ownership scan, and assembles one candidate from the exact deployed QA baseline plus only ready tasks.
+- The workflow scans all open PRs, collects only evidence-complete registered tasks, verifies exact merge-base/head/owner-approval/check/path/dependency evidence, orders dependencies, performs a second ownership scan, and assembles one candidate from the exact deployed QA baseline by applying only each READY task's PR-merge-base-to-head delta. Conflicts stop candidate creation.
 - One baseline maps to one create-only branch: `integration/qa-batch-<first-12-baseline-sha>`. The candidate ref cannot overwrite an existing different SHA. The workflow archives the exact Git bundle and receipt for 90 days before pushing; a failed runner can resume the same candidate using its saved artifact.
 - The local equivalent is `npm run eng:batch:auto -- <current-deployed-QA-source-SHA> [--push]`. It requires a complete checkout, the correct source `origin`, and GitHub API access. Prefer the owner-only workflow for the shared coordinator run.
 - The old public `npm run eng:batch -- <task-directory> ...` local-directory workflow is deprecated and must not be used. Its npm alias remains temporarily in `package.json` because open PR #545 owns that shared file; remove the alias only in a separate conflict-free cleanup after that PR is resolved. `scripts/engineering-qa-batch.mjs` remains an internal assembly helper called by the PR-backed queue; do not invoke it as a separate manual task-directory workflow.
@@ -213,7 +213,7 @@ npm run eng:register -- <PR-number> <TASK-ID> <F1|F2|F3|F4> "<exact GitHub check
 **Existing work migration**
 
 - Existing open PRs, branches, code, and historical logs are not automatically deleted or included. Do not force-push, mass-close, or rebase old work blindly.
-- A legacy PR becomes batch-eligible only after its owner safely aligns it with the current deployed QA baseline, declares exact paths, registers the current head, and obtains the required current-head review/check evidence. Stale version labels or old QA SHAs are not current release authority.
+- A legacy PR becomes batch-eligible only after its owner confirms its exact paths, registers the current PR merge-base and head, supplies valid owner approval for that exact head, and satisfies the current check/dependency evidence. It does not need to rebase its entire history onto the deployed QA baseline; only its reviewed PR delta is applied to that baseline. Stale version labels or old QA SHAs are not current release authority.
 
 ### 10.5 Failure handling: diagnose once, repair the cause
 
