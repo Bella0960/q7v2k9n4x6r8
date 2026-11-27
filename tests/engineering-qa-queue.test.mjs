@@ -42,12 +42,13 @@ const checkRuns = [
   { name: 'Node Tests', head_sha: sha(2), status: 'completed', conclusion: 'success', completed_at: '2026-11-26T10:00:00Z' },
   { name: 'Vite Build', head_sha: sha(2), status: 'completed', conclusion: 'success', completed_at: '2026-11-26T10:00:00Z' }
 ];
-const status = { state: 'success', statuses: [] };\nconst ownerComments = (overrides = {}) => [{
+const status = { state: 'success', statuses: [] };
+const ownerComments = (overrides = {}) => [{
   user: { login: 'Bella0960' },
   created_at: '2026-11-27T10:00:00Z',
-  body: '<!-- MAOMAO_OWNER_APPROVAL_V1\\n' + JSON.stringify({
+  body: '<!-- MAOMAO_OWNER_APPROVAL_V1\n' + JSON.stringify({
     version: 1, taskId: 'CHAT-FIX-001', head: sha(2), decision: 'approve', ...overrides
-  }) + '\\n-->'
+  }) + '\n-->'
 }];
 
 test('parses one valid machine-readable task manifest', () => {
@@ -155,7 +156,7 @@ test('production-only Worker check is not applicable to feature branches but sti
 test('a changed PR merge-base SHA blocks readiness until the task is re-registered', () => {
   const result = evaluateTaskEvidence({
     pr: pr({ merge_base_sha: sha(3) }),
-    manifest: manifest(), reviews, checkRuns, status
+    manifest: manifest(), reviews, ownerComments: ownerComments(), checkRuns, status
   });
   assert.equal(result.ready, false);
   assert.ok(result.reasons.some(reason => reason.includes('PR merge-base SHA')));
@@ -181,6 +182,7 @@ test('a latest change-request review blocks an older approval', () => {
       ...reviews,
       { user: { login: 'reviewer' }, state: 'CHANGES_REQUESTED', commit_id: sha(2), submitted_at: '2026-11-26T11:00:00Z' }
     ],
+    ownerComments: ownerComments(),
     checkRuns,
     status
   });
@@ -192,6 +194,7 @@ test('only required check contexts that actually passed count as evidence', () =
     pr: pr(),
     manifest: manifest(),
     reviews,
+    ownerComments: ownerComments(),
     checkRuns: [],
     status: { state: 'success', statuses: [{ context: 'Node Tests', state: 'success' }, { context: 'Vite Build', state: 'success' }] }
   });
@@ -204,6 +207,7 @@ test('allows successful named check-runs when the legacy commit-status API has n
     pr: pr({ base: { ref: 'integration/qa-stack', repo: { full_name: 'Bella0960/q7v2k9n4x6r8' } } }),
     manifest: manifest(),
     reviews,
+    ownerComments: ownerComments(),
     checkRuns,
     status: { state: 'pending', total_count: 0, statuses: [] }
   });
@@ -232,6 +236,7 @@ test('a later successful rerun replaces an older failed check with the same name
     pr: pr(),
     manifest: manifest(),
     reviews,
+    ownerComments: ownerComments(),
     checkRuns: [
       { name: 'Node Tests', head_sha: sha(2), status: 'completed', conclusion: 'failure', started_at: '2026-11-26T09:00:00Z' },
       { name: 'Node Tests', head_sha: sha(2), status: 'completed', conclusion: 'success', started_at: '2026-11-26T10:00:00Z' },
@@ -246,6 +251,7 @@ test('a later successful status context replaces an older failure for that conte
     pr: pr(),
     manifest: manifest(),
     reviews,
+    ownerComments: ownerComments(),
     checkRuns: [],
     status: {
       state: 'success',
@@ -376,7 +382,7 @@ function runQueueAssembleCli(t, specs, options = {}) {
   const wrapperScript = [
     '#!/bin/sh',
     'if [ "$1" = "remote" ] && [ "$2" = "get-url" ] && [ "$3" = "origin" ]; then',
-    '  printf "%s\\n" "https://github.com/' + repository + '"',
+    '  printf "%s\n" "https://github.com/' + repository + '"',
     '  exit 0',
     'fi',
     'if [ "$1" = "ls-remote" ] && [ "$2" = "--heads" ] && [ "$3" = "origin" ]; then',
@@ -467,9 +473,9 @@ function runQueueAssembleCli(t, specs, options = {}) {
       ownerComments: [{
         user: { login: 'Bella0960' },
         created_at: '2026-11-27T10:00:00Z',
-        body: '<!-- MAOMAO_OWNER_APPROVAL_V1\\n' + JSON.stringify({
+        body: '<!-- MAOMAO_OWNER_APPROVAL_V1\n' + JSON.stringify({
           version: 1, taskId: spec.id, head, decision: 'approve'
-        }) + '\\n-->'
+        }) + '\n-->'
       }],
       check_runs: [
         {
@@ -550,13 +556,15 @@ function runQueueAssembleCli(t, specs, options = {}) {
     '    else if (ref === requestCommit) request = { operation: "release", candidate: release.sourceSha, confirmation: "qa-only" };',
     '    else throw new Error("Unexpected QA receipt ref: " + ref);',
     '    const encoded = Buffer.from(JSON.stringify(request), "utf8").toString("base64");',
-    '    return json({ encoding: "base64", content: encoded.match(/.{1,24}/g).join("\\n") });',
+    '    return json({ encoding: "base64", content: encoded.match(/.{1,24}/g).join("\n") });',
     '  }',
     '  if (suffix === "/pulls") return json(fixture.prs);',
     '  let match = suffix.match(/^\\/pulls\\/(\\d+)$/);',
     '  if (match) return json(fixture.prs.find(pr => pr.number === Number(match[1])));',
     '  match = suffix.match(/^\\/pulls\\/(\\d+)\\/reviews$/);',
     '  if (match) return json(fixture.evidence[match[1]].reviews);',
+    '  match = suffix.match(/^\\/issues\\/(\\d+)\\/comments$/);',
+    '  if (match) return json(fixture.evidence[match[1]].ownerComments || []);',
     '  match = suffix.match(/^\\/issues\\/(\\d+)\\/comments$/);',
     '  if (match) return json(fixture.evidence[match[1]].ownerComments || []);',
     '  match = suffix.match(/^\\/pulls\\/(\\d+)\\/files$/);',
