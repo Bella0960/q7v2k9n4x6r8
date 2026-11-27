@@ -98,6 +98,7 @@ const APP_SHELL = [
   './shared/js/phone/chat-image-vision.js?v=20261113v1',
   'shared/js/phone/chat-send-policy.js?v=20261029v2',
   'shared/js/phone/chat-context-policy.js?v=legacy-memory-scope1',
+  './shared/js/phone/worldbook-resolver.js?v=20261128wb1',
   './shared/js/phone/chat-presence-policy.js?v=20261102v17',
   './shared/js/phone/chat-heart-policy.js?v=20261126mind1',
   './shared/js/phone/role-public-timeline.js?v=20261102v1',

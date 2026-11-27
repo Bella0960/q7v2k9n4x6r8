@@ -8,6 +8,7 @@
 <script src="../../shared/js/native-feel.js"></script>
 <script src="../../shared/js/phone/phone_storage.js"></script>
 <script src="../../shared/js/phone/phone_stream.js"></script>
+<script src="../../shared/js/phone/worldbook-resolver.js?v=20261128wb1"></script>
 <style>
   /* ============================================================
    * 线下模式 · 沉浸式剧情 —— 小说沉浸式排版
@@ -3192,8 +3193,21 @@ body {
         }
 
         // 世界书：线下剧情的舞台背景
+        // 绑定规则与聊天页一致：全局书始终生效，局部书只在本角色显式挂载时生效。
         try {
             var wbList = JSON.parse(localStorage.getItem('phone_worldbooks') || '[]');
+            if (Array.isArray(wbList) && wbList.length) {
+                if (window.WorldbookResolver && typeof window.WorldbookResolver.resolve === 'function') {
+                    wbList = window.WorldbookResolver.resolve({
+                        books: wbList,
+                        contactId: roleId
+                    }).books;
+                } else {
+                    wbList = wbList.filter(function (b) {
+                        return !b || typeof b !== 'object' || b.scope !== 'local';
+                    });
+                }
+            }
             if (Array.isArray(wbList) && wbList.length) {
                 var wbText = wbList.map(function (b) {
                     return '【' + (b.title || '未命名') + '】\n' + (b.content || '');
