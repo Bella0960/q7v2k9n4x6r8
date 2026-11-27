@@ -8,7 +8,7 @@ const read = (file) => fs.readFileSync(path.join(root, file), 'utf8');
 const loader = read('shared/js/font-loader.js');
 const settings = read('settings/font-settings.html');
 const serviceWorker = read('sw.js');
-const pwaCacheVersion = Number((serviceWorker.match(/^const CACHE_NAME = 'phone-app-pwa-v(\\d+)'/m)?.[1] || 0));
+const pwaCacheVersion = Number((serviceWorker.match(/^const CACHE_NAME = 'phone-app-pwa-v(\d+)'/m)?.[1] || 0));
 
 test('custom font files are warmed into a dedicated persistent cache', () => {
   assert.match(loader, /FONT_CACHE_NAME = 'maomao-font-assets-v1'/);
