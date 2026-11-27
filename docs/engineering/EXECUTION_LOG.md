@@ -43,6 +43,8 @@ This is the durable checkpoint for owner-assigned, multi-step work. Update it af
 - #564: the cross-module contract passed 6/6 locally, including real Node Request/Response objects with fixture bindings for protected routes, root rewriting, conditional requests, method handling, and failure caching. Cloudflare remote runtime remains NOT VERIFIED.
 - #562: Vite build and postbuild asset isolation passed (3/3), PWA navigation passed 13/13, and the combined SW lifecycle/font/desktop checks passed 37/37. Local Chromium verified controller takeover after update, public and static caching, private 503 no-store, and API cache bypass.
 
+- #564 first remote chat regression run found a source contract still looking for the old Worker guard syntax. The revised contract checks the access gate before asset access and the 302 redirect helper; Request/Response coverage asserts login and admin redirects plus no-store on the login response. No prior security behavior assertion was removed.
+
 ## 2026-11-22 · ARCH-002 · Chat HTTP error body timeout
 
 - Base: main `a5415d7e`. An HTTP error with an unfinished body left the chat request pending because the response branch disabled all timeouts before awaiting the body.

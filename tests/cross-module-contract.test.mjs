@@ -136,7 +136,15 @@ test('Worker routes real requests and ignores conditional ranges only for protec
     ['api', '/api/accounts/me'], ['asset', '/chat/chat/chat-detail.html', false, false],
     ['asset', '/account/index.html', true, true], ['api', '/api/accounts/me'],
   ]);
-  assert.equal((await worker.fetch(request('/chat/chat/chat.html'), { ASSETS: env.ASSETS })).status, 302);
+  const unauthenticated = await worker.fetch(request('/chat/chat/chat.html'), { ASSETS: env.ASSETS });
+  assert.equal(unauthenticated.status, 302);
+  assert.equal(unauthenticated.headers.get('location'), 'https://example.test/account/index.html');
+  assert.equal(unauthenticated.headers.get('cache-control'), 'no-store');
+  const beforeAdmin = seen.length;
+  const adminResult = await worker.fetch(request('/admin/cloud.html'), env);
+  assert.equal(adminResult.status, 302);
+  assert.equal(adminResult.headers.get('location'), 'https://example.test/index.html');
+  assert.deepEqual(seen.slice(beforeAdmin), [['api', '/api/accounts/me']]);
 });
 
 test('protected documents keep HEAD bodyless and failures out of caches', async () => {
