@@ -38,6 +38,11 @@ This is the durable checkpoint for owner-assigned, multi-step work. Update it af
 
 - Follow-up: the Chromium bubbles run passed 39 scenarios. Its one 503 was injected by the test on the mocked chat completions call and did not traverse the Service Worker. Conditional and Range requests for public assets now use origin HTTP semantics. Private document compatibility on #564 is tracked separately.
 
+- #563: the worldbook binding contract passed 16/16 locally, and the tutorial contract passed 12/12 on the new stack. Global books are available across sessions; local books require a session binding.
+- #564: the owner approved giving a verified one-to-one role's legacy text priority over the global default. Group chats use the global setting. Reads perform no migration or writes, and the settings page writes only the global key. A code rollback requires no data rollback.
+- #564: the cross-module contract passed 6/6 locally, including real Node Request/Response objects with fixture bindings for protected routes, root rewriting, conditional requests, method handling, and failure caching. Cloudflare remote runtime remains NOT VERIFIED.
+- #562: Vite build and postbuild asset isolation passed (3/3), PWA navigation passed 13/13, and the combined SW lifecycle/font/desktop checks passed 37/37. Local Chromium verified controller takeover after update, public and static caching, private 503 no-store, and API cache bypass.
+
 ## 2026-11-22 · ARCH-002 · Chat HTTP error body timeout
 
 - Base: main `a5415d7e`. An HTTP error with an unfinished body left the chat request pending because the response branch disabled all timeouts before awaiting the body.

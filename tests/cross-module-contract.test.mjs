@@ -1,5 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
+import { runInNewContext } from 'node:vm';
 import { readFileSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -38,7 +39,7 @@ test('footprint follows the local current date and keeps week, calendar and gene
 });
 
 
-test('partner protocol is managed globally from desktop settings and shared by every chat', () => {
+test('partner protocol settings edit only the global key', () => {
   assert.match(globalSettings, /window\.location\.href='\.\.\/worldbook\/settings\/rp-protocol\.html'/);
   assert.match(globalSettings, /伴侣协议/);
   assert.doesNotMatch(chatSettings, /rp-protocol\.html|伴侣协议/);
@@ -47,9 +48,31 @@ test('partner protocol is managed globally from desktop settings and shared by e
   assert.doesNotMatch(rpProtocolPage, /getRoleIdFromUrl/);
   assert.match(detail, /localStorage\.getItem\(globalRpKey\)/);
   assert.doesNotMatch(detail, /localStorage\.setItem\(globalRpKey, legacyValue\)/);
-  assert.doesNotMatch(detail, /localStorage\.getItem\('chat_rp_protocol_' \+ aliasRoleId\)/);
+
 });
 
+
+test('partner protocol preserves scoped legacy text without migrating it', () => {
+  const start = detail.indexOf("            let rpProtocol = '';");
+  const end = detail.indexOf('            // 世界书：', start);
+  assert.ok(start >= 0 && end > start);
+  const readProtocol = ({ values, roleId = 'role-a', actualId = 'role-a', group = false }) =>
+    runInNewContext(detail.slice(start, end) + '\nrpProtocol;', {
+      currentRoleId: roleId,
+      currentCharacter: { id: actualId },
+      isGroupChat: group,
+      localStorage: { getItem: key => values[key] ?? null },
+    });
+  const values = { chat_rp_protocol_: 'global', 'chat_rp_protocol_role-a': 'old A', 'chat_rp_protocol_role-b': 'old B' };
+  assert.equal(readProtocol({ values }), 'old A');
+  assert.equal(readProtocol({ values, roleId: 'role-b', actualId: 'role-b' }), 'old B');
+  assert.equal(readProtocol({ values, roleId: 'role-c', actualId: 'role-c' }), 'global');
+  assert.equal(readProtocol({ values, roleId: 'role-b' }), 'global');
+  assert.equal(readProtocol({ values, roleId: null }), 'global');
+  assert.equal(readProtocol({ values, group: true }), 'global');
+  assert.equal(readProtocol({ values: { ...values, chat_rp_protocol_: undefined } }), 'old A');
+  assert.equal(readProtocol({ values: { ...values, 'chat_rp_protocol_role-a': ' ' } }), 'global');
+});
 
 test('Cloudflare Worker preserves explicit HTML routes and maps only the root to the desktop index', () => {
   const wranglerRaw = read('wrangler.jsonc');

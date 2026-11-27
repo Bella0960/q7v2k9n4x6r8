@@ -249,7 +249,9 @@ export default {
       let assetRequest = request;
       if (isHtmlDocument && authorizedAccount) {
         const headers = new Headers(request.headers);
-        for (const name of ['if-none-match', 'if-modified-since', 'if-range', 'range']) headers.delete(name);
+        for (const name of ['if-none-match', 'if-modified-since', 'if-match', 'if-unmodified-since', 'if-range', 'range']) {
+          headers.delete(name);
+        }
         assetRequest = new Request(request, { headers });
       }
       if (url.pathname === "/" && (request.method === 'GET' || request.method === 'HEAD')) {
