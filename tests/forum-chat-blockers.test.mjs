@@ -188,103 +188,141 @@ async function runErrorTipBranch(marker, options) {
   return { historyList, renders, toasts, saves };
 }
 
-test('saveMessages reports success only after a matching read-back from the existing storage channel', () => {
+function sandboxWithAtomicReplace(options = {}) {
+  const sandbox = createSandboxBase();
+  const calls = [];
+  const toasts = [];
+  const key = sandbox.storageKey;
+  sandbox.showToast = (message) => toasts.push(String(message));
+  sandbox.ensureChatHistoryReady = async () => options.ready === false
+    ? { ok: false, error: { code: 'DB_UNAVAILABLE' } }
+    : { ok: true };
+  sandbox.window.ChatHistoryAtomic = options.atomicUnavailable ? null : {
+    replaceIfUnchanged: async (contactId, expected, next) => {
+      calls.push({ contactId, expected: clone(expected), next: clone(next) });
+      if (options.throw) throw new Error('atomic writer failed');
+      if (options.reject) return { ok: false, error: { code: 'DB_UNAVAILABLE' } };
+      if (contactId !== sandbox.currentCharacter.id) {
+        return { ok: false, error: { code: 'VALIDATION_FAILED' } };
+      }
+      const raw = sandbox.localStorage.getItem(key);
+      if (raw !== JSON.stringify(expected)) {
+        return { ok: false, error: { code: 'CONFLICT' } };
+      }
+      if (options.silentDrop) {
+        return {
+          ok: false,
+          error: { code: 'VERIFY_FAILED' },
+          meta: { writeMayHavePersisted: true }
+        };
+      }
+      sandbox.localStorage.setItem(key, JSON.stringify(next));
+      const readBack = sandbox.localStorage.getItem(key);
+      if (readBack !== JSON.stringify(next)) {
+        return {
+          ok: false,
+          error: { code: 'VERIFY_FAILED' },
+          meta: { writeMayHavePersisted: true }
+        };
+      }
+      return { ok: true, value: { replaced: true } };
+    }
+  };
+  sandbox.__atomicCalls = calls;
+  sandbox.__toasts = toasts;
+  return sandbox;
+}
+
+test('saveMessages awaits the shared atomic replacement and passes its exact snapshot', async () => {
   const target = [
     { role: 'assistant', text: '欢迎', time: 1 },
     { role: 'user', text: '你好', time: 2, mid: 'm2' }
   ];
-  const KEY = 'chat_history_role-1';
+  const key = 'chat_history_role-1';
 
-  // 主写入通道返回 ok；真正的成功判定仍以主键读回为准。
-  function sandboxWithWriter(write) {
-    const sb = createSandboxBase();
-    sb._storage = {
-      result: {
-        saveChatHistory: (id, list) => {
-          const outcome = write(list, sb.__store);
-          return outcome === false
-            ? { ok: false, error: { code: 'DB_UNAVAILABLE' } }
-            : { ok: true };
-        }
-      }
-    };
-    return sb;
-  }
+  // The page adapter passes its captured baseline to the shared locked writer.
+  const okSandbox = sandboxWithAtomicReplace();
+  assert.equal(await loadSaveMessages(okSandbox)(target), true);
+  assert.deepEqual(okSandbox.__atomicCalls, [
+    { contactId: 'role-1', expected: [], next: target }
+  ]);
+  assert.equal(okSandbox.__store.get(key), JSON.stringify(target));
+  assert.equal(okSandbox._lastReadChatRaw, JSON.stringify(target));
 
-  // 正常写入并读回一致
-  const okSandbox = sandboxWithWriter((list, store) => { store.set(KEY, JSON.stringify(list)); });
-  assert.equal(loadSaveMessages(okSandbox)(target), true);
+  // A stale page cannot replace a history that another page has already changed.
+  const conflictSandbox = sandboxWithAtomicReplace();
+  const newer = [{ role: 'assistant', text: '另一个窗口的新消息', time: 3, mid: 'newer' }];
+  conflictSandbox.__store.set(key, JSON.stringify(newer));
+  assert.equal(await loadSaveMessages(conflictSandbox)(target), false);
+  assert.equal(conflictSandbox.__store.get(key), JSON.stringify(newer));
+  assert.match(conflictSandbox.__toasts.at(-1), /其他窗口更新/);
 
-  // 底层报成功，但主键没有真正落盘（静默未持久化）
-  const emptySandbox = sandboxWithWriter(() => true);
-  assert.equal(loadSaveMessages(emptySandbox)(target), false);
+  // A rejected atomic write preserves the original record and never reports success.
+  const rejectSandbox = sandboxWithAtomicReplace({ reject: true });
+  assert.equal(await loadSaveMessages(rejectSandbox)(target), false);
+  assert.equal(rejectSandbox.__store.get(key), '[]');
+  assert.match(rejectSandbox.__toasts.at(-1), /原记录已保留/);
 
-  // 读回条数一致但内容不一致
-  const wrongSandbox = sandboxWithWriter((list, store) => {
-    store.set(KEY, JSON.stringify([target[0], { role: 'user', text: '被吞掉的内容', time: 2, mid: 'm2' }]));
-  });
-  assert.equal(loadSaveMessages(wrongSandbox)(target), false);
+  // A silent write/read-back mismatch is surfaced as uncertain, not as success.
+  const uncertainSandbox = sandboxWithAtomicReplace({ silentDrop: true });
+  assert.equal(await loadSaveMessages(uncertainSandbox)(target), false);
+  assert.equal(uncertainSandbox.__store.get(key), '[]');
+  assert.match(uncertainSandbox.__toasts.at(-1), /写入状态暂时无法确认/);
 
-  // 读回条数不一致
-  const shortSandbox = sandboxWithWriter((list, store) => {
-    store.set(KEY, JSON.stringify(target.slice(0, 1)));
-  });
-  assert.equal(loadSaveMessages(shortSandbox)(target), false);
+  // Exceptions and readiness failures also fail closed.
+  const throwSandbox = sandboxWithAtomicReplace({ throw: true });
+  assert.equal(await loadSaveMessages(throwSandbox)(target), false);
+  assert.equal(throwSandbox.__store.get(key), '[]');
 
-  // 底层写入返回失败
-  const rejectSandbox = sandboxWithWriter(() => false);
-  assert.equal(loadSaveMessages(rejectSandbox)(target), false);
+  const notReadySandbox = sandboxWithAtomicReplace({ ready: false });
+  assert.equal(await loadSaveMessages(notReadySandbox)(target), false);
+  assert.equal(notReadySandbox.__atomicCalls.length, 0);
+  assert.equal(notReadySandbox.__store.get(key), '[]');
 
-  // 底层写入抛异常
-  const throwSandbox = sandboxWithWriter(() => { throw new Error('quota exceeded'); });
-  assert.equal(loadSaveMessages(throwSandbox)(target), false);
-
-  // 读取抛异常
-  const readThrowSandbox = sandboxWithWriter((list, store) => { store.set(KEY, JSON.stringify(list)); });
-  readThrowSandbox.localStorage.getItem = () => { throw new Error('read failed'); };
-  assert.equal(loadSaveMessages(readThrowSandbox)(target), false);
+  // A streamed turn uses its own captured baseline, not a later page snapshot.
+  const turnSandbox = sandboxWithAtomicReplace();
+  const turnBaseline = [{ role: 'assistant', text: 'turn anchor', time: 4, mid: 'anchor' }];
+  const turnTarget = turnBaseline.concat([{ role: 'user', text: 'turn update', time: 5, mid: 'turn' }]);
+  turnSandbox.__store.set(key, JSON.stringify(turnBaseline));
+  turnSandbox.singleChatTurnSnapshots.set(turnTarget, JSON.stringify(turnBaseline));
+  assert.equal(await loadSaveMessages(turnSandbox)(turnTarget), true);
+  assert.deepEqual(turnSandbox.__atomicCalls[0].expected, turnBaseline);
 });
 
-test('saveMessages read-back verification also covers the localStorage fallback channel', () => {
+test('saveMessages fails closed without the atomic writer and never falls back to legacy direct writes', async () => {
   const target = [{ role: 'user', text: '你好', time: 2, mid: 'm2' }];
-  // 预置与 _lastReadChatRaw 一致的主键，模拟已经安全读取过的会话。
-  const store = { 'chat_history_role-1': '[]' };
-  const workingLocalStorage = {
-    getItem: (key) => (Object.prototype.hasOwnProperty.call(store, key) ? store[key] : null),
-    setItem: (key, value) => { store[key] = String(value); },
-    removeItem: (key) => { delete store[key]; }
+  const key = 'chat_history_role-1';
+  const sandbox = createSandboxBase();
+  const before = sandbox.__store.get(key);
+  let legacyWrites = 0;
+  let directWrites = 0;
+  sandbox.showToast = (message) => { sandbox.lastToast = String(message); };
+  sandbox._storage = {
+    result: {
+      saveChatHistory: () => { legacyWrites += 1; return { ok: true }; }
+    }
   };
+  sandbox.window.ChatHistoryAtomic = null;
+  sandbox.localStorage.setItem = () => { directWrites += 1; };
 
-  const okSandbox = createSandboxBase();
-  okSandbox._storage = null;
-  okSandbox.localStorage = workingLocalStorage;
-  assert.equal(loadSaveMessages(okSandbox)(target), true);
+  assert.equal(await loadSaveMessages(sandbox)(target), false);
+  assert.equal(legacyWrites, 0, 'the old PhoneStorage writer must not bypass the session lock');
+  assert.equal(directWrites, 0, 'saveMessages must not fall back to direct localStorage writes');
+  assert.equal(sandbox.__store.get(key), before, 'the original history must remain untouched');
+  assert.match(sandbox.lastToast, /会话记录不可安全写入/);
 
-  // setItem 抛异常
-  const throwSandbox = createSandboxBase();
-  throwSandbox._storage = null;
-  throwSandbox.localStorage = {
-    getItem: () => null,
-    setItem: () => { throw new Error('quota exceeded'); },
-    removeItem: () => {}
+  // A partially loaded atomic API is not sufficient to authorize a write.
+  const partialSandbox = createSandboxBase();
+  partialSandbox.ensureChatHistoryReady = async () => ({ ok: true });
+  partialSandbox.window.ChatHistoryAtomic = { initializeIfAbsent: async () => ({ ok: true }) };
+  partialSandbox._storage = {
+    result: {
+      saveChatHistory: () => { legacyWrites += 1; return { ok: true }; }
+    }
   };
-  assert.equal(loadSaveMessages(throwSandbox)(target), false);
-
-  // setItem 静默丢弃，读回不到
-  const discardSandbox = createSandboxBase();
-  discardSandbox._storage = null;
-  discardSandbox.localStorage = { getItem: () => null, setItem: () => {}, removeItem: () => {} };
-  assert.equal(loadSaveMessages(discardSandbox)(target), false);
-
-  // 读回内容被截断/改写
-  const staleSandbox = createSandboxBase();
-  staleSandbox._storage = null;
-  staleSandbox.localStorage = {
-    getItem: () => JSON.stringify([{ role: 'user', text: '旧内容', time: 2, mid: 'm2' }]),
-    setItem: () => {},
-    removeItem: () => {}
-  };
-  assert.equal(loadSaveMessages(staleSandbox)(target), false);
+  assert.equal(await loadSaveMessages(partialSandbox)(target), false);
+  assert.equal(legacyWrites, 0);
+  assert.equal(partialSandbox.__store.get(key), '[]');
 });
 
 async function runMissingApiKeyBranch(options) {
