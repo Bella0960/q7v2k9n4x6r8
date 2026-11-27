@@ -235,6 +235,25 @@ test('开启期间切后台也不发新请求', async () => {
   assert.equal(calls.length, 0);
 });
 
+test('切回前台仍有冷却时，等到剩余间隔结束后恢复观众', async () => {
+  const { sb, calls, listeners, timers } = makeRuntime({ store: makeStore() });
+  sb.setAiAudience(true);
+  sb.aiAudience.lastAt = Date.now();
+  sb.document.hidden = true;
+  listeners['doc:visibilitychange']();
+  sb.document.hidden = false;
+  listeners['doc:visibilitychange']();
+  timers.pop().fn();
+
+  assert.equal(calls.length, 0, 'must respect the paid request cooldown');
+  const retry = timers.pop();
+  assert.ok(retry.ms > 0 && retry.ms <= sb.AI_AUDIENCE_MIN_INTERVAL);
+  sb.aiAudience.lastAt -= sb.AI_AUDIENCE_MIN_INTERVAL;
+  retry.fn();
+  await flush();
+  assert.equal(calls.length, 1, 'must resume after the remaining cooldown');
+});
+
 test('批次解析严格：超长截断、未知名字归一到固定人设、最多 6 条', () => {
   const store = makeStore();
   const { sb } = makeRuntime({ store });

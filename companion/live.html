@@ -902,8 +902,9 @@ function aiAudienceTick(){
   if(document.hidden)return;                       /* 切后台不请求 */
   if(aiAudience.busy)return;
   if(aiAudience.sessionUsed>=AI_AUDIENCE_SESSION_LIMIT)return;
-  if(Date.now()-aiAudience.lastAt<AI_AUDIENCE_MIN_INTERVAL)return;
   if(aiAudienceRemaining()<=0)return;
+  var cooldown=AI_AUDIENCE_MIN_INTERVAL-(Date.now()-aiAudience.lastAt);
+  if(cooldown>0){scheduleAiAudience(cooldown);return;}
   requestAiAudienceBatch();
 }
 
