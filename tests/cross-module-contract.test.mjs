@@ -116,3 +116,39 @@ test('Worker routes real requests and ignores conditional ranges only for protec
   assert.equal((await worker.fetch(request('/chat/chat/chat.html'), { ASSETS: env.ASSETS })).status, 302);
 });
 
+test('protected documents keep HEAD bodyless and failures out of caches', async () => {
+  const { default: worker } = await import('../worker.js');
+  const account = { id: 'MAO-ABCDEFGHIJKL', status: 'active', role: 'user' };
+  const assets = [];
+  let status = 200;
+  const env = {
+    CLOUD_DB: {
+      idFromName: name => name,
+      get: () => ({ fetch: async () => Response.json({ account }) }),
+    },
+    ASSETS: {
+      fetch: async request => {
+        assets.push([request.method, new URL(request.url).pathname]);
+        return new Response('<html><head></head></html>', {
+          status, headers: { 'content-type': 'text/html', 'cache-control': 'public' },
+        });
+      },
+    },
+  };
+  const root = 'https://example.test/';
+  const head = await worker.fetch(new Request(root, { method: 'HEAD' }), env);
+  assert.equal(head.status, 200);
+  assert.equal(await head.text(), '');
+  assert.match(head.headers.get('cache-control'), /no-store/);
+  assert.deepEqual(assets, [['GET', '/index.html']]);
+
+  const method = await worker.fetch(new Request(root, { method: 'POST' }), env);
+  assert.equal(method.status, 405);
+  assert.equal(method.headers.get('allow'), 'GET, HEAD');
+
+  status = 503;
+  const failure = await worker.fetch(new Request(root), env);
+  assert.equal(failure.status, 503);
+  assert.equal(failure.headers.get('cache-control'), 'no-store');
+  assert.equal(await failure.text(), '');
+});
