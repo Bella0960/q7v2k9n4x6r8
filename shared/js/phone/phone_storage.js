@@ -817,6 +817,49 @@
             return okResult(true, { written: 'chat_history_' + contactId });
         };
 
+        R.appendChatHistory = function (contactId, message) {
+            if (typeof contactId !== 'string' || !contactId.trim() ||
+                !message || typeof message !== 'object' || Array.isArray(message)) {
+                return failResult(ERR.VALIDATION_FAILED, 'chat append requires a target and message', false);
+            }
+            var primary = _probe('chat_history_' + contactId);
+            var history = [];
+            if (primary.state === 'missing') {
+                var root = R.getRoot();
+                if (!root.ok) return root;
+                var bucket = Object.prototype.hasOwnProperty.call(root.value, contactId)
+                    ? root.value[contactId] : null;
+                if (bucket && bucket.chat != null) {
+                    if (!Array.isArray(bucket.chat.history)) {
+                        return failResult(ERR.CORRUPT_DATA, 'legacy chat history is not an array', false);
+                    }
+                    history = bucket.chat.history;
+                }
+            } else {
+                var read = _probeToResult(primary, 'array');
+                if (!read.ok) return read;
+                history = read.value;
+            }
+            var current = _probe(primary.key);
+            if (current.state === 'unavailable') return _probeToResult(current, 'array');
+            if (current.raw !== primary.raw) {
+                return failResult(ERR.CONFLICT, 'chat history changed before append', true);
+            }
+            var expected;
+            try { expected = JSON.stringify(history.concat([message])); } catch (error) {
+                return failResult(ERR.VALIDATION_FAILED, 'chat message cannot be serialized', false);
+            }
+            var written = _write(primary.key, expected);
+            if (written.state !== 'ok') return _writeToResult(written, primary.key);
+            var verified = _probe(primary.key);
+            if (verified.state !== 'ok' || verified.raw !== expected) {
+                return failResult(ERR.DB_UNAVAILABLE, 'chat history append not verified', true, {
+                    writeMayHavePersisted: verified.state === 'unavailable' || verified.raw !== primary.raw
+                });
+            }
+            return okResult(true, { written: primary.key });
+        };
+
         R.getMemories = function (contactId) {
             var probe = _probe('chat_memories_' + contactId);
             if (probe.state === 'corrupt') {

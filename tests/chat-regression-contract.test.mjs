@@ -2749,6 +2749,28 @@ test('chat plus-menu forward reuses the canonical target resolver and atomic app
   assert.match(toast.at(-1), /红包\/转账不支持转发/);
 });
 
+test('forward append preserves legacy history and rejects corrupt or unverified writes', () => {
+  const data = new Map([
+    ['phone_data_v2', JSON.stringify({ target: { chat: { history: [{ mid: 'prior' }] } } })],
+    ['chat_history_broken', '{invalid'],
+  ]);
+  let ignoreWrite = false;
+  const localStorage = {
+    getItem: key => data.get(key) ?? null,
+    setItem(key, value) { if (!ignoreWrite) data.set(key, value); },
+  };
+  const window = { localStorage };
+  runInNewContext(read('shared/js/phone/phone_storage.js'), { window, localStorage });
+  const storage = window.PhoneStorage.result;
+  assert.equal(storage.appendChatHistory('target', { mid: 'forwarded' }).ok, true);
+  assert.deepEqual(JSON.parse(data.get('chat_history_target')).map(entry => entry.mid), ['prior', 'forwarded']);
+  assert.equal(storage.appendChatHistory('broken', { mid: 'new' }).error.code, 'CORRUPT_DATA');
+  assert.equal(data.get('chat_history_broken'), '{invalid');
+  ignoreWrite = true;
+  assert.equal(storage.appendChatHistory('target', { mid: 'lost' }).ok, false);
+  assert.deepEqual(JSON.parse(data.get('chat_history_target')).map(entry => entry.mid), ['prior', 'forwarded']);
+});
+
 test('chat plus-menu script is refreshed in the page and PWA together', async () => {
   const loaded = detail.match(/js\/chat-extras\.js\?t=([\w-]+)/)?.[1];
   const cached = serviceWorker.match(/chat\/chat\/js\/chat-extras\.js\?t=([\w-]+)/)?.[1];
