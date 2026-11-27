@@ -4,6 +4,14 @@
 
 This is the durable checkpoint for owner-assigned, multi-step work. Update it after meaningful milestones and before ending a session.
 
+## 2026-11-28 · CHAT-CORE-RISK-ACCEPTANCE-001
+
+- GitHub baseline: main `5512689cb842d38441a96e23beeb3f8a5d2622b8`. Live QA receipt: `4b49c0a95ea8cfedc8aa2007c061a1f6f6771431`.
+- Tutorial ownership follows the integration order: #562 owns chat memory guidance, #563 owns worldbook guidance, #564 owns footprint guidance. The tutorial catalog overlaps across the three PRs. #563 also overlaps #562 on chat detail and service worker code; #561 is archival.
+- #562 locally passed `npm run test:tutorial` (12/12) and the service worker lifecycle tests (8/8). The conflict scan completed and reported existing overlaps across open PRs; this is not a conflict-free integration candidate.
+- Workers Builds API: all three original build IDs returned stopped/skipped before initialization, with no log lines or events. The production check is inapplicable to these branches under the engineering workflow. The upstream skip reason remains NOT VERIFIED.
+- #369 on current main: the eight adapter files are present. The aggregator is the only runtime caller of the seven adapters; no production page, SW precache entry, initialization entry or test was found loading the aggregator. Vite's generic static copy can still expose the files by path. Keep the live repository base, media adapter and PhoneStorage APIs. Rebase any future deletion independently and verify the built asset delta and the #369 guards before removing the files.
+
 ## 2026-11-22 · ARCH-002 · Chat HTTP error body timeout
 
 - Base: main `a5415d7e`. An HTTP error with an unfinished body left the chat request pending because the response branch disabled all timeouts before awaiting the body.
