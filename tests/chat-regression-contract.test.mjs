@@ -1020,15 +1020,16 @@ test('chat detail retains the legacy load/save entry points and role-scoped stor
   assert.match(detail, /function loadMessages\(trackSnapshot = false\)/);
   assert.match(detail, /function saveMessages\(list\)/);
   assert.match(detail, /_storage\.getChatHistory\(currentCharacter\.id\)/);
-  assert.match(detail, /_storage\.saveChatHistory\(currentCharacter\.id, list\)/);
+  // 主写入必须带上读取基线：PhoneStorage 以此做 expected-primary 冲突检测。
+  assert.match(detail, /saveChatHistory\(currentCharacter\.id, list, expectedPrimary\)/);
   assert.match(detail, /localStorage\.getItem\(storageKey\)/);
-  assert.match(detail, /localStorage\.setItem\(storageKey, JSON\.stringify\(list\)\)/);
+  assert.match(detail, /localStorage\.setItem\(storageKey, serialized\)/);
   const saveStart = detail.indexOf('function saveMessages(list)');
   const saveEnd = detail.indexOf('function singleChatTurnIsCurrent', saveStart);
   assert.ok(saveStart >= 0 && saveEnd > saveStart);
   const save = detail.slice(saveStart, saveEnd);
-  assert.match(save, /if \(_chatHistoryUnreadable\) \{[\s\S]*?return false;/);
-  assert.match(save, /if \(wrote && _verifyHistoryRoundTrip\(list\)\) \{[\s\S]*?return true;/);
+  assert.match(save, /if \(!Array\.isArray\(list\) \|\| !_hasReadChatPrimary \|\| _chatHistoryUnreadable \|\|[\s\S]*?return false;/);
+  assert.match(save, /if \(result && result\.ok && _verifyHistoryRoundTrip\(list\)\) \{[\s\S]*?return true;/);
 });
 
 test('online rendering and search preserve date/silent filtering and error exclusion', () => {
@@ -1393,7 +1394,8 @@ test('chat detail stages multi-bubble replies and preserves the existing stream 
   assert.match(detail, /activeChatModeForPrompt !== 'narration'/);
   assert.match(detail, /PhoneStream\.chat\(\{/);
   assert.match(detail, /inflightSnapshot = null/);
-  assert.match(detail, /saveMessages\(historyList\)/);
+  // 多气泡写入：群聊/重生成/转账决策走 replace，普通回复走 append，二者都在会话锁内。
+  assert.match(detail, /var replySaved = needsHistoryReplacement[\s\S]{0,240}await replaceChatSafely\(aiWriteBaseline, historyList\)[\s\S]{0,160}await appendChatSafely\(aiNewMessages\)/);
 });
 
 
@@ -1873,8 +1875,9 @@ test('proactive contact is opt-in, foreground-only, daily-capped and reuses chat
   assert.match(chatNotifier, /PhoneAPI\.completeJSON/);
   assert.match(chatNotifier, /chat_proactive_global_attempt_at/);
   assert.match(chatNotifier, /proactiveContact: true/);
-  assert.match(chatNotifier, /PhoneStorage\.result\.appendChatHistory\(String\(candidate\.contact\.id\), newMessage\)/);
-  assert.match(chatNotifier, /PhoneStorage\.result\.appendChatHistory\(String\(contact\.id\), newMessage\)/);
+  // 自动写入必须走与人工写入相同的会话锁，而不是裸的全表 CAS。
+  assert.match(chatNotifier, /ChatHistoryAtomic\.appendIf\(String\(candidate\.contact\.id\), newMessage\)/);
+  assert.match(chatNotifier, /ChatHistoryAtomic\.appendIf\(String\(contact\.id\), newMessage\)/);
   assert.doesNotMatch(chatNotifier, /saveFollowUpHistory|PhoneStorage\.saveChatHistory\(/);
   assert.match(chatNotifier, /safeGet\('chat_proactive_contact_' \+ candidate\.contact\.id\) !== 'true'/);
   assert.match(chatNotifier, /safeGet\('chat_followup_enabled_' \+ contact\.id\) !== 'true'/);
@@ -1892,13 +1895,14 @@ test('proactive generation recovers connectivity and discards replies after opt-
   let pendingModel;
   let calls = 0;
   const global = {
-    navigator: { onLine: false },
+    navigator: { onLine: false, locks: { request() {} } },
     PhoneStorage: {
       getApiConfig: () => ({ apiKey: 'fixture-only' }),
-      result: { appendChatHistory(id, message) {
-        appended.push({ id, message });
-        return { ok: true };
-      } },
+      result: { appendChatHistory() { throw new Error('automatic writes must not bypass the conversation lock'); } },
+    },
+    // 自动写入走会话锁适配器；这里记录实际落库的调用。
+    ChatHistoryAtomic: {
+      async appendIf(id, message) { appended.push({ id, message }); return { ok: true }; }
     },
     ChatPresencePolicy: { evaluateProactiveContact() {}, buildProactiveContactPrompt: () => 'fixture prompt' },
     PhoneAPI: { completeJSON() { calls++; return new Promise(resolve => { pendingModel = resolve; }); } },
@@ -1913,7 +1917,7 @@ test('proactive generation recovers connectivity and discards replies after opt-
     buildContactIndex: () => ({ fixture: {} }), ensureProactiveDependencies: async () => true,
     chooseProactiveCandidate: () => ({ contact: { id: 'fixture' }, history: [latest], latest }),
     historyForProactivePrompt: () => [], cleanProactiveMessage: text => text,
-    readHistory: () => [latest], newestMeaningfulMessage: rows => rows.at(-1), tick() {},
+    readHistory: () => [latest], readAutomaticHistory: () => [latest], newestMeaningfulMessage: rows => rows.at(-1), tick() {},
   };
   runInNewContext(chatNotifier.slice(begin, end), context);
   await context.checkProactiveContacts();
@@ -2517,11 +2521,11 @@ test('chat detail classic inline scripts parse before chat handlers are attached
 
 
 test('chat detail: generated cards and manual stickers render only after history persistence succeeds', () => {
-  assert.match(detail, /function insertIncomingCallCard\(historyList\)[\s\S]*?if \(!saveMessages\(historyList\)\)[\s\S]*?return false[\s\S]*?return true/);
-  assert.match(detail, /if \(insertIncomingCallCard\(historyList\)\) maybeAutoIncomingCall\(\)/);
-  assert.match(detail, /function insertVImageCards\(historyList, descs\)[\s\S]*?if \(!saveMessages\(historyList\)\)[\s\S]*?historyList\.length = previousLength[\s\S]*?return false/);
-  assert.match(detail, /function insertPayCards\(historyList, items\)[\s\S]*?if \(!saveMessages\(historyList\)\)[\s\S]*?previousTransferStates\.forEach/);
-  assert.match(detail, /if \(!saveMessages\(list\)\)[\s\S]*?表情没有保存到聊天记录[\s\S]*?return false[\s\S]*?sendMsg\(/);
+  assert.match(detail, /async function insertIncomingCallCard\(historyList\)[\s\S]*?if \(!await appendChatSafely\(\[cardMsg\]\)\)[\s\S]*?return false[\s\S]*?return true/);
+  assert.match(detail, /if \(await insertIncomingCallCard\(historyList\)\) maybeAutoIncomingCall\(\)/);
+  assert.match(detail, /async function insertVImageCards\(historyList, descs\)[\s\S]*?if \(!await appendChatSafely\(cards\)\)[\s\S]*?return false/);
+  assert.match(detail, /async function insertPayCards\(historyList, items\)[\s\S]*?if \(!await replaceChatSafely\(originalHistory, historyList\)\)[\s\S]*?previousTransferStates\.forEach/);
+  assert.match(detail, /if \(!await appendChatSafely\(\[msg\]\)\)[\s\S]*?表情没有保存到聊天记录[\s\S]*?return false/);
 });
 
 test('chat detail: a failed AI reply save leaves copyable on-screen text but not a false sent record', () => {
@@ -2543,22 +2547,22 @@ test('chat detail: payment ledger success is independent from chat-card status p
 test('chat detail: group private messages require both the target history and group entry to persist', () => {
   // The old full-history PhoneStorage write would resurrect stale legacy data.
   // The actual group-private receipt now uses a verified append-only adapter.
-  assert.match(detail, /versioned\.appendChatHistory\(id, message\)/);
+  assert.match(detail, /await atomic\.appendIf\(id, message\)/);
   assert.match(detail, /var verifiedRaw = localStorage\.getItem\(key\)/);
   assert.match(detail, /matches\.length === 1/);
   assert.doesNotMatch(detail, /privateSaved = window\.PhoneStorage\.saveChatHistory\(targetId, privateHistory\)/);
   assert.match(detail, /if \(!privateSaved\)[\s\S]*?未显示已发送状态[\s\S]*?return ''/);
-  assert.match(detail, /if \(!saveMessages\(historyList\)\)[\s\S]*?群聊中的私聊入口没有保存成功/);
+  assert.match(detail, /if \(!await appendChatSafely\(\[groupPrivateMessage\]\)\)[\s\S]*?群聊中的私聊入口没有保存成功/);
   assert.match(detail, /showGroupPrivatePopup\(displayName, targetId, privateMessageText\)/);
 });
 
 test('chat detail: group poll and chain mutations roll back rather than showing false success', () => {
-  assert.match(detail, /if \(!saveMessages\(history\)\)[\s\S]*?群投票没有保存成功[\s\S]*?return/);
-  assert.match(detail, /if \(!saveMessages\(chainHistory\)\)[\s\S]*?群接龙没有保存成功[\s\S]*?return/);
-  assert.match(detail, /if \(!saveMessages\(joinHistory\)\)[\s\S]*?targetChain\.entries = previousEntries/);
-  assert.match(detail, /if \(!saveMessages\(history\)\)[\s\S]*?poll\.votes = previousVotes/);
-  assert.match(detail, /if \(!saveMessages\(pollHistory\)\)[\s\S]*?pollToClose\.poll\.closed = false/);
-  assert.match(detail, /if \(!saveMessages\(closeHistory\)\)[\s\S]*?chainToClose\.chain\.closed = false/);
+  assert.match(detail, /if \(!await appendChatSafely\(\[message\]\)\)[\s\S]*?history\.pop\(\)[\s\S]*?群投票没有保存成功[\s\S]*?return/);
+  assert.match(detail, /if \(!await appendChatSafely\(\[chainMessage\]\)\)[\s\S]*?chainHistory\.pop\(\)[\s\S]*?群接龙没有保存成功[\s\S]*?return/);
+  assert.match(detail, /if \(!await replaceChatSafely\(joinBaseline, joinHistory\)\)[\s\S]*?targetChain\.entries = previousEntries/);
+  assert.match(detail, /if \(!await replaceChatSafely\(pollBaseline, history\)\)[\s\S]*?poll\.votes = previousVotes/);
+  assert.match(detail, /if \(!await replaceChatSafely\(pollCloseBaseline, pollHistory\)\)[\s\S]*?pollToClose\.poll\.closed = false/);
+  assert.match(detail, /if \(!await replaceChatSafely\(chainCloseBaseline, closeHistory\)\)[\s\S]*?chainToClose\.chain\.closed = false/);
 });
 
 test('chat detail: multi-bubble history readback verifies behavior-bearing state and reroll is gated', () => {
@@ -2576,7 +2580,10 @@ test('chat detail: multi-bubble history readback verifies behavior-bearing state
   assert.match(detail, /historyList = window\.ChatMessagePolicy\.removeTurnFromHistory\(historyList, regenTargetId\)/);
   assert.match(detail, /if \(isRegen && \(!streamResult\.ok \|\| !String\(fullText \|\| ''\)\.trim\(\)\)\)/);
   assert.match(detail, /重新生成未成功，原回复已保留/);
-  assert.match(detail, /if \(!isRegen\) \{\s*try \{ saveMessages\(historyList\); \} catch \(rollbackError\) \{\}/);
+  // 失败的重新生成只回滚屏幕内容，绝不写历史：旧回复因此不可能被覆盖。
+  assert.match(detail, /function restoreFailedRegeneration\(\)/);
+  assert.match(detail, /if \(isRegen && \(!streamResult\.ok \|\| !String\(fullText \|\| ''\)\.trim\(\)\)\) \{\s*restoreFailedRegeneration\(\);\s*return;/);
+  assert.doesNotMatch(detail, /saveMessages\(historyList\)/);
 });
 
 
@@ -2633,14 +2640,14 @@ test('chat detail: group interaction state and private-message entry require ver
   // Failure rolls staged vote/chain changes back through registered undo.
   assert.match(detail, /turnEffects\.registerUndo\(function \(\) \{/);
   assert.match(detail, /groupHistoryRollback\.length-1/);
-  assert.match(detail, /var replySaved = saveMessages\(historyList\)/);
-  assert.match(detail, /groupTurnEffects\.finalize\(replySaved && streamResult\.ok\)/);
-  assert.match(detail, /var privateSaved = saveGroupPrivateRoleMessageSafely\(targetId, privateMsg\)/);
+  assert.match(detail, /var replySaved = needsHistoryReplacement/);
+  assert.match(detail, /await groupTurnEffects\.finalize\(replySaved && streamResult\.ok\)/);
+  assert.match(detail, /var privateSaved = await saveGroupPrivateRoleMessageSafely\(targetId, privateMsg\)/);
   assert.match(detail, /if \(!privateSaved\)[\s\S]*?未显示已发送状态/);
 });
 
 
-test('group turn effects settle once and undo staged changes in reverse order', () => {
+test('group turn effects settle once and undo staged changes in reverse order', async () => {
   const start = detail.indexOf('        function createGroupTurnEffects()');
   const end = detail.indexOf('        function processGroupInteractionMarkers(', start);
   const context = {};
@@ -2650,14 +2657,15 @@ test('group turn effects settle once and undo staged changes in reverse order', 
   failed.registerUndo(() => observed.push('first'));
   failed.registerUndo(() => observed.push('second'));
   failed.afterSave(() => observed.push('private'));
-  failed.finalize(false);
-  failed.finalize(true);
+  // finalize 是异步的：afterSave 里的群私聊回执要等会话写入完成后才执行。
+  await failed.finalize(false);
+  await failed.finalize(true);
   assert.deepEqual(observed, ['second', 'first']);
   const accepted = context.createGroupTurnEffects();
   accepted.registerUndo(() => observed.push('undo'));
   accepted.afterSave(() => observed.push('private'));
-  accepted.finalize(true);
-  accepted.finalize(false);
+  await accepted.finalize(true);
+  await accepted.finalize(false);
   assert.deepEqual(observed, ['second', 'first', 'private']);
 });
 

@@ -3108,7 +3108,7 @@
             return false;
         }
 
-        function singleChatTurnIsCurrent(list) {        function singleChatTurnIsCurrent(list) {
+        function singleChatTurnIsCurrent(list) {
             try {
                 if (localStorage.getItem(storageKey) === singleChatTurnSnapshots.get(list)) return true;
             } catch (err) {}
@@ -5510,7 +5510,8 @@
             const customPrompt = (config.prompt || '').trim();
 
             if (!apiKey) {
-                const historyList = loadMessages();
+                // 必须用 let：写入成功后会重新读取权威顺序（见下方 historyList = loadMessages()）。
+                let historyList = loadMessages();
                 let userMsg = null;
                 let userSaved = null;
                 const previousGroupUserSend = (isGroupChat && !silent)
@@ -6772,13 +6773,11 @@
                 var marked = await _markUserSendFailed(historyList, failureTarget.mid, failureTarget.time,
                     streamResult.error && streamResult.error.kind === 'empty' ? 'empty-reply' : 'api-error');
                 if (marked) {
-                    if (await replaceChatSafely(aiWriteBaseline, historyList)) {
-                        retryRemarked = true;
-                        aiWriteBaseline = loadMessages();
-                        historyList = JSON.parse(JSON.stringify(aiWriteBaseline));
-                    } else {
-                        historyList = JSON.parse(JSON.stringify(aiWriteBaseline));
-                    }
+                    // _markUserSendFailed 已在会话锁内完成"落库 + 读回校验"，并在失败时自行回滚。
+                    // 这里只同步内存基线；若再写一次，会用旧基线把刚写入的失败标记覆盖掉。
+                    retryRemarked = true;
+                    aiWriteBaseline = loadMessages();
+                    historyList = JSON.parse(JSON.stringify(aiWriteBaseline));
                 }
             }
 
@@ -8587,10 +8586,11 @@
                     var previousGroupLength = historyList.length;
                     historyList.push(groupPrivateMessage);
                     if (!await appendChatSafely([groupPrivateMessage])) {
+                        // 群入口没有落库时回滚内存里的这条，避免出现未保存的重复气泡。
+                        historyList.length = previousGroupLength;
                         if (typeof showToast === 'function') showToast('私聊已保存，但群聊中的私聊入口没有保存成功');
                         return '';
                     }
-                    historyList.push(groupPrivateMessage);
                     window.__groupPrivateCardPending = true;
                     showGroupPrivatePopup(displayName, targetId, privateMessageText);
                 });

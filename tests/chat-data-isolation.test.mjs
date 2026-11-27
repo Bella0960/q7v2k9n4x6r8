@@ -391,12 +391,18 @@ test('封面：两套独立封面都存在时，编辑 myProfile.cover 不改变
 /* ---------- 名片：真实执行 chat-detail.html 的历史读写函数 ---------- */
 
 function loadHistoryFunctions(storageSlots) {
+  const localStorage = createLocalStorage();
   const sandbox = {
     isGroupChat: false,
     singleChatTurnSnapshots: new WeakMap(),
     _chatHistoryUnreadable: false,
+    // 现网 saveMessages 需要主键可读标记与读取基线，写入通道改为 result 回执。
+    _hasReadChatPrimary: true,
+    _lastReadChatRaw: '[]',
+    _chatHistoryLastWriteMayHavePersisted: false,
+    window: {},
     console,
-    localStorage: createLocalStorage(),
+    localStorage,
     currentCharacter: { id: 'roleA' },
     removeLegacyStickerCaptions: (list) => list,
     getInitialMessages: () => [],
@@ -408,9 +414,14 @@ function loadHistoryFunctions(storageSlots) {
         const slot = storageSlots[contactId];
         return Array.isArray(slot) ? slot.slice() : [];
       },
-      saveChatHistory(contactId, list) {
-        storageSlots[contactId] = JSON.parse(JSON.stringify(list));
-        return true;
+      result: {
+        saveChatHistory(contactId, list) {
+          // 主键与槽位同步写入：读回校验以 chat_history_<id> 为准。
+          const serialized = JSON.stringify(list);
+          storageSlots[contactId] = JSON.parse(serialized);
+          localStorage.setItem('chat_history_' + contactId, serialized);
+          return { ok: true };
+        }
       }
     }
   };
@@ -442,13 +453,17 @@ test('名片：卡片快照只写入当前会话历史，不在其他会话出�
   const listA = sandbox.loadMessages();
   listA.push(card);
   assert.equal(sandbox.saveMessages(listA), true);
-  assert.deepEqual(sandbox.loadMessages(), [card]);
+  // 读回值来自隔离 VM realm，先转成本 realm 再比对结构。
+  assert.deepEqual(JSON.parse(JSON.stringify(sandbox.loadMessages())), [card]);
   assert.match(JSON.stringify(slots.roleA), /卡片甲/);
 
   sandbox.currentCharacter = { id: 'roleB' };
   assert.deepEqual(sandbox.loadMessages(), []);
   assert.equal(JSON.stringify(slots.roleB || []).includes('卡片甲'), false);
-  assert.equal(sandbox.localStorage.getItem('chat_history_roleB'), null);
+  // 首次读取会初始化一个空主键（新行为）；关键是 roleB 不得含 roleA 的卡片快照。
+  const roleBRaw = sandbox.localStorage.getItem('chat_history_roleB');
+  assert.ok(roleBRaw === null || roleBRaw === '[]', 'roleB 只允许空历史或尚未创建');
+  assert.equal(String(roleBRaw || '').includes('卡片甲'), false);
 });
 
 test('名片：刷新后仍只从所属会话读回，不与其他角色共享存储槽', () => {
@@ -679,7 +694,10 @@ test('群通话：PhoneStorage 写入失败时明确提示，不把失败当成�
 
 test('情侣绑定：邀请消息持久化结果与资料保存提示保持区分', () => {
   assert.match(couplePageSource, /let invitationSaved = true/);
-  assert.match(couplePageSource, /storage\.saveChatHistory\(profile\.partnerId, next\) === true/);
+  // 主通道是带 ok 回执的 result API；旧同步 API 只作为兼容回退保留。
+  assert.match(couplePageSource, /storage\.result\.saveChatHistory\(profile\.partnerId,next\)/);
+  assert.match(couplePageSource, /saved=!!\(result&&result\.ok\)/);
+  assert.match(couplePageSource, /storage\.saveChatHistory\(profile\.partnerId,next\)===true/);
   assert.match(couplePageSource, /聊天记录写入后校验失败/);
   assert.match(couplePageSource, /资料已保存，但邀请消息没有写入聊天记录/);
 });
@@ -784,20 +802,22 @@ function loadJourneyMessageWriter(storage, saved = []) {
     loadHistory() { return JSON.parse(JSON.stringify(persisted)); }
   };
   sandbox.window.PhoneStorage = storage ? {
-    saveChatHistory(id, list) {
-      attempts += 1;
-      return storage.saveChatHistory(id, list, (next) => {
-        persisted = JSON.parse(JSON.stringify(next));
-      });
+    // 现网实现改用 result.appendChatHistory（带 ok 回执与幂等检查）。
+    result: {
+      appendChatHistory(id, entry) {
+        attempts += 1;
+        const next = JSON.parse(JSON.stringify(persisted)).concat([entry]);
+        const ok = storage.saveChatHistory(id, next, (value) => {
+          persisted = JSON.parse(JSON.stringify(value));
+        });
+        return ok === false ? { ok: false, error: { code: 'DB_UNAVAILABLE' } } : { ok: true };
+      }
     },
     getChatHistory() {
       return JSON.parse(JSON.stringify(persisted));
     }
   } : null;
-  const source = [
-    extractFunction(journeyPageSource, 'saveHistory'),
-    extractFunction(journeyPageSource, 'appendJourneyMessage')
-  ].join('\n') + '\nappendJourneyMessage;';
+  const source = extractFunction(journeyPageSource, 'appendJourneyMessage') + '\nappendJourneyMessage;';
   const append = runInNewContext(source, sandbox, { filename: 'chat/date/journey.html#appendJourneyMessage' });
   return {
     append,
