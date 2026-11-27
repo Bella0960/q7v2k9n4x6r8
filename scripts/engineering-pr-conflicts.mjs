@@ -113,7 +113,7 @@ async function openPrs(repo){
   if(!Array.isArray(response.data))throw new Error('GitHub API returned an invalid PR list');
   for(const pr of response.data){
    if(!Number.isSafeInteger(pr?.number)||seen.has(pr.number)||pr.state!=='open'||
-     !SHA.test(pr.base?.sha??'')||!SHA.test(pr.head?.sha??'')){
+     typeof pr.base?.ref!=='string'||!pr.base.ref||!SHA.test(pr.head?.sha??'')){
     throw new Error('GitHub returned inconsistent open PR metadata');
    }
    seen.add(pr.number);
@@ -129,26 +129,46 @@ async function openPrs(repo){
  return pullRequests;
 }
 
-function withGitPaths(repo,pullRequests){
- const shas=[...new Set(pullRequests.flatMap(pr=>[pr.base.sha,pr.head.sha]))];
- if(!shas.length)return pullRequests;
- // Keep the checkout and its refs intact. Fetch only when the listed commits are absent.
+function encodeRefPath(ref){
+ const value=String(ref??'');
+ if(!value||value.startsWith('/')||value.split('/').some(part=>!part||part==='.'||part==='..')){
+  throw new Error('GitHub PR base branch ref is invalid');
+ }
+ return value.split('/').map(encodeURIComponent).join('/');
+}
+async function currentBranchSha(repo,branch){
+ const path=encodeRefPath(branch);
+ const response=await getJson(API+'/repos/'+repo+'/git/ref/heads/'+path);
+ const sha=response.data?.object?.sha;
+ if(!SHA.test(sha??''))throw new Error('Cannot resolve the current tip of PR base branch '+branch);
+ return sha;
+}
+async function withGitPaths(repo,pullRequests){
+ const refs=[...new Set(pullRequests.map(pr=>pr.base.ref))];
+ const tips=await Promise.all(refs.map(async ref=>[ref,await currentBranchSha(repo,ref)]));
+ const baseTips=new Map(tips);
+ const current=pullRequests.map(pr=>({...pr,baseTipSha:baseTips.get(pr.base.ref)}));
+ const shas=[...new Set(current.flatMap(pr=>[pr.baseTipSha,pr.head.sha]))];
+ if(!shas.length)return current;
+ // Keep the checkout and its refs intact. Fetch only when the live base/head commits are absent.
  const objects=runGit(['cat-file','--batch-check=%(objecttype)'],
-  {input:shas.join('\n')+'\n',env:{...process.env,GIT_NO_LAZY_FETCH:'1'}});
- if(objects.trimEnd().split('\n').some(type=>type!=='commit')){
+  {input:shas.join('\\n')+'\\n',env:{...process.env,GIT_NO_LAZY_FETCH:'1'}});
+ if(objects.trimEnd().split('\\n').some(type=>type!=='commit')){
   try{
    runGit(['fetch','--quiet','--no-tags','--no-write-fetch-head','--filter=blob:none',
-    '--stdin','https://github.com/'+repo+'.git'],{input:shas.join('\n')+'\n',timeout:120000});
+    '--stdin','https://github.com/'+repo+'.git'],{input:shas.join('\\n')+'\\n',timeout:120000});
   }catch{
-   throw new Error('Cannot fetch the exact GitHub PR commits');
+   throw new Error('Cannot fetch the exact current GitHub PR base/head commits');
   }
  }
- return pullRequests.map(pr=>{
+ return current.map(pr=>{
   try{
-   const files=splitPaths(git(...DIFF_PATHS,pr.base.sha+'...'+pr.head.sha,'--'));
-   return {...pr,files};
+   const mergeBase=git('merge-base',pr.baseTipSha,pr.head.sha).trim();
+   if(!SHA.test(mergeBase))throw new Error('invalid merge base');
+   const files=splitPaths(git(...DIFF_PATHS,mergeBase+'...'+pr.head.sha,'--'));
+   return {...pr,mergeBaseSha:mergeBase,files};
   }catch{
-   throw new Error('Cannot compare the pinned Git commits for PR #'+pr.number);
+   throw new Error('Cannot compare the current base branch tip to PR #'+pr.number);
   }
  });
 }
@@ -176,7 +196,7 @@ export async function runConflictAudit({repo=process.env.GITHUB_REPOSITORY||'Bel
  if(git('rev-parse','--is-shallow-repository').trim()==='true'){
   throw new Error('A complete Git history is required. Fetch the full history and retry.');
  }
- const pullRequests=withGitPaths(repo,await openPrs(repo));
+ const pullRequests=await withGitPaths(repo,await openPrs(repo));
  return buildConflictReport({repository:repo,currentBranch:branch,currentSha:sha,currentPaths:mine,pullRequests,ignorePullRequestNumbers});
 }
 function render(r){
