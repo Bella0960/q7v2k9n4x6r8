@@ -284,6 +284,25 @@ async function api(path, { method = 'GET', body, publicReadOnly = false } = {}) 
   return data;
 }
 
+function encodeRefPath(ref) {
+  const value = String(ref ?? '');
+  if (!value || value.startsWith('/') ||
+      value.split('/').some(part => !part || part === '.' || part === '..')) {
+    fail('PR base branch ref is invalid.');
+  }
+  return value.split('/').map(encodeURIComponent).join('/');
+}
+
+async function getBranchHeadSha(repository, branchRef) {
+  const path = encodeRefPath(branchRef);
+  const ref = await api('/repos/' + repository + '/git/ref/heads/' + path);
+  const sha = ref?.object?.sha;
+  if (!SHA.test(sha ?? '')) {
+    fail('Current tip of PR base branch ' + clean(branchRef) + ' is not a full commit SHA.');
+  }
+  return sha;
+}
+
 async function pagedArray(path, key = null, limit = 3000, options = {}) {
   const output = [];
   for (let page = 1; page <= Math.ceil(limit / 100); page++) {
@@ -461,27 +480,36 @@ async function registerTask(repository, args) {
     fail('Registration requires an open PR whose head and base both belong to ' + repository + '.');
   }
   const head = pr.head?.sha;
-  const baseBranchSha = pr.base?.sha;
-  if (!SHA.test(head ?? '') || !SHA.test(baseBranchSha ?? '')) {
-    fail('The current PR base branch SHA and head SHA must both be full commit SHAs.');
+  const baseBranchRef = pr.base?.ref;
+  if (!SHA.test(head ?? '') || typeof baseBranchRef !== 'string' || !baseBranchRef) {
+    fail('The current PR base branch ref and head SHA must be valid.');
   }
+  const baseBranchSha = await getBranchHeadSha(repository, baseBranchRef);
   const comparison = await api('/repos/' + repository + '/compare/' + baseBranchSha + '...' + head);
   const prMergeBase = comparison.merge_base_commit?.sha;
   if (!SHA.test(prMergeBase ?? '') ||
-      !['ahead', 'diverged'].includes(comparison.status) || !(comparison.ahead_by > 0)) {
-    fail('GitHub could not confirm a non-empty PR diff and its exact merge-base SHA; registration stopped.');
+      !['ahead', 'diverged'].includes(comparison.status) || !(comparison.ahead_by > 0) ||
+      !Array.isArray(comparison.files) || comparison.files.length >= 300) {
+    fail('GitHub could not confirm a complete, non-empty diff from the current PR base branch tip; registration stopped.');
   }
+  const changedFiles = pathSetFromPrFiles(comparison.files);
+  if (!changedFiles.length) fail('Current PR merge-base-to-head diff is empty.');
   const manifest = validateManifest({
     version: 1, id, status: 'submitted', base: prMergeBase,
     head, risk, requiredChecks, dependsOn
   });
   const files = await getPrFiles(repository, number);
-  if (!files.length) fail('Cannot register an empty PR.');
+  const listedFiles = pathSetFromPrFiles(files);
+  if (!files.length || changedFiles.some(path => !listedFiles.includes(path))) {
+    fail('The complete PR files list does not contain every path in the current-base GitHub compare; registration stopped.');
+  }
   const body = replaceTaskManifest(pr.body ?? '', manifest);
   const latest = await api('/repos/' + repository + '/pulls/' + number);
+  const latestBaseBranchSha = await getBranchHeadSha(repository, latest.base?.ref);
   if (latest.head?.sha !== head || latest.state !== 'open' ||
-      latest.body !== pr.body || latest.base?.ref !== pr.base?.ref || latest.base?.sha !== baseBranchSha) {
-    fail('PR body, base, or head changed during registration; no overwrite was made. Rerun eng:register.');
+      latest.body !== pr.body || latest.base?.ref !== baseBranchRef ||
+      latestBaseBranchSha !== baseBranchSha) {
+    fail('PR body, base branch tip, or head changed during registration; no overwrite was made. Rerun eng:register.');
   }
   const updated = await api('/repos/' + repository + '/pulls/' + number, { method: 'PATCH', body: { body } });
   console.log(JSON.stringify({
@@ -494,7 +522,7 @@ async function registerTask(repository, args) {
     risk,
     requiredChecks: manifest.requiredChecks,
     dependsOn: manifest.dependsOn,
-    changedFiles: pathSetFromPrFiles(files)
+    changedFiles
   }, null, 2));
 }
 
@@ -523,8 +551,9 @@ async function collectReadyTasks(repository, baseline, pullRequests) {
     if (!manifest) continue;
     const evidence = await fetchPrEvidence(repository, pr);
     const latestPr = await api('/repos/' + repository + '/pulls/' + pr.number);
-    if (latestPr.head?.sha !== pr.head?.sha || latestPr.state !== 'open' || latestPr.draft) {
-      blocked.push({ ...latestOpenPrMetadata(pr), state: 'blocked', reasons: ['PR changed while the queue was collecting evidence; rerun the scan'] });
+    if (latestPr.head?.sha !== pr.head?.sha || latestPr.state !== 'open' ||
+        latestPr.draft || latestPr.base?.ref !== pr.base?.ref) {
+      blocked.push({ ...latestOpenPrMetadata(pr), state: 'blocked', reasons: ['PR head or base branch changed while the queue was collecting evidence; rerun registration and scan'] });
       continue;
     }
     const latestManifest = parseTaskManifest(latestPr.body ?? '');
@@ -533,12 +562,24 @@ async function collectReadyTasks(repository, baseline, pullRequests) {
       continue;
     }
     let prWithMergeBase;
+    let comparison;
+    let comparePaths;
     try {
-      ensureCommit(latestPr.base?.sha, 'PR #' + pr.number + ' current base branch SHA');
+      const baseBranchSha = await getBranchHeadSha(repository, latestPr.base.ref);
+      ensureCommit(baseBranchSha, 'PR #' + pr.number + ' current base branch tip');
       ensureCommit(latestPr.head?.sha, 'PR #' + pr.number + ' current head SHA');
-      const mergeBaseSha = gitText(['merge-base', latestPr.base.sha, latestPr.head.sha],
-        'PR #' + pr.number + ' current merge-base SHA').trim();
-      if (!SHA.test(mergeBaseSha)) fail('PR #' + pr.number + ' current merge-base did not resolve to a full SHA.');
+      comparison = await api('/repos/' + repository + '/compare/' + baseBranchSha + '...' + latestPr.head.sha);
+      const mergeBaseSha = comparison.merge_base_commit?.sha;
+      if (!SHA.test(mergeBaseSha ?? '') ||
+          !['ahead', 'diverged'].includes(comparison.status) || !(comparison.ahead_by > 0) ||
+          !Array.isArray(comparison.files) || comparison.files.length >= 300) {
+        fail('PR #' + pr.number + ' current-base compare is incomplete or empty.');
+      }
+      comparePaths = pathSetFromPrFiles(comparison.files);
+      const latestBaseBranchSha = await getBranchHeadSha(repository, latestPr.base.ref);
+      if (latestBaseBranchSha !== baseBranchSha) {
+        fail('PR #' + pr.number + ' base branch tip changed during evidence collection; rerun the scan.');
+      }
       prWithMergeBase = { ...latestPr, merge_base_sha: mergeBaseSha };
     } catch (error) {
       blocked.push({ ...latestOpenPrMetadata(pr), state: 'blocked', reasons: [clean(error.message)] });
@@ -556,8 +597,9 @@ async function collectReadyTasks(repository, baseline, pullRequests) {
       isAncestor(manifest.base, manifest.head, 'PR #' + pr.number + ' merge-base-to-head ancestry');
       const apiPaths = pathSetFromPrFiles(evidence.files);
       const gitPaths = gitChangedPaths(manifest.base, manifest.head);
-      if (!gitPaths.length || !equalPaths(apiPaths, gitPaths)) {
-        fail('PR #' + pr.number + ' Git diff does not match the complete GitHub changed-file list.');
+      if (!gitPaths.length || !equalPaths(comparePaths, gitPaths) ||
+          gitPaths.some(path => !apiPaths.includes(path))) {
+        fail('PR #' + pr.number + ' merge-base-to-head Git diff does not match the current-base GitHub compare or is missing from the complete PR files list.');
       }
       registered.push({
         id: manifest.id,
