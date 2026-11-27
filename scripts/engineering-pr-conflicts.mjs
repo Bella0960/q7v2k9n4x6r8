@@ -156,7 +156,7 @@ async function withGitPaths(repo,pullRequests){
  if(objects.trimEnd().split('\n').some(type=>type!=='commit')){
   try{
    runGit(['fetch','--quiet','--no-tags','--no-write-fetch-head','--filter=blob:none',
-    '--stdin','https://github.com/'+repo+'.git'],{input:shas.join('\\n')+'\\n',timeout:120000});
+    '--stdin','https://github.com/'+repo+'.git'],{input:shas.join('\n')+'\n',timeout:120000});
   }catch{
    throw new Error('Cannot fetch the exact current GitHub PR base/head commits');
   }
