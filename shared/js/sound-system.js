@@ -1,3 +1,17 @@
+/* 在已有收发消息音效入口复用独立触感模块；不要求修改聊天主流程。 */
+(function () {
+    if (window.MAOMAOHaptics || document.querySelector('script[data-maomao-haptics]')) return;
+    var source = document.currentScript;
+    if (!source || !source.src) return;
+    try {
+        var script = document.createElement('script');
+        script.src = new URL('haptics.js', source.src).href;
+        script.async = false;
+        script.setAttribute('data-maomao-haptics', '1');
+        document.head.appendChild(script);
+    } catch (err) {}
+})();
+
 // 音效系统：Web Audio 合成，零音频文件，全局默认 + 单角色覆盖
 // 存储：sound_settings = {receive, send, push, voice, call}；sound_char_<id> = 角色单独收消息音效
 var SoundSystem = {
@@ -118,6 +132,11 @@ var SoundSystem = {
         if (event === 'receive' && charId) {
             var cs = this.readCharSound(charId);
             if (cs) key = cs;
+        }
+        // 静音只关声音，轻震由单独开关控制；不动现有音效设置。
+        if ((event === 'send' || event === 'receive') &&
+            window.MAOMAOHaptics && window.MAOMAOHaptics.trigger) {
+            window.MAOMAOHaptics.trigger(event);
         }
         this.playKey(key);
     }
