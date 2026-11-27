@@ -11,7 +11,7 @@ function read(path) {
 
 const home = read('index.html');
 const serviceWorker = read('sw.js');
-const serviceWorkerVersion = Number(serviceWorker.match(/^const CACHE_NAME = 'phone-app-pwa-v(\\d+)'/m)?.[1] || 0);
+const serviceWorkerVersion = Number(serviceWorker.match(/^const CACHE_NAME = 'phone-app-pwa-v(\d+)'/m)?.[1] || 0);
 const guideHtml = read('tutorial/tutorial.html');
 const chatDetail = read('chat/chat/chat-detail.html');
 const guideScript = read('tutorial/tutorial.js');
