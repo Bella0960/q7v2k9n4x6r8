@@ -1,0 +1,17 @@
+.mao-turtle{box-sizing:border-box;max-width:480px;margin:auto;padding:12px 14px max(14px,env(safe-area-inset-bottom));background:white;color:#222;font:13px/1.6 system-ui,-apple-system,"PingFang SC",sans-serif}
+.mao-turtle *{box-sizing:border-box}.mao-turtle [hidden]{display:none!important}
+.mao-turtle__heading,.mao-turtle__title{font:400 28px/1.3 Georgia,"Songti SC",serif;margin:2px 0 10px}.mao-turtle__title{font-size:23px}
+.mao-turtle__setup{display:grid;gap:8px}.mao-turtle select,.mao-turtle button,.mao-turtle textarea{font:inherit;color:#222;background:#fff;border:1px solid #e5e5e5;border-radius:9px;padding:8px 10px;min-height:44px;max-width:100%}
+.mao-turtle button:disabled{opacity:.4}.mao-turtle button:focus-visible,.mao-turtle textarea:focus-visible,.mao-turtle select:focus-visible{outline:2px solid #555;outline-offset:2px}
+.mao-turtle button.mao-turtle__start,.mao-turtle button.mao-turtle__ask{background:#171717;color:white;border-color:#171717}
+.mao-turtle__roster{display:grid;gap:3px;max-height:35vh;overflow:auto;scrollbar-width:none}
+.mao-turtle__role{display:flex;align-items:center;gap:8px;min-height:36px}.mao-turtle__role input{width:18px;height:18px;accent-color:#222}
+.mao-turtle__small,.mao-turtle__turn,.mao-turtle__note{font-size:11px;color:#666;margin:4px 0}.mao-turtle__note:empty{display:none}
+.mao-turtle__prompt{font-size:15px;line-height:1.7;margin:0 0 12px;white-space:pre-wrap}
+.mao-turtle__history{max-height:34vh;overflow:auto;scrollbar-width:none;overscroll-behavior:contain;margin:10px 0}
+.mao-turtle__history::-webkit-scrollbar,.mao-turtle__roster::-webkit-scrollbar{display:none}
+.mao-turtle__entry{padding:6px 9px;margin:4px 0;background:#f7f7f9;border-radius:8px;overflow-wrap:anywhere}.mao-turtle__entry small{font-size:11px;color:#777}.mao-turtle__entry p{margin:2px 0;white-space:pre-wrap}
+.mao-turtle summary{min-height:44px;cursor:pointer;padding:10px 0}.mao-turtle__secret{background:#f7f7f9;border-radius:10px;padding:0 10px}.mao-turtle__solution{margin:0;padding:0 0 10px}
+.mao-turtle__quick,.mao-turtle__actions,.mao-turtle__judgement,.mao-turtle__footer{display:flex;flex-wrap:wrap;gap:6px;align-items:flex-start}.mao-turtle__quick button{font-size:11px}
+.mao-turtle__input{display:block;width:100%;resize:vertical;margin:5px 0}.mao-turtle__actions button{flex:1}
+.mao-turtle__footer{margin-top:10px}.mao-turtle__more{flex:1;min-width:0}.mao-turtle__more button{margin:2px 0;font-size:11px}.mao-turtle__note{overflow-wrap:anywhere}

@@ -1,0 +1,20 @@
+/* All selectors scoped; original games.html remains unchanged. */
+.mao-table-hall{box-sizing:border-box;max-width:480px;margin:auto;padding:12px 14px max(14px,env(safe-area-inset-bottom));font:13px/1.6 system-ui,-apple-system,"PingFang SC",sans-serif;color:#222;background:#fff}
+.mao-table-hall *{box-sizing:border-box}.mao-table-hall [hidden]{display:none!important}
+.mao-table-hall__top,.mao-table-journal__top,.mao-table-journal__line{display:flex;align-items:center;justify-content:space-between;gap:10px}
+.mao-table-hall h1,.mao-table-journal h2{font:400 28px/1.3 Georgia,"Songti SC",serif;margin:4px 0 10px}
+.mao-table-hall .mao-table-link,.mao-table-hall__journal,.mao-table-hall__open,.mao-table-journal select{font:inherit;color:#222;background:white;border:0;padding:8px 0;min-height:44px;text-align:left}
+.mao-table-hall button:focus-visible,.mao-table-journal select:focus-visible{outline:2px solid #555;outline-offset:2px}
+.mao-table-hall__row{display:flex;align-items:center;gap:8px;border-bottom:1px solid #eee}.mao-table-hall__row:last-child{border-bottom:0}
+.mao-table-hall__open{flex:1;font:400 23px/1.3 Georgia,"Songti SC",serif;padding:12px 0;min-width:0}.mao-table-hall__meta{display:block;color:#777;font:11px/1.6 system-ui,sans-serif;margin-top:5px}
+.mao-table-hall__journal{margin-top:14px;border-top:1px solid #eee;width:100%;font-weight:600}
+.mao-table-note{font:11px/1.6 system-ui,sans-serif;color:#666;margin:5px 0;overflow-wrap:anywhere}.mao-table-note:empty{display:none}
+.mao-table-hall__tools,.mao-table-journal__nav,.mao-table-journal__pagination,.mao-table-journal__filters{display:flex;flex-wrap:wrap;gap:12px;align-items:center}
+.mao-table-hall__game>.mao-flight,.mao-table-hall__game>.mao-gomoku,.mao-table-hall__game>.mao-turtle,.mao-table-hall__game>.mao-wolf{padding-inline:0}
+.mao-table-journal__nav button[aria-pressed=true]{font-weight:650;border-bottom:1px solid #555}
+.mao-table-journal select{border:1px solid #e5e5e5;border-radius:8px;padding:8px;max-width:100%;min-width:0}
+.mao-table-journal__row{padding:10px 0;border-bottom:1px solid #eee}.mao-table-journal__line span{font-size:11px;color:#666;text-align:right}
+.mao-table-journal__fragment{border-radius:10px;background:#f7f7f9;padding:0 10px;margin:6px 0;overflow-wrap:anywhere}
+.mao-table-journal summary{cursor:pointer;min-height:44px;padding:10px 0}.mao-table-journal__text{white-space:pre-wrap;margin:4px 0}
+.mao-table-journal__permissions{padding-bottom:8px}.mao-table-journal__grant{display:flex;align-items:center;justify-content:space-between;gap:6px;font-size:11px}
+.mao-table-hall button:disabled{opacity:.4}

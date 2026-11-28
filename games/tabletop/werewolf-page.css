@@ -1,0 +1,17 @@
+.mao-wolf{box-sizing:border-box;max-width:480px;margin:auto;padding:12px 14px max(14px,env(safe-area-inset-bottom));background:#fff;color:#222;font:13px/1.6 system-ui,-apple-system,"PingFang SC",sans-serif}
+.mao-wolf *{box-sizing:border-box}.mao-wolf [hidden]{display:none!important}
+.mao-wolf__heading{font:400 28px/1.3 Georgia,"Songti SC",serif;margin:2px 0 12px}
+.mao-wolf__setup{display:grid;gap:8px}.mao-wolf select,.mao-wolf button,.mao-wolf textarea{font:inherit;background:#fff;color:#222;border:1px solid #e5e5e5;border-radius:9px;padding:8px 10px;min-height:44px;max-width:100%}
+.mao-wolf button:disabled{opacity:.4}.mao-wolf button:focus-visible,.mao-wolf textarea:focus-visible,.mao-wolf select:focus-visible{outline:2px solid #555;outline-offset:2px}
+.mao-wolf button.mao-wolf__start,.mao-wolf button.mao-wolf__confirm,.mao-wolf button.mao-wolf__speak{background:#171717;color:#fff;border-color:#171717}
+.mao-wolf__roster{display:grid;gap:3px;max-height:40vh;overflow:auto;scrollbar-width:none}
+.mao-wolf__pick{display:flex;align-items:center;gap:8px;min-height:36px}.mao-wolf__pick input{width:18px;height:18px;accent-color:#222}
+.mao-wolf__lineup,.mao-wolf__counter,.mao-wolf__note,.mao-wolf__turn{font-size:11px;color:#666;margin:5px 0;overflow-wrap:anywhere}.mao-wolf__note:empty{display:none}
+.mao-wolf__identity{padding:0 10px;background:#f7f7f9;border-radius:10px;margin:8px 0}.mao-wolf summary{padding:10px 0;min-height:44px;cursor:pointer}
+.mao-wolf__role{font:400 22px/1.4 Georgia,"Songti SC",serif;margin:0}.mao-wolf__private{font-size:12px;white-space:pre-wrap;margin:6px 0;padding-bottom:8px}
+.mao-wolf__players{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:6px}
+.mao-wolf__seat{background:#f7f7f9;border-radius:9px;display:grid;padding:6px 8px;min-width:0;gap:1px}.mao-wolf__seat span{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.mao-wolf__seat small{font-size:10px;color:#777}.mao-wolf__seat.is-out{opacity:.5}
+.mao-wolf__history{max-height:32vh;overflow:auto;scrollbar-width:none;overscroll-behavior:contain;margin:10px 0}
+.mao-wolf__history::-webkit-scrollbar,.mao-wolf__roster::-webkit-scrollbar{display:none}
+.mao-wolf__entry{margin:4px 0;padding:6px 8px;background:#f7f7f9;border-radius:8px;overflow-wrap:anywhere}.mao-wolf__entry small{font-size:10px;color:#777}.mao-wolf__entry p{margin:2px 0;white-space:pre-wrap}
+.mao-wolf__ballot,.mao-wolf__footer{display:flex;flex-wrap:wrap;gap:6px;margin-top:6px}.mao-wolf__target{flex:1;min-width:0}.mao-wolf__input{display:block;width:100%;margin:5px 0;resize:vertical}.mao-wolf__speech button{width:100%}.mao-wolf__pass{margin-top:6px}

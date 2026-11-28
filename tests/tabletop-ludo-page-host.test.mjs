@@ -1,0 +1,134 @@
+import {test} from 'node:test';
+import assert from 'node:assert/strict';
+import {createLudoPageHost} from '../games/tabletop/ludo-page-host.js';
+const accountId='MAO-AAAAAAAAAAAA';
+function target(o={}){const events=new Map();return Object.assign(o,{addEventListener(k,f){if(!events.has(k))events.set(k,new Set());events.get(k).add(f);},removeEventListener(k,f){events.get(k)?.delete(f);},fire(k,e={}){for(const f of [...(events.get(k)||[])])f(e);}});}
+class El{
+  constructor(doc){this.ownerDocument=doc;this.children=[];this.style={};this.events={};this.classList={add:c=>{this.className+=' '+c;}};}
+  setAttribute(){}append(...a){this.children.push(...a);a.forEach(x=>x.parent=this);}replaceChildren(...a){this.children=[];this.append(...a);}
+  addEventListener(k,f){this.events[k]=f;}remove(){this.parent.children=this.parent.children.filter(c=>c!==this);}
+  click(){if(!this.disabled)this.events.click?.();}
+}
+function fixture({rollDie=()=>6,pace,discussion}={}){
+  let sessionId='s1',roles=['r1','r2','r3'],active=true,fetches=0,rolls=0;
+  const doc=target({hidden:false,createElement:()=>new El(doc),querySelector:s=>({content:s.includes('mao-account-role')?'user':accountId})});
+  const win=target({document:doc,navigator:{onLine:true},__MAO_ACCOUNT_SCOPE__:{ready:true,accountId,role:'user'},PhoneStorage:{result:{getCharacters:()=>({ok:true,meta:{source:'ai_custom_characters'},value:roles.map(id=>({id}))})}},async fetch(path){fetches++;return {ok:true,json:async()=>path.endsWith('/me')?{account:{id:accountId,role:'user',status:active?'active':'disabled'}}:{currentSessionId:sessionId}};}});
+  const root=new El(doc),states=[],host=createLudoPageHost(root,{win,rollDie:()=>{rolls++;return rollDie();},pace,discussion,onStatus:s=>states.push(s)});
+  return {root,host,win,states,fetches:()=>fetches,rolls:()=>rolls,session:x=>{sessionId=x;},roles:x=>{roles=x;},active:x=>{active=x;}};
+}
+const all=(e,cls)=>[...(e.className?.split(' ').includes(cls)?[e]:[]),...e.children.flatMap(c=>all(c,cls))];
+async function settle(host){for(let i=0;i<1000&&host.status()==='busy';i++)await Promise.resolve();assert.notEqual(host.status(),'busy');}
+test('real browser session adapter starts selected roles and handles board action',async()=>{
+  const f=fixture();await f.host.start({roomId:'room',roleIds:['r1','r2']});
+  assert.equal(all(f.root,'mao-ludo__player').length,3);
+  all(f.root,'mao-ludo__action')[0].click();await settle(f.host);
+  assert.equal(f.rolls(),1);assert.equal(all(f.root,'mao-ludo__action').length,4);
+  assert.ok(f.fetches()>4);f.host.destroy();
+});
+test('missing role and disabled account never display a playable board',async()=>{
+  for(const change of [f=>f.roles(['r2']),f=>f.active(false)]){
+    const f=fixture();change(f);await assert.rejects(f.host.start({roomId:'room',roleIds:['r1']}));assert.equal(f.root.children.length,0);f.host.destroy();
+  }
+});
+test('offline clears display, verified resume preserves game and new session rejects old board',async()=>{
+  const f=fixture();await f.host.start({roomId:'room',roleIds:['r1']});
+  all(f.root,'mao-ludo__action')[0].click();await settle(f.host);
+  f.win.navigator.onLine=false;f.win.fire('offline');assert.equal(f.root.children.length,0);
+  f.win.navigator.onLine=true;await f.host.resume();assert.equal(all(f.root,'mao-ludo__action').length,4);
+  f.win.fire('storage');assert.equal(f.root.children.length,0);f.session('new');
+  await assert.rejects(f.host.resume(),/SCOPE_CHANGED/);assert.equal(f.root.children.length,0);f.host.destroy();
+});
+test('end during automatic role pacing does not publish a later board',async()=>{
+  let release;const f=fixture({rollDie:()=>3,pace:()=>new Promise(r=>{release=r;})});
+  await f.host.start({roomId:'room',roleIds:['r1']});all(f.root,'mao-ludo__action')[0].click();
+  for(let i=0;i<1000&&!release;i++)await Promise.resolve();assert.equal(typeof release,'function');
+  f.host.end();release();await settle(f.host);assert.equal(f.root.children.length,0);assert.equal(f.rolls(),1);f.host.destroy();
+});
+test('pagehide destroys host and rejects another start',async()=>{
+  const f=fixture();await f.host.start({roomId:'room',roleIds:['r1']});f.win.fire('pagehide');
+  assert.equal(f.root.children.length,0);assert.equal(f.host.status(),'disposed');await assert.rejects(f.host.start({roomId:'new',roleIds:['r1']}),/LUDO_PAGE_BUSY/);
+});
+
+test('automatic real session role turn returns control to the user',async()=>{
+  const dice=[3,6,2];let n=0;const f=fixture({rollDie:()=>dice[n++%3]});
+  await f.host.start({roomId:'room',roleIds:['r1']});
+  all(f.root,'mao-ludo__action')[0].click();await settle(f.host);
+  assert.equal(f.rolls(),3);assert.equal(all(f.root,'mao-ludo__action').length,1);
+  assert.equal(f.states.at(-1),'ready');f.host.destroy();
+});
+test('start snapshots the selected role IDs before asynchronous verification',async()=>{
+  const f=fixture();const roles=['r1'];const start=f.host.start({roomId:'room',roleIds:roles});roles[0]='r2';
+  const v=await start;assert.equal(v.seats[1].roleId,'r1');f.host.destroy();
+});
+
+test('picker identity pins session before first invitation, even with identical role IDs',async()=>{
+  const f=fixture();f.session('s2');
+  await assert.rejects(f.host.start({roomId:'room',roleIds:['r1'],expectedIdentity:{accountId,sessionId:'s1'}}),/SCOPE_CHANGED/);
+  assert.equal(f.root.children.length,0);f.host.destroy();
+});
+
+test('committed cruise triggers optional speech without blocking the next board action',async()=>{
+  let release,started;const waiting=new Promise(r=>{started=r;});
+  const f=fixture({discussion:{generateRole:c=>{if(c.trigger){started(c);return new Promise(r=>{release=r;});}return '收到。';},allowOutput:()=>true}});
+  await f.host.start({roomId:'room',roleIds:['r1'],mode:'adventure'});
+  all(f.root,'flight-cruise')[0].click();await settle(f.host);
+  const context=await waiting;assert.equal(context.trigger.cruise,true);
+  assert.equal(f.host.status(),'open');
+  assert.ok(all(f.root,'mao-ludo__action').length>0);
+  const manual=f.host.sendChat({messageId:'m',text:'继续玩',replyToSeatId:'role:r1'});
+  release('迟到的自动发言');await manual;
+  assert.deepEqual((await f.host.readChat()).map(m=>m.text),['继续玩','收到。']);
+  f.host.destroy();
+});
+test('ending a game cancels event speech and no later message is rendered',async()=>{
+  let release,started;const waiting=new Promise(r=>{started=r;});const changes=[];
+  const f=fixture({discussion:{generateRole:c=>{started();return new Promise(r=>{release=r;});},allowOutput:()=>true,onChange:m=>changes.push(m)}});
+  await f.host.start({roomId:'room',roleIds:['r1'],mode:'adventure'});
+  all(f.root,'flight-cruise')[0].click();await settle(f.host);await waiting;
+  f.host.end();release('旧房间回复');
+  for(let i=0;i<100;i++)await Promise.resolve();
+  assert.equal(changes.length,0);assert.equal(f.root.children.length,0);f.host.destroy();
+});
+
+test('verified host exports pending dice and restores on a fresh login without reroll',async()=>{
+  const f=fixture();await f.host.start({roomId:'room',roleIds:['r1']});
+  all(f.root,'mao-ludo__action')[0].click();await settle(f.host);
+  const save=await f.host.checkpoint();f.host.destroy();
+  const g=fixture({rollDie:()=>{throw Error('unexpected roll');}});g.session('s2');
+  const restored=await g.host.restore(save);
+  assert.equal(restored.game.die,6);assert.equal(restored.game.legalMoves.length,4);assert.equal(g.rolls(),0);
+  assert.deepEqual(await g.host.checkpoint(),save);g.host.destroy();
+});
+test('restore refuses a removed role or foreign account without displaying the board',async()=>{
+  const f=fixture();await f.host.start({roomId:'room',roleIds:['r1']});const save=await f.host.checkpoint();f.host.destroy();
+  const g=fixture();g.roles(['r2']);await assert.rejects(g.host.restore(save),/INVALID_CHECKPOINT_SEAT/);assert.equal(g.root.children.length,0);g.host.destroy();
+  const other=fixture();await assert.rejects(other.host.restore({...save,accountId:'MAO-BBBBBBBBBBBB'}),/INVALID_CHECKPOINT/);assert.equal(other.root.children.length,0);other.host.destroy();
+});
+
+test('combined checkpoint restores exact board and public chat without reroll or generation',async()=>{
+  const f=fixture({discussion:{generateRole:()=> '棋友回复',allowOutput:()=>true}});
+  await f.host.start({roomId:'room',roleIds:['r1']});
+  all(f.root,'mao-ludo__action')[0].click();await settle(f.host);
+  await f.host.sendChat({messageId:'a',text:'开始'});const before=await f.host.readChat(),save=await f.host.saveMatch();f.host.destroy();
+  let generations=0;const g=fixture({rollDie:()=>{throw Error('reroll');},discussion:{generateRole:()=>{generations++;return '新回复';},allowOutput:()=>true}});g.session('s2');
+  const restored=await g.host.restoreMatch(save);
+  assert.equal(restored.game.die,6);assert.deepEqual(await g.host.readChat(),before);assert.equal(generations,0);
+  assert.equal((await g.host.sendChat({messageId:'a',text:'开始'})).duplicate,true);
+  await g.host.sendChat({messageId:'b',text:'继续'});assert.equal(generations,1);
+  assert.equal((await g.host.readChat()).length,4);g.host.destroy();
+});
+test('combined checkpoint rejects mismatched board revision and invalid sender before mounting',async()=>{
+  const f=fixture();await f.host.start({roomId:'room',roleIds:['r1']});await f.host.sendChat({messageId:'a',text:'开始'});
+  const save=await f.host.saveMatch();f.host.destroy();
+  const g=fixture();await assert.rejects(g.host.restoreMatch({...save,chat:{...save.chat,revision:99}}),/LUDO_INVALID_MATCH_CHECKPOINT/);
+  const bad=JSON.parse(JSON.stringify(save));bad.chat.messages[0].senderSeatId='role:r1';
+  await assert.rejects(g.host.restoreMatch(bad),/LUDO_INVALID_CHAT_CHECKPOINT/);assert.equal(g.root.children.length,0);g.host.destroy();
+});
+test('combined checkpoint does not report pending generation as saved',async()=>{
+  let started,release;const waiting=new Promise(r=>{started=r;});
+  const f=fixture({discussion:{generateRole:()=>{started();return new Promise(r=>{release=r;});},allowOutput:()=>true}});
+  await f.host.start({roomId:'room',roleIds:['r1']});const pending=f.host.sendChat({messageId:'a',text:'开始'}),rejected=assert.rejects(pending,/SPEECH_CANCELLED|LUDO_DISCUSSION_STOPPED/);
+  await waiting;await assert.rejects(f.host.saveMatch(),/LUDO_CHAT_CHECKPOINT_BUSY/);
+  f.host.stopChat();release('迟到');await rejected;
+  const save=await f.host.saveMatch();assert.equal(save.chat.messages.length,1);assert.equal(save.chat.jobIds.length,1);f.host.destroy();
+});
