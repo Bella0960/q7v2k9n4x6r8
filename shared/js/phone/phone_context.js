@@ -23,12 +23,12 @@
     /* ========== 角色定位 ========== */
 
     function findCharacter(contactId) {
-        if (!Storage) return null;
+        if (!Storage || contactId == null || String(contactId).trim() === '') return null;
         var chars = Storage.getCharacters();
-        for (var i = 0; i < chars.length; i++) {
-            if (String(chars[i].id) === String(contactId)) return chars[i];
-        }
-        return null;
+        var matches = (Array.isArray(chars) ? chars : []).filter(function (role) {
+            return role && role.id != null && String(role.id) === String(contactId);
+        });
+        return matches.length === 1 ? matches[0] : null;
     }
 
     /* ========== 时间格式化 ========== */
@@ -213,6 +213,13 @@
             return '（未找到角色 ID=' + contactId + '，无法构建上下文）';
         }
 
+        // Read once using the existing role-scoped storage contract. Never use
+        // unknown senders, silent instructions or group-only records as dialogue.
+        var recentHistory = [];
+        try {
+            recentHistory = selectRoleHistory(Storage.getChatHistory(contactId), contactId);
+        } catch (e) {}
+
         // 1. 角色人设
         var persona = [];
         persona.push('姓名：' + (role.name || ''));
@@ -235,9 +242,37 @@
         // 2. 世界书：只带入此刻相关的生活细节，不把整本设定反复塞给模型
         try {
             var wbs = Storage.getWorldbooks();
-            var recentForWorldbook = Storage.getChatHistory(contactId) || [];
+            var selection = global.RoleWorldbookBindings &&
+                global.RoleWorldbookBindings.filterBooks(contactId, wbs, role);
+            // PhoneContext may also be used by non-chat pages that have not loaded
+            // the optional bridge; in that case use the role's explicit ID list.
+            if (selection) {
+                wbs = selection.ok ? selection.books : [];
+            } else {
+                var boundIds = Array.isArray(role.worldBookIds) ? role.worldBookIds.map(String) : [];
+                // Older PhoneContext callers do not necessarily load the shared bridge.
+                // Preserve chat-settings-only legacy bindings in those callers too.
+                try {
+                    var legacyRaw = localStorage.getItem('chat_worldbooks_' + contactId);
+                    // Match the existing binding bridge: no implicit global mounts.
+                    if (legacyRaw != null) {
+                        var legacy = JSON.parse(legacyRaw);
+                        var legacyIds = Array.isArray(legacy) ? legacy :
+                            (legacy && Array.isArray(legacy.worldbookIds) ?
+                                (legacy.enabled === false ? [] : legacy.worldbookIds) : null);
+                        if (!legacyIds) throw new Error('Corrupt legacy worldbook binding');
+                        boundIds = (legacy && legacy.enabled === false) || legacyIds.length === 0 ? [] :
+                            boundIds.concat(legacyIds.map(String));
+                    }
+                } catch (legacyError) {
+                    boundIds = []; // Never inject unrelated lore on a damaged binding.
+                }
+                wbs = (Array.isArray(wbs) ? wbs : []).filter(function (book) {
+                    return book && boundIds.indexOf(String(book.id)) !== -1;
+                });
+            }
             var wbText = NS.buildWorldbookInjectionText(wbs, {
-                recentMessages: recentForWorldbook.slice(-8),
+                recentMessages: recentHistory.slice(-8),
                 maxEntries: 32,
                 maxChars: 8000
             });
@@ -250,25 +285,23 @@
 
         // 3. 长期记忆
         try {
-            var memories = Storage.getMemories(contactId);
-            if (memories && memories.length) {
-                var memText = memories.map(function (m) {
+            var memories = selectRoleMemories(Storage.getMemories(contactId), contactId);
+            if (memories.length) {
+                var memText = memories.slice(0, 15).map(function (m) {
                     if (typeof m === 'string') return m;
                     var t = m.time ? ('(' + agoLabel(m.time) + ') ') : '';
                     return t + (m.content || m.text || '');
-                }).slice(0, 15).join('\n');
+                }).join('\n');
                 parts.push(section('长期记忆', memText));
             }
         } catch (e) {}
 
         // 4. 近期聊天（和我）
         try {
-            var history = Storage.getChatHistory(contactId);
-            if (history && history.length) {
-                // 取最近 30 条
-                var recent = history.slice(-30).map(function (msg) {
-                    var who = msg.role === 'assistant' ? (role.name || 'TA') : '我';
-                    return who + '：' + (msg.content || msg.text || '');
+            if (recentHistory.length) {
+                var recent = recentHistory.map(function (msg) {
+                    var who = msg.role === 'assistant' || msg.role === 'received' ? (role.name || '角色') : '用户';
+                    return who + '：' + msg.text;
                 }).join('\n');
                 parts.push(section('近期聊天', recent));
             }
@@ -283,20 +316,71 @@
         return parts.join('');
     };
 
-    /* ========== 快照收集 ========== */
+    /* ========== Read-side context access policy ========== */
+
+    function matchesRole(value, roleId) {
+        return value != null && String(value) === String(roleId);
+    }
+
+    // Legacy entries in an explicitly role-keyed store remain readable; global
+    // unscoped user memory is not read here. Explicit conflicting owners are denied.
+    function selectRoleMemories(list, roleId) {
+        return (Array.isArray(list) ? list : []).filter(function (m) {
+            if (typeof m === 'string') return !!m.trim();
+            if (!m || typeof m !== 'object') return false;
+            if (m.sourceRoleId != null && !matchesRole(m.sourceRoleId, roleId)) return false;
+            if (m.roleId != null && !matchesRole(m.roleId, roleId)) return false;
+            if (m.status != null && ['fixed', 'confirmed'].indexOf(m.status) < 0) return false;
+            return typeof (m.content || m.text) === 'string' && !!(m.content || m.text).trim();
+        });
+    }
+
+    function selectRoleHistory(list, roleId) {
+        var output = [];
+        var history = Array.isArray(list) ? list : [];
+        for (var i = history.length - 1; i >= 0 && output.length < 30; i--) {
+            var m = history[i];
+            if (!m || m.isError || m.sendFailed || m.silent ||
+                ['user', 'sent', 'assistant', 'received'].indexOf(m.role) < 0) continue;
+            if (m.groupId != null || m.type === 'group_private' || m.type === 'group_game_private' ||
+                m.type === 'group_welcome' || m.visibility === 'private' || m.visibility === 'role_only') continue;
+            if (m.memberId != null && !matchesRole(m.memberId, roleId)) continue;
+            if (m.sourceRoleId != null && !matchesRole(m.sourceRoleId, roleId)) continue;
+            var text = m.text || m.content;
+            if (typeof text !== 'string') continue;
+            text = text.replace(/<(think|reasoning|analysis|narratage)\b[^>]*>[\s\S]*?(?:<\/\1\s*>|$)/gi, '').trim();
+            if (text && !/^data:/i.test(text)) output.push({ role: m.role, text: text });
+        }
+        return output.reverse();
+    }
+
+    // Cross-app snapshots are a narrow read-only projection, not permission to
+    // read the entire account. Missing visibility never becomes public here.
+    function canReadMoment(post, roleId) {
+        if (!post || post.authorId == null) return false;
+        var own = matchesRole(post.authorId, roleId);
+        var user = String(post.authorId) === 'me';
+        if (!own && !user) return false;
+        if (user && post.byAI === true) return false;
+        if (post.visibility === 'public') return true;
+        if (post.visibility === 'friends' && own) return true;
+        if ((post.visibility === 'custom' || post.visibility === 'friends') &&
+            Array.isArray(post.visibleTo)) {
+            return post.visibleTo.some(function (id) { return matchesRole(id, roleId); });
+        }
+        return false;
+    }
 
     function gatherSnapshots(contactId, currentAppId) {
         var chunks = [];
-
-        // 动态
         if (currentAppId !== 'moments') {
             try {
                 var moments = Storage.getMoments();
-                // 只保留属于该角色的动态（或所有人）
-                var mine = moments.filter(function (m) {
-                    return String(m.authorId || '') === String(contactId)
-                        || String(m.authorId || '') === 'me';
-                }).slice(-5);
+                var mine = (Array.isArray(moments) ? moments : []).filter(function (m) {
+                    return canReadMoment(m, contactId);
+                }).sort(function (a, b) {
+                    return (Number(b.time) || 0) - (Number(a.time) || 0);
+                }).slice(0, 5);
                 if (mine.length) {
                     chunks.push('【朋友圈动态】最近 ' + mine.length + ' 条：\n' + mine.map(function (m) {
                         return '• ' + (m.content || '[图片]') + ' (' + agoLabel(m.time) + ')';
@@ -304,24 +388,9 @@
                 }
             } catch (e) {}
         }
-
-        // 财务
-        if (currentAppId !== 'finance' && currentAppId !== 'wallet') {
-            try {
-                var fin = Storage.getFinanceRecords();
-                if (fin.length) {
-                    chunks.push('【钱包/财务】最近 ' + Math.min(fin.length, 5) + ' 条：\n'
-                        + fin.slice(-5).map(function (r) {
-                            return '• ' + (r.title || r.desc || '') + ' '
-                                + (r.amount != null ? r.amount + '元' : '')
-                                + ' (' + agoLabel(r.time) + ')';
-                        }).join('\n'));
-                }
-            } catch (e) {}
-        }
-
-        // 记忆已经单独在上面列过，这里不要再重复
-
+        // No account-wide finance snapshot in an unrelated AI task. Finance
+        // features retain their own existing entry points; an explicit scoped
+        // grant can be added in the existing permission architecture later.
         return chunks.join('\n\n');
     }
 
