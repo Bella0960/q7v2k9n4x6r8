@@ -324,7 +324,7 @@
       <!-- 说明 -->
       <div class="rp-desc-card">
         <div class="rp-desc-title">全局伴侣协议</div>
-        <div class="rp-desc-text">应用级统一设置。保存后，所有 AI 角色的单聊与群聊都会遵循这份互动协议；每个角色的人设、记忆和世界书仍按各自资料注入。</div>
+        <div class="rp-desc-text">全局协议用于群聊及没有旧版专属协议的单聊。若当前角色以前保存过专属协议，该单聊仍优先使用原协议。保存这里的内容只更新全局协议。</div>
         <div class="var-row">
           <span class="var-chip"><b>{{char}}</b> 角色名</span>
           <span class="var-chip"><b>{{user}}</b> 你的名字</span>
@@ -373,7 +373,7 @@
     }
   });
 
-  // 伴侣协议属于应用级设置，所有单聊与群聊共用同一份内容。
+  // 此页只编辑全局协议；聊天会按会话范围只读兼容旧版协议。
   var STORAGE_KEY = 'chat_rp_protocol_';
 
   // Legacy per-character keys are deliberately read-only here. Selecting the

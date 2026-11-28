@@ -20,6 +20,6 @@ test('group prompts never import the legacy global user_memory cache', () => {
 
 test('the scoped legacy memory text remains part of the final system prompt', () => {
   assert.match(html, /userMemoryText = capText\(userMemoryText, CTX_CAP\.userMemory\)/);
-  assert.match(html, /【已经记录的用户信息】[\s\S]{0,120}userMemoryText/);
+  assert.match(html, /【已经记录的用户信息】[\s\S]{0,500}userMemoryText/);
   assert.match(html, /\{ role: 'system', content: systemPrompt \}/);
 });

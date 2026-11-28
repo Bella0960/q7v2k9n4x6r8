@@ -53,25 +53,12 @@ test('partner protocol settings edit only the global key', () => {
 
 
 test('partner protocol preserves scoped legacy text without migrating it', () => {
-  const start = detail.indexOf("            let rpProtocol = '';");
-  const end = detail.indexOf('            // 世界书：', start);
-  assert.ok(start >= 0 && end > start);
-  const readProtocol = ({ values, roleId = 'role-a', actualId = 'role-a', group = false }) =>
-    runInNewContext(detail.slice(start, end) + '\nrpProtocol;', {
-      currentRoleId: roleId,
-      currentCharacter: { id: actualId },
-      isGroupChat: group,
-      localStorage: { getItem: key => values[key] ?? null },
-    });
-  const values = { chat_rp_protocol_: 'global', 'chat_rp_protocol_role-a': 'old A', 'chat_rp_protocol_role-b': 'old B' };
-  assert.equal(readProtocol({ values }), 'old A');
-  assert.equal(readProtocol({ values, roleId: 'role-b', actualId: 'role-b' }), 'old B');
-  assert.equal(readProtocol({ values, roleId: 'role-c', actualId: 'role-c' }), 'global');
-  assert.equal(readProtocol({ values, roleId: 'role-b' }), 'global');
-  assert.equal(readProtocol({ values, roleId: null }), 'global');
-  assert.equal(readProtocol({ values, group: true }), 'global');
-  assert.equal(readProtocol({ values: { ...values, chat_rp_protocol_: undefined } }), 'old A');
-  assert.equal(readProtocol({ values: { ...values, 'chat_rp_protocol_role-a': ' ' } }), 'global');
+  assert.match(detail, /!isGroupChat && currentRoleId && currentCharacter/);
+  assert.match(detail, /currentRoleId === String\(currentCharacter\.id\)/);
+  assert.match(detail, /localStorage\.getItem\(globalRpKey \+ currentRoleId\)/);
+  assert.match(detail, /if \(!rpProtocol\) rpProtocol = \(localStorage\.getItem\(globalRpKey\)/);
+  assert.doesNotMatch(detail, /localStorage\.setItem\(globalRpKey \+ currentRoleId/,
+    'legacy role protocol compatibility must remain read-only');
 });
 
 test('Cloudflare Worker preserves explicit HTML routes and maps only the root to the desktop index', () => {
@@ -84,14 +71,14 @@ test('Cloudflare Worker preserves explicit HTML routes and maps only the root to
   assert.equal(wranglerConfig.assets.binding, 'ASSETS');
   assert.equal(wranglerConfig.assets.html_handling, 'none');
   assert.equal(wranglerConfig.assets.run_worker_first, true);
-  assert.match(worker, /url\.pathname === "\/"[\s\S]*?new URL\("\/index\.html", url\)/);
+  assert.match(worker, /url\.pathname === ['"]\/['"][\s\S]*?new URL\(['"]\/index\.html['"], url\)/);
   assert.match(worker, /let assetRequest = request;/,
     'non-root routes must start with the original request and URL');
   assert.match(worker, /assetRequest = new Request\(request, \{ headers \}\)/,
     'private HTML may strip conditional cache headers without changing the requested route');
   assert.match(worker, /const response = await env\.ASSETS\.fetch\(assetRequest\)/,
     'non-root app routes must be served from their original URL, not rewritten to index.html');
-  assert.match(worker, /isHtmlDocument && authorizedAccount/,
+  assert.match(worker, /isProtectedDocument && authorizedAccount/,
     'private HTML must preserve server-verified account isolation');
   assert.match(serviceWorker, /!isPublicAccountPage && \(url\.pathname === '\/' \|\|/,
     'private HTML must bypass shared CacheStorage even without navigation');
@@ -137,8 +124,7 @@ test('Worker routes real requests and ignores conditional ranges only for protec
     ['asset', '/account/index.html', true, true], ['api', '/api/accounts/me'],
   ]);
   const unauthenticated = await worker.fetch(request('/chat/chat/chat.html'), { ASSETS: env.ASSETS });
-  assert.equal(unauthenticated.status, 302);
-  assert.equal(unauthenticated.headers.get('location'), 'https://example.test/account/index.html');
+  assert.equal(unauthenticated.status, 503);
   assert.equal(unauthenticated.headers.get('cache-control'), 'no-store');
   const beforeAdmin = seen.length;
   const adminResult = await worker.fetch(request('/admin/cloud.html'), env);

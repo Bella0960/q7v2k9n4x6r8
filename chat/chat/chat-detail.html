@@ -6312,11 +6312,15 @@
             const memoryContext = (typeof memorySystem !== 'undefined')
                 ? memorySystem.getAIContext() : '暂无实时状态';
 
-            // ===== 全局伴侣协议：所有角色与群聊统一读取同一个应用级设置 =====
+            // 单聊只回读已核对归属的旧协议；群聊使用全局协议。
             let rpProtocol = '';
             try {
                 const globalRpKey = 'chat_rp_protocol_';
-                rpProtocol = localStorage.getItem(globalRpKey) || '';
+                if (!isGroupChat && currentRoleId && currentCharacter &&
+                    currentRoleId === String(currentCharacter.id)) {
+                    rpProtocol = (localStorage.getItem(globalRpKey + currentRoleId) || '').trim();
+                }
+                if (!rpProtocol) rpProtocol = (localStorage.getItem(globalRpKey) || '').trim();
 
                 // App-wide protocol is a single explicitly saved key. Never
                 // promote a role-scoped legacy protocol to all other roles merely
@@ -6480,6 +6484,7 @@
             if (!rpProtocol.includes('{{persona}}')) {
                 systemPrompt += '\n' + turnSpeakerPersona;
             }
+            systemPrompt += '\n\n【已经记录的用户信息】\n' + userMemoryText;
             systemPrompt += '\n\n【最终设定优先级】角色身份、性格与语气以当前角色档案和全局伴侣协议为准；世界事实以当前激活的世界书为准。以下功能说明仅定义消息标记、权限和形式；冲突时以用户保存的协议为准。';
             // Put activated lore ahead of group/transport instructions, including
             // custom protocols without a {{worldbook}} placeholder.

@@ -299,14 +299,20 @@ export default {
     }
     // Every MAO app document is server-gated. Only the account entry is public;
     // static assets remain readable, but account-owned APIs still enforce identity.
-    const isHtmlDocument = request.method === 'GET' &&
-      (url.pathname === '/' || url.pathname.toLowerCase().endsWith('.html'));
+    const isHtmlDocument = url.pathname === '/' || url.pathname.toLowerCase().endsWith('.html');
     const isPublicAccountDocument = url.pathname === '/account' ||
       url.pathname === '/account/' ||
       url.pathname === '/account/index.html' ||
       url.pathname === '/account/bootstrap.html';
+    const isProtectedDocument = isHtmlDocument && !isPublicAccountDocument;
+    if (isProtectedDocument && request.method !== 'GET' && request.method !== 'HEAD') {
+      return new Response(null, {
+        status: 405,
+        headers: { allow: 'GET, HEAD', 'cache-control': 'no-store' }
+      });
+    }
     let authorizedAccount = null;
-    if (isHtmlDocument && !isPublicAccountDocument) {
+    if (isProtectedDocument) {
       if (!env.CLOUD_DB) {
         return accountAuthenticationUnavailable();
       }
@@ -354,15 +360,9 @@ export default {
       }
     }
 
-    // html_handling="none" 时显式把站点根路径映射到构建后的首页（沿用 main 的路由修复）。
-    if (url.pathname === "/" && request.method === "GET") {
-      const indexUrl = new URL("/index.html", url);
-      const response = await env.ASSETS.fetch(new Request(indexUrl, request));
-      return authorizedAccount ? await injectAccountScope(response, authorizedAccount, env) : response;
-    }
     if (env.ASSETS) {
       let assetRequest = request;
-      if (isHtmlDocument && authorizedAccount) {
+      if (isProtectedDocument && authorizedAccount) {
         // A conditional 304 from static assets has no HTML body to inject.
         // Never let the browser reuse a stale, unscoped private document.
         const headers = new Headers(request.headers);
@@ -371,8 +371,29 @@ export default {
         }
         assetRequest = new Request(request, { headers });
       }
+      // html_handling="none" requires an explicit root mapping. HEAD is fetched
+      // as GET so account scope can be validated, then returned without a body.
+      if (url.pathname === '/' && (request.method === 'GET' || request.method === 'HEAD')) {
+        assetRequest = new Request(new URL('/index.html', url), assetRequest);
+      }
+      if (isProtectedDocument && request.method === 'HEAD') {
+        assetRequest = new Request(assetRequest, { method: 'GET' });
+      }
       const response = await env.ASSETS.fetch(assetRequest);
-      if (isHtmlDocument && authorizedAccount) return await injectAccountScope(response, authorizedAccount, env);
+      if (isProtectedDocument && authorizedAccount) {
+        const type = String(response.headers.get('content-type') || '').toLowerCase();
+        if (response.status === 206 || response.status === 304 || (response.ok && !type.includes('text/html'))) {
+          return new Response(null, { status: 503, headers: { 'cache-control': 'no-store' } });
+        }
+        if (!response.ok) {
+          return new Response(null, { status: response.status, headers: { 'cache-control': 'no-store' } });
+        }
+        const scoped = await injectAccountScope(response, authorizedAccount, env);
+        if (request.method === 'HEAD') {
+          return new Response(null, { status: scoped.status, headers: scoped.headers });
+        }
+        return scoped;
+      }
       if (/\.(?:js|mjs|css)$/i.test(url.pathname) || isPublicAccountDocument || url.pathname === '/sw.js') {
         const headers = new Headers(response.headers);
         // Public sign-in remains eligible for its existing offline fallback.
@@ -386,7 +407,10 @@ export default {
       }
       return response;
     }
-    return new Response('Not found', { status: 404 });
+    return new Response(request.method === 'HEAD' ? null : 'Not found', {
+      status: 404,
+      headers: isProtectedDocument ? { 'cache-control': 'no-store' } : undefined
+    });
   },
 
   async scheduled(controller, env, ctx) {

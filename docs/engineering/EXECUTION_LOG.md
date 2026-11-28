@@ -756,3 +756,10 @@ On the next turn/session, read this file and the current `AGENTS.md` first. Cont
 - ADMIN-CORE-001 真机反馈：管理目录同时返回账号上下文错误。QA 转发使用已验证的创始账号标识传递作用域至现有独立身份服务。回归模拟身份服务作用域门禁，覆盖目录读取和写入。回滚可还原本提交。
 
 - AUTONOMY-M2 QA single-message smoke: based on the live bc7d062f release, reused existing consent controls, activity queue, SQLite completion/outbox, Cron maintenance, dispatcher, Service Worker and chat recovery. New QA-only manual route queues one fixed message per account per five minutes. Turning global autonomy off cancels pending mock jobs atomically, and role/device status is checked again at execution. No schema changes, model requests or chat context upload. Nine focused SQLite and push integration checks passed.
+
+## 2026-11-28 | CHAT-CORE-INTEGRATION-001 | QA-baseline three-way closeout
+
+- Live `qa-build-receipt.json` and the fixed reusable workflow both verified source baseline `4b49c0a95ea8cfedc8aa2007c061a1f6f6771431` (QA run 45885895415 / #98). Integration preserved the requested `#562 → #563 → #564` semantics without merging main or publishing QA.
+- Formal `eng:conflicts` scanned 176 open PRs and reported the expected overlaps, including #301, #299, #216, #199, #198, #187, #171 and #148. Their already-deployed status-bar, fanwai, account, identity and chat tests remain in the QA-derived workflow and package scripts.
+- Reconciled the three missing contracts with the newer QA implementation: legacy user memory is strictly role-scoped and is present in the final system prompt; worldbook checks retain explicit mounts and group-speaker isolation; cross-module coverage verifies Worker private-document method/cache behavior and read-only legacy role protocol compatibility.
+- Chat regression contract: 30/30 test files passed. Worker account/release regressions: 3/3 test files passed. Vite production build and postbuild PWA/asset checks passed. No storage schema or migration changed; rollback is the integration commit only.
