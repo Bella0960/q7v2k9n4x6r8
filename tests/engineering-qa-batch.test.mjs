@@ -142,7 +142,7 @@ test('applies dependent tasks that modify separate hunks of the same approved fi
   merged[11] = 'task two change';
   assert.deepEqual(receipt.tasks.map(task => task.id), ['TASK-01', 'TASK-02']);
   assert.equal(git('show', receipt.candidate + ':shared.txt'), merged.join('\n'));
-  assert.equal(git('rev-parse', receipt.candidate + '^'), baseline);
+  assert.equal(git('rev-parse', receipt.candidate + '^^'), baseline);
 });
 
 test('stops on a real same-hunk conflict between dependent tasks and creates no candidate ref', t => {
