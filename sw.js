@@ -1,12 +1,50 @@
 /* 小手机 PWA Service Worker
- * 页面与静态资源均采用缓存优先+后台更新，断网/慢网时秒开。
+ * 静态资源缓存优先。私有页面每次联网验证，公开账号入口支持离线回退。
  */
-const CACHE_NAME = 'phone-app-pwa-v206';
+const CACHE_NAME = 'phone-app-pwa-v312';
 const FONT_ASSET_CACHE = 'maomao-font-assets-v1';
+function cacheablePublicResponse(response) {
+  return !!(response && response.ok && !response.redirected &&
+    !/(?:^|[,\s])(?:no-store|private)(?:[,\s]|$)/i.test(
+      String(response.headers && response.headers.get('cache-control') || '')));
+}
+// Navigation HTML must not cache a JSON/API/error payload with a 200 status.
+// Keep static image, script and style caching on its existing independent path.
+// Do not retain a stale HTML fallback in a JavaScript, CSS or image cache entry.
+function cacheableStaticAsset(response, request) {
+  if (!cacheablePublicResponse(response)) return false;
+  const path = new URL(request.url).pathname.toLowerCase();
+  const type = String(response.headers && response.headers.get('content-type') || '').toLowerCase();
+  if (/^text\/html(?:;|\s|$)/.test(type)) return false;
+  if (/\.css$/.test(path) || request.destination === 'style') return /^text\/css(?:;|\s|$)/.test(type);
+  if (/\.(?:js|mjs)$/.test(path) || request.destination === 'script') {
+    return /^(?:text|application)\/(?:javascript|ecmascript)(?:;|\s|$)/.test(type);
+  }
+  if (/\.(?:png|jpe?g|webp|gif|svg|avif|ico)$/.test(path) || request.destination === 'image') {
+    return /^image\//.test(type);
+  }
+  return true;
+}
+function cacheablePublicNavigationHtml(response) {
+  return cacheablePublicResponse(response) && /^\s*text\/html\s*(?:;|$)/i.test(
+    String(response.headers && response.headers.get('content-type') || ''));
+}
 // v196 release: sweep orphaned role-owned media refs during avatar cleanup.
 const APP_SHELL = [
   './',
   './index.html',
+  './account/account.js',
+  './account/ivory-entry.css',
+  './account/account.css',
+  './account/bootstrap.js',
+  './account/bootstrap.html',
+  './account/index.html',
+  './admin/admin-center.js?v=20261117-ui1',
+  './admin/admin-center.css?v=20261117-ui1',
+  './account/settings-link.js?v=1',
+  './account/manage.js',
+  './account/manage.css',
+  './shared/js/mao-account-scope.js?v=3',
   './tutorial/tutorial.html',
   './forum/forum.html',
   './forum/forum-detail.html',
@@ -146,8 +184,19 @@ self.addEventListener('install', event => {
         // 清单不可用时仍继续安装已有核心资源，不阻塞整个 PWA。
       }
 
-      const resources = Array.from(new Set(APP_SHELL.concat(pageEntries)));
-      await Promise.all(resources.map(url => cache.add(url).catch(() => undefined)));
+      // Only public sign-in/first-time setup HTML may be cached.
+      // Private app documents must always pass the Worker identity gate.
+      const resources = Array.from(new Set(APP_SHELL.concat(pageEntries)))
+        .filter(url => url === './account/index.html' || url === './account/bootstrap.html' ||
+          (url !== './' && url !== '/' && !/\.html(?:\?|$)/i.test(url)));
+      await Promise.all(resources.map(url => {
+        if (url === './account/index.html' || url === './account/bootstrap.html') {
+          return fetch(url, { cache: 'no-store' }).then(response => {
+            if (cacheablePublicNavigationHtml(response)) return cache.put(url, response);
+          }).catch(() => undefined);
+        }
+        return cache.add(url).catch(() => undefined);
+      }));
     }).then(() => self.skipWaiting())
   );
 });
@@ -178,52 +227,150 @@ self.addEventListener('fetch', event => {
   if (url.pathname.startsWith('/admin/') || url.pathname === '/api/admin/cloud' ||
       url.pathname.startsWith('/api/admin/cloud/')) return;
 
+  // Authenticated API responses are account-private; never store them in the shared origin cache.
+  if (url.pathname === '/api' || url.pathname.startsWith('/api/')) return;
+
   // User-imported fonts are cached once by font-loader.js and served as same-origin
   // font resources. Keep this cache separate from the versioned app-shell cache.
   const fontAssetPrefix = new URL('__maomao_fonts/', self.registration.scope).pathname;
   if (url.pathname.startsWith(fontAssetPrefix)) {
-    event.respondWith(
-      caches.open(FONT_ASSET_CACHE).then(function (cache) {
-        return cache.match(req).then(function (cached) {
-          return cached || new Response('', {
+    // CSS font requests do not carry custom fetch headers. The account ID is
+    // therefore part of ordinary-account font URLs and is matched against the
+    // current HttpOnly session before opening any account's CacheStorage.
+    event.respondWith((async function () {
+      try {
+        const relativeFontPath = url.pathname.slice(fontAssetPrefix.length);
+        const firstSegment = relativeFontPath.split('/')[0] || '';
+        let requestedAccountId = '';
+        try { requestedAccountId = decodeURIComponent(firstSegment); } catch (error) {
+          return new Response('', { status: 404, headers: { 'Cache-Control': 'no-store' } });
+        }
+        const hasAccountPath = /^MAO-[A-Z0-9]{12,24}$/.test(requestedAccountId);
+        const authHeaders = new Headers({ 'accept': 'application/json' });
+        const pageAccountContext = req.headers.get('x-mao-account-context');
+        if (pageAccountContext) authHeaders.set('x-mao-account-context', pageAccountContext);
+        if (hasAccountPath) authHeaders.set('x-mao-account-context', requestedAccountId);
+
+        const authResponse = await fetch('/api/accounts/me', {
+          method: 'GET',
+          credentials: 'same-origin',
+          cache: 'no-store',
+          headers: authHeaders
+        });
+        if (!authResponse.ok) {
+          return new Response('', {
             status: 404,
             headers: { 'Cache-Control': 'no-store' }
           });
+        }
+        const payload = await authResponse.json();
+        const account = payload && payload.account;
+        if (!account || !/^MAO-[A-Z0-9]{12,24}$/.test(String(account.id || ''))) {
+          return new Response('', {
+            status: 404,
+            headers: { 'Cache-Control': 'no-store' }
+          });
+        }
+
+        let cacheName;
+        if (account.role === 'super_admin') {
+          // Preserve the creator's existing unqualified font URLs and cache.
+          if (hasAccountPath) {
+            return new Response('', { status: 404, headers: { 'Cache-Control': 'no-store' } });
+          }
+          cacheName = FONT_ASSET_CACHE;
+        } else {
+          // A stale tab A must never resolve its font URL through account B's cookie.
+          if (!hasAccountPath || requestedAccountId !== account.id) {
+            return new Response('', { status: 404, headers: { 'Cache-Control': 'no-store' } });
+          }
+          cacheName = '__mao_account_v1__' + encodeURIComponent(account.id) + '__' + FONT_ASSET_CACHE;
+        }
+
+        const cache = await caches.open(cacheName);
+        return await cache.match(req) || new Response('', {
+          status: 404,
+          headers: { 'Cache-Control': 'no-store' }
         });
-      })
-    );
+      } catch (error) {
+        return new Response('', {
+          status: 503,
+          headers: { 'Cache-Control': 'no-store' }
+        });
+      }
+    })());
     return;
   }
 
-  // 页面导航采用“缓存优先、后台更新”：
-  // 已缓存的应用立即打开，不让慢网络/VPN 阻塞页面；缓存未命中时才等待网络。
-  // 绝不把 index.html 当作其他应用的兜底页面，避免点开应用却重新显示桌面。
-  if (req.mode === 'navigate') {
+  // Protected app documents must reach the Worker on every navigation so
+  // account disable/revocation cannot be bypassed by a stale offline HTML cache.
+  // Never replace a protected URL with a cached login page when the network drops:
+  // that impersonates a logout and breaks relative resource resolution.
+  const accountPath = new URL('account/', self.registration.scope).pathname;
+  const isPublicAccountPage = url.pathname === accountPath.slice(0, -1) ||
+    url.pathname === accountPath ||
+    url.pathname === accountPath + 'index.html' ||
+    url.pathname === accountPath + 'bootstrap.html';
+  if (req.mode === 'navigate' && !isPublicAccountPage) {
     event.respondWith((async function () {
-      var cachedPromise = caches.match(req).catch(function () { return null; });
+      try {
+        // Always reach the Worker account guard; never reuse a previous 302.
+        return await fetch(req, { cache: 'no-store' });
+      } catch {
+        // No private HTML may be read from CacheStorage. Equally, do not inject
+        // public sign-in HTML into a private route just because fetch failed.
+        return new Response(
+          '<!doctype html><html lang="zh-CN"><meta charset="utf-8">' +
+          '<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">' +
+          '<title>暂时无法连接</title><body style="margin:0;padding:12vh 8vw;background:#fafafa;color:#333;' +
+          'font:15px/1.8 -apple-system,BlinkMacSystemFont,sans-serif">' +
+          '<h1 style="font-size:19px;font-weight:500">连接暂时中断</h1>' +
+          '<p>登录状态尚未确认，没有退出账号。请恢复网络后重新打开当前页面。</p>' +
+          '<button onclick="location.reload()" style="padding:9px 20px;border:1px solid #bbb;' +
+          'border-radius:9px;background:#fff;color:#333">重新连接</button></body></html>',
+          { status: 503, headers: { 'Content-Type': 'text/html; charset=UTF-8',
+            'Cache-Control': 'no-store', 'Retry-After': '5' } }
+        );
+      }
+    })());
+    return;
+  }
+
+  // The public sign-in pages are network-first to prevent stale layouts after
+  // an update. Offline fallback is limited to these public pages; never app HTML.
+  // Non-navigation HTML must still pass the Worker account gate. A script
+  // may fetch app HTML without a navigation, and cached account-injected meta
+  // tags from a different login must never be reused across users.
+  if (!isPublicAccountPage && (url.pathname === '/' || /\.html$/i.test(url.pathname))) {
+    event.respondWith(fetch(req, { cache: 'no-store' }));
+    return;
+  }
+
+  if (req.mode === 'navigate' && isPublicAccountPage) {
+    event.respondWith((async function () {
       var cacheWritePromise = null;
-      var networkPromise = fetch(req).then(function (response) {
-        if (response && response.ok) {
+      var networkPromise = fetch(req, { cache: 'no-store' }).then(function (response) {
+        if (cacheablePublicNavigationHtml(response)) {
           var copy = response.clone();
-          // 写回缓存单独成 Promise：失败只影响缓存，不影响已成功的网络响应。
           cacheWritePromise = caches.open(CACHE_NAME)
             .then(function (cache) { return cache.put(req, copy); })
             .catch(function () { return undefined; });
         }
         return response;
-      }).catch(function () {
-        return null;
-      });
+      }).catch(function () { return null; });
 
-      // 后台生命周期必须覆盖“取网络 + 打开缓存 + 写入缓存”的完整异步过程。
-      var updatePromise = networkPromise.then(function () { return cacheWritePromise; });
-      event.waitUntil(updatePromise.then(function () { return undefined; }));
-
-      var cached = await cachedPromise;
-      if (cached) return cached;
+      // Keep a successful cache write alive, but show fresh HTML immediately.
+      event.waitUntil(networkPromise.then(function () { return cacheWritePromise; })
+        .then(function () { return undefined; }));
 
       var fresh = await networkPromise;
       if (fresh) return fresh;
+
+      // Only when the network genuinely fails, show a cached public sign-in.
+      var cached = await caches.open(CACHE_NAME).then(function (cache) {
+        return cache.match(req);
+      }).catch(function () { return null; });
+      if (cacheablePublicNavigationHtml(cached)) return cached;
 
       return new Response('此页面暂时无法连接，请检查网络后重试。', {
         status: 503,
@@ -250,17 +397,22 @@ self.addEventListener('fetch', event => {
   }
 
   // 静态文件缓存优先，并在后台更新缓存。
-  event.respondWith(
-    caches.match(req).then(cached => {
-      const fresh = fetch(req).then(response => {
-        if (response && response.ok) {
-          const copy = response.clone();
-          caches.open(CACHE_NAME).then(cache => cache.put(req, copy));
-        }
-        return response;
-      }).catch(() => cached);
-      return cached || fresh;
-    })
-  );
+  const update = caches.open(CACHE_NAME).then(async cache => {
+    const cached = await cache.match(req).catch(() => null);
+    let write;
+    const fresh = fetch(req).then(response => {
+      if (cacheableStaticAsset(response, req)) {
+        write = cache.put(req, response.clone()).catch(() => undefined);
+      }
+      return response;
+    }).catch(() => null);
+    return { cached, fresh, updateDone: fresh.then(() => write) };
+  }).catch(() => ({ cached: null, fresh: fetch(req).catch(() => null) }));
+  event.waitUntil(update.then(({ updateDone }) => updateDone));
+  event.respondWith(update.then(async ({ cached, fresh }) => {
+    return cacheableStaticAsset(cached, req) ? cached : await fresh || new Response('', {
+      status: 503,
+      headers: { 'Cache-Control': 'no-store' }
+    });
+  }));
 });
-

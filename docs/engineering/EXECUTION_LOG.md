@@ -2,6 +2,117 @@
 
 > Release instructions: always read the latest main [RELEASE_POLICY.md](RELEASE_POLICY.md). Historical workflow names, versions, and checkpoints are not active instructions.
 
+## 2026-11-28｜ACCOUNT-001 主线整合与账号隔离验收（PR #290，F4）
+
+- 当前主线 `5512689cb842d38441a96e23beeb3f8a5d2622b8` 已包含在远端双父提交 `c37878814e627eec91bb162fe4cb4a9e1822cc25` 中。另一父提交为原账号 HEAD `351b96c73e34854a22b6210cc22a325478ea511c`。原合并未重做。同步并保留了后续远端测试提交 `0393329b6f13eff8d6c9bc8f5d0843ef20f84600` 与 `41e0750e83e5d0ea0307c569866cbc18254847bd`。本轮修复代码提交为 `8a7436b3e0ec4d092d91946114ada3ee7543a123`。
+- 用原账号 HEAD 与当前 main 重新试合，确认六个原冲突文件为 `EXECUTION_LOG.md`、`package.json`、`sw.js`、`chat-regression-contract.test.mjs`、`icon-presets-contract.test.mjs`、`pwa-navigation-cache.test.mjs`。双父提交已处理上述文本冲突。随后补回遗漏的 SW 条目并修正相关行为及测试。
+- 共享文件复核覆盖桌面、账号和管理员入口、Worker 鉴权、构建与测试命令、PWA 和历史记录。桌面普通账号移除管理员磁贴，继续由 Worker/API 独立执行权限检查。保留 main 的 `requireActiveAdmin` 导出、全部 `eng:*`、CI、聊天合同和历史日志。修复私有 HTML 条件请求复用旧响应的问题。已确认账号状态触发不可缓存的登录跳转，身份服务异常保持 503。
+- 恢复 main 的 ROLE-MIND 和当前烹饪脚本预缓存条目。缓存版本从 #290 的 v240 提升到 v312。查得 main 为 v206、#299 为 v284、在线 QA [源码回执](https://preview.mao520.com/qa-build-receipt.json) 为 `4b49c0a95ea8cfedc8aa2007c061a1f6f6771431`（源码 v311）。仅允许合格的公开账号 HTML 离线回退。私有页面联网复验，私有 API 和管理员页面走服务器，旧 Shell 缓存清理保留账号字体缓存。
+- #299 仍以原 #290 分支为 Base。检查时其 HEAD 为 `cf440666a47f5443385c2937cb14faa698d3e46a`，是在线 QA 回执的祖先。它与 #290 的共同祖先为 `4a5237784a15a4dea081394ab0c46d670f493986`，与当前 main 的共同祖先为 `1cde356c77957c1a202ea6bed7212cb067382fff`。对 #299/head 与本轮代码提交进行本地三方试合，得到 34 处冲突，包括身份、会话、PWA、包命令和功能模块。后续应由 QA 协调者基于当时的在线回执逐项整合，保留 QA 已有番外、主题工作台、旧 Shell 恢复和发布保护，以及 #290/main 的管理员鉴权导出及 GOV-006。#299 的旧委托 403 仍用于关闭直接注册、密码变更及未列入允许范围的管理操作。保留该限制，允许通过唯一隔离身份服务代理经过身份与角色核验的操作。此次代码在 QA 身份服务确认已配置、已初始化且创始人永久 ID 一致后才传递密码或会话凭据。线上绑定与实际数据隔离仍待验证。
+- Node `22.23.5`、`npm ci` 后，`test:account:ui-candidate` 86/86，其内 `test:account:release-gate` 33/33、`test:account:registration-persistence` 4/4。管理员诊断和委托权限 70/70。Vite 构建和构建后资产隔离 3/3。导航 11/11、Worker 缓存生命周期 8/8、教程 14/14、桌面／字体／论坛合同 40/40。Chromium 用本地 Vite 产物、真实 Worker 路由和内存 SQLite 验证普通账号管理员页面和 API 拒绝、001 管理中心、375/390/430 触控、账号切换存储隔离、离线私有文档 503、浏览器重启后拒绝到期会话。管理员诊断 Chromium 套件独立通过。测试均使用合成账号。
+- `test:chat:contract` 249/269。当前 main 同环境对照为 248/269。本轮解决了 Worker 的原路由和私有资源校验头合同，本轮剩余 20 项在 main 也失败，涉及上下文召回、群聊、足迹、角色提示和聊天加号菜单等合同。保留全部合同，尚不满足完整验收。GOV-006 冲突扫描完成，173 个开放 PR 中检出共同文件；合并与 QA 组批仍须核对文件归属。未验证在线 QA 登录、真实绑定、Android/iOS 真机和恢复演练。此轮只维护原草稿分支，未修改 #299，未合并或部署，也未接触正式身份、存储或钱包数据。
+
+## 2026-11-17｜BUG-ADMIN-QA 第六阶段 · 手机端页面收口（排队第 3 项）
+
+- **用户优先级**：首要修复管理中心页面本身，尽量在 QA 整合前把 375/390/430px 手机布局、加载状态、按钮可点击性及错误恢复做完整；禁止任何模拟时间/网络/电量状态栏。继续只在原账号 PR #290 修补，用户发出「3号执行」前不得写 QA #299、合并或部署。
+- **布局重整（`admin/admin-center.html`、`admin/admin-center.css`）**：去掉重复英文眉题和无意义盾牌/列表头像图形，压缩手机首屏顶部和大型介绍卡，把独立统计卡收为轻量单排统计区，保留全部管理入口和 001 权限标识。搜索、刷新、标签页、筛选、详情、复制、撤销、确认及重试控件增强触控高度；提高列表文字可读性。iPhone 端搜索和确认备注输入使用 16px，避免 Safari 聚焦自动放大；不添加假系统状态栏。
+- **UI 失败状态（`admin/admin-center.js`）**：账号和邀请码列表分别维护失败状态并显示可重试文案；`refreshAll` 使用 `Promise.allSettled`，一方接口报错不再抹掉另一方成功读取内容，也不把未知账号状态伪装成 0 个用户。身份探针失败时明确显示尚未验证而非永久「正在读取」。从邀请码进入账号详情时，若用户不存在则显示恢复提示而不是无限 loading。错误重试按钮再次遇到异常也显示错误，不产生未处理 rejection。
+- **响应可信性**：新增 `verifiedDirectoryPayload` 严格核对 accounts/invites/audit 列表和分页字段；API HTTP 200 但缺失数组、游标或页码时不再显示「暂无记录」，而是反馈真实异常且允许刷新。
+- **忙状态交互**：保持标签页、状态和审计筛选按钮在网络请求期间可操作；将点击排队为最近一次条件，防止用户看到按钮已选中但内容未更新。危险账号写操作、分页和刷新仍防重复提交；原有「确认对象不可串号」安全修复保持有效。
+- **PWA 防旧缓存**：管理中心 HTML 的 CSS/JS URL 使用 `?v=20261117-ui1`；在本 PR #290 旧 SW v239 基线上升级到 `phone-app-pwa-v240`，对应预缓存同步。**实际唯一 QA #299 缓存基线高于 #290，整合时必须在 #299 最新缓存版本上继续递增，并只合入管理中心两个资产的版本条目；禁止整份 SW 回退覆盖。**
+- **真实测试阻塞已修**：原 `tests/admin-center-ui.test.mjs` 早前插入回归时发生拼接损坏和大量重复代码，已经恢复为有效的 21 项测试并更新 `Promise.allSettled`/40px 移动点击契约；新增独立 `tests/admin-center-mobile-release.test.mjs` 10 项，其中真实函数抽取模拟确认目标、异常部分成功、错误重试、忙时锁定与过滤器排队及不可信分页；`package.json` 的 `test:account:ui-candidate` 已纳入新测试。
+- **回归证据**：从本分支最新 GitHub 文件实际执行这两套 Node test 的完整测试主体（隔离 V8 兼容夹具，模拟 `readFileSync` 和断言）**31/31 PASS**；`admin/admin-center.js`、`sw.js` 脚本语法 PASS；**这不等于原生 Node CLI、Vite、真实 Chromium、375/390/430 像素截图或 Android/iPhone 验收**。缺乏完整仓库本地检出环境/CI runner 回执，未做部署。
+- **交付边界**：原账号 PR #290 保留 Draft，等第 3 项时交由唯一 QA #299 当前负责人按语义整合，仅部署 `https://preview.mao520.com/` 真实验收。绝不更改 main、正式 Worker、生产账户数据或管理员永久 ID `MAO-OXHBDBWCOIHPBBYN`。
+
+
+## 2026-11-17｜BUG-ADMIN-QA 第五阶段 · 管理操作绑定确认对象（第 3 项候补）
+
+- **代码真实问题**：`admin/admin-center.js` 的账号停用／恢复／永久撤销确认弹窗，展示的是打开时 `selectedAccountId`，但最终提交时再次读取可变的全局 `selectedAccountId`。异步状态变化会导致「确认账号 A、执行账号 B」的错误目标风险。
+- **修复**：`createActionButton` 创建时绑定 `targetAccountId`，弹窗文案与实际写入 URL 使用同一固定 ID；在用户点击按钮及最终确认提交两个位置校验当前选中账号仍与目标一致，若已变化则拒绝操作且不向服务器发送管理写入。保留原确认弹窗、后台权限与其他账号功能。
+- **回归**：`tests/admin-center-ui.test.mjs` 新增实用例，实际抽取最新 `createActionButton` 源码，模拟 A 打开确认、切换 B、原弹窗提交被拒、旧按钮不可重新打开、B 新弹窗只提交 B。独立 V8 场景 8/8 断言 PASS；**完整 Node CLI / Vite / Chromium / 双端真机仍未执行，不能称正式交付**。
+- **交付队列**：按用户要求，该管理中心问题列为 **第 3 项**。修复只提交原账号 PR #290；在用户明确发出「3号执行」前，不主动写入当前正在整合的 QA PR #299，不合并、不部署，保留前两项的测试版窗口与正式环境。
+
+
+## 2026-11-17｜BUG-ADMIN-QA 第四阶段 · 真过期会话与免 Actions 交付路线
+
+- **已修复**：`admin/admin-center.js` 的 5 处明确 401 判断从仅 `ACCOUNT_SESSION_REQUIRED` 改为严格共享函数 `isConfirmedSessionExpired`，接受 `LOGIN_REQUIRED`（首次 `/api/accounts/me` 真过期时实际返回）和 `ACCOUNT_SESSION_REQUIRED`；普通 403/503 仍停留页面、允许重试。只改原 #290，未覆盖 QA 正在并行更新的文件。
+- **测试**：`tests/admin-center-ui.test.mjs` 新增运行实际分类函数的 7 种输入（包括过期账号、过期管理员、403/503、未知 401），全部 7/7 V8 模拟通过；5 处调用静态核查一致。**没有原生 Node/Vite/浏览器/真机通过回执**。
+- **构建路径已核查**：Cloudflare read-only 显示 `has_reached_build_minutes_limit=true`，原 QA Worker 未设置 Workers Builds 触发器；#299 已有 `scripts/qa-direct-release.mjs` 使用**完整工程环境中的 Node/Vite/Chromium + Wrangler 直接发布**，无需 GitHub Actions/Cloudflare Builds。该脚本严守原 #299 受控 HEAD、独立 QA Worker 与隔离身份库及部署前验收；严禁绕过测试门槛直接上传未经构建的资源。
+- **待交付**：现有 #299 负责人在原 QA 分支吸收所有 #290 修复，验证 Node/Vite/Chromium、375/390/430 及 Android/iOS，之后只更新 `preview.mao520.com`；正式版、真实账号数据和管理员 001 均保持不变。
+
+
+## 2026-11-17｜BUG-ADMIN-QA 第三阶段 · 修复 QA 身份服务误接生产风险
+
+- **真实发现的安全缺口**：账号管理代理在调用 `probeExistingIdentityAuthority` 时，仅检查 `connected/initialized/configured`。探针自身不返回服务声明的 `qaIsolatedAuthority` 与 `qaExpectedFounderId`，因此注释所说「验证独立 QA 身份库」在代码层实际上没有实现；独立 Worker 名称环境变量不足以证明底层服务实际指向隔离库。
+- **已提交到原 #290**：
+  - `worker/lib/identity-bridge.js`：把服务自身的 `qaIsolatedAuthority`（严格布尔）和 `qaExpectedFounderId` 从私有带密钥的 probe 返回给调用方；不改变其旧有 connected/initialized/configured 字段。
+  - `worker/lib/account-auth.js`：管理接口只在 `connected/initialized/configured`、`qaIsolatedAuthority === true`、`qaExpectedFounderId === MAO_EXPECTED_FOUNDER_ID` 全部符合时放行，否则不向身份服务发送敏感管理读写。
+  - `tests/account-identity-bridge-probe.test.mjs`：显式验证隔离字段和错误标记。
+  - `tests/account-qa-admin-proxy.test.mjs`：补充实际探针必需的 32 字符以上内部桥接测试密钥，并新增“错误创始管理员 ID 禁止读写”回归。此前测试夹具缺密钥，无法代表原生 Node 成功。
+- **验证**：使用 GitHub 提交后的**真实** `identity-bridge.js` + `account-auth.js` 联合源码，以隔离 V8 兼容环境验证 7/7 场景通过：合法隔离 QA 查询/写入均可达、身份服务非隔离/永久 ID 不一致禁止转发、非超级管理员/关开关/越权路由均拒绝。未执行原生 Node CLI、Vite、Chromium 和真机，不得称整体测试已通过。
+- **交付门禁**：当前 #299 同时由其他窗口更新，不并行写其功能文件；必须由唯一 QA 负责人在当前 head 上按语义吸收上述 4 文件改动，再做真实 Node/Vite/浏览器和独立身份库验收后仅部署到 `preview.mao520.com`。严格禁止把该测试桥接路径指向正式账号库；生产管理员 001 永久 ID `MAO-OXHBDBWCOIHPBBYN` 不变。
+
+
+## 2026-11-17｜BUG-ADMIN-QA 第二阶段 · Worker + 全局会话守卫失效循环
+
+- **定位到同一现象的另外两处真实路径**：
+  1. `worker.js` 的受保护 HTML 会话门禁对 403、5xx、读取失败（以及未绑定 CLOUD_DB）曾以 302 导往登录入口，网络或身份服务短暂不可用会被误判为退出登录。
+  2. `shared/js/mao-account-scope.js` 的每 30 秒/页面回焦会话复核把任何非正常响应（含 403/503/异常 JSON）都重定向到账号入口；尤其 QA 管理接口错误可能在应用后台/前台交替时诱发重复授权页面。
+- **代码修复（限原 PR #290 分支，未触碰 QA #299 或 main）**：
+  - `worker.js`：只有确定 401、账号禁用 403 或权威身份变更 403 才跳对应登录/禁用/切换入口；服务故障/未绑定 DB/身份响应异常返回 `503` 无缓存安全提示页，不加载任何私人 HTML。
+  - `shared/js/mao-account-scope.js`：会话有效或已切换/停用/401 的真实证据仍正常处理；普通 403、5xx、JSON 异常不再伪造退出。所有账号级 API 继续由服务端验证，未减弱权限。
+  - `sw.js` 和 `worker.js` 的账号隔离脚本资源 URL 同步升级到 `?v=3`；**原 #290 PWA 缓存 v238 → v239。QA #299 已是 v241，整合时必须在 #299 基线上升为 v242 或更新缓存名，绝对不能用 #290 的整份旧 SW 替换 #299**。
+  - `tests/worker-page-auth-runtime.test.mjs` 与 `tests/account-storage-isolation.test.mjs` 增加 403、503、无身份库、身份变化、无私有 HTML 回退和 PWA 版本断言。
+- **验证回执**：隔离 JS V8 实际执行 #290 的 `worker.js` 主入口 **6/6 PASS**；隔离 JS V8 实际执行账号会话复核函数 **9/9 PASS**（含网络异常、401、403、503、切换 ID）。另做资源路径/源码条件静态检查 **9/9 PASS**。这些是代码仿真，不等价原生 Node test、Vite、Chromium、Android 或 iPhone。
+- **QA 入口额外风险**：唯一自定义测试域名 `preview.mao520.com` 正常指向 QA Worker，但 #299 当前 `account/account.js` 的 `isKnownQaHost` 仅匹配旧 `maomao-aw-qa-20261114.miamor520000.workers.dev`。QA 整合窗口需把自定义域名纳入相同的初始「禁止重复注册／身份未验证前禁止提交登录」保护，不能迁就旧 Worker 域名作为额外测试入口。保持现有 #299 较新的账号 UI 代码，不要用 #290 旧版 `account/account.js` 整份覆盖。
+- **遗留硬阻塞**：无法在此会话的容器中获取完整私有仓库构建产物；连接的 GitHub Actions 没有有效 runner 回执，需在实际含 Node/Vite/Chromium 的完整 QA 工作区进行执行。#299 与 #290 当前 head 分歧，合并需谨慎处理 worker/admin/账号测试/package.json/sw.js 的逐文件重叠，同时保留 #299 v241 安全 SW 和番外功能。
+- **下步交付**：原 #299 负责窗口在冻结结束后逐项吸收 #290 最新补丁，运行完整 Node/构建/浏览器验收，仅部署 `https://preview.mao520.com/`；用户在现有 Android 真机回归「管理中心 → 切换标签 → 返回桌面 → 再进」且不误退出后可宣布该 Bug 完整交付。生产身份、钱包、真实数据保持不动。
+
+
+## 2026-11-17｜BUG-ADMIN-QA · 管理中心登录循环（PR #290）
+
+- **视频现象**：测试版已登录创始管理员，从桌面进入管理中心时列表长时间显示「正在读取账号」，随后自动返回账号授权页；再进入小手机又可复现。
+- **源码根因**：委托模式 `worker/lib/account-auth.js` 无条件拒绝非 social 管理接口 403，同时 `admin/admin-center.js` 在五处把这些 403 视为退出登录，自动 `location.replace`。实际 QA 设置中，隔离服务绑定指向 `maomao-identity-core`，开关 `MAO_DELEGATED_ADMIN_MANAGEMENT_ENABLED=true`。
+- **修复**：严格白名单、只在原创始管理员会话与隔离身份服务只读核验通过时，将 QA 管理接口经内部绑定代理；不转发 Cookie/Set-Cookie，不重试结果不确定的写请求；修正管理员会话 `account_id` 核对；管理中心只对明确 `401 + ACCOUNT_SESSION_REQUIRED` 导回登录。其余状态保留页面显示错误与重试。
+- **本轮相关文件**：`worker/lib/account-auth.js`、`admin/admin-center.js`、`tests/account-qa-admin-proxy.test.mjs`、`tests/admin-center-ui.test.mjs`、`package.json`。
+- **回归**：新增 Node `test:account:release-gate` 用例由 5 扩到 9 项（尚无 Node CLI 成功回执）；本轮从原 PR #290 实际源文件运行 V8 内存模拟 **10/10 PASS**，覆盖允许/拒绝、非管理员、隔离权威失效、403、异常响应、未确认写请求与撤销会话；这不等于完整 Node/Vite/Chromium/手机通过。
+- **云端只读核对**：Cloudflare 已确认 `preview.mao520.com` 绑定唯一 `maomao-aw-qa-20261114`；该 Worker 的 `MAO_IDENTITY_AUTHORITY` Service Binding 指向独立 `maomao-identity-core`，隔离身份服务设置 `MAO_QA_ISOLATED_IDENTITY_CORE=true`、`MAO_QA_FOUNDER_ID=MAO-OXHBDBWCOIHPBBYN`。测试版最近部署为 2026-11-16 21:19 UTC，早于本 Bug 修复提交，因此线上尚未验证。
+- **整合阻塞**：原 PR #290 已提交；现有唯一 QA PR #299 与 #290 分支已分歧（#299 截止核对时 Draft、`mergeable=false`），#299 中仍含旧的 403 拦截。遵守集中 QA 流程，暂不直接写 #299，也不新建 PR。交由当前 QA 负责人做最小范围代码整合和冲突消解，优先检查 `worker/lib/account-auth.js`、`package.json`，保留 #299 其他更新。
+- **验收与发布门禁**：隔离身份安全只读核对、`npm ci && npm run build`、`npm run test:account:ui-candidate`、`npm run test:account:release-gate`、Chromium/Android/iOS 登录→管理中心→返回→重新进入（含异常 API 测试），再部署到唯一 `https://preview.mao520.com/` 请用户验收。正式版 `main`、管理员 001、正式存储均不更改；不得提前称完成。
+
+## 2026-11-16｜PR #290 账号安全专项 · 恢复教程门禁
+
+- **范围**：在原 #290 分支修复实际代码/合并候选，不更新生产 Worker 或账号数据；未向 main 合并。
+- **身份安全**：真实 Node 22 专项 `node --test tests/account-cutover-guard.test.mjs` 为 **6/6 PASS**，拒绝把 `nonPreview='false'` 或非 `super_admin` 身份源误认为合格管理员权威。正式库只读确认 3 个账号、1 个启用 super_admin，永久 ID 为 `MAO-OXHBDBWCOIHPBBYN`；不能由账号行存在推断密码、旧会话或恢复已验收。
+- **确认的代码层阻塞**：`.github/workflows/tutorial-regression.yml` 会在 PR 修改用户界面而未更新 `tutorial/tutorial.js` 时明确报错。PR #290 曾修改 `index.html`、`settings/settings.html` 而没有同步教程。现已增补 **真实账号登录/账号管理 QA 指引**及 `tests/tutorial-page-contract.test.mjs` 契约断言，修复该工作流的文件变更要求；完整教程测试尚未运行。
+- **GitHub Actions 基础设施阻塞**：早先失败 run 创建后约 2 秒结束，jobs 没有 steps，日志 BlobNotFound；代码测试实际上未被运行。暂不能证明到底是额度、计费、runner 还是其他组织策略阻断，禁止重复触发并冒充代码失败。
+- **后续**：在有完整私有仓库的执行环境跑 `npm ci`、`npm run test:account:ui-candidate`、`npm run test:tutorial`、`npm run build`，修真实失败；确认 QA 与正式账号认证隔离后才能更新唯一现有 QA。正式发布仍须单独批准。
+
+## 2026-11-16｜PR #290 QA 身份网关 readiness 探测漏洞修复
+
+- **问题已实际复现**：实际部署的 `maomao-001-identity-gateway-20261114` 对 `GET /api/admin/bootstrap/status` 也要求服务端 `x-mao-identity-bridge` 密钥；原 `worker/lib/identity-bridge.js` 的 `probeExistingIdentityAuthority()` 发送匿名请求，健康网关必返回 403，导致 QA 的 `signInReady` 永远不能被正确核验。
+- **原 PR 代码修复**：`worker/lib/identity-bridge.js` 改为仅在 `MAO_IDENTITY_MODE=delegated_preview`、`MAO_IDENTITY_BRIDGE_SECRET` 长度至少 32 且 service binding 可用时，走 Worker 内部 `MAO_IDENTITY_AUTHORITY.fetch`，在请求头加上网关必需的密钥；不放 URL、页面、Cookie，不直接调用生产公网 HTTP。缺失密钥、拒绝/错误响应、离线均 fail closed。对应 commit `c58987c1add392eb982ec556e5e3b209b1100bf6`。
+- **测试**：新增 `tests/account-identity-bridge-probe.test.mjs`（合成绑定+合成密钥，4 组测试）；增加到 `npm run test:account:release-gate` 中。使用 Node 22.16.0 在独立目录对**逐行与仓库同一探测函数**的隔离副本执行新 4 组测试：**4/4 PASS，exit 0**；用最新原 GitHub 源码提取的函数在 V8 绑定模拟下额外检查 7 个情况 **7/7 PASS**。这不是整仓 `npm ci`、Vite 或浏览器验证，不得报成完整通过。
+- **不能安全直接切换本地认证**：真实 QA 数据库含原管理员影子账号；被委托导入的密码哈希按代码故意设为不可登录占位，因此简单切换 `MAO_IDENTITY_MODE` 会使账号无法登录。独立 `maomao-identity-core` 当前仅 1 个 DO 实例，经只读 SQL 核查 `mao_accounts=0`、`mao_account_sessions=0`；它也不能充当现成的登录服务。
+- **仍有真正的部署链路阻塞**：现运行 gateway 的 `FOUNDER_AUTHORITY_ORIGIN` 仍硬编码历史 `qa-phone-founder-001-keyreset-20261111-mao...`，当前账户对该 Worker 的 settings/deployments 均返回 404。不能把网关盲目改为正式 `mao-auth-preview`，这会产生生产会话/账号数据耦合。未改任何 Cloudflare 部署、密钥、数据库、正式/QA Worker。
+- **下一步**：在不复制正式密码/用户数据的前提下准备并验收 QA 专有认证权威，独立真实执行 Node/Vite/Chromium 再更新现有唯一 QA。其他开发任务不受此阻塞冻结。
+
+## 2026-11-16｜原 PR #290：隔离 QA 身份源初始化补丁（尚未部署）
+
+- **根因证据**：现有 QA `mao_account_audit` 只有 `identity_authority_import=1`，为不可直接本地登录的委托影子身份；其独立 `maomao-identity-core` DO 为 `0` 账号/`0` 会话，并无 bootstrap Secret/pepper。旧 gateway 仍转发至当前账户找不到的历史 Worker。15 个现有 Worker 中没有另一个已准备好的隔离 QA 身份权威。
+- **实际代码**：新增 `worker/lib/qa-identity-bootstrap.js`，在现有 `worker/lib/account-auth.js` 里提供默认关闭的 QA 专有一次性初始化通道：仅 QA workers.dev origin、需有效影子管理员与用户名、目标核心需证明是未初始化的 QA-only authority 且目标永久 ID 完全一致。不能复制正式密码/哈希、不允许生产域名初始化，不能接受目标核心的 Cookie，初始化后重新登录 QA。
+- **前端**：`account/bootstrap.js` 仅在服务器明确 `qaSetupAllowed=true` 时允许委托模式初始化，否则原有拒绝规则保留；QA 初始化成功后回登录页而非假装已经有管理员登录会话。`account/bootstrap.html` 为 QA 显示与旧 `mao` Preview 不同的配置说明，提示不得修改正式密钥。
+- **验证**：独立 Node v22.16.0 从提交的 `qa-identity-bootstrap.js` + 新回归 `tests/qa-identity-bootstrap.test.mjs` 实测 **8/8 PASS**；加既有账号安全与网关探测子集 **18/18 PASS**。GitHub Blob 与隔离环境文件严格一致：`1a30c1edc13cc9327aa83348b4cbba4160517e52`、`7f5cc0d1bdf9450c395cddd719783ce55cb34818`。`account/bootstrap.js` V8 只做语法解析成功。`npm ci`/整仓 Node/Vite/Chromium **NOT RUN**。
+- **部署边界**：所有 QA 初始化配置和后端代码此刻均**未部署**，新标志默认关闭；Cloudflare 账号/库/Worker/Secrets 没有写入。配置与验收精确步骤见 `docs/engineering/QA_ISOLATED_IDENTITY_20261116.md`。不得为测试而改正式账号，不能因 GitHub Actions 无 runner 就绕过构建。
+- **下一步**：在可信完整工程环境做编译、账号与 PWA 浏览器测试；先核验唯一 QA 的 Service Binding 指向独立 `maomao-identity-core`，只在 QA-only 环境配置凭据和空库 founder ID，单次初始化后关闭 setup 标志，保留影子账号 ID 对应的现有测试数据，并由用户真实验收。
+
+## 2026-11-28｜ACCOUNT-001｜PR #290 主线兼容整合
+
+- 以当前 main `5512689cb842d38441a96e23beeb3f8a5d2622b8` 为第二父提交，保留原 PR #290 的账号/管理员实现及 49 个文件变更；整合树从 main 的完整源码树构建，避免旧分支历史缺失导致 main 新增的 GOV-006、ROLE-MIND-001 和其他模块文件被删除。
+- 共享文件按当前 main 语义合并：保留 `eng:*` 工具入口与账号测试命令、账号 SW 私人导航/API 缓存保护与管理员路由绕缓存、管理员服务端鉴权导出、最新桌面及聊天回归合同。
+- #290 的 no-cors fail-closed 账号请求保护保留；与 #299 的最新会话探测保护后续逐项合并，不使用旧文件覆盖。
+- 本轮为 F4 账号/身份/Service Worker 整合。原生 Node、Vite、Chromium、真机及固定 QA 发布均未执行；未修改正式 main、正式 Worker、身份库、账号或钱包数据。
+
 This is the durable checkpoint for owner-assigned, multi-step work. Update it after meaningful milestones and before ending a session.
 
 ## 2026-11-22 · ARCH-002 · Chat HTTP error body timeout

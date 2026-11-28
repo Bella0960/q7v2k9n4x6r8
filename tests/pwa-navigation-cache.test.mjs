@@ -8,7 +8,8 @@ const read = (file) => fs.readFileSync(path.join(root, file), 'utf8');
 const serviceWorker = read('sw.js');
 const desktopScript = read('desktop/js/script.js');
 const homePage = read('index.html');
-assert.match(serviceWorker, /const CACHE_NAME = 'phone-app-pwa-v206'/);
+const pwaVersion = Number(serviceWorker.match(/^const CACHE_NAME = 'phone-app-pwa-v(\d+)'/m)?.[1] || 0);
+assert.ok(pwaVersion >= 312, 'account candidate must advance beyond the verified QA cache generation');
 const viteConfig = read('vite.config.js');
 
 test('build emits a manifest containing every HTML entry point', () => {
@@ -44,16 +45,21 @@ test('every desktop app shortcut is emitted as a real HTML page in the productio
     'private admin HTML must not appear in the public PWA precache manifest');
 });
 
-test('service worker precaches all HTML routes listed by the build manifest', () => {
+test('service worker precaches static assets and only public account HTML from the shell', () => {
   assert.match(serviceWorker, /fetch\('\.\/pwa-pages\.json'/);
   assert.match(serviceWorker, /APP_SHELL\.concat\(pageEntries\)/);
+  assert.match(serviceWorker, /url === '\.\/account\/index\.html' \|\| url === '\.\/account\/bootstrap\.html'/);
+  assert.match(serviceWorker, /cacheablePublicNavigationHtml\(response\)/);
   assert.match(serviceWorker, /cache\.add\(url\)/);
 });
 
-test('mobile navigation serves cached app pages before waiting for network', () => {
-  assert.match(serviceWorker, /var cachedPromise = caches\.match\(req\)/);
-  assert.match(serviceWorker, /if \(cached\) return cached/);
-  assert.match(serviceWorker, /event\.waitUntil\(updatePromise/);
+test('private mobile navigations always revalidate the account with Worker; only sign-in has offline fallback', () => {
+  assert.match(serviceWorker, /req\.mode === 'navigate' && !isPublicAccountPage/);
+  assert.match(serviceWorker, /return await fetch\(req, \{ cache: 'no-store' \}\)/);
+  assert.match(serviceWorker, /if \(req\.mode === 'navigate' && isPublicAccountPage\)/);
+  assert.match(serviceWorker, /var cached = await caches\.open\(CACHE_NAME\)[\s\S]*?cache\.match\(req\)/);
+  assert.match(serviceWorker, /cache: 'no-store'/);
+  assert.match(serviceWorker, /status: 503/);
 });
 
 

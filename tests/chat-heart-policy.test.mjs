@@ -157,6 +157,6 @@ test('chat detail wires speaker identity, verified saves, scoped reads, and the 
   assert.match(detail, /ChatHeartPolicy\.readHistory/);
   assert.match(detail, /ChatHeartPolicy\.buildPrompt/);
   assert.ok(serviceWorker.includes('chat-heart-policy.js?v=20261126mind1'));
-  assert.match(serviceWorker, /phone-app-pwa-v206/);
+  assert.ok(Number(serviceWorker.match(/phone-app-pwa-v(\d+)/)?.[1]) >= 206);
   assert.ok(packageJson.scripts['test:chat:contract'].includes('tests/chat-heart-policy.test.mjs'));
 });

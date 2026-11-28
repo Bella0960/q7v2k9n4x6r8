@@ -11,6 +11,7 @@ function read(path) {
 
 const home = read('index.html');
 const serviceWorker = read('sw.js');
+const serviceWorkerVersion = Number(serviceWorker.match(/^const CACHE_NAME = 'phone-app-pwa-v(\d+)'/m)?.[1] || 0);
 const guideHtml = read('tutorial/tutorial.html');
 const chatDetail = read('chat/chat/chat-detail.html');
 const guideScript = read('tutorial/tutorial.js');
@@ -65,10 +66,10 @@ test('guide documents the merged chat features and correctly separates unverifie
   assert.match(guideScript, /此前的手机打不开反馈仍需在安装版和普通浏览器分别实测/);
 });
 
-test('all 29 desktop app shortcuts have a matching app guide and quick-open entry', () => {
+test('all 29 general desktop app shortcuts have a matching app guide and quick-open entry', () => {
   const tiles = [...home.matchAll(/data-href="([^"]+)" data-drag="(app_[^"]+)" data-name="([^"]+)"/g)]
     .map((match) => ({ path: match[1], id: match[2], name: match[3] }))
-    .filter((item) => item.id.startsWith('app_'));
+    .filter((item) => item.id.startsWith('app_') && item.id !== 'app_admin_center');
   const appGuideIds = [...guideScript.matchAll(/id:'(app-[^']+)'/g)].map((match) => match[1]);
   const appEntries = [...guideScript.matchAll(/\['([^']+)',\s*'([^']+\.html)',\s*'[^']+'\]/g)]
     .map((match) => ({ name: match[1], path: match[2] }));
@@ -129,7 +130,7 @@ test('tutorial workflow enforces a guide update when user-facing app pages chang
 });
 
 test('PWA app shell caches the full guide bundle and has a matching test command', () => {
-  assert.match(serviceWorker, /const CACHE_NAME = 'phone-app-pwa-v206'/);
+  assert.ok(serviceWorkerVersion >= 206, 'tutorial cache must not regress below v206');
   assert.ok(serviceWorker.includes("'./tutorial/tutorial.html'"));
   assert.ok(serviceWorker.includes("'./tutorial/tutorial.js?v=20261111v3'"));
   assert.equal(packageJson.scripts['test:tutorial'], 'node --test tests/tutorial-page-contract.test.mjs');
@@ -140,4 +141,21 @@ test('chat detail scripts parse so the conversation settings handler can bind', 
     .filter(([, attributes]) => !/\bsrc\s*=|\btype\s*=/.test(attributes));
   assert.ok(scripts.some(([, , source]) => /async function sendMsg\(/.test(source)));
   for (const [, , source] of scripts) new Function(source);
+});
+
+test('account release candidate guide documents the existing login path and QA safety boundary', () => {
+  assert.match(guideScript, /"id"\s*:\s*"account-qa"/);
+  assert.match(guideScript, /已有账号 · 登录/);
+  assert.match(guideScript, /管理员中心（QA 待验收）/);
+  assert.match(home, /data-href="admin\/admin-center\.html"[^>]* hidden>/);
+  assert.ok(existsSync(resolve(root, "admin/admin-center.html")));
+  assert.match(guideScript, /"href"\s*:\s*"\.\.\/account\/index\.html"/);
+  assert.match(guideScript, /本机备份不等于云端账号的可恢复备份/);
+  assert.match(guideScript, /不得对正式账号执行停用、重置或清空/);
+});
+
+test('creator admin shortcut is hidden by default and only enabled for the verified super admin', () => {
+  assert.match(home, /data-drag="app_admin_center"[^>]*hidden/);
+  assert.match(home, /roleMeta\.content === 'super_admin'/);
+  assert.match(home, /function configureCreatorAdminShortcut/);
 });

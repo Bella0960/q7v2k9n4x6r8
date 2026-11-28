@@ -29,6 +29,7 @@
   <style>
     /* ===== 添加挂件：跳转独立挂件管理页（desktop/widgets.html） ===== */
     .edit-add-btn { margin-right: 8px; }
+    [data-drag="app_admin_center"][hidden] { display: none; }
   </style>
 </head>
   <body class="maomao-home">
@@ -142,6 +143,14 @@
                     <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 1 1-4 0v-.09a1.65 1.65 0 0 0-1-1.51 1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 1 1 0-4h.09a1.65 1.65 0 0 0 1.51-1 1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 1 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 1 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>
                   </span>
                   <span class="app-name">设置</span>
+                  <span class="ds-del" title="移除">×</span>
+                </button>
+
+                <button class="app-card app-tile" type="button" data-href="admin/admin-center.html" data-drag="app_admin_center" data-name="管理中心" title="管理中心" hidden>
+                  <span class="app-icon">
+                    <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3 20 6v5c0 5-3.5 8.5-8 10-4.5-1.5-8-5-8-10V6z"/><path d="m8.5 12 2.2 2.2 4.8-5"/></svg>
+                  </span>
+                  <span class="app-name">管理中心</span>
                   <span class="ds-del" title="移除">×</span>
                 </button>
 
@@ -753,6 +762,42 @@
         while (currentLayout.pages.length <= pageIndex) currentLayout.pages.push([]);
         var anchor = currentLayout.pages[pageIndex].indexOf('app_settings');
         currentLayout.pages[pageIndex].splice(anchor >= 0 ? anchor + 1 : currentLayout.pages[pageIndex].length, 0, id);
+        saveLayout(currentLayout);
+      })();
+
+      // 管理中心是创作者独占应用。普通账号不保留该快捷方式；
+      // 超级管理员登录后将入口加入其现有桌面，不改变其他用户的布局。
+      (function configureCreatorAdminShortcut() {
+        var roleMeta = document.querySelector('meta[name="mao-account-role"]');
+        var isSuperAdmin = !!(roleMeta && roleMeta.content === 'super_admin');
+        var id = 'app_admin_center';
+        var tile = document.querySelector('[data-drag="' + id + '"]');
+        if (!tile) return;
+        if (isSuperAdmin) {
+          tile.hidden = false;
+          // A creator must always be able to open the management center.
+          // Older/custom layouts may have this new app ID in the removed bucket;
+          // that is not a visible desktop placement, so restore it next to Settings.
+          currentLayout.removed = (currentLayout.removed || []).filter(function (item) {
+            return item !== id;
+          });
+          var existsOnDesktop = (currentLayout.pages || []).some(function (page) { return page.indexOf(id) !== -1; })
+            || (currentLayout.dock || []).indexOf(id) !== -1;
+          if (!existsOnDesktop) {
+            var pageIndex = (currentLayout.pages || []).findIndex(function (page) { return page.indexOf('app_settings') !== -1; });
+            if (pageIndex < 0) pageIndex = 0;
+            while (currentLayout.pages.length <= pageIndex) currentLayout.pages.push([]);
+            var settingsIndex = currentLayout.pages[pageIndex].indexOf('app_settings');
+            currentLayout.pages[pageIndex].splice(settingsIndex >= 0 ? settingsIndex + 1 : currentLayout.pages[pageIndex].length, 0, id);
+          }
+        } else {
+          tile.remove();
+          currentLayout.pages = (currentLayout.pages || []).map(function (page) {
+            return page.filter(function (item) { return item !== id; });
+          });
+          currentLayout.dock = (currentLayout.dock || []).filter(function (item) { return item !== id; });
+          currentLayout.removed = (currentLayout.removed || []).filter(function (item) { return item !== id; });
+        }
         saveLayout(currentLayout);
       })();
 

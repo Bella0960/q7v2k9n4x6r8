@@ -19,6 +19,35 @@ import { createSchedulerGate } from './worker/lib/scheduler-gate.js';
 
 const INSTANCE_NAME = 'maomao-global';
 
+// Redirect only when the account store or central authority explicitly confirms
+// a missing/revoked session. Never cache this redirect as an app route response.
+function redirectToVerifiedLogin(url, reason = '') {
+  const target = new URL('/account/index.html', url);
+  if (reason === 'disabled') target.searchParams.set('disabled', '1');
+  if (reason === 'switched') target.searchParams.set('switched', '1');
+  return new Response(null, { status: 302, headers: {
+    location: target.href,
+    'cache-control': 'private, no-store, max-age=0',
+    vary: 'Cookie'
+  } });
+}
+
+function accountAuthenticationUnavailable() {
+  // A temporary identity-service failure is not proof that the user logged out.
+  // Never serve account-owned HTML when authority cannot verify the session.
+  return new Response(
+    '<!doctype html><html lang="zh-CN"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover"><title>MAO · 服务暂不可用</title></head><body style="margin:0;padding:12vh 8vw;color:#222;background:#f7f7f8;font:15px/1.8 -apple-system,BlinkMacSystemFont,sans-serif"><h1 style="font-size:20px;font-weight:500">暂时无法确认登录状态</h1><p>账号验证服务暂不可用，原有登录与数据没有被修改。请稍后重新打开此页面。</p></body></html>',
+    {
+      status: 503,
+      headers: {
+        'content-type': 'text/html; charset=UTF-8',
+        'cache-control': 'no-store',
+        'retry-after': '10'
+      }
+    }
+  );
+}
+
 async function injectAccountScope(response, account) {
   if (!response || !response.ok || !String(response.headers.get('content-type') || '').toLowerCase().includes('text/html')) {
     return response;
@@ -40,7 +69,7 @@ async function injectAccountScope(response, account) {
   const tags =
     '<meta name="mao-account-id" content="' + accountId + '">' +
     '<meta name="mao-account-role" content="' + (role === 'super_admin' ? 'super_admin' : 'user') + '">' +
-    '<script src="/shared/js/mao-account-scope.js?v=2" data-mao-account-scope></script>';
+    '<script src="/shared/js/mao-account-scope.js?v=3" data-mao-account-scope></script>';
   let injected = false;
   const html = source.replace(/<head\b[^>]*>/i, match => {
     injected = true;
@@ -206,7 +235,7 @@ export default {
     let authorizedAccount = null;
     if (isHtmlDocument && !isPublicAccountDocument) {
       if (!env.CLOUD_DB) {
-        return Response.redirect(new URL('/account/index.html', url), 302);
+        return accountAuthenticationUnavailable();
       }
       try {
         const stub = env.CLOUD_DB.get(env.CLOUD_DB.idFromName(INSTANCE_NAME));
@@ -216,32 +245,57 @@ export default {
         });
         const authResponse = await stub.fetch(authRequest);
         const authPayload = await authResponse.json().catch(() => ({}));
-        if (
-          !authResponse.ok ||
-          authPayload?.account?.status !== 'active'
-        ) {
-          const disabled = authPayload?.error?.code === 'ACCOUNT_DISABLED';
-          const target = new URL('/account/index.html', url);
-          if (disabled) target.searchParams.set('disabled', '1');
-          return Response.redirect(target, 302);
+        if (!authResponse.ok) {
+          const errorCode = authPayload?.error?.code;
+          const confirmedMissingSession = authResponse.status === 401 &&
+            ['ACCOUNT_SESSION_REQUIRED', 'LOGIN_REQUIRED'].includes(errorCode);
+          const confirmedBlockedOrSwitched = authResponse.status === 403 &&
+            ['ACCOUNT_DISABLED', 'IDENTITY_AUTHORITY_CHANGED'].includes(errorCode);
+          if (confirmedMissingSession || confirmedBlockedOrSwitched) {
+            return redirectToVerifiedLogin(url,
+              errorCode === 'ACCOUNT_DISABLED' ? 'disabled' :
+              errorCode === 'IDENTITY_AUTHORITY_CHANGED' ? 'switched' : '');
+          }
+          // An unexpected 401, transient 403 or identity-service 5xx does NOT
+          // establish logout. Fail closed with a no-store 503, not an entry redirect.
+          return accountAuthenticationUnavailable();
+        }
+        const accountStatus = authPayload?.account?.status;
+        if (accountStatus === 'pending_invite' ||
+            accountStatus === 'disabled' || accountStatus === 'revoked') {
+          // The central authority confirmed a real account that is not
+          // permitted to enter private pages. This is not a service outage.
+          return redirectToVerifiedLogin(url,
+            accountStatus === 'disabled' || accountStatus === 'revoked' ? 'disabled' : '');
+        }
+        if (accountStatus !== 'active') {
+          // Missing or unfamiliar identity data is not proof of logout.
+          return accountAuthenticationUnavailable();
         }
         authorizedAccount = authPayload.account;
         if (url.pathname.startsWith('/admin/') && authorizedAccount.role !== 'super_admin') {
           return Response.redirect(new URL('/index.html', url), 302);
         }
       } catch {
-        return Response.redirect(new URL('/account/index.html', url), 302);
+        return accountAuthenticationUnavailable();
       }
     }
 
     // html_handling="none" 时显式把站点根路径映射到构建后的首页（沿用 main 的路由修复）。
+    let assetRequest = request;
+    if (isHtmlDocument && authorizedAccount) {
+      const headers = new Headers(request.headers);
+      headers.delete('if-none-match');
+      headers.delete('if-modified-since');
+      assetRequest = new Request(request, { headers });
+    }
     if (url.pathname === "/" && request.method === "GET") {
       const indexUrl = new URL("/index.html", url);
-      const response = await env.ASSETS.fetch(new Request(indexUrl, request));
+      const response = await env.ASSETS.fetch(new Request(indexUrl, assetRequest));
       return authorizedAccount ? await injectAccountScope(response, authorizedAccount) : response;
     }
     if (env.ASSETS) {
-      const response = await env.ASSETS.fetch(request);
+      const response = await env.ASSETS.fetch(assetRequest);
       return isHtmlDocument && authorizedAccount
         ? await injectAccountScope(response, authorizedAccount)
         : response;
