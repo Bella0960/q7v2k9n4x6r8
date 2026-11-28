@@ -1976,13 +1976,15 @@ test('Service Worker navigation does not abort slow mobile page requests', () =>
 
 test('Cloudflare Worker gates private HTML and admin routes before asset access', () => {
   const worker = read('worker.js');
-  const guardStart = worker.indexOf('if (isHtmlDocument && !isPublicAccountDocument)');
-  const assetStart = worker.indexOf('if (url.pathname === "/" && request.method === "GET")', guardStart);
+  assert.match(worker, /const isProtectedDocument = isHtmlDocument && !isPublicAccountDocument;/);
+  const guardStart = worker.indexOf('if (isProtectedDocument) {');
+  const assetStart = worker.indexOf('if (env.ASSETS) {', guardStart);
   assert.ok(guardStart >= 0 && assetStart > guardStart);
   const guard = worker.slice(guardStart, assetStart);
   assert.match(guard, /new URL\('\/api\/accounts\/me', url\)/);
   assert.match(guard, /account\?\.status !== 'active'/);
-  assert.match(guard, /Response\.redirect\(new URL\('\/account\/index\.html', url\), 302\)/);
+  assert.match(guard, /privateRedirect\(new URL\('\/account\/index\.html', url\)\)/);
+  assert.match(worker, /function privateRedirect\(target\)[\s\S]*?status: 302,[\s\S]*?location: target\.href/);
   assert.match(guard, /url\.pathname\.startsWith\('\/admin\/'\) && authorizedAccount\.role !== 'super_admin'/);
 });
 

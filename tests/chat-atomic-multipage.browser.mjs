@@ -2,10 +2,15 @@ import assert from 'node:assert/strict';
 import http from 'node:http';
 import fs from 'node:fs';
 import path from 'node:path';
+import { fileURLToPath } from 'node:url';
 import { chromium } from 'playwright';
 
 const source = fs.readFileSync(new URL('../shared/js/phone/chat-history-atomic.js', import.meta.url), 'utf8');
-const repo = path.resolve(new URL('..', import.meta.url).pathname);
+// URL.pathname on Windows is "/C:/..."; resolving it as a filesystem path
+// produces "C:\C:\..." and every product-file request falls through to the
+// fallback HTML. Only scenario 18 navigates to a real chat page, so the
+// broken fixture stayed invisible while the injected-module scenarios passed.
+const repo = path.resolve(fileURLToPath(new URL('..', import.meta.url)));
 const server = http.createServer((req, res) => {
   const url = new URL(req.url, 'http://localhost');
   if (url.pathname === '/v1/chat/completions') {

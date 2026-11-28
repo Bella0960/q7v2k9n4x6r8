@@ -19,6 +19,14 @@ import { createSchedulerGate } from './worker/lib/scheduler-gate.js';
 
 const INSTANCE_NAME = 'maomao-global';
 
+function privateRedirect(target) {
+  return new Response(null, {
+    status: 302,
+    headers: { location: target.href, 'cache-control': 'no-store' }
+  });
+}
+
+
 async function injectAccountScope(response, account) {
   if (!response || !response.ok || !String(response.headers.get('content-type') || '').toLowerCase().includes('text/html')) {
     return response;
@@ -197,16 +205,19 @@ export default {
     }
     // Every MAO app document is server-gated. Only the account entry is public;
     // static assets remain readable, but account-owned APIs still enforce identity.
-    const isHtmlDocument = request.method === 'GET' &&
-      (url.pathname === '/' || url.pathname.toLowerCase().endsWith('.html'));
+    const isHtmlDocument = url.pathname === '/' || url.pathname.toLowerCase().endsWith('.html');
     const isPublicAccountDocument = url.pathname === '/account' ||
       url.pathname === '/account/' ||
       url.pathname === '/account/index.html' ||
       url.pathname === '/account/bootstrap.html';
+    const isProtectedDocument = isHtmlDocument && !isPublicAccountDocument;
+    if (isProtectedDocument && request.method !== 'GET' && request.method !== 'HEAD') {
+      return new Response(null, { status: 405, headers: { allow: 'GET, HEAD', 'cache-control': 'no-store' } });
+    }
     let authorizedAccount = null;
-    if (isHtmlDocument && !isPublicAccountDocument) {
+    if (isProtectedDocument) {
       if (!env.CLOUD_DB) {
-        return Response.redirect(new URL('/account/index.html', url), 302);
+        return privateRedirect(new URL('/account/index.html', url));
       }
       try {
         const stub = env.CLOUD_DB.get(env.CLOUD_DB.idFromName(INSTANCE_NAME));
@@ -223,30 +234,54 @@ export default {
           const disabled = authPayload?.error?.code === 'ACCOUNT_DISABLED';
           const target = new URL('/account/index.html', url);
           if (disabled) target.searchParams.set('disabled', '1');
-          return Response.redirect(target, 302);
+          return privateRedirect(target);
         }
         authorizedAccount = authPayload.account;
         if (url.pathname.startsWith('/admin/') && authorizedAccount.role !== 'super_admin') {
-          return Response.redirect(new URL('/index.html', url), 302);
+          return privateRedirect(new URL('/index.html', url));
         }
       } catch {
-        return Response.redirect(new URL('/account/index.html', url), 302);
+        return privateRedirect(new URL('/account/index.html', url));
       }
     }
 
-    // html_handling="none" 时显式把站点根路径映射到构建后的首页（沿用 main 的路由修复）。
-    if (url.pathname === "/" && request.method === "GET") {
-      const indexUrl = new URL("/index.html", url);
-      const response = await env.ASSETS.fetch(new Request(indexUrl, request));
-      return authorizedAccount ? await injectAccountScope(response, authorizedAccount) : response;
-    }
     if (env.ASSETS) {
-      const response = await env.ASSETS.fetch(request);
-      return isHtmlDocument && authorizedAccount
-        ? await injectAccountScope(response, authorizedAccount)
-        : response;
+      let assetRequest = request;
+      if (isHtmlDocument && authorizedAccount) {
+        const headers = new Headers(request.headers);
+        for (const name of ['if-none-match', 'if-modified-since', 'if-match', 'if-unmodified-since', 'if-range', 'range']) {
+          headers.delete(name);
+        }
+        assetRequest = new Request(request, { headers });
+      }
+      if (url.pathname === "/" && (request.method === 'GET' || request.method === 'HEAD')) {
+        const indexUrl = new URL("/index.html", url);
+        assetRequest = new Request(indexUrl, assetRequest);
+      }
+      if (isProtectedDocument && request.method === 'HEAD') {
+        assetRequest = new Request(assetRequest, { method: 'GET' });
+      }
+      const response = await env.ASSETS.fetch(assetRequest);
+      if (isHtmlDocument && authorizedAccount) {
+        if (response.status === 206 || response.status === 304 ||
+            (response.ok && !String(response.headers.get('content-type') || '').toLowerCase().includes('text/html'))) {
+          return new Response(null, { status: 503, headers: { 'cache-control': 'no-store' } });
+        }
+        if (!response.ok) {
+          return new Response(null, { status: response.status, headers: { 'cache-control': 'no-store' } });
+        }
+        const scoped = await injectAccountScope(response, authorizedAccount);
+        if (request.method === 'HEAD') {
+          return new Response(null, { status: scoped.status, headers: scoped.headers });
+        }
+        return scoped;
+      }
+      return response;
     }
-    return new Response('Not found', { status: 404 });
+    return new Response(request.method === 'HEAD' ? null : 'Not found', {
+      status: 404,
+      headers: isProtectedDocument ? { 'cache-control': 'no-store' } : undefined
+    });
   },
 
   async scheduled(controller, env, ctx) {

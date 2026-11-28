@@ -5909,14 +5909,15 @@
             const memoryContext = (typeof memorySystem !== 'undefined')
                 ? memorySystem.getAIContext() : '暂无实时状态';
 
-            // ===== 全局伴侣协议：所有角色与群聊统一读取同一个应用级设置 =====
+            // 单聊只回读已核对归属的旧协议；群聊使用全局协议。
             let rpProtocol = '';
             try {
                 const globalRpKey = 'chat_rp_protocol_';
-                rpProtocol = localStorage.getItem(globalRpKey) || '';
-
+                if (!isGroupChat && currentRoleId && currentRoleId === String(currentCharacter.id)) {
+                    rpProtocol = (localStorage.getItem(globalRpKey + currentRoleId) || '').trim();
+                }
+                if (!rpProtocol) rpProtocol = (localStorage.getItem(globalRpKey) || '').trim();
             } catch (e) {}
-            rpProtocol = rpProtocol.trim();
 
             // 世界书：召回当前话题相关条目；兼容旧版只有 content 的整本设定
             // 绑定规则统一由 WorldbookResolver 决定（单聊与群聊同一套）：
