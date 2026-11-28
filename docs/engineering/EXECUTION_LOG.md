@@ -769,3 +769,9 @@ On the next turn/session, read this file and the current `AGENTS.md` first. Cont
 - Repaired failed candidate `b7422238f9557d57cc3481d47fc55c0f3faba115` without changing the QA baseline or requesting another release. Chat construction and its final delivery barrier now read the same application-wide `chat_rp_protocol_` source. Legacy per-role protocol keys remain untouched and are neither read automatically nor migrated or overwritten.
 - Updated the account-scope recovery contract for the newer Worker private-document boundary while retaining authentication, account isolation, GET/HEAD method control, no-store caching and scope injection assertions. Updated the protocol/worldbook fixture to provide the newly required `userMemoryText` input; no test was deleted or skipped.
 - Focused protocol/account set: 6/6 test files passed. Exact failed gate command `node --test --test-concurrency=1`: 2488 total, 2487 passed, 0 failed, 1 pre-existing skip, exit 0. Playwright Chromium v1248 was installed only in the temporary execution environment to run the full browser-backed Node gate.
+
+
+## 2026-11-28 | CHAT-REPLY-UX-001 | short online bubbles and minimal typing indicator
+
+- Base: successful QA #101, `4ab37c82b6e3ef7d1f002fbf9c8ad163637a6d2a`. Single-chat online replies, existing continue-star, header status and cadence only. No storage schema changes or data migration, account/Worker changes. Historical messages and legacy regeneration retain their existing parsing; explicit single mode remains one message.
+- New online replies opt into sentence splitting, preserving translated/structured text and existing atomic write + stable message IDs. Header name stays fixed, idle is a green dot, pending is 正在输入…, finally restores mode and star button. Focused tests updated; full Node/browser/build and official eng:conflicts remain NOT VERIFIED in connector-only environment.

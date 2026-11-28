@@ -1991,7 +1991,11 @@
   letter-spacing:.09em;color:#85858a;text-align:left;cursor:pointer;
   transition:opacity .16s ease,color .16s ease;
 }
+.chat-status-sub.chat-mode-trigger[data-presence="online"]::before{content:"";display:inline-block;width:6px;height:6px;border-radius:50%;background:#42b96b;vertical-align:middle}
+.chat-status-sub.chat-mode-trigger[data-presence="typing"]{letter-spacing:0;color:#85858a}
 .chat-status-sub.chat-mode-trigger:active{opacity:.55}
+.voice-input-btn[aria-busy="true"]{opacity:.55}
+.chat-unsaved-preview{margin:8px 42px;color:#555;font-size:12px;white-space:pre-wrap;overflow-wrap:anywhere;user-select:text}
 .chat-status-sub.chat-mode-trigger:focus-visible{outline:1px solid #999;outline-offset:2px}
 /* 留白聊天主题：模式菜单与聊天页面使用同一套冷白、轻灰与紧凑排版。
    只影响模式选择弹层，任何其他聊天主题及消息气泡都不修改。 */
@@ -2076,7 +2080,7 @@
             <div class="chat-title-box">
                 <div class="chat-header-avatar" id="chat-header-avatar" aria-hidden="true"></div>
                 <span class="chat-user-name" id="chat-title">聊天</span>
-                <button class="chat-status-sub chat-mode-trigger" id="chat-status-sub" type="button" aria-label="切换聊天模式" title="切换线上、线下与旁白模式">ONLINE</button>
+                <button class="chat-status-sub chat-mode-trigger" id="chat-status-sub" type="button" data-presence="online" aria-live="polite" aria-label="切换聊天模式，当前线上聊天" title="切换线上、线下与旁白模式"></button>
                 <span class="chat-notice-bar" id="chat-notice-bar" style="display:none;"></span>
             </div>
             <div class="chat-header-actions">
@@ -2807,6 +2811,18 @@
         }
         // 群聊只在主标题显示人数。成员名单和在线状态不再占用顶部空间。
         const chatStatusSub = document.getElementById('chat-status-sub');
+        var singleChatTyping = false;
+        function setSingleChatTyping(typing) {
+            if (isGroupChat || !chatStatusSub) return;
+            singleChatTyping = !!typing;
+            var mode = 'online';
+            try { mode = localStorage.getItem('chat_mode_' + currentCharacter.id) || 'online'; } catch (e) {}
+            var state = singleChatTyping ? 'typing' : (mode === 'narration' ? 'narration' : 'online');
+            chatStatusSub.dataset.presence = state;
+            chatStatusSub.textContent = state === 'typing' ? '正在输入…' : (state === 'narration' ? '旁白' : '');
+            chatStatusSub.setAttribute('aria-label', state === 'typing' ? '正在输入，切换聊天模式' :
+                (state === 'narration' ? '当前旁白模式，切换聊天模式' : '切换聊天模式，当前线上聊天'));
+        }
         if (isGroupChat && chatStatusSub) {
             chatStatusSub.textContent = '';
             chatStatusSub.disabled = true;
@@ -2834,7 +2850,7 @@
                 initialChatMode = 'online';
                 try { localStorage.setItem('chat_mode_' + currentCharacter.id, 'online'); } catch (e) {}
             }
-            chatStatusSub.textContent = initialChatMode === 'narration' ? 'NARRATION' : 'ONLINE';
+            setSingleChatTyping(false);
         }
 
         // ================= 拉黑态（键 chat_blocked_ids：能发消息但显示红色感叹号，无回复） =================
@@ -3732,10 +3748,10 @@
             if (mode === 'multi') return 'multi';
             return 'auto';
         }
-        function getActiveReplyBubbleMode() {
+        function getActiveReplyBubbleMode(preserveLegacy) {
             if (!currentCharacter) return 'auto';
             if (!Object.prototype.hasOwnProperty.call(currentCharacter, 'replyBubbleMode')) {
-                return 'legacy';
+                return preserveLegacy ? 'legacy' : 'auto';
             }
             return normalizeReplyBubbleMode(currentCharacter.replyBubbleMode);
         }
@@ -4389,7 +4405,7 @@
 
                 // 只有下一条独立消息前才停顿；旁白节点沿用原有顺序，不额外制造空等。
                 if (isMessageRow && shownRows > 0) {
-                    const delay = presencePolicy.getBubbleDelayMs(previousText);
+                    const delay = presencePolicy.getBubbleDelayMs(previousText, isGroupChat ? undefined : 'natural');
                     await new Promise(function (resolve) { setTimeout(resolve, delay); });
                 }
 
@@ -5603,10 +5619,12 @@
             }
             singleChatSendPending = true;
             try {
+                setSingleChatTyping(true);
                 return await sendMsgTurn(opts);
             } finally {
                 aiSending = false;
                 singleChatSendPending = false;
+                setSingleChatTyping(false);
                 inflightSnapshot = null;
                 singleChatPartialSaved = false;
             }
@@ -6635,16 +6653,19 @@
             if (customPrompt && !systemPrompt.includes(customPrompt)) {
                 systemPrompt += `\n补充要求: ${customPrompt}`;
             }
-            const replyBubbleMode = getActiveReplyBubbleMode();
+            const naturalOnlineBubbles = !isGroupChat && presenceMode === 'online' && !isRegen;
+            const replyBubbleMode = getActiveReplyBubbleMode(!naturalOnlineBubbles);
             const isGroupOfflineMode = !!(isGroupChat && currentGroup &&
                 currentGroup.settings && currentGroup.settings.chatMode === 'offline');
             const bubbleSplitRule = replyBubbleMode === 'single'
                 ? '本轮只输出一条完整消息，不要用空行分隔多个气泡。'
                 : (replyBubbleMode === 'multi'
-                    ? '按语义分成 2–5 条消息，每条以换行分隔。'
+                    ? '按语义分成 2–5 条消息，每条以换行分隔；通常 2–3 条，尽量一句一条，短回答不机械凑数。'
                     : (replyBubbleMode === 'legacy'
                         ? '沿用角色原有的自然分段，不设置固定条数。'
-                        : '需要分成多条消息时用双换行分隔，最多 5 条。'));
+                        : (naturalOnlineBubbles
+                            ? '像日常聊天一样，用简短自然的句子回应，通常分成 2–3 条独立消息，最多 5 条，每条用双换行分隔；简单回答只需一条，不机械凑数。'
+                            : '需要分成多条消息时用双换行分隔，最多 5 条。')));
             const outputFormat = [
                 '【本轮输出形式】',
                 isGroupOfflineMode ? '' : bubbleSplitRule,
@@ -7261,12 +7282,13 @@
                 }
             }
 
-            // 手动继续聊天不显示“正在输入”或临时加载文案；普通发送保留原行为。
+            // 单聊的输入状态由 sendMsg 生命周期统一管理，角色名始终保留。
+            // 群聊保留已有显示方式，不增加额外成员状态栏。
             var chatTitleEl = document.getElementById('chat-title');
             var originalTitleText = chatTitleEl ? chatTitleEl.textContent : '';
-            if (!isManualContinue && chatTitleEl) chatTitleEl.textContent = '对方正在输入...';
+            if (isGroupChat && !isManualContinue && chatTitleEl) chatTitleEl.textContent = '对方正在输入...';
             const statusId = 'loading-' + Date.now();
-            if (!isManualContinue) {
+            if (isGroupChat && !isManualContinue) {
                 const box = document.getElementById('chat-messages');
                 const statusDiv = document.createElement('div');
                 statusDiv.id = statusId;
@@ -7379,7 +7401,7 @@
                     groupName: groupReplyPick ? groupReplyPick.name : undefined,
                     memberId: groupReplyPick && groupReplyPick.id != null ? String(groupReplyPick.id) : undefined
                 };
-                // 手动继续聊天只在完整回复成功落库后显示，绝不渲染打字中状态。
+                // 手动继续只显示顶部输入状态，完整回复落库后才逐条上屏。
                 // Valid group messages keep the native streaming bubble.
                 // Only an already-detected identity violation is hidden below.
                 if (isManualContinue) return;
@@ -7424,6 +7446,9 @@
                         return;
                     }
                 }
+
+                // 在线单聊多气泡等待最终审核与落库，避免先闪出整段流式文字。
+                if (naturalOnlineBubbles && replyBubbleMode !== 'single') return;
 
                 // Do not reveal a clearly out-of-character *partial* answer.
                 // Keep the existing stream-bubble lifecycle for valid replies:
@@ -7880,7 +7905,8 @@
                     if (fullText && window.ChatMessagePolicy && typeof window.ChatMessagePolicy.buildReplyMessages === 'function') {
                         var replyTurnTime = Date.now();
                         var replyTurnId = 't' + replyTurnTime + Math.random().toString(36).slice(2, 6);
-                        replyMessages = window.ChatMessagePolicy.buildReplyMessages(fullText, getActiveReplyBubbleMode(), {
+                        replyMessages = window.ChatMessagePolicy.buildReplyMessages(fullText, replyBubbleMode, {
+                            naturalSplit: naturalOnlineBubbles && streamResult.ok,
                             turnId: replyTurnId,
                             time: replyTurnTime,
                             voiceMode: presenceMode || 'online',
@@ -8102,6 +8128,13 @@
                                 try { saveMessages(historyList); } catch (rollbackError) {}
                             }
                             if (streamBubble && fullText) streamBubble.textContent = fullText;
+                            else if (!isGroupChat && !isRegen && fullText) {
+                                var unsavedPreview = document.createElement('div');
+                                unsavedPreview.className = 'chat-unsaved-preview';
+                                unsavedPreview.setAttribute('data-unsaved-reply', 'true');
+                                unsavedPreview.textContent = '尚未保存 · 请复制保留\n' + fullText;
+                                chatMessages.appendChild(unsavedPreview);
+                            }
                             if (typeof showToast === 'function') showToast('AI 回复尚未保存。上方文字暂留在当前页面，请先复制保留，再检查存储空间。');
                         } else {
                             var lastVisibleMessage = aiRoleGalleryMessages.length
@@ -9272,13 +9305,13 @@
                 }
                 if (selected === 'narration') {
                     try { localStorage.setItem(modeKey, 'narration'); } catch (e) {}
-                    if (chatModeTrigger) chatModeTrigger.textContent = 'NARRATION';
+                    if (chatModeTrigger) setSingleChatTyping(singleChatTyping);
                     closeModeSheet();
                     if (typeof showToast === 'function') showToast('旁白模式已开启；再次选择线上聊天即可切回');
                     return;
                 }
                 try { localStorage.setItem(modeKey, 'online'); } catch (e) {}
-                if (chatModeTrigger) chatModeTrigger.textContent = 'ONLINE';
+                if (chatModeTrigger) setSingleChatTyping(singleChatTyping);
                 closeModeSheet();
                 if (typeof showToast === 'function') showToast('已切回线上聊天');
             });
@@ -10936,13 +10969,18 @@
     event.stopPropagation();
     if(pending||typeof window.sendMsg!=='function')return;
     pending=true;
+    btn.disabled=true;
+    btn.setAttribute('aria-busy','true');
     Promise.resolve().then(function(){
       // Shared sendMsg handles role/group persona, history, storage, and bubble splitting.
       return window.sendMsg({contextOnly:true,manualContinue:true});
     }).catch(function(error){
       console.error('[chat-detail] 继续聊天失败:',error);
+      if(typeof window.showToast==='function')window.showToast('回复未完成，请重试');
     }).finally(function(){
       pending=false;
+      btn.disabled=false;
+      btn.removeAttribute('aria-busy');
     });
   });
 })();

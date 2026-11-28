@@ -666,8 +666,9 @@
     return lines.join('\n');
   }
 
-  function getBubbleDelayMs(previousText) {
+  function getBubbleDelayMs(previousText, rhythm) {
     var chars = Array.from(String(previousText == null ? '' : previousText).trim()).length;
+    if (rhythm === 'natural') return Math.max(2000, Math.min(3000, 1900 + chars * 25));
     return Math.max(520, Math.min(920, 440 + chars * 16));
   }
 

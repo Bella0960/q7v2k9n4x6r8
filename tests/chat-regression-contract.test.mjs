@@ -1344,6 +1344,9 @@ test('chat presence policy derives a bounded pause from the previous bubble leng
   assert.ok(shortPause >= 520 && shortPause <= 920);
   assert.ok(longerPause > shortPause);
   assert.equal(maximumPause, 920);
+  assert.equal(presencePolicy.getBubbleDelayMs('嗯。', 'natural'), 2000);
+  assert.ok(presencePolicy.getBubbleDelayMs('我刚刚还在想你说的那件事。', 'natural') > 2000);
+  assert.equal(presencePolicy.getBubbleDelayMs('甲'.repeat(100), 'natural'), 3000);
 });
 
 test('chat detail stages multi-bubble replies and preserves the existing stream path', () => {
