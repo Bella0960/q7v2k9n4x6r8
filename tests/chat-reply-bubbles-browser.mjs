@@ -401,15 +401,18 @@ async function main() {
     assert.equal(await status.textContent(),'');
     mockReplyText='今天阳光很好！我刚刚买了一杯咖啡。等会儿准备去书店。';
     await star.click();
-    await page.waitForFunction(()=>document.getElementById('chat-status-sub').dataset.presence==='typing');
-    assert.equal(await status.textContent(),'正在输入…');
-    assert.equal(await page.locator('#chat-messages .loading-dots').count(),0);
-    assert.equal(await page.locator('#plus-action-btn').evaluate(el=>getComputedStyle(el).borderLeftWidth),'0px');
-    assert.equal(await page.locator('#chat-title').textContent(),titleBefore);
-    assert.equal(await star.getAttribute('aria-busy'),'true');
+    const typing = await page.waitForFunction(()=>{
+      const status=document.getElementById('chat-status-sub');
+      const star=document.getElementById('voice-input-btn');
+      if(status.dataset.presence!=='typing'||star.getAttribute('aria-busy')!=='true') return false;
+      return {text:status.textContent,title:document.getElementById('chat-title').textContent,
+        disabled:star.disabled,placeholderCount:document.querySelectorAll('#chat-messages .loading-dots').length,
+        border:getComputedStyle(document.getElementById('plus-action-btn')).borderLeftWidth};
+    });
+    assert.deepEqual(await typing.jsonValue(),{text:'正在输入…',title:titleBefore,disabled:true,placeholderCount:0,border:'0px'});
     await page.waitForFunction(()=>document.querySelectorAll('#chat-messages .msg-row').length===2);
     assert.equal(await status.getAttribute('data-presence'),'typing');
-    await page.waitForFunction(()=>document.getElementById('chat-status-sub').dataset.presence==='online',null,{timeout:25000});
+    await page.waitForFunction(()=>document.getElementById('chat-status-sub').dataset.presence==='online' && !document.getElementById('voice-input-btn').disabled,null,{timeout:25000});
     assert.equal(await star.isEnabled(),true);
     assert.equal(await status.textContent(),'');
     const starHistory=await readHistory(page,'chat_history_bubA');

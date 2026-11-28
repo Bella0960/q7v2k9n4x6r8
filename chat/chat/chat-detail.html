@@ -6521,6 +6521,13 @@
                 }
             }
 
+            // Resolve the current mode before any mode-dependent prompt or reply decisions.
+            var activeChatModeForPrompt = 'online';
+            try { activeChatModeForPrompt = localStorage.getItem('chat_mode_' + aliasRoleId) || 'online'; } catch (e) {}
+            var presenceMode = isGroupChat
+                ? (currentGroup && currentGroup.settings && currentGroup.settings.chatMode === 'offline' ? 'offline' : 'online')
+                : activeChatModeForPrompt;
+
             // 角色主动邀请只针对确实退出过的群。历史群沿用默认“已加入”状态。
             // 不替角色编造台词：提供离群事实，让当前角色按照人设决定是否追问。
             if (!isGroupChat && window.GroupGovernance && presenceMode === 'online') {
@@ -6754,17 +6761,12 @@
             } catch (e) {}
 
             // 旁白模式是可切回的持久模式，覆盖上面的线上短消息规则。
-            var activeChatModeForPrompt = 'online';
-            try { activeChatModeForPrompt = localStorage.getItem('chat_mode_' + aliasRoleId) || 'online'; } catch (e) {}
             if (!isGroupChat && activeChatModeForPrompt === 'narration') {
                 systemPrompt += '\n\n[当前模式：旁白与动作描写 · 优先规则]\n把用户的新消息当作同一段剧情中的行动、对白或提示，以自然的小说叙述回应；可以写必要的动作、神态、环境变化、内心活动和对白，但不要替用户擅自决定未表达的行为或思想。避免微信式短句，也不要为了凑字数堆砌动作。默认约 180–400 字，按剧情需要灵活调整。保持角色原有人设，不解释模式规则。此规则优先于前面的线上聊天限制。';
             }
 
             // 第一阶段：从当前角色自己的历史消息提取语言样本，并补充可执行的聊天行为规则。
             // 线上群聊只读取本轮发言成员自己的历史；线下/旁白模式沿用各自叙事规则。
-            var presenceMode = isGroupChat
-                ? (currentGroup && currentGroup.settings && currentGroup.settings.chatMode === 'offline' ? 'offline' : 'online')
-                : activeChatModeForPrompt;
             if (window.ChatPresencePolicy && typeof window.ChatPresencePolicy.buildPrompt === 'function') {
                 var presencePrompt = window.ChatPresencePolicy.buildPrompt({
                     mode: presenceMode,

@@ -55,3 +55,23 @@ test('CHAT-REPLY-UX-001: composer plus control has no legacy left separator', ()
   assert.ok(composerRules.every(rule => !/border-left:\s*1px\b/.test(rule)), 'old left border must not remain');
   assert.match(page, /id="plus-action-btn"[^>]*aria-label="更多功能"/);
 });
+
+
+test('CHAT-REPLY-UX-001: resolve presence mode before the natural reply decision', () => {
+  const start = main.indexOf("var activeChatModeForPrompt = 'online';");
+  const mode = main.indexOf('var presenceMode = isGroupChat');
+  const use = main.indexOf("const naturalOnlineBubbles = !isGroupChat && presenceMode === 'online' && !isRegen;");
+  assert.ok(start >= 0 && start < mode && mode < use);
+  const source = main.slice(start, main.indexOf(';', mode) + 1) + '\n' +
+    main.slice(use, main.indexOf(';', use) + 1) + '\nresult = naturalOnlineBubbles;';
+  for (const c of [
+    {group:false,regen:false,stored:'online',expected:true},
+    {group:false,regen:false,stored:'narration',expected:false},
+    {group:true,regen:false,stored:'online',expected:false},
+    {group:false,regen:true,stored:'online',expected:false}
+  ]) {
+    const evaluate = new Function('isGroupChat','currentGroup','isRegen','localStorage','aliasRoleId',
+      'var result;'+source+'return result;');
+    assert.equal(evaluate(c.group,{settings:{chatMode:'online'}},c.regen,{getItem:()=>c.stored},'synthetic'),c.expected);
+  }
+});
