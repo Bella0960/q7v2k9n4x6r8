@@ -899,6 +899,10 @@ test('ready-batch workflow archives a candidate before pushing and restores it b
   assert.match(workflow, /cancel-in-progress: false/);
   assert.ok(workflow.includes('![1, 2].includes(receipt.version)'),
     'candidate recovery must accept current v2 receipts as well as legacy v1 receipts');
+  assert.ok(workflow.includes('if ! result="$(npm run --silent eng:batch:auto -- "$QA_BASELINE" 2>&1)"; then'),
+    'assembly failures must be captured instead of exiting before diagnostics are written');
+  assert.ok(workflow.includes('Candidate assembly failed:'),
+    'assembly failure details must be included in the GitHub step summary');
 });
 
 test('CLI invalidate deletes a remote candidate only with exact SHA and explicit remote-delete confirmation', async t => {
