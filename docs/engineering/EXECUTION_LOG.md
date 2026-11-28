@@ -4,6 +4,16 @@
 
 This is the durable checkpoint for owner-assigned, multi-step work. Update it after meaningful milestones and before ending a session.
 
+## 2026-11-29 · GOV-006 / ENGINEERING-DELIVERY-002 / P0-5-2
+
+- 主线 `9d4f8321c60341d5fb9f7ce921ecc36db304aec4`，修复分支 `gov-006/p0-5-2-candidate-assembly`。已核对线上源码回执和 [QA #101](https://github.com/Bella0960/web-runtime-lab/actions/runs/46149537392)，源码为 `4ab37c82b6e3ef7d1f002fbf9c8ad163637a6d2a`。已读 [失败运行](https://github.com/Bella0960/q7v2k9n4x6r8/actions/runs/46177773321) 的组装日志。
+- 根因：`git apply --3way --index` 无法通过索引定位 QA 缺失的 `tests/chat-heart-policy.test.mjs`，同时存在真实的同段内容冲突、双方新增和删除／修改冲突。QA 中已有手工协调提交 `b7422238`，缺少能证明 #562 精确 head 已部署的任务 provenance，工具不能据此跳过 #562。
+- `scripts/engineering-qa-batch.mjs` 以每项任务的精确 PR merge-base（或已记录的部署 head）执行 `git merge-tree`，使用 Git 的重命名、目录碰撞和内容合并判定。增量输入及输出路径都必须属于已审批差异，超界即停止。组装不使用工作树或索引，全部任务完成后才创建本地候选引用。候选仍从 QA 单父提交链恢复。`scripts/engineering-qa-queue.mjs` 逐行保留冲突路径与类型。现有审批、任务依赖、外部 PR 审计和归档恢复门禁照常执行。
+- `tests/engineering-qa-batch.test.mjs` 新增同内容新增、独立新增、双侧删除、删除／修改、重命名携带 QA 修改、重命名目标冲突和未审批路径重定向覆盖。`tests/engineering-qa-queue.test.mjs` 通过真实 CLI 路径测试依赖冲突时无候选引用和回执。完整工程工具测试 **71/71** 通过，含原有同文件分段、单父 provenance、候选不覆盖和失败后恢复用例。测试命令为 `node --test tests/engineering-pr-conflicts.test.mjs tests/engineering-qa-batch.test.mjs tests/engineering-qa-queue.test.mjs`。
+- 隔离 Git 仓库实测 [#562](https://github.com/Bella0960/q7v2k9n4x6r8/pull/562) `5512689cb842d38441a96e23beeb3f8a5d2622b8..d5777bb6310d1fc6915a0629ebec6e4e7d761ba7`（34 路径），及依赖它的 [#566](https://github.com/Bella0960/q7v2k9n4x6r8/pull/566) `4ab37c82b6e3ef7d1f002fbf9c8ad163637a6d2a..a88d1bf339aeab8c92e98ee0bb9281f3346e3c6c`（16 路径）。两精确 head 均查到 owner approval，未将 #563、#564 纳入预演。记录输入故意反序，组装器先应用 #562。
+- #562 报告 **28** 处冲突。双方不同内容新增 4 处，为 `shared/js/phone/chat-history-atomic.js`、`tests/chat-history-atomic.test.mjs`、`tests/chat-legacy-memory-prompt.test.mjs` 和 `tests/chat-phone-storage-primary-guard.test.mjs`。修改／删除 1 处，为 `tests/chat-heart-policy.test.mjs`。独立新增 `tests/chat-atomic-multipage.browser.mjs` 不冲突。其余 23 处为内容冲突，包括聊天详情、存储、Service Worker 和多个契约测试。#566 未越过依赖，隔离仓库未生成候选引用或回执。
+- 剩余阻断：需要在已部署 QA 基线上显式协调 #562 中已有实现与已批准增量，并在审查、真实回归测试及新 head 审批后重跑 #562 → #566。Git 干净合并只证明树级兼容，发布仍依赖候选的既有质量门禁。真实候选及其归档恢复尚未验收。本次未修改聊天产品 PR、触发组批工作流、合并或发布。
+
 ## 2026-11-22 · ARCH-002 · Chat HTTP error body timeout
 
 - Base: main `a5415d7e`. An HTTP error with an unfinished body left the chat request pending because the response branch disabled all timeouts before awaiting the body.

@@ -671,6 +671,20 @@ test('CLI assemble explicitly blocks dependency cycles before candidate creation
   assert.match(receipt.assemblyError, /cycle/i);
 });
 
+test('CLI assemble reports a dependent add/add conflict without saving a candidate or receipt', t => {
+  const { result, receipt, candidateExists, receiptPath } = runQueueAssembleCli(t, [
+    { id: 'TASK-01', path: 'shared.txt' },
+    { id: 'TASK-02', path: 'shared.txt', dependsOn: ['TASK-01'] }
+  ]);
+  assert.equal(result.status, 2, result.stderr);
+  assert.equal(receipt.status, 'blocked');
+  assert.match(receipt.assemblyError, /TASK-02 patch conflicts/);
+  assert.match(receipt.assemblyError, /prerequisite changes \(TASK-01\)/);
+  assert.match(receipt.assemblyError, /\nCONFLICT \(add\/add\) "shared\.txt"/);
+  assert.equal(candidateExists, false);
+  assert.equal(existsSync(receiptPath), false);
+});
+
 test('CLI assemble includes independent tasks with no dependencies', t => {
   const { result, receipt } = runQueueAssembleCli(t, [{ id: 'TASK-10' }]);
   assert.equal(result.status, 0, result.stderr);
