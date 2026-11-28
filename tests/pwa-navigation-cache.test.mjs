@@ -44,18 +44,19 @@ test('every desktop app shortcut is emitted as a real HTML page in the productio
     'private admin HTML must not appear in the public PWA precache manifest');
 });
 
-test('service worker precaches all HTML routes listed by the build manifest', () => {
+test('service worker excludes account-bearing HTML from the shared precache', () => {
   assert.match(serviceWorker, /fetch\('\.\/pwa-pages\.json'/);
   assert.match(serviceWorker, /APP_SHELL\.concat\(pageEntries\)/);
   assert.match(serviceWorker, /cache\.add\(url\)/);
 });
 
-test('mobile navigation serves cached app pages before waiting for network', () => {
-  assert.match(serviceWorker, /var cachedPromise = caches\.match\(req\)/);
-  assert.match(serviceWorker, /if \(cached\) return cached/);
-  assert.match(serviceWorker, /event\.waitUntil\(updatePromise/);
+test('private HTML navigation requires network and never reads shared cache', () => {
+  assert.ok(serviceWorker.includes("req.mode === 'navigate'"));
+  assert.ok(serviceWorker.includes("fetch(req, { cache: 'no-store' })"));
+  assert.ok(serviceWorker.includes("!pathname.endsWith('.html')"));
+  assert.ok(serviceWorker.includes('无法安全验证账号'));
+  assert.ok(serviceWorker.includes("url.pathname === '/api'"));
 });
-
 
 test('desktop app navigation has one valid capture-phase owner', () => {
   assert.doesNotMatch(desktopScript, /data-href 点击跳转|target\.closest\('\[data-href\]'\)/,
