@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { execFileSync } from 'node:child_process';
-import { mkdtempSync, rmSync, writeFileSync, renameSync } from 'node:fs';
+import { mkdirSync, mkdtempSync, rmSync, writeFileSync, renameSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 import {buildConflictReport,hotspotKey,moduleScope,normalizeRepoPath,runConflictAudit} from '../scripts/engineering-pr-conflicts.mjs';
@@ -140,6 +140,7 @@ test('candidate audit allows a same-file PR delta when Git three-way application
  t.after(()=>rmSync(directory,{recursive:true,force:true}));
  const git=(...args)=>execFileSync('git',args,{cwd:directory,encoding:'utf8',stdio:'pipe'}).trim();
  const write=(path,content)=>writeFileSync(join(directory,path),content);
+ mkdirSync(join(directory,'chat','chat'),{recursive:true});
  git('init','-q','-b','main');
  git('config','user.email','test@example.invalid');
  git('config','user.name','Test');
