@@ -516,11 +516,13 @@ test('设置页三模式：multi 可保存并刷新读取；非法值回落 auto
   assert.equal(JSON.parse(storage.getItem('ai_custom_characters'))[0].replyBubbleMode, 'auto');
 });
 
-test('聊天页接线：缺字段走 legacy、按模式生成、已存内容不套生成上限', () => {
-  assert.match(detailSource, /function getActiveReplyBubbleMode\(\)/);
+test('聊天页接线：新线上回复缺字段按 auto，旧记录重生成仍兼容 legacy', () => {
+  assert.match(detailSource, /function getActiveReplyBubbleMode\(preserveLegacy\)/);
+  assert.match(detailSource, /return preserveLegacy \? 'legacy' : 'auto'/);
   assert.match(detailSource, /hasOwnProperty\.call\(currentCharacter, 'replyBubbleMode'\)/);
   assert.match(detailSource, /currentCharacter\.replyBubbleMode/);
-  assert.match(detailSource, /buildReplyMessages\(fullText, getActiveReplyBubbleMode\(\)/);
+  assert.match(detailSource, /buildReplyMessages\(fullText, replyBubbleMode,/);
+  assert.match(detailSource, /naturalSplit: naturalOnlineBubbles && streamResult.ok/);
   assert.match(detailSource, /ChatMessagePolicy\.parseReplyContent\(raw, 'legacy'\)/);
   // 历史展示不得套用 5 条上限：上限只在生成侧（policy 的 legacyUncapped 守卫）生效。
   assert.ok(!/bubbles\.length > 5/.test(detailSource), '已存内容渲染不得截断到 5 条');
@@ -539,4 +541,24 @@ test('设置页接线：复用 ai_custom_characters，三选一模式，不新�
   assert.match(settingsSource, /data-mode="auto"/);
   assert.match(settingsSource, /data-mode="multi"/);
   assert.ok(!/localStorage\.setItem\('chat_reply_bubble/.test(settingsSource));
+});
+
+
+test('new online replies split long unformatted answers only at sentence endings', () => {
+  const raw = '今天阳光很好！我刚刚买了一杯咖啡。等会儿准备去书店。';
+  const messages = policy.buildReplyMessages(raw,'auto',{naturalSplit:true,time:1000,turnId:'natural'});
+  assert.deepEqual(Array.from(messages,m=>m.text),['今天阳光很好！','我刚刚买了一杯咖啡。','等会儿准备去书店。']);
+  assert.equal(new Set(messages.map(m=>m.mid)).size,3);
+  assert.equal(messages.map(m=>m.text).join(''),raw);
+  assert.equal(policy.getMessageBubbles({mid:'old',text:raw}).bubbles.length,1);
+  assert.equal(policy.buildReplyMessages(raw,'single',{naturalSplit:true}).length,1);
+  assert.equal(policy.buildReplyMessages('好。','auto',{naturalSplit:true}).length,1);
+  assert.equal(policy.buildReplyMessages('看这个 https://example.test/a?b=1！很有趣。','auto',{naturalSplit:true}).length,1);
+  const bilingual=policy.buildReplyMessages('Hello! How are you?[中译:你好！你好吗？]','multi',{naturalSplit:true});
+  assert.equal(bilingual.length,1);
+  assert.equal(bilingual[0].translation,'你好！你好吗？');
+  const long='一。二。三。四。五。六。七。';
+  const capped=policy.buildReplyMessages(long,'multi',{naturalSplit:true});
+  assert.equal(capped.length,5);
+  assert.equal(capped.map(m=>m.text).join('').replace(/\n/g,''),long);
 });

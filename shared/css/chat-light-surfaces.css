@@ -118,6 +118,8 @@ body.chat-light-detail .phone-mockup:is(:not([data-chat-theme-preset]),[data-cha
   height:44px !important;
   margin:0 !important;
   background:transparent !important;
+  border:0 !important;
+  padding:0 !important;
 }
 body.chat-light-detail .phone-mockup:is(:not([data-chat-theme-preset]),[data-chat-theme-preset="default"],[data-chat-theme-preset="imessage"]) form#chat-form .input-capsule {
   order:1 !important;

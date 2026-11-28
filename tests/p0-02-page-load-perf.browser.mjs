@@ -59,9 +59,12 @@ function startServer() {
         return;
       }
       const data = await readFile(filePath);
+      // Mirror the Worker response policy: only the two public sign-in documents
+      // may be stored as HTML; all private app documents remain no-store.
+      const publicAccountHtml = urlPath === '/account/index.html' || urlPath === '/account/bootstrap.html';
       res.writeHead(200, {
         'Content-Type': MIME[path.extname(filePath).toLowerCase()] || 'application/octet-stream',
-        'Cache-Control': path.extname(filePath) === '.html' ? 'no-store' : 'public, max-age=600'
+        'Cache-Control': path.extname(filePath) === '.html' && !publicAccountHtml ? 'no-store' : 'public, max-age=600'
       });
       res.end(data);
     } catch (error) {
@@ -128,6 +131,10 @@ async function cacheStats(page, expectedUrls = []) {
     for (const url of expected) {
       if (!cache || !(await cache.match(url))) missing.push(url);
     }
+    const allowedPublicHtml = new Set(['/account/index.html', '/account/bootstrap.html']);
+    const forbiddenHtml = entries
+      .map(entry => new URL(entry.url).pathname)
+      .filter(path => /\.html$/i.test(path) && !allowedPublicHtml.has(path));
     const registrations = await navigator.serviceWorker.getRegistrations();
     const registration = registrations.find((item) => item.active && item.active.scriptURL.includes('/sw.js')) || null;
     return {
@@ -137,7 +144,8 @@ async function cacheStats(page, expectedUrls = []) {
       controlled: !!navigator.serviceWorker.controller,
       activeState: registration && registration.active ? registration.active.state : 'missing',
       expectedCount: expected.length,
-      missing
+      missing,
+      forbiddenHtml
     };
   }, expectedUrls);
 }
@@ -191,26 +199,47 @@ async function sectionA(browser, baseUrl, report, expectedPrecacheUrls) {
   checks.push(['首访只有一次文档导航', navCountAtSwReady === 1, { navigations: navCountAtSwReady }]);
   checks.push(['首访文档未被 reload', navEntries.length === 1 && navEntries[0] === 'navigate', { navEntries }]);
   checks.push(['首访页面已受 SW 控制', stats.controlled === true, { controlled: stats.controlled }]);
-  checks.push(['活动 SW 缓存完整覆盖 APP_SHELL 与全部 HTML 页面清单', stats.missing.length === 0,
+  checks.push(['活动 SW 缓存完整覆盖允许离线的 APP_SHELL 资源与公开账号页', stats.missing.length === 0,
     { cacheName: stats.cacheName, entries: stats.entries, expected: stats.expectedCount, activeState: stats.activeState, missing: stats.missing }]);
+  checks.push(['共享 PWA 缓存不包含受保护应用 HTML', stats.forbiddenHtml.length === 0,
+    { forbiddenHtml: stats.forbiddenHtml }]);
 
-  // 离线仍能打开聊天页
-  await page.goto(baseUrl + '/index.html', { waitUntil: 'load' });
-  await sleep(400);
+  // Private chat HTML is deliberately network-only: offline navigation must fail closed,
+  // while an already-loaded chat view can remain visible in the current document.
+  await page.goto(baseUrl + '/chat/chat/chat.html', { waitUntil: 'load' });
+  await page.waitForSelector('#chatListContainer', { timeout: 10000 });
+  const privateHtmlCached = await page.evaluate(async () => {
+    const url = new URL('/chat/chat/chat.html', location.origin).href;
+    return !!(await caches.match(url));
+  });
   await context.setOffline(true);
   let offlineOk = false;
   let offlineDetail = null;
   try {
-    await page.goto(baseUrl + '/chat/chat/chat.html', { waitUntil: 'domcontentloaded', timeout: 10000 });
-    await page.waitForSelector('#chatListContainer', { timeout: 6000 });
-    const textLength = await page.evaluate(() => (document.body.textContent || '').trim().length);
-    offlineOk = textLength > 0 && page.url().includes('/chat/chat/chat.html');
-    offlineDetail = { textLength, url: page.url() };
+    const loadedViewRemains = await page.locator('#chatListContainer').count() === 1;
+    const response = await page.goto(baseUrl + '/chat/chat/chat.html', { waitUntil: 'domcontentloaded', timeout: 10000 });
+    const state = await page.evaluate(() => ({
+      heading: document.querySelector('h1')?.textContent || '',
+      bodyText: document.body.textContent || '',
+      chatListVisible: !!document.getElementById('chatListContainer'),
+      path: location.pathname
+    }));
+    offlineOk = loadedViewRemains && !privateHtmlCached && response?.status() === 503 &&
+      !state.chatListVisible && state.heading.includes('连接暂时中断') &&
+      state.bodyText.includes('登录状态尚未确认');
+    offlineDetail = {
+      loadedViewRemains,
+      privateHtmlCached,
+      status: response?.status() ?? null,
+      heading: state.heading,
+      chatListVisible: state.chatListVisible,
+      path: state.path
+    };
   } catch (error) {
-    offlineDetail = { error: String(error).slice(0, 120) };
+    offlineDetail = { privateHtmlCached, error: String(error).slice(0, 240) };
   }
   await context.setOffline(false);
-  checks.push(['离线仍能打开聊天页', offlineOk, offlineDetail]);
+  checks.push(['离线时受保护聊天页不会绕过 Worker 身份核验', offlineOk, offlineDetail]);
 
   report.A = { checks, navCount: navCountAtSwReady, precache: stats, offline: offlineDetail, requests: null };
   await context.close();
@@ -363,9 +392,10 @@ const appShellMatch = swSource.match(/const APP_SHELL = \[([\s\S]*?)\n\];/);
 if (!appShellMatch) throw new Error('Unable to read APP_SHELL from sw.js');
 const appShellPaths = Array.from(appShellMatch[1].matchAll(/['"]([^'"]+)['"]/g), (match) => match[1]);
 const expectedPrecacheUrls = Array.from(new Set(
-  appShellPaths
-    .concat(pages.map((page) => './' + page))
-    .filter((path) => path !== './')
+  appShellPaths.concat(pages.map((page) => './' + page))
+    .filter((path) => path !== './' && path !== '/' &&
+      (path === './account/index.html' || path === './account/bootstrap.html' ||
+        !/\.html(?:\?|$)/i.test(path)))
     .map((path) => new URL(path, baseUrl + '/').href)
 ));
 const report = {};

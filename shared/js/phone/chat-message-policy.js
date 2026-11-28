@@ -154,12 +154,44 @@
     return 'm' + String(time) + '-' + turnKey + '-' + String(index);
   }
 
+  // New online replies alone opt into sentence splitting. Stored content,
+  // translations, markup, links and code keep their original identities.
+  function splitNaturalReplyBubbles(parsed, mode) {
+    if (mode === 'single') return parsed;
+    var bubbles = [], translations = [];
+    parsed.bubbles.forEach(function (text, index) {
+      var translation = parsed.translations[index] || '';
+      if (translation || /https?:\/\/|www\.|[<>\[\]`]|(?:^|\n)\s*(?:[-*]|\d+[.)])\s/.test(text) ||
+          (mode !== 'multi' && Array.from(text).length < 12)) {
+        bubbles.push(text); translations.push(translation); return;
+      }
+      var parts = [], start = 0, match;
+      var boundary = /[。！？!?]+[”’」』）】]*/g;
+      while ((match = boundary.exec(text)) !== null) {
+        var end = match.index + match[0].length;
+        var part = text.slice(start, end).trim();
+        if (part) parts.push(part);
+        start = end;
+      }
+      var tail = text.slice(start).trim();
+      if (tail) parts.push(tail);
+      (parts.length > 1 ? parts : [text]).forEach(function (part) {
+        bubbles.push(part); translations.push('');
+      });
+    });
+    var merged = mergeReplyBubbles(bubbles, translations, mode, false);
+    return { thinks: parsed.thinks, narrations: parsed.narrations, bubbles: merged.bubbles, translations: merged.translations };
+  }
+
   // 把一次 AI 回复拆成逐条消息：一个气泡 = 一条消息，身份各自稳定。
   // 首条气泡携带 <narratage> 旁白，保证整轮旁白只渲染一次。
   // 新增字段 turnId / bubbleIndex / bubbleCount 全部是可选的，老记录读取不受影响。
   function buildReplyMessages(rawText, mode, meta) {
     meta = meta && typeof meta === 'object' ? meta : {};
     var parsed = parseReplyContent(rawText, mode);
+    if (meta.naturalSplit === true && mode !== 'legacy' && !parsed.narrations.length) {
+      parsed = splitNaturalReplyBubbles(parsed, normalizeReplyBubbleMode(mode));
+    }
     var baseTime = Number(meta.time) || Date.now();
     var turnId = String(meta.turnId || ('t' + baseTime));
     var pass = {};

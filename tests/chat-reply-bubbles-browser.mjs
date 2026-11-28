@@ -335,7 +335,7 @@ async function main() {
       { mode: 'multi', reply: '第一句。\n第二句。\n第三句。', expected: ['第一句。', '第二句。', '第三句。'] },
       { mode: 'auto', reply: '甲段。\n\n乙段。\n\n丙段。', expected: ['甲段。', '乙段。', '丙段。'] },
       { mode: 'single', reply: '甲段。\n\n乙段。\n\n丙段。', expected: ['甲段。\n乙段。\n丙段。'] },
-      { label: 'legacy', mode: undefined, reply: '老角色第一段。\n\n老角色第二段。\n\n老角色第三段。\n\n老角色第四段。\n\n老角色第五段。\n\n老角色第六段。\n\n老角色第七段。', expected: ['老角色第一段。', '老角色第二段。', '老角色第三段。', '老角色第四段。', '老角色第五段。', '老角色第六段。', '老角色第七段。'] }
+      { label: 'legacy', mode: undefined, reply: '老角色第一段。\n\n老角色第二段。\n\n老角色第三段。\n\n老角色第四段。\n\n老角色第五段。\n\n老角色第六段。\n\n老角色第七段。', expected: ['老角色第一段。', '老角色第二段。', '老角色第三段。', '老角色第四段。', '老角色第五段。\n老角色第六段。\n老角色第七段。'] }
     ];
     const generatedIds = {};
 
@@ -384,6 +384,41 @@ async function main() {
       generatedIds[caseName] = turn.map((m) => m.mid);
       results.push(`${caseName} 模式：落库 ${turn.length} 条、逐条上屏、刷新后身份与文本不变`);
     }
+
+    // Star continuation: stable title, immediate typing, no fabricated user
+    // message and no temporary whole-paragraph bubble.
+    await setSeed(page, {
+      ai_custom_characters: rolesWith('auto'),
+      api_settings: API_SETTINGS,
+      chat_history_bubA: JSON.stringify([{role:'user',text:'开始',time:1000,mid:'m_star_user'}])
+    });
+    await page.goto(origin + '/chat/chat/chat-detail.html?id=bubA',{waitUntil:'domcontentloaded'});
+    await waitForRows(page,1);
+    const status=page.locator('#chat-status-sub');
+    const star=page.locator('#voice-input-btn');
+    const titleBefore=await page.locator('#chat-title').textContent();
+    assert.equal(await status.getAttribute('data-presence'),'online');
+    assert.equal(await status.textContent(),'');
+    mockReplyText='今天阳光很好！我刚刚买了一杯咖啡。等会儿准备去书店。';
+    await star.click();
+    const typing = await page.waitForFunction(()=>{
+      const status=document.getElementById('chat-status-sub');
+      const star=document.getElementById('voice-input-btn');
+      if(status.dataset.presence!=='typing'||star.getAttribute('aria-busy')!=='true') return false;
+      return {text:status.textContent,title:document.getElementById('chat-title').textContent,
+        disabled:star.disabled,placeholderCount:document.querySelectorAll('#chat-messages .loading-dots').length,
+        border:getComputedStyle(document.getElementById('plus-action-btn')).borderLeftWidth};
+    });
+    assert.deepEqual(await typing.jsonValue(),{text:'正在输入…',title:titleBefore,disabled:true,placeholderCount:0,border:'0px'});
+    await page.waitForFunction(()=>document.querySelectorAll('#chat-messages .msg-row').length===2);
+    assert.equal(await status.getAttribute('data-presence'),'typing');
+    await page.waitForFunction(()=>document.getElementById('chat-status-sub').dataset.presence==='online' && !document.getElementById('voice-input-btn').disabled,null,{timeout:25000});
+    assert.equal(await star.isEnabled(),true);
+    assert.equal(await status.textContent(),'');
+    const starHistory=await readHistory(page,'chat_history_bubA');
+    assert.equal(starHistory.filter(m=>m.role==='user').length,1);
+    assert.deepEqual(starHistory.filter(m=>m.role==='assistant').map(m=>m.text),['今天阳光很好！','我刚刚买了一杯咖啡。','等会儿准备去书店。']);
+    results.push('星星触发即时输入状态，角色名不变化，完整回复逐条显示，结束恢复绿点');
 
     // ================= 2b. 浏览器真实链路：用户发送持久化失败 =================
     // 故障注入仅针对当前角色聊天记录，不改其他本地设置，不调用正式 AI。
@@ -631,7 +666,7 @@ async function main() {
     const EIGHT = ['一', '二', '三', '四', '五', '六', '七', '八'];
     const eightText = EIGHT.join('\n\n');
     await setSeed(page, {
-      // 缺 replyBubbleMode 的老角色：生成与历史展示都走 legacy，不受 5 条上限约束。
+      // 缺模式字段的旧记录及其重生成保持 legacy，不改变既有 8 条气泡身份。
       ai_custom_characters: JSON.stringify([ROLE_A]),
       api_settings: API_SETTINGS,
       chat_history_bubA: JSON.stringify([
