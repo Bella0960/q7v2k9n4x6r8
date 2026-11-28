@@ -637,3 +637,93 @@ test('requires an exact successful QA source receipt before creating a candidate
   assert.match(mismatched.stderr, /receipt matching the exact baseline SHA/i);
   assert.equal(git('branch', '--list', 'integration/mismatch'), '');
 });
+
+test('reconciles additions, deletes and renames against the exact PR base', async t => {
+  const common = { 'old.txt': 'original\n', 'delete.txt': 'obsolete\n', 'missing.txt': 'base\n' };
+  const cases = [
+    {
+      name: 'accepts identical independent adds and preserves QA-only paths and rename edits',
+      qa: { ...common, 'old.txt': 'QA edit\n', 'same.txt': 'same\n', 'qa-only.txt': 'keep\n' },
+      head: { 'new.txt': 'original\n', 'same.txt': 'same\n', 'missing.txt': 'base\n' },
+      files: { 'new.txt': 'QA edit\n', 'same.txt': 'same\n', 'missing.txt': 'base\n', 'qa-only.txt': 'keep\n' }
+    },
+    {
+      name: 'accepts an already-applied deletion',
+      qa: { 'old.txt': 'original\n', 'missing.txt': 'base\n' },
+      head: { 'old.txt': 'original\n', 'missing.txt': 'base\n', 'fresh.txt': 'new\n' },
+      files: { 'old.txt': 'original\n', 'missing.txt': 'base\n', 'fresh.txt': 'new\n' }
+    },
+    {
+      name: 'reports divergent adds and a PR edit of a QA-deleted file',
+      qa: { 'old.txt': 'original\n', 'delete.txt': 'obsolete\n', 'same.txt': 'QA\n' },
+      head: { ...common, 'same.txt': 'PR\n', 'missing.txt': 'PR edit\n' },
+      conflicts: [/add\/add.*same\.txt/, /modify\/delete.*missing\.txt/]
+    },
+    {
+      name: 'reports a PR deletion of a QA-modified file and a rename destination collision',
+      qa: { ...common, 'delete.txt': 'QA edit\n', 'new.txt': 'QA owns destination\n' },
+      head: { 'new.txt': 'original\n', 'missing.txt': 'base\n' },
+      conflicts: [/modify\/delete.*delete\.txt/, /add\/add.*new\.txt/]
+    },
+    {
+      name: 'rejects a clean merge redirected to an unapproved QA rename destination',
+      qa: { 'renamed-by-qa.txt': 'original\n', 'delete.txt': 'obsolete\n', 'missing.txt': 'base\n' },
+      head: { ...common, 'old.txt': 'PR edit\n' },
+      conflicts: [/outside its approved PR diff.*renamed-by-qa\.txt/]
+    }
+  ];
+
+  for (const { name, qa, head, files, conflicts } of cases) {
+    await t.test(name, t => {
+      const cwd = mkdtempSync(join(tmpdir(), 'maomao-qa-path-states-'));
+      t.after(() => rmSync(cwd, { recursive: true, force: true }));
+      const git = (...args) => execFileSync('git', args, { cwd, encoding: 'utf8', stdio: 'pipe' }).trim();
+      const snapshot = (previous, next) => {
+        for (const path of Object.keys(previous)) rmSync(join(cwd, path));
+        for (const [path, value] of Object.entries(next)) writeFileSync(join(cwd, path), value);
+        git('add', '-A');
+        git('commit', '-qm', 'Snapshot');
+        return git('rev-parse', 'HEAD');
+      };
+      git('init', '-q', '-b', 'main');
+      git('config', 'user.name', 'QA Test');
+      git('config', 'user.email', 'qa@example.invalid');
+      const base = snapshot({}, common);
+      git('switch', '-qc', 'pr');
+      const taskHead = snapshot(common, head);
+      git('switch', '-qc', 'qa', base);
+      const baseline = snapshot(common, qa);
+      const branch = 'integration/path-states';
+      const paths = git('diff', '--name-only', '--no-renames', base, taskHead).split('\n');
+      mkdirSync(join(cwd, 'records'));
+      writeFileSync(join(cwd, 'records', 'task.json'), JSON.stringify({
+        id: 'TASK-01', status: 'ready', prMergeBase: base, head: taskHead, paths
+      }));
+      const receipt = {
+        repository: 'Bella0960/web-runtime-lab',
+        workflow: '.github/workflows/reusable-qa-request.yml',
+        runId: 1, runNumber: 1, runHeadSha: '9'.repeat(40),
+        sourceSha: baseline, releasedAt: '2026-11-26T09:02:40Z'
+      };
+      const result = spawnSync(process.execPath, [script, 'records', baseline, branch, JSON.stringify(receipt)], {
+        cwd, encoding: 'utf8'
+      });
+      if (conflicts) {
+        assert.equal(result.status, 1, result.stdout);
+        for (const conflict of conflicts) assert.match(result.stderr, conflict);
+        assert.equal(result.stdout, '');
+        assert.equal(git('branch', '--list', branch), '');
+      } else {
+        assert.equal(result.status, 0, result.stderr);
+        const { candidate } = JSON.parse(result.stdout);
+        assert.equal(git('rev-parse', candidate + '^'), baseline);
+        assert.deepEqual(git('ls-tree', '--name-only', candidate).split('\n'), Object.keys(files).sort());
+        for (const [path, value] of Object.entries(files)) {
+          assert.equal(git('show', candidate + ':' + path), value.trimEnd());
+        }
+      }
+      assert.equal(git('rev-parse', 'HEAD'), baseline);
+      assert.equal(git('status', '--porcelain', '--untracked-files=no'), '');
+    });
+  }
+});

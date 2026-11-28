@@ -856,7 +856,9 @@ async function assembleReadyBatch(repository, baseline, { push = false } = {}) {
       env: { ...process.env, GIT_TERMINAL_PROMPT: '0' }
     });
     if (result.status !== 0 || result.error) {
-      const detail = clean(result.stderr || result.error?.message || 'batch assembly failed', 1800);
+      // Keep each path and conflict type from the assembler visible in the blocked result.
+      const detail = String(result.stderr || result.error?.message || 'batch assembly failed')
+        .replace(/[\u0000-\u0009\u000b-\u001f\u007f-\u009f]/g, ' ').trim();
       return { status: 'blocked', repository, baseline, branch, includedTasks: [], blocked, assemblyError: detail };
     }
     const receipt = JSON.parse(result.stdout);
