@@ -1,7 +1,9 @@
 #!/usr/bin/env node
 // Read-only scan of this branch's changed paths against open MAOMAO PRs.
-import { execFileSync } from 'node:child_process';
-import { resolve } from 'node:path';
+import { execFileSync, spawnSync } from 'node:child_process';
+import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join, resolve } from 'node:path';
 import { pathToFileURL } from 'node:url';
 
 const API='https://api.github.com';
@@ -153,6 +155,47 @@ function withGitPaths(repo,pullRequests){
  });
 }
 
+
+function checkPrDeltaAgainstCandidate(candidate, pr, paths, index) {
+ const mergeBase=git('merge-base',pr.base.sha,pr.head.sha).trim();
+ if(!SHA.test(mergeBase))throw new Error('PR #'+pr.number+' merge base did not resolve to a full SHA.');
+ const patch=git('--literal-pathspecs','diff','--binary','--full-index','--no-renames',
+  '--no-ext-diff',mergeBase,pr.head.sha,'--',...paths);
+ if(!patch)return {conflict:false,status:'empty-delta',paths:[]};
+ const tempRoot=mkdtempSync(join(tmpdir(),'maomao-pr-content-conflict-'));
+ const patchPath=join(tempRoot,'pr-'+index+'.patch');
+ const worktreePath=join(tempRoot,'worktree-'+index);
+ writeFileSync(patchPath,patch,{flag:'wx'});
+ let worktreeAdded=false;
+ try{
+  git('worktree','add','--detach',worktreePath,candidate);
+  worktreeAdded=true;
+  const reverse=spawnSync('git',['apply','--reverse','--check',patchPath],{
+   cwd:worktreePath,encoding:'utf8',timeout:120000,maxBuffer:16*1024*1024
+  });
+  if(reverse.status===0&&!reverse.error)return {conflict:false,status:'already-present',paths:[]};
+  const applied=spawnSync('git',['apply','--3way','--index',patchPath],{
+   cwd:worktreePath,encoding:'utf8',timeout:120000,maxBuffer:16*1024*1024
+  });
+  const unmerged=spawnSync('git',['diff','--name-only','--diff-filter=U','-z'],{
+   cwd:worktreePath,encoding:'utf8',timeout:30000,maxBuffer:1024*1024
+  });
+  const conflictPaths=unmerged.status===0?unmerged.stdout.split('\0').filter(Boolean):[];
+  const hasConflict=applied.status!==0||Boolean(applied.error)||unmerged.status!==0||conflictPaths.length>0;
+  return {conflict:hasConflict,status:hasConflict?'content-conflict':'three-way-clean',
+   paths:hasConflict?(conflictPaths.length?conflictPaths:paths):[]};
+ }finally{
+  if(worktreeAdded)spawnSync('git',['worktree','remove','--force',worktreePath],{
+   cwd:process.cwd(),encoding:'utf8',timeout:30000,maxBuffer:1024*1024
+  });
+  rmSync(worktreePath,{recursive:true,force:true});
+  rmSync(tempRoot,{recursive:true,force:true});
+  spawnSync('git',['worktree','prune'],{
+   cwd:process.cwd(),encoding:'utf8',timeout:30000,maxBuffer:1024*1024
+  });
+ }
+}
+
 function changedPaths(base,head){
  let committed;
  try{committed=git(...DIFF_PATHS,base+'...'+head);}
@@ -167,17 +210,35 @@ function changedPaths(base,head){
   git('ls-files','-z','--others','--exclude-standard')];
  return [...new Set(outputs.flatMap(splitPaths))].sort();
 }
-export async function runConflictAudit({repo=process.env.GITHUB_REPOSITORY||'Bella0960/q7v2k9n4x6r8',base='origin/main',head='HEAD',ignorePullRequestNumbers=[]}={}){
+export async function runConflictAudit({repo=process.env.GITHUB_REPOSITORY||'Bella0960/q7v2k9n4x6r8',base='origin/main',head='HEAD',ignorePullRequestNumbers=[],checkContentConflicts=false}={}){
  if(!/^[A-Za-z0-9_.-]+\/[A-Za-z0-9_.-]+$/.test(repo))throw new Error('Repository must use owner/name form');
  const branch=git('branch','--show-current').trim(),sha=git('rev-parse',head).trim();
  if(!SHA.test(sha))throw new Error('Current Git SHA invalid');
  const mine=changedPaths(base,head);
- if(!mine.length)return buildConflictReport({repository:repo,currentBranch:branch,currentSha:sha,currentPaths:mine,ignorePullRequestNumbers});
+ if(!mine.length){
+  const empty=buildConflictReport({repository:repo,currentBranch:branch,currentSha:sha,currentPaths:mine,ignorePullRequestNumbers});
+  return {...empty,contentConflictChecksPerformed:Boolean(checkContentConflicts),contentConflictCount:0};
+ }
  if(git('rev-parse','--is-shallow-repository').trim()==='true'){
   throw new Error('A complete Git history is required. Fetch the full history and retry.');
  }
  const pullRequests=withGitPaths(repo,await openPrs(repo));
- return buildConflictReport({repository:repo,currentBranch:branch,currentSha:sha,currentPaths:mine,pullRequests,ignorePullRequestNumbers});
+ const report=buildConflictReport({repository:repo,currentBranch:branch,currentSha:sha,currentPaths:mine,pullRequests,ignorePullRequestNumbers});
+ if(!checkContentConflicts)return {...report,contentConflictChecksPerformed:false,contentConflictCount:null};
+ const byNumber=new Map(pullRequests.map(pr=>[pr.number,pr]));
+ let index=0;
+ for(const finding of report.findings){
+  if(!finding.exactPaths.length)continue;
+  const pr=byNumber.get(finding.number);
+  if(!pr)throw new Error('Cannot resolve the exact open PR for content-conflict audit.');
+  const result=checkPrDeltaAgainstCandidate(sha,pr,pr.files.map(file=>typeof file==='string'?file:file.filename).filter(Boolean),index++);
+  finding.contentMergeStatus=result.status;
+  finding.contentConflict=result.conflict;
+  finding.contentConflictPaths=result.paths;
+ }
+ const contentConflicts=report.findings.filter(finding=>finding.contentConflict);
+ return {...report,contentConflictChecksPerformed:true,contentConflictCount:contentConflicts.length,
+  contentConflicts:contentConflicts.map(finding=>({number:finding.number,branch:finding.branch,paths:finding.contentConflictPaths}))};
 }
 function render(r){
  const displayPath=path=>/[\u0000-\u001f\u007f-\u009f]/.test(path)

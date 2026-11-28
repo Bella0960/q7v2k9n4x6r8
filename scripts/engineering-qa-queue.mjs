@@ -750,10 +750,11 @@ async function resumeCandidate(repository, baseline, branch, stored, { push = fa
       repo: repository,
       base: baseline,
       head: receipt.candidate,
-      ignorePullRequestNumbers: receipt.tasks.map(task => task.prNumber)
+      ignorePullRequestNumbers: receipt.tasks.map(task => task.prNumber),
+      checkContentConflicts: true
     });
-    if (conflicts.exactOverlapCount || conflicts.sharedHotspotCount) {
-      fail('Saved candidate now has an ownership conflict; it remains intact and was not pushed.');
+    if (!conflicts.contentConflictChecksPerformed || conflicts.contentConflictCount) {
+      fail('Saved candidate has a real content conflict or its three-way conflict audit is incomplete; it remains intact and was not pushed.');
     }
     finalQaSourceReceipt = await requireCurrentQaBaseline(baseline);
     const result = pushCandidate(repository, branch, receipt.candidate);
@@ -867,14 +868,15 @@ async function assembleReadyBatch(repository, baseline, { push = false } = {}) {
         repo: repository,
         base: baseline,
         head: candidate,
-        ignorePullRequestNumbers: ready.map(task => task.pr.number)
+        ignorePullRequestNumbers: ready.map(task => task.pr.number),
+        checkContentConflicts: true
       });
     } catch (error) {
       git(['update-ref', '-d', ref, candidate], 'Remove candidate after incomplete ownership scan');
       candidate = null;
       throw error;
     }
-    if (conflicts.exactOverlapCount || conflicts.sharedHotspotCount) {
+    if (!conflicts.contentConflictChecksPerformed || conflicts.contentConflictCount) {
       git(['update-ref', '-d', ref, candidate], 'Remove rejected local candidate');
       candidate = null;
       return {
@@ -885,8 +887,10 @@ async function assembleReadyBatch(repository, baseline, { push = false } = {}) {
         includedTasks: [],
         blocked,
         ownershipConflicts: {
-          exact: conflicts.exactOverlapCount,
+          exactPathOverlaps: conflicts.exactOverlapCount,
+          contentConflicts: conflicts.contentConflictCount,
           sharedHotspots: conflicts.sharedHotspotCount,
+          contentConflictChecksPerformed: conflicts.contentConflictChecksPerformed,
           findings: conflicts.findings
         }
       };
