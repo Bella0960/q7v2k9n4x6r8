@@ -53,10 +53,8 @@ test('partner protocol settings edit only the global key', () => {
 
 
 test('partner protocol preserves scoped legacy text without migrating it', () => {
-  assert.match(detail, /!isGroupChat && currentRoleId && currentCharacter/);
-  assert.match(detail, /currentRoleId === String\(currentCharacter\.id\)/);
-  assert.match(detail, /localStorage\.getItem\(globalRpKey \+ currentRoleId\)/);
-  assert.match(detail, /if \(!rpProtocol\) rpProtocol = \(localStorage\.getItem\(globalRpKey\)/);
+  assert.match(detail, /rpProtocol = localStorage\.getItem\(globalRpKey\) \|\| ''/);
+  assert.doesNotMatch(detail, /localStorage\.getItem\(globalRpKey \+ currentRoleId\)/);
   assert.doesNotMatch(detail, /localStorage\.setItem\(globalRpKey \+ currentRoleId/,
     'legacy role protocol compatibility must remain read-only');
 });

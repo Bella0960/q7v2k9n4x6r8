@@ -98,8 +98,11 @@ test('missing scope notice leads to existing same-origin login, never desktop lo
   assert.doesNotMatch(src, /location\.assign\('\/index\.html'\)/);
   assert.doesNotMatch(src.replace(/\/\/[^\n]*/g, ''), /localStorage|sessionStorage|document\.cookie/);
   assert.match(worker, /return redirectToVerifiedLogin\(url/);
-  assert.match(worker, /if \(isHtmlDocument && authorizedAccount\) return await injectAccountScope\(response, authorizedAccount, env\)/);
-  assert.match(worker, /return authorizedAccount \? await injectAccountScope\(response, authorizedAccount, env\) : response/);
+  assert.match(worker, /const isProtectedDocument = isHtmlDocument && !isPublicAccountDocument/);
+  assert.match(worker, /if \(isProtectedDocument && request\.method !== 'GET' && request\.method !== 'HEAD'\)/);
+  assert.match(worker, /if \(isProtectedDocument && authorizedAccount\)/);
+  assert.match(worker, /request\.method === 'HEAD'/);
+  assert.match(worker, /'cache-control': 'no-store'/);
 });
 
 test('incomplete identity responses offer retry without redirecting or loading private data', async () => {

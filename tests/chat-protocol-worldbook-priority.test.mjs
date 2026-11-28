@@ -153,7 +153,7 @@ test('source-first system stack preserves complete protocol, selected persona an
   assert.ok(start >= 0 && end > start, 'real top-of-system assembly must be present');
   const builder = new Function(
     'rpProtocol', 'applyProtocolVars', 'turnSpeakerName', 'turnSpeakerPersona',
-    'rolePersona', 'userName', 'userPersona', 'roleMemory', 'memoryContext', 'worldbookText',
+    'rolePersona', 'userName', 'userPersona', 'roleMemory', 'memoryContext', 'worldbookText', 'userMemoryText',
     detail.slice(start, end) + '\nreturn systemPrompt;'
   );
   const persona = '深圳本地花店经营者，喜欢直接说话。'.repeat(240);
@@ -163,7 +163,7 @@ test('source-first system stack preserves complete protocol, selected persona an
     .replace(/\{\{char\}\}/g, '阮映雪')
     .replace(/\{\{persona\}\}/g, persona)
     .replace(/\{\{worldbook\}\}/g, lore);
-  const a = builder(protocol, expand, '阮映雪', persona, persona, '用户', '', '', '', lore);
+  const a = builder(protocol, expand, '阮映雪', persona, persona, '用户', '', '', '', lore, '用户喜欢花市');
   assert.ok(a.startsWith('用户自己写的全局协议：'), 'user protocol must precede generated mechanic rules');
   assert.ok(a.includes(persona));
   assert.ok(a.includes(lore));
@@ -172,7 +172,7 @@ test('source-first system stack preserves complete protocol, selected persona an
   assert.ok(a.indexOf('【本轮角色档案') > a.indexOf('用户自己写的全局协议'));
   const customProtocol = '用户自定义协议：不要所有角色都使用一个模板。';
   const b = builder(customProtocol, () => customProtocol, '陆昭辰', persona,
-    persona, '用户', '', '', '', lore);
+    persona, '用户', '', '', '', lore, '用户喜欢花市');
   assert.ok(b.indexOf('【本轮角色档案') >= 0);
   assert.ok(b.includes(persona), 'protocol without {{persona}} must still get saved persona');
   assert.ok(b.includes(lore), 'protocol without {{worldbook}} must still get activated lore');

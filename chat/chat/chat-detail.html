@@ -6312,20 +6312,17 @@
             const memoryContext = (typeof memorySystem !== 'undefined')
                 ? memorySystem.getAIContext() : '暂无实时状态';
 
-            // 单聊只回读已核对归属的旧协议；群聊使用全局协议。
+            // 伴侣协议是应用级全局契约。旧角色专属 key 仅保留原始数据，
+            // 不在聊天请求中自动读取、迁移或覆盖。
             let rpProtocol = '';
             try {
                 const globalRpKey = 'chat_rp_protocol_';
-                if (!isGroupChat && currentRoleId && currentCharacter &&
-                    currentRoleId === String(currentCharacter.id)) {
-                    rpProtocol = (localStorage.getItem(globalRpKey + currentRoleId) || '').trim();
-                }
-                if (!rpProtocol) rpProtocol = (localStorage.getItem(globalRpKey) || '').trim();
+                rpProtocol = localStorage.getItem(globalRpKey) || '';
 
                 // App-wide protocol is a single explicitly saved key. Never
                 // promote a role-scoped legacy protocol to all other roles merely
                 // because a different conversation was opened first. Preserve
-                // historical keys without writes for explicit user recovery.
+                // historical keys without reads or writes for explicit user recovery.
             } catch (e) {
                 console.error('[ChatPersonaSources] saved global protocol unavailable:', e);
                 stopForMissingRoleSource('protocol-read', '人设协议读取失败，本轮已停止。请检查本机存储');
