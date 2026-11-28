@@ -45,10 +45,22 @@ test('every desktop app shortcut is emitted as a real HTML page in the productio
     'private admin HTML must not appear in the public PWA precache manifest');
 });
 
-test('service worker precaches all HTML routes listed by the build manifest', () => {
+test('build lists every HTML route while the shared PWA cache keeps only public account HTML', () => {
   assert.match(serviceWorker, /fetch\('\.\/pwa-pages\.json'/);
-  assert.match(serviceWorker, /APP_SHELL\.concat\(pageEntries\)/);
-  assert.match(serviceWorker, /cache\.add\(url\)/);
+  const start = serviceWorker.indexOf('const resources = Array.from(new Set(APP_SHELL.concat(pageEntries)))');
+  const end = serviceWorker.indexOf('await Promise.all(resources.map', start);
+  assert.ok(start >= 0 && end > start, 'service worker must define the app-shell resource allowlist');
+  const resourceBlock = serviceWorker.slice(start, end);
+  const filterMatch = resourceBlock.match(/\.filter\(url => ([\s\S]*?)\);/);
+  assert.ok(filterMatch, 'app-shell resources must have an explicit privacy filter');
+  const isCacheable = new Function('url', 'return ' + filterMatch[1]);
+  assert.equal(isCacheable('./account/index.html'), true);
+  assert.equal(isCacheable('./account/bootstrap.html'), true);
+  assert.equal(isCacheable('./index.html'), false);
+  assert.equal(isCacheable('./chat/chat/chat.html'), false);
+  assert.equal(isCacheable('./chat/chat/chat-detail.html'), false);
+  assert.equal(isCacheable('./shared/js/phone/chat-message-policy.js'), true);
+  assert.match(resourceBlock, /cache\.add\(url\)/);
 });
 
 test('private mobile navigations always revalidate the account with Worker; only sign-in has offline fallback', () => {

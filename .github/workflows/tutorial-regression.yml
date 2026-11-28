@@ -83,10 +83,13 @@ jobs:
         if: github.event_name == 'pull_request'
         env:
           PR_BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
         run: |
           node --input-type=module <<'NODE'
           import { execFileSync } from 'node:child_process';
+          import { readFileSync } from 'node:fs';
           const base = process.env.PR_BASE_SHA;
+          const prNumber = Number(process.env.PR_NUMBER);
           const changed = execFileSync('git', ['diff', '--name-only', `${base}...HEAD`], { encoding: 'utf8' })
             .split(/\r?\n/).filter(Boolean);
           const userFacing = changed.filter((path) =>
@@ -97,9 +100,37 @@ jobs:
             userFacing.forEach((path) => console.error(' - ' + path));
             process.exit(1);
           }
-          console.log(userFacing.length
-            ? 'Tutorial catalog updated together with user-facing changes.'
-            : 'No user-facing feature changes require a tutorial catalog update.');
+          if (userFacing.length) {
+            if (!Number.isSafeInteger(prNumber) || prNumber < 1) {
+              throw new Error('Pull request number is unavailable; cannot bind tutorial evidence.');
+            }
+            const guide = readFileSync('tutorial/tutorial.js', 'utf8');
+            const historyStart = guide.indexOf('var GUIDE_UPDATES = [');
+            const historyEnd = guide.indexOf('\n  ];', historyStart);
+            if (historyStart < 0 || historyEnd < 0) {
+              throw new Error('GUIDE_UPDATES history is missing or malformed.');
+            }
+            const history = guide.slice(historyStart, historyEnd);
+            const entries = [...history.matchAll(/\{\s*([\s\S]*?)\n\s*\}/g)].map(match => match[1]);
+            const entry = entries.find(item => item.includes('pr: ' + prNumber));
+            const guideIdsMatch = entry && entry.match(/guideIds:\s*\[([^\]]+)\]/);
+            if (!entry || !/date:\s*'\d{4}-\d{2}-\d{2}'/.test(entry) ||
+                !/taskId:\s*'[A-Z][A-Z0-9-]{1,63}'/.test(entry) || !guideIdsMatch) {
+              throw new Error('User-facing changes require a dated GUIDE_UPDATES entry bound to PR #' + prNumber + ', a Task ID and guideIds.');
+            }
+            const guideIds = [...guideIdsMatch[1].matchAll(/'([^']+)'/g)].map(match => match[1]);
+            const catalogStart = guide.indexOf('var GUIDES = [');
+            const catalogEnd = guide.indexOf('\n  ];', catalogStart);
+            const catalog = catalogStart >= 0 && catalogEnd > catalogStart
+              ? guide.slice(catalogStart, catalogEnd) : '';
+            if (!guideIds.length || guideIds.some(id =>
+              !catalog.includes("id: '" + id + "'") && !catalog.includes('"id": "' + id + '"'))) {
+              throw new Error('GUIDE_UPDATES for PR #' + prNumber + ' references a missing guide entry.');
+            }
+            console.log('Tutorial evidence verified for PR #' + prNumber + ': ' + guideIds.join(', '));
+          } else {
+            console.log('No user-facing feature changes require a tutorial catalog update.');
+          }
           NODE
       - name: Install dependencies
         run: npm ci

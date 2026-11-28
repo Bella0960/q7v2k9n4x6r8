@@ -51,6 +51,25 @@ test('tutorial migration preserves custom pages, Dock and removal choices', () =
   assert.equal(saves, 1);
 });
 
+test('CHAT-REPLY-UX-001 tutorial update is dated, task-linked and behavior-specific', () => {
+  const updateStart = guideScript.indexOf('var GUIDE_UPDATES = [');
+  const updateEnd = guideScript.indexOf('\n  ];', updateStart);
+  assert.ok(updateStart >= 0 && updateEnd > updateStart, 'dated GUIDE_UPDATES history must exist');
+  const updates = guideScript.slice(updateStart, updateEnd);
+  assert.match(updates, /date:\s*'2026-11-28'/);
+  assert.match(updates, /pr:\s*566\b/);
+  assert.match(updates, /taskId:\s*'CHAT-REPLY-UX-001'/);
+  assert.match(updates, /guideIds:\s*\['reply-bubbles'\]/);
+
+  const guideStart = guideScript.indexOf("id: 'reply-bubbles'");
+  const guideEnd = guideScript.indexOf('\n    },', guideStart);
+  assert.ok(guideStart >= 0 && guideEnd > guideStart, 'reply-bubbles guide must exist');
+  const replyGuide = guideScript.slice(guideStart, guideEnd);
+  for (const phrase of ['2–3 条', '2–3 秒', '正在输入…', '绿色小圆点', '星星继续按钮']) {
+    assert.ok(replyGuide.includes(phrase), 'reply-bubbles guide is missing: ' + phrase);
+  }
+});
+
 test('guide documents the merged chat features and correctly separates unverified push', () => {
   // Reader-facing release notes are editorial, not a dump of internal PRs.
   const bulletin = guideScript.slice(
@@ -120,7 +139,7 @@ test('tutorial provides a real stepper, interface-location illustration, FAQ, an
   assert.match(guideScript, /function moveWalkthrough/);
   assert.match(guideScript, /function renderFaqs/);
   const faqSection = guideScript.slice(guideScript.indexOf('var FAQS = ['), guideScript.indexOf('var APPS = ['));
-  assert.equal((faqSection.match(/^    \['/gm) || []).length, 11, 'expected searchable FAQ entries');
+  assert.equal((faqSection.match(/^    \['/gm) || []).length, 12, 'expected searchable FAQ entries');
 });
 
 test('manual is book-first: chapter index, readable sheets, official-only releases and folded private notebook', () => {
@@ -205,6 +224,9 @@ test('tutorial workflow enforces a guide update when user-facing app pages chang
   assert.match(tutorialWorkflow, /User-facing MAOMAO files changed without updating tutorial\/tutorial\.js/);
   assert.match(tutorialWorkflow, /execFileSync\('git', \['diff', '--name-only',/);
   assert.match(tutorialWorkflow, /tutorial\/tutorial\.js/);
+  assert.match(tutorialWorkflow, /PR_NUMBER/);
+  assert.match(tutorialWorkflow, /GUIDE_UPDATES/);
+  assert.match(tutorialWorkflow, /guideIds/);
 });
 
 test('PWA app shell caches the full guide bundle and has a matching test command', () => {
