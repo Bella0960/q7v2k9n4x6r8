@@ -6,6 +6,10 @@
 <meta name="theme-color" content="#F7F7F9">
 <title>角色陪伴 · MAOMAO</title>
 <link rel="stylesheet" href="../shared/css/mobile-fit.css">
+<!-- 独立页面必须自己加载共享模块：否则正式角色与 AI 通道在真实浏览器里都不可达，
+     一切都会静默退回本地兜底。与 envelope.html 使用同一版本号。 -->
+<script src="../shared/js/phone/phone_storage.js?v=20261031-envelope1"></script>
+<script src="../shared/js/phone/phone_api.js?v=20261031-envelope1"></script>
 <style>
 :root{color-scheme:light;--ink:#111;--muted:#777;--line:#e6e6e8;--paper:#fff;--wash:#f7f7f9}
 *{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
@@ -39,7 +43,7 @@ h1{font-family:Georgia,"Times New Roman",serif;font-size:clamp(42px,12vw,64px);f
 
 <section class="feature">
 <div class="feature-head"><div class="index">04</div><div class="feature-main"><h3>角色直播间</h3><p class="desc">进入角色的模拟直播现场，发送留言、点亮互动，保留轻松的实时感。</p><div class="actions"><button class="btn dark" data-toggle="livePanel">进入直播间</button></div></div></div>
-<div class="subpanel" id="livePanel"><div class="live-stage"><div class="live-status" id="liveStatus">● LIVE / PRIVATE ROOM</div><div class="live-title" id="liveRoleTitle">A little room</div><div class="live-copy">角色正在这里等你 · 本地互动原型</div></div><div class="actions" style="margin-top:10px"><button class="btn dark" id="heartBtn">点亮互动 <span id="heartCount">0</span></button><button class="btn" id="topicBtn">换个话题</button><button class="btn" id="askRoleBtn">邀请角色回应</button></div><div class="live-comments" id="liveComments"><div>系统 · 欢迎进入这个小小直播间。</div></div><form class="inline-form" id="commentForm"><input id="commentInput" maxlength="100" placeholder="写一句留言…" required><button class="btn" type="submit">发送</button></form><p class="note">目前没有真实推流或多人实时聊天室。点击「邀请角色回应」时才会调用已配置的聊天 API；每次点击会产生一次模型请求费用。</p></div>
+<div class="subpanel" id="livePanel"><div class="live-stage"><div class="live-status" id="liveStatus">● LIVE / PRIVATE ROOM</div><div class="live-title" id="liveRoleTitle">A little room</div><div class="live-copy">角色正在这里等你 · 本地互动原型</div></div><div class="actions" style="margin-top:10px"><button class="btn dark" id="heartBtn">点亮互动 <span id="heartCount">0</span></button><button class="btn" id="topicBtn">换个话题</button><button class="btn" id="askRoleBtn">邀请角色回应</button></div><div class="live-comments" id="liveComments"><div>系统 · 欢迎进入这个小小直播间。</div></div><form class="inline-form" id="commentForm"><input id="commentInput" maxlength="100" placeholder="写一句留言…" required><button class="btn" type="submit">发送</button></form><p class="note">目前没有真实推流或多人实时聊天室。点击「邀请角色回应」时才调用你在设置里配置的聊天 API：每天最多 20 次、两次间隔至少 10 秒（仅本机限制）；没配置 API 时只给本地回应，零费用。</p></div>
 </section>
 
 <section class="feature">
@@ -54,16 +58,76 @@ h1{font-family:Georgia,"Times New Roman",serif;font-size:clamp(42px,12vw,64px);f
 (function(){
 'use strict';
 const $=id=>document.getElementById(id);
-const KEY='maomao_companion_v1';
-const state=(()=>{try{return JSON.parse(localStorage.getItem(KEY))||{role:'',alarms:[],steps:0,stepDate:'',shakes:0,likes:0,comments:[],song:'',listening:false}}catch(e){return {role:'',alarms:[],steps:0,stepDate:'',shakes:0,likes:0,comments:[],song:'',listening:false}}})();
+/* 角色私有数据按正式角色 ID 分桶：留言、步数、闹钟不能混在一起。
+   旧全局键 maomao_companion_v1 只在「它记录的 role 名与当前正式角色一致」时只读兼容，
+   绝不把 A 的私人留言以 B 的身份带进模型。 */
+const sharedRolesNow=(()=>{try{if(window.PhoneStorage&&typeof PhoneStorage.getCharacters==='function'){const l=PhoneStorage.getCharacters()||[];return Array.isArray(l)?l.filter(r=>r&&r.id!=null&&r.name):[];}}catch(e){}return[];})();
+const sharedCurrentId=(()=>{try{return (window.PhoneStorage&&typeof PhoneStorage.getCurrentContactId==='function')?String(PhoneStorage.getCurrentContactId()||''):'';}catch(e){return'';}})();
+const boundRoleNow=sharedRolesNow.filter(r=>String(r.id)===sharedCurrentId)[0]||null;
+const companionOwnerId=(boundRoleNow&&String(boundRoleNow.id))||'';
+const KEY=companionOwnerId?('maomao_companion_v1_'+companionOwnerId):'maomao_companion_v1_orphan';
+function legacyStateOwner(){
+  try{const raw=JSON.parse(localStorage.getItem('maomao_companion_v1'));return raw&&typeof raw==='object'?String(raw.role||''):'';}catch(e){return'';}
+}
+const state=(()=>{
+  const empty={role:'',alarms:[],steps:0,stepDate:'',shakes:0,likes:0,comments:[],song:'',listening:false};
+  try{
+    const perRole=JSON.parse(localStorage.getItem(KEY));
+    if(perRole&&typeof perRole==='object')return perRole;
+  }catch(e){}
+  /* 旧全局键只有在明确归属当前角色时才作为兼容来源（按 role 名匹配正式角色）。 */
+  if(companionOwnerId&&boundRoleNow){
+    const legacy=legacyStateOwner();
+    if(legacy&&(String(boundRoleNow.name)===legacy)){
+      try{const raw=JSON.parse(localStorage.getItem('maomao_companion_v1'));if(raw&&typeof raw==='object')return raw;}catch(e){}
+    }
+  }
+  return empty;
+})();
 // Playback cannot survive a reload; keep the saved song but reset its transient playing state.
 state.listening=false;
-function save(){try{localStorage.setItem(KEY,JSON.stringify(state))}catch(e){}}
+/* 必须优先用共享层里的正式角色（正式 ID + 人设），而不是一个自由输入的名字。
+   拿不到共享角色时才退回旧的自由命名，避免老数据直接失效。 */
+function sharedCharacters(){
+ try{
+  if(window.PhoneStorage&&typeof PhoneStorage.getCharacters==='function'){
+   const list=PhoneStorage.getCharacters()||[];
+   if(Array.isArray(list))return list.filter(r=>r&&r.id!=null&&r.name);
+  }
+ }catch(e){}
+ return [];
+}
+function sharedCurrentRole(){
+ const list=sharedCharacters();if(!list.length)return null;
+ let id='';try{id=(window.PhoneStorage&&typeof PhoneStorage.getCurrentContactId==='function')?String(PhoneStorage.getCurrentContactId()||''):'';}catch(e){}
+ 
+ const hit=list.filter(r=>String(r.id)===id)[0];
+ if(hit)return hit;
+ if(state.role){const byName=list.filter(r=>String(r.name)===String(state.role))[0];if(byName)return byName;}
+ return null;
+}
+let roleObj=sharedCurrentRole();
+if(roleObj&&!state.role)state.role=String(roleObj.name||'');
+/* 写失败必须让用户知道：原来 catch(e){} 会静默丢掉闹钟、步数与角色。 */
+let storeWarned=false;
+function save(){
+ try{localStorage.setItem(KEY,JSON.stringify(state));return true}
+ catch(e){if(!storeWarned){storeWarned=true;toast('本机存储空间不足，这次修改没能保存');}return false}
+}
 let toastTimer;
 function toast(msg){$('toast').textContent=msg;$('toast').classList.add('show');clearTimeout(toastTimer);toastTimer=setTimeout(()=>$('toast').classList.remove('show'),2300)}
-function role(){return state.role||'TA'}
+function role(){return (roleObj&&roleObj.name)||state.role||'TA'}
 function renderRole(){ $('roleName').value=state.role||'';$('liveRoleTitle').textContent=role()+' 的小小直播间';$('callTitle').textContent=role()+' 来电';document.querySelector('.call-orb').textContent=(role().trim()[0]||'M');}
-$('saveRole').addEventListener('click',()=>{state.role=$('roleName').value.trim();save();renderRole();toast(state.role?'已切换角色：'+state.role:'已清空角色名称')});
+$('saveRole').addEventListener('click',()=>{
+ const name=$('roleName').value.trim();
+ const match=sharedCharacters().filter(r=>String(r.name)===name)[0]||null;
+ roleObj=match;                      /* 名字命中正式角色时立刻采用它的人设 */
+ state.role=name;
+ const ok=save();
+ renderRole();
+ const base=!name?'已清空角色名称':(match?'已切换到角色：'+name:'本机没有这个正式角色，先按名字记录');
+ toast(ok?base:base+'（但没能保存到本机）');
+});
 document.querySelectorAll('[data-toggle]').forEach(btn=>btn.addEventListener('click',()=>{$(btn.dataset.toggle).classList.toggle('open')}));
 $('callBtn').addEventListener('click',()=>{$('callResult').textContent='';$('callModal').classList.add('show')});
 function closeCall(){ $('callModal').classList.remove('show') }
@@ -85,21 +149,97 @@ $('heartBtn').addEventListener('click',()=>{state.likes++;save();$('heartCount')
 function addComment(text){state.comments=state.comments||[];state.comments.push(text);state.comments=state.comments.slice(-30);save();renderComments()}
 function renderComments(){const box=$('liveComments');box.innerHTML='';(state.comments||[]).forEach(t=>{const div=document.createElement('div');div.textContent=t;box.appendChild(div)});box.scrollTop=box.scrollHeight}
 $('commentForm').addEventListener('submit',e=>{e.preventDefault();const t=$('commentInput').value.trim();if(!t)return;addComment('你 · '+t);$('commentInput').value=''});
-async function inviteRoleReply(){
- const btn=$('askRoleBtn');const config=(()=>{try{return JSON.parse(localStorage.getItem('api_settings')||'{}')}catch(e){return {}}})();
- const apiKey=String(config.apiKey||'').trim();const baseUrl=String(config.baseUrl||'https://api.openai.com/v1').trim().replace(/\/+$/,'');const model=String(config.model||'gpt-3.5-turbo').trim();
- if(!apiKey){toast('请先到设置页配置 API Key');return}
- let profile={};try{const list=JSON.parse(localStorage.getItem('ai_custom_characters')||'[]');if(Array.isArray(list)){profile=list.find(x=>String(x.name||'')===String(state.role||''))||{}}}catch(e){}
- const persona=String(profile.personality||profile.description||profile.prompt||profile.systemPrompt||profile.characterDescription||'请用自然、温和、有个性的日常口吻回应。').slice(0,1800);
- const history=(state.comments||[]).slice(-10).map(x=>String(x).slice(0,180)).join('\n')||'直播间刚刚开始，还没有留言。';
- btn.disabled=true;btn.textContent='角色正在回应…';
- const controller=new AbortController();const timeout=setTimeout(()=>controller.abort(),20000);
+/* 付费回应护栏：复用共享 PhoneAPI + 共享配置，不再自己 fetch、不再读旧 api_settings。
+   成本保护：每天 20 次（仅本机）、两次间隔 ≥10 秒、同一时刻只跑一个；
+   没有可用 API 时只给本地回应（零费用）；预算写不进本机就 fail-closed 停止付费调用。 */
+const REPLY_KEY='maomao_companion_reply_budget_v1';
+const REPLY_DAILY_LIMIT=20;
+const REPLY_MIN_INTERVAL=10000;
+let replyBusy=false;
+const replySession={day:'',used:0,broken:false};
+const replyDay=()=>{const d=new Date();return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0')};
+function replySessionSync(){if(replySession.day!==replyDay()){replySession.day=replyDay();replySession.used=0;replySession.broken=false;}}
+function replyStoredUsed(){try{const s=JSON.parse(localStorage.getItem(REPLY_KEY)||'{}')||{};return s.day===replyDay()?(Number(s.used)||0):0}catch(e){return 0}}
+function replyUsed(){replySessionSync();return Math.max(replyStoredUsed(),replySession.used)}
+function replyRemaining(){return Math.max(0,REPLY_DAILY_LIMIT-replyUsed())}
+/* 写入并读回确认：只有本机真的记上这笔账，才允许发付费请求。
+   之前只在内存记账后继续请求，配额拒写的手机上刷新即可重置，长期限额形同虚设。 */
+function persistReplyVerified(){
  try{
-  const response=await fetch(baseUrl+'/chat/completions',{method:'POST',headers:{'Content-Type':'application/json','Authorization':'Bearer '+apiKey},signal:controller.signal,body:JSON.stringify({model,messages:[{role:'system',content:'你正在 MAOMAO 的私人模拟直播间中扮演角色「'+role()+'」。角色人设参考：'+persona+'。请保持角色口吻，针对最近的直播留言自然回应，中文 1-3 句，不要声称自己真的在现实中直播、看见用户或执行了现实动作。不要输出标题或列表。'},{role:'user',content:'直播间最近的留言：\n'+history+'\n请给直播间观众一段简短回应。'}],temperature:0.8,max_tokens:180,stream:false})});
-  if(!response.ok){let detail='';try{const data=await response.json();detail=data.error?.message||''}catch(e){}throw new Error(response.status===401?'API Key 无效或已过期':response.status===429?'API 额度不足或请求过频':('请求失败（HTTP '+response.status+'）'+(detail?'：'+detail.slice(0,100):'')))}
-  const data=await response.json();const reply=String(data.choices?.[0]?.message?.content||'').trim();if(!reply)throw new Error('角色没有返回内容');addComment(role()+' · '+reply);toast('角色已回应')
- }catch(e){toast(e.name==='AbortError'?'请求超时，请稍后重试':(e.message||'请求失败'))}
- finally{clearTimeout(timeout);btn.disabled=false;btn.textContent='邀请角色回应'}
+  const payload={day:replyDay(),used:replyUsed()};
+  localStorage.setItem(REPLY_KEY,JSON.stringify(payload));
+  const back=JSON.parse(localStorage.getItem(REPLY_KEY)||'{}')||{};
+  return back.day===payload.day&&Number(back.used)===Number(payload.used);
+ }catch(e){return false}
+}
+function chargeReply(){
+ replySessionSync();
+ if(replyUsed()>=REPLY_DAILY_LIMIT)return false;
+ replySession.used=replyUsed()+1;       /* 会话计数照常推进 */
+ if(!persistReplyVerified()){replySession.broken=true;return false;}   /* fail-closed：0 请求 */
+ return true;
+}
+const localReplies=[
+ '我在，慢慢说就好。',
+ '刚才那句话我记下了，等你想继续的时候我们再聊。',
+ '今天也辛苦了，先休息一会儿吧。',
+ '不用急着给出答案，我陪你待一会儿。'
+];
+function localReply(){
+ addComment(role()+' · '+localReplies[Math.floor(Math.random()*localReplies.length)]);
+ $('listenState').textContent='本地回应（未调用 AI，零费用）。配置 API 后可让角色真正生成内容。';
+}
+function rolePersona(){
+ if(roleObj){
+  const text=[roleObj.personality,roleObj.description,roleObj.bio,roleObj.character,roleObj.speechStyle,roleObj.prompt]
+   .filter(Boolean).join('\n');
+  if(text)return String(text).slice(0,1800);
+ }
+ /* 只在「旧全局键明确归属当前正式角色」时才借用它的资料；自由输入的名字不进模型。 */
+ if(companionOwnerId&&boundRoleNow){
+  const legacyOwner=legacyStateOwner();
+  if(legacyOwner===String(boundRoleNow.name)){
+   try{
+    const list=JSON.parse(localStorage.getItem('ai_custom_characters')||'[]');
+    if(Array.isArray(list)&&state.role){
+     const profile=list.filter(x=>String(x.name||'')===String(state.role))[0]||{};
+     return String(profile.personality||profile.description||profile.prompt||profile.systemPrompt||profile.characterDescription||'').slice(0,1800);
+    }
+   }catch(e){}
+  }
+ }
+ return '请用自然、温和、有个性的日常口吻回应。';
+}
+async function inviteRoleReply(){
+ const btn=$('askRoleBtn');
+ if(replyBusy){toast('上一次回应还在生成中');return}
+ const canComplete=!!(window.PhoneAPI&&typeof window.PhoneAPI.complete==='function');
+ const cfg=(window.PhoneStorage&&typeof PhoneStorage.getApiConfig==='function')?(PhoneStorage.getApiConfig()||{}):{};
+ if(!canComplete||!String(cfg.apiKey||'').trim()){localReply();return}
+ if(replySession.broken){toast('本机预算没能写入，已暂停付费回应');return}
+ if(replyRemaining()<=0){toast('今天的角色回应次数已用完（每天 '+REPLY_DAILY_LIMIT+' 次，仅本机限制）');return}
+ if(Date.now()-(state.lastReplyAt||0)<REPLY_MIN_INTERVAL){toast('刚回应过，稍等十秒再邀请');return}
+ /* 付费人设必须绑定合法正式角色：自由输入的名字不能拿来调用模型。 */
+ if(!roleObj||!companionOwnerId){localReply();toast('先在聊天里选择一位正式角色，再邀请 AI 回应');return}
+ if(!chargeReply()){replySession.broken=true;toast('本机预算没能写入，已暂停付费回应（避免绕开限额）');return}
+ state.lastReplyAt=Date.now();
+ const persona=rolePersona();
+ const history=(state.comments||[]).slice(-10).map(x=>String(x).slice(0,180)).join('\n')||'直播间刚刚开始，还没有留言。';
+ replyBusy=true;btn.disabled=true;btn.textContent='角色正在回应…';
+ try{
+  const reply=String(await window.PhoneAPI.complete({
+   system:'你正在 MAOMAO 的私人模拟直播间中扮演角色「'+role()+'」。角色人设参考：'+persona+'。请保持角色口吻，针对最近的直播留言自然回应，中文 1-3 句，不要声称自己真的在现实中直播、看见用户或执行了现实动作。不要输出标题或列表。',
+   user:'直播间最近的留言：\n'+history+'\n请给直播间观众一段简短回应。',
+   temperature:0.8,maxTokens:180,timeoutMs:20000
+  })||'').trim().replace(/^["“”'「」]+|["“”'「」]+$/g,'').slice(0,300);
+  if(!reply)throw new Error('角色没有返回内容');
+  addComment(role()+' · '+reply);toast('角色已回应');
+ }catch(e){
+  const msg=String((e&&e.message)||'');
+  toast(msg.indexOf('超时')>=0?'请求超时，请稍后重试':(msg||'请求失败，不会自动重试'));
+ }finally{
+  replyBusy=false;btn.disabled=false;btn.textContent='邀请角色回应';
+ }
 }
 $('askRoleBtn').addEventListener('click',inviteRoleReply);
 function today(){return new Date().toLocaleDateString('en-CA')}
