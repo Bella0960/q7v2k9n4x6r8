@@ -16,9 +16,152 @@
         return !!message && typeof message === 'object' && !Array.isArray(message);
     }
 
+    // Web Locks serialize writers. Chromium can deliver localStorage updates to
+    // another renderer after the lock handoff, so acknowledge that visibility
+    // before reporting a commit. No alternate history store is introduced.
+    var writerId = Date.now().toString(36) + Math.random().toString(36).slice(2);
+    var coordinatorPromise = null;
+    var coordinatorScope = null;
+    async function historyCoordinator(manager, scope) {
+        if (typeof global.addEventListener !== 'function') return null; // injected storage adapters
+        if (!global.BroadcastChannel || !manager.query) throw new Error('coordination unavailable');
+        if (coordinatorPromise && coordinatorScope === scope) return coordinatorPromise;
+        if (coordinatorPromise) (await coordinatorPromise).close();
+        coordinatorScope = scope;
+        coordinatorPromise = new Promise(function (resolve, reject) {
+            var id = writerId;
+            var prefix = 'maomao:chat-history-peer:' + scope + ':';
+            var channel = new global.BroadcastChannel(prefix);
+            var waits = new Map();
+            var observations = new Map();
+            var committed = new Map();
+            var release;
+            var closed = false;
+            var dirty = false;
+            function send(message) {
+                if (!closed) channel.postMessage(Object.assign({ sender: id }, message));
+            }
+            function acknowledge(token, phase, target, key) { send({ token: token, phase: phase, target: target, dirty: dirty, known: committed.has(key), value: committed.get(key) }); }
+            function onStorage(event) {
+                if (event && event.key === null) committed.clear();
+                else if (event && committed.has(event.key)) committed.set(event.key, event.newValue);
+                observations.forEach(function (item, token) {
+                    try {
+                        if (global.localStorage.getItem(item.key) === item.value) {
+                            committed.set(item.key, item.value);
+                            acknowledge(token, 'visible', item.sender, item.key);
+                            observations.delete(token);
+                        }
+                    } catch (error) {}
+                });
+            }
+            channel.onmessage = function (event) {
+                var message = event.data;
+                if (!message || (message.target && message.target !== id)) return;
+                if (message.phase === 'probe') acknowledge(message.token, 'ready', message.sender, message.key);
+                if (message.phase === 'prepare') {
+                    observations.set(message.token, message);
+                    acknowledge(message.token, 'prepared', message.sender);
+                    onStorage();
+                }
+                if (message.phase === 'cancel') observations.delete(message.token);
+                var wait = waits.get(message.token + ':' + message.phase);
+                if (wait && wait.peers.has(message.sender)) {
+                    if (message.dirty) {
+                        wait.reject(new Error('previous write unverified'));
+                        return;
+                    }
+                    wait.values.push(message);
+                    wait.peers.delete(message.sender);
+                    if (!wait.peers.size) wait.resolve();
+                }
+            };
+            function waitFor(token, phase, peers) {
+                if (!peers.length) return Promise.resolve([]);
+                return new Promise(function (resolveWait, rejectWait) {
+                    var key = token + ':' + phase;
+                    var timer = global.setTimeout(function () { waits.delete(key); send({ token: token, phase: 'cancel' }); rejectWait(new Error('storage visibility timeout')); }, 3000);
+                    waits.set(key, {
+                        peers: new Set(peers), values: [],
+                        resolve: function () { global.clearTimeout(timer); var values = waits.get(key).values; waits.delete(key); resolveWait(values); },
+                        reject: function (error) { global.clearTimeout(timer); waits.delete(key); rejectWait(error); }
+                    });
+                });
+            }
+            function close() {
+                if (closed) return;
+                closed = true;
+                waits.forEach(function (wait) { wait.reject(new Error('page closed')); });
+                channel.close();
+                global.removeEventListener('storage', onStorage);
+                global.removeEventListener('pagehide', close);
+                if (release) release();
+                coordinatorPromise = null;
+            }
+            var coordinator = {
+                close: close,
+                block: function () { dirty = true; },
+                observe: function (key, value) { committed.set(key, value); },
+                probe: async function (key) {
+                    if (closed || dirty) throw new Error('storage coordinator unavailable');
+                    var state = await manager.query();
+                    var peers = state.held.filter(function (lock) {
+                        return lock.name.startsWith(prefix) && lock.name !== prefix + id;
+                    }).map(function (lock) { return lock.name.slice(prefix.length); });
+                    var token = id + ':' + Math.random().toString(36).slice(2);
+                    var ready = waitFor(token, 'ready', peers);
+                    peers.forEach(function (peer) { send({ target: peer, token: token, phase: 'probe', key: key }); });
+                    var replies = await ready;
+                    var known = replies.filter(function (reply) { return reply.known; });
+                    if (known.length) {
+                        var expected = known[0].value;
+                        if (known.some(function (reply) { return reply.value !== expected; })) throw new Error('storage peer mismatch');
+                        var until = Date.now() + 3000;
+                        while (global.localStorage.getItem(key) !== expected) {
+                            if (Date.now() >= until) throw new Error('storage view did not synchronize');
+                            await new Promise(function (resolveTask) { global.setTimeout(resolveTask, 0); });
+                        }
+                    }
+                    return peers;
+                },
+                prepare: async function (key, value, peers) {
+                    var token = id + ':' + Math.random().toString(36).slice(2);
+                    var prepared = waitFor(token, 'prepared', peers);
+                    // Install the observer wait before any peer can acknowledge it.
+                    var visible = waitFor(token, 'visible', peers);
+                    visible.catch(function () {}); // awaited after the primary write
+                    peers.forEach(function (peer) {
+                        send({ target: peer, token: token, phase: 'prepare', key: key, value: value });
+                    });
+                    await prepared;
+                    return {
+                        abort: function () {
+                            var wait = waits.get(token + ':visible');
+                            if (wait) wait.reject(new Error('storage write cancelled'));
+                            send({ token: token, phase: 'cancel' });
+                        },
+                        verified: async function () {
+                            try { await visible; committed.set(key, value); }
+                            catch (error) { dirty = true; throw error; }
+                            finally { send({ token: token, phase: 'cancel' }); }
+                        }
+                    };
+                }
+            };
+            global.addEventListener('storage', onStorage);
+            global.addEventListener('pagehide', close);
+            manager.request(prefix + id, { mode: 'exclusive' }, function () {
+                if (closed) { reject(new Error('page closed')); return; }
+                resolve(coordinator);
+                return new Promise(function (resolveRelease) { release = resolveRelease; });
+            }).catch(reject);
+        });
+        return coordinatorPromise;
+    }
+
     // All operations use the same per-conversation lock. The entire
     // read/check/write/readback sequence runs inside the lock callback.
-    async function withLatest(contactId, operation) {
+    async function withLatest(contactId, operation, initial) {
         var id = String(contactId == null ? '' : contactId);
         if (!id) return fail('VALIDATION_FAILED');
         var lockManager = global.navigator && global.navigator.locks;
@@ -38,17 +181,38 @@
             ? encodeURIComponent(String(accountScope.accountId)) + ':' : '';
         var key = 'chat_history_' + id;
         try {
-            return await lockManager.request('maomao:chat-history:' + lockScope + id, { mode: 'exclusive' }, function () {
+            var coordinator = await historyCoordinator(lockManager, lockScope);
+            return await lockManager.request('maomao:chat-history:' + lockScope + id, { mode: 'exclusive' }, async function () {
+                var currentScope = global.__MAO_ACCOUNT_SCOPE__;
+                var currentLockScope = currentScope && currentScope.ready === true && currentScope.accountId
+                    ? encodeURIComponent(String(currentScope.accountId)) + ':' : '';
+                if (currentLockScope !== lockScope) return fail('ACCOUNT_SCOPE_UNAVAILABLE');
+                var peers = coordinator ? await coordinator.probe(key) : [];
                 var raw;
                 try { raw = global.localStorage.getItem(key); }
                 catch (e) { return fail('DB_UNAVAILABLE'); }
-                // Do not overwrite a missing primary: it may still have a
-                // legacy phone_data_v2 copy or have just been deleted.
-                if (raw === null) return fail('NOT_FOUND');
                 var latest;
-                try { latest = JSON.parse(raw); }
-                catch (e) { return fail('CORRUPT_DATA'); }
-                if (!Array.isArray(latest)) return fail('CORRUPT_DATA');
+                if (raw === null && initial !== undefined) {
+                    // Read legacy history inside the same account/conversation lock.
+                    var legacyRaw;
+                    try { legacyRaw = global.localStorage.getItem('phone_data_v2'); }
+                    catch (error) { return fail('DB_UNAVAILABLE'); }
+                    var legacy;
+                    try { legacy = legacyRaw === null ? {} : JSON.parse(legacyRaw); }
+                    catch (error) { return fail('CORRUPT_DATA'); }
+                    if (!legacy || typeof legacy !== 'object' || Array.isArray(legacy)) return fail('CORRUPT_DATA');
+                    var bucket = legacy[id];
+                    if (bucket != null && (typeof bucket !== 'object' || Array.isArray(bucket))) return fail('CORRUPT_DATA');
+                    if (bucket && bucket.chat != null && (typeof bucket.chat !== 'object' || Array.isArray(bucket.chat))) return fail('CORRUPT_DATA');
+                    var history = bucket && bucket.chat && bucket.chat.history;
+                    if (history != null && !Array.isArray(history)) return fail('CORRUPT_DATA');
+                    latest = JSON.parse(JSON.stringify(history == null ? initial : history));
+                } else {
+                    if (raw === null) return fail('NOT_FOUND');
+                    try { latest = JSON.parse(raw); }
+                    catch (error) { return fail('CORRUPT_DATA'); }
+                    if (!Array.isArray(latest)) return fail('CORRUPT_DATA');
+                }
 
                 var decision;
                 try { decision = operation(latest); }
@@ -60,7 +224,7 @@
                 if (decision.alreadyPersisted) meta.alreadyPersisted = true;
                 // Replays with an already-persisted mid must not rewrite the
                 // entire history, which would also risk clobbering metadata.
-                if (decision.alreadyPersisted && decision.value === latest) {
+                if (raw !== null && decision.alreadyPersisted && decision.value === latest) {
                     return { ok: true, value: decision.output, meta: meta };
                 }
                 var updated;
@@ -74,8 +238,13 @@
                 var writeAttempted = false;
                 try {
                     writeAttempted = true;
+                    var barrier = coordinator ? await coordinator.prepare(key, updated, peers) : null;
                     global.localStorage.setItem(key, updated);
-                    if (global.localStorage.getItem(key) !== updated) {
+                    var observed = global.localStorage.getItem(key);
+                    if (observed !== updated) {
+                        if (barrier) barrier.abort();
+                        if (observed === raw) return fail('VERIFY_FAILED');
+                        if (coordinator) coordinator.block();
                         return fail('VERIFY_FAILED', { writeMayHavePersisted: true });
                     }
                 } catch (e) {
@@ -84,12 +253,25 @@
                     try {
                         var found = global.localStorage.getItem(key);
                         if (found === updated) {
+                            if (barrier) {
+                                try { await barrier.verified(); }
+                                catch (visibilityError) { return fail('VERIFY_FAILED', { writeMayHavePersisted: true }); }
+                            }
                             meta.verifiedAfterWriteError = true;
                             return { ok: true, value: decision.output, meta: meta };
                         }
-                        if (found === raw) return fail(failure);
+                        if (found === raw) {
+                            if (barrier) barrier.abort();
+                            return fail(failure);
+                        }
                     } catch (probeError) {}
+                    if (barrier) barrier.abort();
+                    if (coordinator && writeAttempted) coordinator.block();
                     return fail(failure, writeAttempted ? { writeMayHavePersisted: true } : null);
+                }
+                if (barrier) {
+                    try { await barrier.verified(); }
+                    catch (error) { return fail('VERIFY_FAILED', { writeMayHavePersisted: true }); }
                 }
                 return { ok: true, value: decision.output, meta: meta };
             });
@@ -108,12 +290,26 @@
     }
 
     var ChatHistoryAtomic = {
+        writerId: writerId,
+        observeLegacyWrite: function (key, value) {
+            if (coordinatorPromise) coordinatorPromise.then(function (coordinator) {
+                coordinator.observe(key, value);
+            }).catch(function () {});
+        },
+        initializeIfAbsent: async function (contactId, initial) {
+            if (!Array.isArray(initial)) return fail('VALIDATION_FAILED');
+            return withLatest(contactId, function (latest) {
+                return { ok: true, value: latest, output: latest, alreadyPersisted: true };
+            }, initial);
+        },
+
         // One or more ordinary/AI/group message bubbles are appended together.
         // The caller may check the latest state under the lock via guard.
-        appendManyIf: async function (contactId, messages, guard) {
+        appendManyIf: async function (contactId, messages, guard, initial) {
             if (!Array.isArray(messages) || !messages.length ||
                 !messages.every(validMessage) ||
-                (guard != null && typeof guard !== 'function')) return fail('VALIDATION_FAILED');
+                (guard != null && typeof guard !== 'function') ||
+                (initial !== undefined && !Array.isArray(initial))) return fail('VALIDATION_FAILED');
 
             return withLatest(contactId, function (latest) {
                 var allowed = guardAllows(guard, latest);
@@ -129,8 +325,11 @@
                         continue;
                     }
                     var mid = String(item.mid);
-                    if (Object.prototype.hasOwnProperty.call(seen, mid)) return fail('CONFLICT');
-                    seen[mid] = true;
+                    if (Object.prototype.hasOwnProperty.call(seen, mid)) {
+                        if (seen[mid] !== JSON.stringify(item)) return fail('CONFLICT');
+                        continue;
+                    }
+                    seen[mid] = JSON.stringify(item);
                     var existing = null;
                     for (var j = 0; j < latest.length; j++) {
                         if (latest[j] && latest[j].mid != null && String(latest[j].mid) === mid) {
@@ -150,13 +349,13 @@
                     alreadyPersisted: pending.length === 0,
                     output: { appended: pending.length, skipped: skipped }
                 };
-            });
+            }, initial);
         },
 
         // Backward compatible response shape for the existing notifier.
-        appendIf: async function (contactId, message, guard) {
+        appendIf: async function (contactId, message, guard, initial) {
             if (!validMessage(message)) return fail('VALIDATION_FAILED');
-            var outcome = await ChatHistoryAtomic.appendManyIf(contactId, [message], guard);
+            var outcome = await ChatHistoryAtomic.appendManyIf(contactId, [message], guard, initial);
             if (!outcome.ok) return outcome;
             return { ok: true, value: message, meta: outcome.meta };
         },

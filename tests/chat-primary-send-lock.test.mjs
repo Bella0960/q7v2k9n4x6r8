@@ -38,10 +38,10 @@ function locks() {
     } };
 }
 
-const helpers = section('        async function appendChatSafely(messages, guard) {',
+const helpers = section('        async function appendChatSafely(messages, guard, receipt) {',
     '        function saveMessages(list) {');
 const makeHelpers = new Function('window', 'currentCharacter', 'storageKey', 'showToast',
-    '_chatHistoryUnreadable', helpers + '\nreturn { appendChatSafely, replaceChatSafely };');
+    '_chatHistoryUnreadable', 'ensureChatHistoryReady', helpers + '\nreturn { appendChatSafely, replaceChatSafely };');
 
 function tab(localStorage, lock, id = 'role') {
     const window = { localStorage, navigator: lock ? { locks: lock } : {} };
@@ -51,7 +51,7 @@ function tab(localStorage, lock, id = 'role') {
         window,
         toasts,
         ...makeHelpers(window, { id }, 'chat_history_' + id,
-            text => toasts.push(text), false)
+            text => toasts.push(text), false, () => window.ChatHistoryAtomic.initializeIfAbsent(id, []))
     };
 }
 
@@ -112,5 +112,5 @@ test('all three primary user-send routes use the shared lock, never a stale whol
     assert.match(detail, /userSaved = await appendChatSafely\(\[userMsg\]\)/);
     assert.match(detail, /if \(!await appendChatSafely\(\[userMsg\]\)\)/);
     assert.match(detail, /historyList = loadMessages\(\);[\s\S]*?messages committed snapshot|historyList = loadMessages\(\);/);
-    assert.match(detail, /chat-history-atomic\.js\?v=20261118v3/);
+    assert.match(detail, /chat-history-atomic\.js\?v=20261129atomic1/);
 });

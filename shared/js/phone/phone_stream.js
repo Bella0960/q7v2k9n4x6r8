@@ -269,6 +269,7 @@
                     var delta = choice && choice.delta && choice.delta.content;
                     if (typeof delta === 'string' && delta) {
                         fullText += delta;
+                        if (typeof opts.onCheckpoint === 'function') opts.onCheckpoint(fullText);
                         schedulePaint();
                     }
                 };

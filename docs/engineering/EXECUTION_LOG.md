@@ -1,5 +1,48 @@
 # MAOMAO Execution Log
 
+## 2026-11-29 · GOV-006 / CHAT-CORE-QA-RECONCILIATION-001
+
+- 基线是在线 QA #101 源码 `4ab37c82b6e3ef7d1f002fbf9c8ad163637a6d2a`。QA 历史含 `b7422238`、`8455cc02`、`4ab37c82`。对比 #562 的已审 SHA 范围 `5512689cb842d38441a96e23beeb3f8a5d2622b8..d5777bb6310d1fc6915a0629ebec6e4e7d761ba7`。以 QA 分支为 PR 基线，原有 QA 历史不进入 PR 差异。产品文件均属于原 #562 路径，另外仅更新四个受影响的 QA 测试夹具和原执行日志。
+- 保留 QA 的角色专属记忆、群私聊脱敏与角色世界书、账户作用域、图片引用保护、钱包台账、行程作废与阶段防重、账号私有导航，以及 QA 的教程与缓存发布标记。无用户数据迁移。
+- 引入单一原子写入器的跨 Chromium 页面可见确认、旧 v2 历史的锁内初始化、稳定 ID 批量重试去重、单聊 SSE 中断检查点及重载恢复；接入图片批次、表情、卡片、转发、通话、回复和群投票等已有入口。写入不确定时保留媒体引用并明确提示。Service Worker 保留 QA 导航边界，条件和范围静态请求直达网络，206 不进入共享缓存。
+
+| # | 原冲突路径 | 处理与边界 |
+| --- | --- | --- |
+| 1 | `chat/chat/chat-detail.html` | 在 QA 页面保留角色、群组和回复门禁，移植写入锁与单聊检查点。群聊不通过半截检查点绕过质量检查。QA 特有的同步修复调用仍按原契约运行。 |
+| 2 | `chat/chat/js/chat-extras.js` | 扩展消息、图片批次、钱包卡片和通话结果接入原子保存，保留 QA 账本和媒体确认，写入不确定时不清理仍可能使用的文件。 |
+| 3 | `chat/date/journey.html` | 保留已存在的阶段锁、最新角色来源和旧行程作废，更新原子脚本引用。 |
+| 4 | `docs/engineering/EXECUTION_LOG.md` | 保留 QA 历史并记录本轮核对。 |
+| 5 | `package.json` | 保留 QA 完整脚本集，增加原 PR 的多页面 Chromium 命令。 |
+| 6 | `shared/js/chat-notifier.js` | 保留已部署的原子通知与角色资料读取，两个懒加载入口更新为同一脚本版本。 |
+| 7 | `shared/js/phone/chat-context-policy.js` | 保留 QA 明确的角色归属和无角色旧记忆拒绝规则，避免向其他角色发送无归属旧记忆。与 #562 的旧全局回退存在产品语义差异，待负责人确认。 |
+| 8 | `shared/js/phone/chat-history-atomic.js` | QA blob 与 #562 后续原子提交的父版本一致。在同一模块引入锁内初始化、跨页可见确认、写入错误恢复及批内去重。 |
+| 9 | `shared/js/phone/memory_recall.js` | QA 已有群公开召回过滤，包括角色私有消息；复用并保留其标签映射。 |
+| 10 | `shared/js/phone/phone_storage.js` | QA 已有权威主记录、损坏保护和旧 v2 读取，保留既有 API 和压缩门禁。原子转发从旧 v2 启动时保留源备份。 |
+| 11 | `sw.js` | 叠加条件与 Range 透传、206 拒缓存及脚本版本同步，保留 QA 私有导航、登录回退和构建身份规则。 |
+| 12 | `tests/chat-call-experience.test.mjs` | 等待实际异步保存并验证失败不渲染、历史不变。 |
+| 13 | `tests/chat-data-isolation.test.mjs` | 保留角色和行程断言，初始化夹具取锁后的主记录版本。 |
+| 14 | `tests/chat-heart-policy.test.mjs` | QA 缺少该测试及其 `chat-heart-policy.js` 模块。#562 此路径的增量是缓存版本与挂载断言，模块属于 PR 基线。未导入未审批模块，完整心声契约仍待协调。 |
+| 15 | `tests/chat-history-atomic.test.mjs` | 保留 QA 帐号锁断言，叠加锁内初始化、损坏数据与同 ID 回归。 |
+| 16 | `tests/chat-image-vision.test.mjs` | 绑定新原子转发入口，继续验证媒体先关联、确定失败回收及不确定保留。 |
+| 17 | `tests/chat-legacy-memory-prompt.test.mjs` | 保留 QA 的角色归属、群聊拒绝旧全局缓存和最终 system prompt 注入断言。 |
+| 18 | `tests/chat-phone-storage-primary-guard.test.mjs` | 复用 QA 的主记录防破坏与写后读回测试；额外转发覆盖来自原子层及既有腐坏、故障夹具。未声称 #562 所有 PhoneStorage 测试逐条等价。 |
+| 19 | `tests/chat-regression-contract.test.mjs` | 保留既有产品契约，更新异步保存、媒体、通话、钱包与群组入口断言。 |
+| 20 | `tests/default-desktop-layout.test.mjs` | 保留 QA 当前桌面契约，未回退到 #562 的历史 PWA 版本。 |
+| 21 | `tests/font-runtime-performance.test.mjs` | 保留 QA 的字体运行时与当前产物版本契约。 |
+| 22 | `tests/forum-chat-blockers.test.mjs` | 原 AI 错误提示行为测试改用异步追加夹具，失败与回退断言保留。 |
+| 23 | `tests/forum-seed-comments.test.mjs` | 保留 QA 的种子数据与用户编辑保护。 |
+| 24 | `tests/forum-world-events.test.mjs` | 保留 QA 已部署事件契约及新版脚本路径。 |
+| 25 | `tests/icon-presets-contract.test.mjs` | 保留 QA 的图标与构建产物规则。 |
+| 26 | `tests/pwa-navigation-cache.test.mjs` | 保留 QA 账户导航和离线边界；使用构建产物验证。 |
+| 27 | `tests/sw-navigation-cache-lifecycle.test.mjs` | 保留 QA 登录页缓存写入生命周期，增加条件、Range、206、no-store 行为断言。 |
+| 28 | `tests/tutorial-page-contract.test.mjs` | 保留 QA 教程覆盖和导航断言，避免覆盖较新的教程内容。 |
+
+- 原 PR 另外新增的 `tests/chat-atomic-multipage.browser.mjs` 与现有工作流接通。QA 的发邀请、角色资料、群回执与同步修复分支保留现有行为。用于原子辅助层加载的版本号、受影响的图像转发／主记录／行程／主发送锁夹具随接入调整。
+- 候选只读预演使用 #566 精确 head `a88d1bf339aeab8c92e98ee0bb9281f3346e3c6c`。新工作以独立草稿提交，原 #562、#566 及证明未被替换。实际队列需负责人确认心声和旧记忆边界、审阅替代 head、处理旧任务登记并审批。未更新共享候选、main 或线上 QA。
+
+
+- 性能浏览器门禁此前沿用允许私有 HTML 离线缓存的旧夹具。本轮采用 #566 已验证的同一测试文件，要求允许缓存的资源完整命中、共享缓存无私有 HTML、离线聊天返回 503，并保留性能阈值。两项合批时这个测试文件是同内容变更。
+
 ## 2026-11-25｜APP-DIARY-001｜个人备注与自然生活日记
 
 - **负责人确认范围：** 保持原首页写作入口与对应人物可阅读备注，其他人物/记录类型不得串读。不增产品入口，不改变已确认布局。继续反向检查，发现重复记录 ID 和数组/对象型作者可导致身份不明确；已统一严格 ID 检查，重复记录禁止 AI 读取、共享备注、保存备注或进入创作历史；无效角色 ID、未确认作者及损坏的记忆主档均拒绝请求。空白 persona/tone 不再遮盖有效旧 prompt/speechStyle，保留已保存资料。补充 Node 用例；实际内联语法、重复记录拒绝、畸形作者拒绝、损坏记忆零请求、旧人设/语气回读、对应人物读取、跨人物与跨类型隔离、重复读取九项隔离执行通过。完整 Node/Vite/Chromium 与真实模型体验仍未确认，不将上一轮候选回执当作新版本验收结果。

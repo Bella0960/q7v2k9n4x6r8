@@ -300,10 +300,10 @@ test('forwarding an asset-backed chat image adds a destination chat reference', 
   // The destination storage guard must run before any image ref is acquired.
   // A previous test required 'var msg' to be the first statement and broke
   // when forwarding was made safe against missing/corrupt target history.
-  const storageGuard = forwardBody.indexOf("typeof historyStorage.appendChatHistory !== 'function'");
+  const storageGuard = forwardBody.indexOf("typeof historyStorage.appendIf !== 'function'");
   const messageRead = forwardBody.indexOf('var msg = resolved.message;');
   const imageRef = forwardBody.indexOf("_chatImageMediaRepo.addRef(fwd.assetId, 'chat-message', String(fwd.mid))");
-  const append = forwardBody.indexOf('historyStorage.appendChatHistory(targetId, fwd)');
+  const append = forwardBody.indexOf('historyStorage.appendIf(targetId, fwd, null, [])');
   assert.ok(storageGuard >= 0 && messageRead > storageGuard,
     'destination storage is validated before accessing forwarded message');
   assert.ok(imageRef > messageRead && append > imageRef,

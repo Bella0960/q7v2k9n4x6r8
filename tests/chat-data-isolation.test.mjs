@@ -436,6 +436,10 @@ function loadHistoryFunctions(storageSlots, contactId = 'roleA', sharedStorage) 
       }
     }
   };
+  sandbox.ensureChatHistoryReady = (initial) => {
+    const key = 'chat_history_' + sandbox.currentCharacter.id;
+    if (localStorage.getItem(key) === null) localStorage.setItem(key, JSON.stringify(initial ?? []));
+  };
   const code = 'var _chatHistoryBaselines = new WeakMap();\n' +
     ['_rememberChatBaseline', '_inheritChatBaseline', '_messageIdentity', '_readBackHistory', '_verifyHistoryRoundTrip', 'loadMessages', 'saveMessages']
     .map((name) => extractFunction(chatDetailSource, name))
@@ -456,6 +460,7 @@ test('名片：卡片快照只写入当前会话历史，不在其他会话出�
     mid: 'm1'
   };
 
+  roleA.loadMessages(); // allow fixture initialization before taking the write snapshot
   const listA = roleA.loadMessages();
   listA.push(card);
   assert.equal(roleA.saveMessages(listA), true);

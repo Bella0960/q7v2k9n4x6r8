@@ -158,7 +158,7 @@ function loadRetryLifecycleHelpers(saveMessages) {
   );
 }
 
-function runErrorTipBranch(marker, options) {
+async function runErrorTipBranch(marker, options) {
   const renders = [];
   const toasts = [];
   const saves = [];
@@ -168,13 +168,14 @@ function runErrorTipBranch(marker, options) {
     tipText: options.text,
     errText: options.text,
     _isRepeatedSystemError: loadSystemErrorDedupe(),
-    saveMessages: (list) => { saves.push(clone(list)); return !!options.saved; },
+    appendChatSafely: async messages => { saves.push(clone(messages)); return !!options.saved; },
     appendMessageToDOM: (msg) => renders.push(clone(msg)),
     showToast: (message) => toasts.push(String(message)),
     _vl: null,
     vlRefresh: () => { throw new Error('virtual list refresh should not run in this branch'); }
   };
-  new Function('context', 'with (context) { ' + extractBracedBlock(chatDetail, marker) + ' }')(context);
+  const AsyncFunction = Object.getPrototypeOf(async function () {}).constructor;
+  await new AsyncFunction('context', 'with (context) { ' + extractBracedBlock(chatDetail, marker) + ' }')(context);
   return { historyList, renders, toasts, saves };
 }
 
@@ -439,7 +440,7 @@ test('retry locates legacy failed messages without mid by time and never migrate
   assert.equal(list[0].text, '旧失败消息');
 });
 
-test('streaming interruption tip is written and rendered only when persistence succeeds', () => {
+test('streaming interruption tip is written and rendered only when persistence succeeds', async () => {
   const text = '连接中断（30 秒未收到新内容），以上为已收到的回复';
   const history = [
     { role: 'assistant', text: '欢迎', time: 1 },
@@ -447,7 +448,7 @@ test('streaming interruption tip is written and rendered only when persistence s
     { role: 'assistant', text: '已收到的半截回复', time: 3 }
   ];
 
-  const failed = runErrorTipBranch('if (!_isRepeatedSystemError(historyList, tipText)) {', {
+  const failed = await runErrorTipBranch('if (!_isRepeatedSystemError(historyList, tipText)) {', {
     history, text, saved: false
   });
   assert.equal(failed.historyList.filter((m) => m.role === 'system_error').length, 0,
@@ -456,7 +457,7 @@ test('streaming interruption tip is written and rendered only when persistence s
   assert.deepEqual(failed.toasts, [text], '保存失败时用 toast 保留可见提示');
   assert.equal(failed.saves.length, 1);
 
-  const saved = runErrorTipBranch('if (!_isRepeatedSystemError(historyList, tipText)) {', {
+  const saved = await runErrorTipBranch('if (!_isRepeatedSystemError(historyList, tipText)) {', {
     history, text, saved: true
   });
   assert.equal(saved.historyList.filter((m) => m.role === 'system_error').length, 1);
@@ -466,14 +467,14 @@ test('streaming interruption tip is written and rendered only when persistence s
   assert.deepEqual(saved.toasts, []);
 });
 
-test('zero-content API error bubble is written and rendered only when persistence succeeds', () => {
+test('zero-content API error bubble is written and rendered only when persistence succeeds', async () => {
   const text = '连接失败: 503 Service Unavailable';
   const history = [
     { role: 'assistant', text: '欢迎', time: 1 },
     { role: 'user', text: '在吗', time: 2, mid: 'm2' }
   ];
 
-  const failed = runErrorTipBranch('if (!_isRepeatedSystemError(historyList, errText)) {', {
+  const failed = await runErrorTipBranch('if (!_isRepeatedSystemError(historyList, errText)) {', {
     history, text, saved: false
   });
   assert.equal(failed.historyList.filter((m) => m.role === 'system_error').length, 0);
@@ -481,7 +482,7 @@ test('zero-content API error bubble is written and rendered only when persistenc
   assert.deepEqual(failed.toasts, [text]);
   assert.equal(failed.saves.length, 1);
 
-  const saved = runErrorTipBranch('if (!_isRepeatedSystemError(historyList, errText)) {', {
+  const saved = await runErrorTipBranch('if (!_isRepeatedSystemError(historyList, errText)) {', {
     history, text, saved: true
   });
   assert.equal(saved.historyList.filter((m) => m.role === 'system_error').length, 1);

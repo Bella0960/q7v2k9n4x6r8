@@ -11,7 +11,7 @@ const styles = read('../chat/call/call-overlay.css');
 
 test('chat detail loads the call experience stylesheet and script', () => {
   assert.match(detail, /call\/call-overlay\.css\?v=20261121call1/);
-  assert.match(detail, /call\/call-overlay\.js\?v=20261121call1/);
+  assert.match(detail, /call\/call-overlay\.js\?v=20261129atomic1/);
   assert.ok(detail.indexOf('js/chat-extras.js') < detail.indexOf('../call/call-overlay.js'));
 });
 
@@ -35,7 +35,7 @@ test('AI incoming and group call entries use the unified in-chat engine', () => 
 test('call messages go through the existing chat send pipeline and are recorded', () => {
   assert.match(overlay, /global\.sendMsg\(\{\s*text:\s*text\s*\}\)/);
   assert.match(overlay, /type:\s*'call'/);
-  assert.match(overlay, /saveMessages\(next\)/);
+  assert.match(overlay, /await appendChatSafely\(\[record\]\)/);
   assert.match(overlay, /var next = Array\.isArray\(history\) \? history\.concat\(\[record\]\)/);
   assert.match(overlay, /appendMessageToDOM\(record\)/);
   assert.match(overlay, /聊天服务暂不可用，消息已保留[\s\S]*?input\.value = text/);
@@ -62,8 +62,8 @@ test('group calls load the saved group roster and keep participant identities', 
 });
 
 
-test('call completion does not display an unsaved record or mutate previous history', () => {
-  const start = overlay.indexOf('    function addCallRecord() {');
+test('call completion does not display an unsaved record or mutate previous history', async () => {
+  const start = overlay.indexOf('    async function addCallRecord() {');
   const end = overlay.indexOf('\n    function finish() {', start);
   assert.ok(start >= 0 && end > start, 'call completion persistence helper exists');
 
@@ -81,7 +81,7 @@ test('call completion does not display an unsaved record or mutate previous hist
     duration: 4,
     formatTime: () => '00:04',
     readHistory: () => history,
-    saveMessages: (messages) => { attempts.push(messages); return persist; },
+    appendChatSafely: async (messages) => { attempts.push(messages); return persist; },
     appendMessageToDOM: (message) => rendered.push(message),
     showToast: (message) => notices.push(message),
     character: { id: 'role-one' },
@@ -91,19 +91,20 @@ test('call completion does not display an unsaved record or mutate previous hist
     }
   };
   runInNewContext(overlay.slice(start, end) + '\nglobalThis.finishCallRecord = addCallRecord;', sandbox);
-  assert.equal(sandbox.finishCallRecord(), false);
+  assert.equal(await sandbox.finishCallRecord(), false);
   assert.equal(rendered.length, 0, 'no false delivered call card on write failure');
   assert.equal(history.length, 1, 'previous messages remain intact');
-  assert.equal(attempts[0].length, 2);
+  assert.equal(attempts[0].length, 1);
+  assert.equal(attempts[0][0].type, 'call');
   assert.match(notices[0], /通话记录保存失败/);
 
   persist = true;
-  assert.equal(sandbox.finishCallRecord(), true);
+  assert.equal(await sandbox.finishCallRecord(), true);
   assert.equal(rendered.length, 1, 'a saved call card is displayed once');
   assert.equal(rendered[0].call.messageCount, 1);
   assert.equal(history.length, 1, 'writing must not mutate the original history snapshot');
 
-  sandbox.saveMessages = () => { throw new Error('quota exceeded'); };
-  assert.equal(sandbox.finishCallRecord(), false);
+  sandbox.appendChatSafely = async () => { throw new Error('quota exceeded'); };
+  assert.equal(await sandbox.finishCallRecord(), false);
   assert.equal(rendered.length, 1, 'exceptions must not display phantom records');
 });
