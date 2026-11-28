@@ -1,5 +1,14 @@
 # MAOMAO Execution Log
 
+## 2026-11-25｜READING-COMMENT-UI-002｜已验收阅读器主线归并
+
+- 负责人手机验收满意度 90%，阅读功能阶段性收尾；本次不增加功能、不删用户数据。
+- 已验证发布候选 `e9d50446abc31797b3f39a8ae0914d15d58115f3`，公共 Run #45530273752 成功并通过 origin-check；后续日记候选 c5d83812 保留相同阅读器。
+- 最新 main 的阅读器和两份阅读专项测试仍与原 PR #508 基线完全相同。将已验收的三份对应文件原样同步至独立 PR；共享 chat-regression-contract 只替换阅读相关过期断言，保留 main 其他契约。
+- 线上仅一个 library/library.html、一个 readingTick 定时器，无同名重复函数；旧 PR #508/#515/#516/#517/#518 为历史开发链，禁止逐个旧版覆盖新阅读器。已核实三份阅读文件与已验收候选完全一致，153 个开放 PR 中未发现其他 PR 依赖这五个历史开发分支；按负责人明确退役指令，#508/#515/#516/#517/#518 均已关闭，保留 Git 历史和分支引用（不删除已部署候选或回滚依据）。#521 仍须完成主线组合验证及合并。
+- 保留 IndexedDB、localStorage 旧书/段评兼容层、照片/封面、阅读进度。PWA 激活时清理旧 app-shell 缓存，非公开阅读 HTML 不进入预缓存。无法核实用户手机实际缓存或旧数据占用，不做迁移或删除。
+- 本 PR 仅源代码归并，不覆盖当前日记 QA 候选；已发布阅读器源码字节一致不等于本主线组合已验收，合并前须按当前有效发布规范复核。
+
 > Release instructions: always read the latest main [RELEASE_POLICY.md](RELEASE_POLICY.md). Historical workflow names, versions, and checkpoints are not active instructions.
 
 This is the durable checkpoint for owner-assigned, multi-step work. Update it after meaningful milestones and before ending a session.
