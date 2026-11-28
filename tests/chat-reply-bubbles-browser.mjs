@@ -403,6 +403,8 @@ async function main() {
     await star.click();
     await page.waitForFunction(()=>document.getElementById('chat-status-sub').dataset.presence==='typing');
     assert.equal(await status.textContent(),'正在输入…');
+    assert.equal(await page.locator('#chat-messages .loading-dots').count(),0);
+    assert.equal(await page.locator('#plus-action-btn').evaluate(el=>getComputedStyle(el).borderLeftWidth),'0px');
     assert.equal(await page.locator('#chat-title').textContent(),titleBefore);
     assert.equal(await star.getAttribute('aria-busy'),'true');
     await page.waitForFunction(()=>document.querySelectorAll('#chat-messages .msg-row').length===2);

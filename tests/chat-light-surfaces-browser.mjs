@@ -103,6 +103,7 @@ try {
         const stage = await page.locator('#chat-messages').boundingBox();
         const form = await page.locator('#chat-form').boundingBox();
         const plus = await page.locator('#plus-action-btn').boundingBox();
+        assert.equal(await page.locator('#plus-action-btn').evaluate(e => getComputedStyle(e).borderLeftWidth), '0px', 'no legacy left separator next to plus');
         assert.ok(stage.y + stage.height <= form.y + 1, 'composer must not cover messages');
         assert.ok(form.y <= plus.y && plus.y + plus.height <= form.y + form.height + 1, 'plus button stays inside the input row');
         assert.ok(plus.width >= 44, 'plus target must be at least 44px wide');

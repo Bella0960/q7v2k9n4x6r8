@@ -32,7 +32,7 @@ test('CHAT-MIC-001: direct and group continuation reuse sendMsg without saving a
 test('CHAT-REPLY-UX-001: direct continuation uses the single header state and no temporary message fragments', () => {
   assert.match(main, /setSingleChatTyping\(true\);[\s\S]*?await sendMsgTurn\(opts\);[\s\S]*?finally\s*\{[\s\S]*?setSingleChatTyping\(false\);/);
   assert.match(main, /if \(isGroupChat && !isManualContinue && chatTitleEl\)/);
-  assert.match(main, /if \(isGroupChat && !isManualContinue\) \{[\s\S]*?statusDiv\.innerText/);
+  assert.doesNotMatch(main, /statusDiv|loading-dots|document\.getElementById\(statusId\)/, 'typing status must not create timeline placeholders');
   assert.match(main, /if \(isManualContinue\) return;[\s\S]*?if \(!tmpText\) return;/);
   assert.match(main, /if \(naturalOnlineBubbles && replyBubbleMode !== 'single'\) return;/);
   assert.match(main, /const replyBubbleMode = getActiveReplyBubbleMode\(!naturalOnlineBubbles\)/);
@@ -46,4 +46,12 @@ test('CHAT-MIC-001: changed inline scripts are syntactically valid', () => {
   assert.ok(main && continuation);
   assert.doesNotThrow(() => new Script(main, { filename: 'chat-detail main inline script' }));
   assert.doesNotThrow(() => new Script(continuation, { filename: 'chat-detail continuation inline script' }));
+});
+
+
+test('CHAT-REPLY-UX-001: composer plus control has no legacy left separator', () => {
+  const composerRules = [...page.matchAll(/\.plus-action-btn\s*\{([^}]+)\}/g)].map(match => match[1]);
+  assert.ok(composerRules.some(rule => /border-left:\s*0;/.test(rule)));
+  assert.ok(composerRules.every(rule => !/border-left:\s*1px\b/.test(rule)), 'old left border must not remain');
+  assert.match(page, /id="plus-action-btn"[^>]*aria-label="更多功能"/);
 });

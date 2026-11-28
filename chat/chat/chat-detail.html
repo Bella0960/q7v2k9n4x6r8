@@ -284,13 +284,6 @@
             backdrop-filter: blur(12px) saturate(1.4);
             -webkit-backdrop-filter: blur(12px) saturate(1.4);
         }
-        .loading-dots {
-            color: #888888;
-            font-size: 0.75rem;
-            padding: 4px 15px;
-            font-style: italic;
-            align-self: flex-start;
-        }
         /* 搜索跳转定位：灰色光环脉冲（黑白气泡上均可见），1.9s 后自动移除 */
         .msg-bubble.hl-flash {
             animation: hlFlash 1.9s ease;
@@ -1477,8 +1470,8 @@
             width: 30px;
             height: 30px;
             color: #29292E;
-            border-left: 1px solid #DCDCE1;
-            padding-left: 10px;
+            border-left: 0;
+            padding-left: 0;
             box-sizing: content-box;
         }
         .plus-action-btn svg { width: 19px; height: 19px; }
@@ -7287,16 +7280,6 @@
             var chatTitleEl = document.getElementById('chat-title');
             var originalTitleText = chatTitleEl ? chatTitleEl.textContent : '';
             if (isGroupChat && !isManualContinue && chatTitleEl) chatTitleEl.textContent = '对方正在输入...';
-            const statusId = 'loading-' + Date.now();
-            if (isGroupChat && !isManualContinue) {
-                const box = document.getElementById('chat-messages');
-                const statusDiv = document.createElement('div');
-                statusDiv.id = statusId;
-                statusDiv.className = 'loading-dots';
-                statusDiv.innerText = '对方正在输入...';
-                box.appendChild(statusDiv);
-                scrollToBottom(true);
-            }
 
             // Final delivery barrier: verify what the model will actually receive.
             // This is intentionally AFTER context selection / memory retrieval / history
@@ -7470,8 +7453,6 @@
                 }
 
                 if (!streamBubble) {
-                    const loadingEl = document.getElementById(statusId);
-                    if (loadingEl) loadingEl.remove();
                     var tmpStreamMsg = { role: 'assistant', text: tmpText,
                         name: groupReplyPick ? groupReplyPick.name : undefined,
                         memberId: groupReplyPick && groupReplyPick.id != null ? String(groupReplyPick.id) : undefined };
@@ -7572,10 +7553,6 @@
                     currentGroup = liveGroup;
                 }
             }
-
-            // 流内一直没出现 loading 移除（零 delta 兜底）
-            const loadingEl2 = document.getElementById(statusId);
-            if (loadingEl2) loadingEl2.remove();
 
             // 错误分类与日志（成功/失败都记录；文案在下方收尾分支组装成气泡）
             var errText = '';
