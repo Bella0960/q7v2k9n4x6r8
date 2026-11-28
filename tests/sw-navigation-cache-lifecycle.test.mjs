@@ -109,8 +109,7 @@ function createHarness({ cachedResponse = null, fetchImpl, putImpl, matchImpl } 
 
   assert.equal(typeof listeners.fetch, 'function', 'sw.js 必须注册 fetch 监听');
 
-  function dispatchNavigation() {
-    const request = { method: 'GET', mode: 'navigate', url: NAV_URL };
+  function dispatch(request) {
     const event = {
       request,
       responsePromise: null,
@@ -126,7 +125,8 @@ function createHarness({ cachedResponse = null, fetchImpl, putImpl, matchImpl } 
     return event;
   }
 
-  return { dispatchNavigation, fetchCalls, putCalls, openCalls, cache };
+  const dispatchNavigation = () => dispatch({ method: 'GET', mode: 'navigate', url: NAV_URL });
+  return { dispatch, dispatchNavigation, fetchCalls, putCalls, openCalls, cache };
 }
 
 function htmlResponse(body, status = 200) {
@@ -338,4 +338,28 @@ test('场景8：离线时不能从旧缓存显示非 HTML 的 200 数据，应�
   assert.equal(harness.putCalls.length, 0);
   await flushAsync();
   assert.equal(state.value, 'fulfilled');
+});
+
+test('range and validator requests for static assets bypass the shell cache', () => {
+  const harness = createHarness({ fetchImpl: () => assert.fail('browser must handle origin request') });
+  for (const headers of [{ range: 'bytes=0-2' }, { 'if-none-match': '"revision"' }]) {
+    const event = harness.dispatch(new Request(ORIGIN + '/asset.png', { headers }));
+    assert.equal(event.responsePromise, null);
+    assert.equal(event.lifecycle.length, 0);
+  }
+  assert.equal(harness.openCalls.length, 0);
+  assert.equal(harness.putCalls.length, 0);
+});
+
+test('partial and no-store public assets are returned without a shared cache write', async () => {
+  for (const response of [
+    new Response('private', { headers: { 'content-type': 'image/png', 'cache-control': 'no-store' } }),
+    new Response('partial', { status: 206, headers: { 'content-type': 'image/png' } })
+  ]) {
+    const harness = createHarness({ fetchImpl: () => Promise.resolve(response) });
+    const event = harness.dispatch(new Request(ORIGIN + '/asset.png'));
+    assert.equal(await event.responsePromise, response);
+    await Promise.all(event.lifecycle);
+    assert.equal(harness.putCalls.length, 0);
+  }
 });

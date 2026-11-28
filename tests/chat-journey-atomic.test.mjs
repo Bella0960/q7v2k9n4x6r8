@@ -101,7 +101,7 @@ test('broken and missing histories stay untouched with an explicit warning', asy
 });
 
 test('journey page loads the shared helper before its inline script', () => {
-    assert.match(pageSource, /<script src="\.\.\/\.\.\/shared\/js\/phone\/phone_storage\.js"><\/script>\s*<script src="\.\.\/\.\.\/shared\/js\/phone\/chat-history-atomic\.js\?v=20261118v3"><\/script>/);
+    assert.match(pageSource, /<script src="\.\.\/\.\.\/shared\/js\/phone\/phone_storage\.js"><\/script>\s*<script src="\.\.\/\.\.\/shared\/js\/phone\/chat-history-atomic\.js\?v=20261129atomic1"><\/script>/);
     assert.match(pageSource, /async function appendJourneyMessage\(stageIndex\)/);
     assert.doesNotMatch(journeyWriterSource, /saveHistory\(/);
 });
@@ -109,15 +109,19 @@ test('journey page loads the shared helper before its inline script', () => {
 
 test('lock granted after a new journey starts cannot append obsolete stage', async () => {
     let release;
+    let queued;
+    const waiting = new Promise(resolve => { queued = resolve; });
     const delayedLock = {
         request(_key, _options, work) {
             return new Promise(resolve => {
                 release = () => resolve(work());
+                queued();
             });
         }
     };
     const f = makeFixture('[]', delayedLock);
     const pending = f.appendJourneyMessage(0);
+    await waiting;
     f.state.startedAt = 99999;
     release();
     assert.equal(await pending, false);

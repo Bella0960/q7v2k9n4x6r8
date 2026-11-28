@@ -32,8 +32,8 @@ function locks() {
 }
 
 function tab(localStorage, lockManager) {
-    const window = { localStorage, navigator: lockManager ? { locks: lockManager } : {} };
-    runInNewContext(source, { window });
+    const window = { setTimeout, localStorage, navigator: lockManager ? { locks: lockManager } : {} };
+    runInNewContext(source, { window, setTimeout });
     return window.ChatHistoryAtomic;
 }
 
@@ -109,7 +109,7 @@ test('different contact IDs remain isolated', async () => {
 });
 
 test('notifier loads the helper and routes both async automatic writers through it', () => {
-    assert.match(notifierSource, /chat-history-atomic\.js\?v=20261118v3/);
+    assert.match(notifierSource, /chat-history-atomic\.js\?v=20261129atomic1/);
     assert.equal((notifierSource.match(/ChatHistoryAtomic\.appendIf\(/g) || []).length, 2);
     assert.doesNotMatch(notifierSource, /saveFollowUpHistory/);
 });
@@ -326,6 +326,7 @@ test('different authenticated accounts use separate locks even when character ID
     function scopedTab(accountId, declaredId) {
         const data = storage({ [key('same-role')]: '[]' });
         const window = {
+        setTimeout,
             localStorage: data,
             navigator: { locks: lock },
             document: {
@@ -335,7 +336,7 @@ test('different authenticated accounts use separate locks even when character ID
             },
             __MAO_ACCOUNT_SCOPE__: { ready: true, accountId }
         };
-        runInNewContext(source, { window });
+        runInNewContext(source, { window, setTimeout });
         return { writer: window.ChatHistoryAtomic, data };
     }
     const a = scopedTab('MAO-ACCOUNT000001', 'MAO-ACCOUNT000001');
@@ -352,11 +353,12 @@ test('different authenticated accounts use separate locks even when character ID
 test('authenticated meta without a matching initialized scope refuses history writes', async () => {
     const data = storage({ [key('role')]: '[]' });
     const window = {
+        setTimeout,
         localStorage: data,
         navigator: { locks: locks() },
         document: { querySelector: () => ({ content: 'MAO-ACCOUNT000001' }) }
     };
-    runInNewContext(source, { window });
+    runInNewContext(source, { window, setTimeout });
     const result = await window.ChatHistoryAtomic.appendIf('role', { mid: 'blocked' });
     assert.equal(result.error.code, 'ACCOUNT_SCOPE_UNAVAILABLE');
     assert.equal(data.dump(key('role')), '[]');
@@ -385,6 +387,7 @@ test('automatic AI preflight rejects accounts whose scoped storage is not ready'
     const code = notifierSource.slice(start, stop).trim();
     function ready(accountMeta, scope, hasLocks = true) {
         const window = {
+        setTimeout,
             navigator: hasLocks ? { locks: { request() {} } } : {},
             document: { querySelector: () => accountMeta ? { content: accountMeta } : null },
             __MAO_ACCOUNT_SCOPE__: scope
@@ -397,4 +400,43 @@ test('automatic AI preflight rejects accounts whose scoped storage is not ready'
     assert.equal(ready('MAO-ACCOUNT000001', { ready: true, accountId: 'MAO-ACCOUNT000002' }), false);
     assert.equal(ready('MAO-ACCOUNT000001', { ready: true, accountId: 'MAO-ACCOUNT000001' }), true);
     assert.equal(ready('', null, false), false);
+});
+
+test('initialization preserves legacy v2 and existing primary across concurrent pages', async () => {
+    const legacy = JSON.stringify({ a: { chat: { history: [{ mid: 'old', text: 'retained' }] } } });
+    const store = storage({ phone_data_v2: legacy });
+    const manager = locks();
+    const results = await Promise.all([
+        tab(store, manager).initializeIfAbsent('a', [{ mid: 'welcome-a' }]),
+        tab(store, manager).initializeIfAbsent('a', [{ mid: 'welcome-b' }])
+    ]);
+    assert.ok(results.every(result => result.ok));
+    assert.deepEqual(JSON.parse(store.dump(key('a'))), [{ mid: 'old', text: 'retained' }]);
+    assert.equal(store.dump('phone_data_v2'), legacy);
+    await tab(store, manager).initializeIfAbsent('a', []);
+    assert.deepEqual(JSON.parse(store.dump(key('a'))), [{ mid: 'old', text: 'retained' }]);
+});
+
+test('initialization refuses damaged legacy histories and unavailable storage', async () => {
+    for (const raw of ['{', '[]', '{"a":{"chat":{"history":{}}}}', '{"a":{"chat":"bad"}}']) {
+        const store = storage({ phone_data_v2: raw });
+        const result = await tab(store, locks()).initializeIfAbsent('a', []);
+        assert.equal(result.ok, false);
+        assert.equal(store.dump(key('a')), undefined);
+        assert.equal(store.dump('phone_data_v2'), raw);
+    }
+    const store = storage();
+    assert.equal((await tab(store).initializeIfAbsent('a', [])).error.code, 'LOCK_UNAVAILABLE');
+    assert.equal(store.dump(key('a')), undefined);
+});
+
+test('identical repeated mid within a batch is stored once and conflicting payload refuses the batch', async () => {
+    const store = storage({ [key('a')]: '[]' });
+    const api = tab(store, locks());
+    assert.equal((await api.appendManyIf('a', [{ mid: 'same', text: 'x' }, { mid: 'same', text: 'x' }])).ok, true);
+    assert.equal(JSON.parse(store.dump(key('a'))).length, 1);
+    const before = store.dump(key('a'));
+    const result = await api.appendManyIf('a', [{ mid: 'new', text: 'x' }, { mid: 'new', text: 'y' }]);
+    assert.equal(result.error.code, 'CONFLICT');
+    assert.equal(store.dump(key('a')), before);
 });

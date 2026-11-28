@@ -24,13 +24,13 @@ async function scenario(savedResult, opts = {}) {
     async removeRef(...args) { events.push(['remove', ...args]); }
   };
   const historyStorage = {
-    appendChatHistory(id, message) {
+    async appendIf(id, message) {
       events.push(['append', id, message.mid]);
       return savedResult;
     }
   };
   const context = {
-    _storage: { result: historyStorage },
+    window: { ChatHistoryAtomic: historyStorage },
     _chatImageMediaRepo: media,
     aliasRoleId: 'B',
     chatTitle: { textContent: 'Synthetic B' },

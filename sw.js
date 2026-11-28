@@ -6,7 +6,7 @@ const BUILD_RELEASE = '__MAOMAO_BUILD_RELEASE__';
 const BUILD_CORE_ASSETS = [];
 const FONT_ASSET_CACHE = 'maomao-font-assets-v1';
 function cacheablePublicResponse(response) {
-  return !!(response && response.ok && !response.redirected &&
+  return !!(response && response.ok && response.status !== 206 && !response.redirected &&
     !/(?:^|[,\s])(?:no-store|private)(?:[,\s]|$)/i.test(
       String(response.headers && response.headers.get('cache-control') || '')));
 }
@@ -111,7 +111,7 @@ const APP_SHELL = [
   './chat/chat/chat-settings.html',
   './chat/chat/avatar-manager.html',
   './chat/chat/avatar-manager.js?v=20261117v1',
-  './chat/chat/js/chat-extras.js?t=20261122cards4',
+  './chat/chat/js/chat-extras.js?t=20261129cards5',
   './worldbook/characters/characters.html',
   './chat/footprint/footprint.html',
   './chat/footprint/footprint-ai.js?v=20261123-persona-json-v1',
@@ -121,7 +121,7 @@ const APP_SHELL = [
   './worldbook/characters/js/character-ai-drafts.js?v=20261123-activeprofile-v1',
   './shared/js/phone/role-worldbook-bindings.js?v=20261119-qa1',
   './shared/js/phone/chat-regex-policy.js?v=20261119regex1',
-  './shared/js/phone/chat-history-atomic.js?v=20261118v3',
+  './shared/js/phone/chat-history-atomic.js?v=20261129atomic1',
   './worldbook/settings/regex-editor.css?v=20261119regex1',
   './worldbook/settings/regex-editor.js?v=20261119regex1',
   './travel/dream-travel.html',
@@ -347,6 +347,10 @@ self.addEventListener('fetch', event => {
   if (req.method !== 'GET') return;
   const url = new URL(req.url);
   if (url.origin !== self.location.origin) return;
+  // A cached complete asset does not satisfy a range or an explicit HTTP precondition.
+  if (isPublicStaticRequest(req) && req.headers &&
+      ['range', 'if-range', 'if-none-match', 'if-modified-since', 'if-match', 'if-unmodified-since']
+        .some(name => req.headers.has(name))) return;
 
   // Administrator documents AND their versioned UI assets are always network-served.
   // Do not read/write them in the app-shell cache (even after an older PWA install).

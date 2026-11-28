@@ -31,6 +31,17 @@ function fixture(raw, options = {}) {
       getItem: key => { assert.equal(key, 'chat_history_role-A'); return bytes; },
       setItem: (key, value) => { assert.equal(key, 'chat_history_role-A'); writes++; bytes = value; }
     },
+    window: {
+      ChatHistoryAtomic: {
+        async initializeIfAbsent(_id, initial) {
+          assert.equal(bytes, null, 'initialization only runs without a primary');
+          const legacy = options.storage?.getChatHistory?.('role-A');
+          sandbox.localStorage.setItem('chat_history_role-A', JSON.stringify(legacy?.length ? legacy : initial));
+          return { ok: true };
+        }
+      }
+    },
+    setTimeout: () => {},
     removeLegacyStickerCaptions: list => list,
     getInitialMessages: () => { initialized++; return [{ role: 'received', text: 'Welcome' }]; },
     _shouldWarnAgain: () => true,
@@ -132,7 +143,8 @@ test('absent primary key may still recover legacy v2 history without welcome ove
   });
   assert.equal(chat.read()[0].text, 'v2 history');
   assert.equal(chat.initialized(), 0);
-  assert.equal(chat.writes(), 0);
+  assert.equal(chat.writes(), 1);
+  assert.equal(JSON.parse(chat.bytes())[0].text, 'v2 history');
 });
 
 test('PhoneStorage cannot fake success using only a stale duplicate', () => {
@@ -225,7 +237,9 @@ function forwardFixture({ primary, legacy, getItem, setItem, addRef, removeRef }
   };
   sandbox.window = sandbox;
   vm.createContext(sandbox);
+  sandbox.navigator = { locks: { request: (_name, _options, callback) => callback() } };
   vm.runInContext(storageSource, sandbox);
+  vm.runInContext(fs.readFileSync('shared/js/phone/chat-history-atomic.js', 'utf8'), sandbox);
   sandbox._storage = sandbox.PhoneStorage;
   vm.runInContext(detail.slice(forwardStart, forwardEnd), sandbox);
   return {
@@ -263,9 +277,8 @@ test('forwarding appends to legacy only when the primary key is missing', async 
       primary === undefined ? ['older message', 'hello'] : ['hello']);
     assert.deepEqual(JSON.parse(fixture.primary()).at(-1).forwardFrom,
       { id: 'role-A', name: 'Source alias' });
-    assert.deepEqual(JSON.parse(fixture.legacy()), {
-      'role-A': legacy['role-A'], 'role-B': { notes: legacy['role-B'].notes }
-    });
+    assert.equal(fixture.legacy(), JSON.stringify(legacy),
+      'the atomic append preserves both untouched role data and legacy source bytes');
     assert.match(fixture.toasts.at(-1), /已转发/);
     fixture.sourceUnchanged();
   }
