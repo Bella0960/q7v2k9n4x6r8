@@ -299,6 +299,8 @@
             var dbOverview = {}; // 给 __backup.indexedDB 概览用
             var dbTotal = 0;
             var hasAudioMeta = false;
+            var audioExcludedCount = 0;   // DATA-003: 未打包的本地音频文件数
+            var audioExcludedBytes = 0;   // DATA-003: 未打包的本地音频总体积
 
             var exportTargets = typeof backupTargets === 'function' ? backupTargets(scope) : IDB_TARGETS;
             for (var i = 0; i < exportTargets.length; i++) {
@@ -332,6 +334,13 @@
                 });
                 dbOverview[tgt.db] = n;
                 dbTotal += n;
+                // 音频文件本身被 excludeFields 剔除时，把条数与体积累加起来，
+                // 导出提示与 manifest 都要如实说明被排除的规模。
+                var audioExcluded = part.excluded && part.excluded.audio;
+                if (audioExcluded && audioExcluded.count) {
+                    audioExcludedCount += audioExcluded.count;
+                    audioExcludedBytes += audioExcluded.bytes || 0;
+                }
                 (part.skipped || []).forEach(function (s) {
                     allSkipped.push({ db: tgt.db, store: s.store, id: s.id, reason: s.reason, bytes: s.bytes });
                 });
@@ -383,7 +392,9 @@
                     warnings: {
                         databasesSkipped: dbWarnings.length,
                         recordsSkipped: allSkipped.length,
-                        audioMetadataOnly: hasAudioMeta
+                        audioMetadataOnly: hasAudioMeta,
+                        audioExcludedCount: audioExcludedCount,
+                        audioExcludedBytes: audioExcludedBytes
                     },
                     ...(scope ? { scope: scope, moduleLabel: registry.get(scope).label,
                         sharedMedia: exportTargets.some(function(t) {
@@ -422,7 +433,23 @@
             if (scope) msg += '（' + registry.get(scope).label + '分类备份）';
             if (withSecrets) msg += '，含 API 密钥';
             if (dbWarnings.length) msg += '（' + dbWarnings.length + ' 个 IndexedDB 库读取失败已跳过）';
-            if (hasAudioMeta) msg += '（本地音频元数据已包含，音频文件本身未打包）';
+            if (hasAudioMeta) {
+                // DATA-003: 不说清规模的「未打包」等于静默遗漏，这里给出条数与体积。
+                var audioNote = '（本地音频元数据已包含';
+                if (audioExcludedCount) {
+                    var audioSizeText = '';
+                    if (audioExcludedBytes) {
+                        audioSizeText = audioExcludedBytes < 1024 * 1024
+                            ? (audioExcludedBytes / 1024).toFixed(1) + ' KB'
+                            : (audioExcludedBytes / 1024 / 1024).toFixed(2) + ' MB';
+                    }
+                    audioNote += '，' + audioExcludedCount + ' 个音频文件未打包'
+                        + (audioSizeText ? '，约 ' + audioSizeText : '');
+                } else {
+                    audioNote += '，音频文件本身未打包';
+                }
+                msg += audioNote + '）';
+            }
             if (allSkipped.length) {
                 msg += '（' + allSkipped.length + ' 项因体积超限或读取失败未包含'
                     + '：' + allSkipped.slice(0, 5).map(function (s) { return s.db + '.' + s.store + '::' + s.id; }).join('、')
@@ -646,7 +673,7 @@
         var blobStoreMax = storeDef.blobStoreMaxBytes || Infinity;
 
         if (!db.objectStoreNames.contains(storeDef.store)) {
-            return Promise.resolve({ records: [], skipped: [] });
+            return Promise.resolve({ records: [], skipped: [], excluded: { count: 0, bytes: 0 } });
         }
 
         // ---- 阶段 A：拿主键列表 ----
@@ -674,6 +701,7 @@
         return getAllKeys().then(async function (keys) {
             var records = [];
             var skipped = [];
+            var excluded = { count: 0, bytes: 0 };  // excludeFields 剔除掉的 Blob（例如本地音频文件本身）
             var totalBlob = 0;  // 已接受的 Blob 总量
             var idx = 0;
 
@@ -747,7 +775,14 @@
                     if (excludeFields.length && inner) {
                         var copy = {};
                         Object.keys(inner).forEach(function (k2) {
-                            if (excludeFields.indexOf(k2) === -1) copy[k2] = inner[k2];
+                            if (excludeFields.indexOf(k2) === -1) { copy[k2] = inner[k2]; return; }
+                            // DATA-003: 被剔除的字段若是 Blob（本地音频），记录条数与体积，
+                            // 让导出提示能说清「多少文件、多大」被排除，而不是只给一句笼统说明。
+                            var dropped = inner[k2];
+                            if (dropped instanceof Blob) {
+                                excluded.count += 1;
+                                excluded.bytes += (dropped.size || 0);
+                            }
                         });
                         inner = copy;
                     }
@@ -779,7 +814,7 @@
                 idx++;
             }
 
-            return { records: records, skipped: skipped };
+            return { records: records, skipped: skipped, excluded: excluded };
         });
     }
 
@@ -809,9 +844,10 @@
             var defs = storeDefs.slice();
             var out = {};
             var skippedAll = [];
+            var excludedAll = {};   // store -> { count, bytes }：被 excludeFields 剔除的 Blob 体积
             var i = 0;
             function next() {
-                if (i >= defs.length) { db.close(); return { data: out, skipped: skippedAll }; }
+                if (i >= defs.length) { db.close(); return { data: out, skipped: skippedAll, excluded: excludedAll }; }
                 var def = defs[i++];
                 return dumpStore(db, def).then(function (res) {
                     // clearOnRestore: 空 store 也写入 []，使恢复时能执行 clear()
@@ -819,6 +855,7 @@
                     res.skipped.forEach(function (s) {
                         skippedAll.push({ store: def.store, id: s.id, reason: s.reason, bytes: s.bytes });
                     });
+                    if (res.excluded && res.excluded.count) excludedAll[def.store] = res.excluded;
                     return next();
                 });
             }

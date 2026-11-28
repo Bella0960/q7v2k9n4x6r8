@@ -894,3 +894,48 @@ test('10 生产 doExport：localStorage 有数据 + atomicExportFailed 的 DB �
     assert.ok(/媒体 Blob.*超限/.test(lastToast.msg) || /atomicExport/.test(lastToast.msg) || /maomao-assets/.test(lastToast.msg) || /1 个 IndexedDB/.test(lastToast.msg),
         'toast 应提到 maomao-assets atomicExportFailed 警告');
 });
+
+/* ═══════════════════════════════════════════════
+   11. DATA-003：本地音频被剔除时，manifest 与导出提示要给出条数和体积
+   ═══════════════════════════════════════════════ */
+test('11 生产 doExport：音频文件未打包 → manifest 与提示给出条数和体积', async () => {
+    clearAllDBs();
+
+    const ctx = buildCtxFull({
+        localStorage: { ai_custom_characters: JSON.stringify({ list: ['char_audio'] }) }
+    });
+
+    const mediaDef = ctx.IDB_TARGETS.find(t => t.db === 'maomao-media-store');
+    const audioDef = mediaDef.stores.find(s => s.store === 'audio');
+    assert.ok((audioDef.excludeFields || []).includes('blob'),
+        'audio store 应仍然显式剔除 blob 字段（本测试的前提）');
+
+    const mediaDb = registerDB('maomao-media-store', mediaDef.version, mediaDef.stores);
+    await injectRecords(mediaDb, 'audio', audioDef, [
+        { id: 'song_a', title: 'A', size: 4096, blob: new SandboxBlob([Buffer.alloc(4096, 1)], { type: 'audio/mpeg' }) },
+        { id: 'song_b', title: 'B', size: 1024, blob: new SandboxBlob([Buffer.alloc(1024, 2)], { type: 'audio/mpeg' }) }
+    ]);
+
+    await ctx.doExport();
+
+    const inter = ctx.__intercepted;
+    const download = inter.downloads[inter.downloads.length - 1];
+    const parsed = JSON.parse(download.bodyStr);
+
+    // 1. 元数据必须导出，音频二进制必须不在备份里
+    const audioRecords = parsed.indexedDB['maomao-media-store'].audio;
+    assert.equal(audioRecords.length, 2, '两条音频元数据都应导出');
+    assert.ok(audioRecords.every((rec) => rec.blob === undefined),
+        '音频 Blob 本身不允许写进备份');
+
+    // 2. manifest 记录被排除的规模（条数 + 体积），而不是只给一句 audioMetadataOnly
+    assert.equal(parsed.__backup.warnings.audioMetadataOnly, true);
+    assert.equal(parsed.__backup.warnings.audioExcludedCount, 2, '应记录未打包的音频条数');
+    assert.equal(parsed.__backup.warnings.audioExcludedBytes, 5120, '应记录未打包的音频总字节');
+
+    // 3. 用户可见提示必须说清数量与体积，否则等于静默遗漏
+    const lastToast = inter.toasts[inter.toasts.length - 1];
+    assert.ok(lastToast, '应触发导出提示');
+    assert.match(lastToast.msg, /2 个音频文件未打包/, '提示应说明有几个音频文件未打包');
+    assert.match(lastToast.msg, /5\.0 KB/, '提示应说明未打包音频的总体积');
+});
