@@ -196,6 +196,7 @@ test('candidate audit blocks an actual same-hunk PR content conflict', t => {
  git('config','user.email','test@example.invalid');
  git('config','user.name','Test');
  const lines=['header','line-2','line-3','shared-slot','line-5','footer'];
+ mkdirSync(join(directory,'chat','chat'),{recursive:true});
  write('chat/chat/detail.html',lines.join('\n')+'\n');
  git('add','.');git('commit','-qm','Base');
  const base=git('rev-parse','HEAD');
