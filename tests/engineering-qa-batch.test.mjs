@@ -77,11 +77,133 @@ test('assembles separate ready tasks into an isolated create-only batch', t => {
   assert.equal(release('batch-01').status, 1);
   assert.equal(git('rev-parse', 'integration/batch-01'), receipt.candidate);
 
-  write('records/second.json', JSON.stringify({ ...first, id: 'TASK-02' }));
-  assert.match(release('conflict').stderr, /both own "one.txt"/);
-  assert.equal(git('branch', '--list', 'integration/conflict'), '');
 });
 
+
+
+test('applies dependent tasks that modify separate hunks of the same approved file', t => {
+  const cwd = mkdtempSync(join(tmpdir(), 'maomao-qa-batch-shared-path-'));
+  t.after(() => rmSync(cwd, { recursive: true, force: true }));
+  const run = (bin, args) => execFileSync(bin, args, { cwd, encoding: 'utf8', stdio: 'pipe' }).trim();
+  const git = (...args) => run('git', args);
+  const write = (path, contents) => writeFileSync(join(cwd, path), contents);
+  git('init', '-q', '-b', 'main');
+  git('config', 'user.name', 'QA Test');
+  git('config', 'user.email', 'qa@example.invalid');
+  const expected = Array.from({ length: 15 }, (_, index) => 'line-' + (index + 1));
+  write('shared.txt', expected.join('\n') + '\n');
+  git('add', 'shared.txt');
+  git('commit', '-qm', 'Baseline');
+  const baseline = git('rev-parse', 'HEAD');
+
+  git('switch', '-qc', 'task-01', baseline);
+  const firstContent = [...expected];
+  firstContent[1] = 'task one change';
+  write('shared.txt', firstContent.join('\n') + '\n');
+  git('add', 'shared.txt');
+  git('commit', '-qm', 'Task one shared-file change');
+  const first = {
+    id: 'TASK-01', status: 'ready', prMergeBase: baseline,
+    head: git('rev-parse', 'HEAD'), paths: ['shared.txt'], dependsOn: []
+  };
+
+  git('switch', '-qc', 'task-02', baseline);
+  const secondContent = [...expected];
+  secondContent[11] = 'task two change';
+  write('shared.txt', secondContent.join('\n') + '\n');
+  git('add', 'shared.txt');
+  git('commit', '-qm', 'Task two shared-file change');
+  const second = {
+    id: 'TASK-02', status: 'ready', prMergeBase: baseline,
+    head: git('rev-parse', 'HEAD'), paths: ['shared.txt'], dependsOn: ['TASK-01']
+  };
+
+  git('switch', '-q', 'main');
+  mkdirSync(join(cwd, 'records'));
+  write('records/first.json', JSON.stringify(first));
+  write('records/second.json', JSON.stringify(second));
+  const qaSourceReceipt = {
+    repository: 'Bella0960/web-runtime-lab',
+    workflow: '.github/workflows/reusable-qa-request.yml',
+    runId: 45785677703,
+    runNumber: 91,
+    runHeadSha: '9'.repeat(40),
+    sourceSha: baseline,
+    releasedAt: '2026-11-26T09:02:40Z'
+  };
+  const result = spawnSync(process.execPath, [
+    script, 'records', baseline, 'integration/shared-path', JSON.stringify(qaSourceReceipt)
+  ], { cwd, encoding: 'utf8' });
+
+  assert.equal(result.status, 0, result.stderr);
+  const receipt = JSON.parse(result.stdout);
+  const merged = [...expected];
+  merged[1] = 'task one change';
+  merged[11] = 'task two change';
+  assert.deepEqual(receipt.tasks.map(task => task.id), ['TASK-01', 'TASK-02']);
+  assert.equal(git('show', receipt.candidate + ':shared.txt'), merged.join('\n'));
+  assert.equal(git('rev-parse', receipt.candidate + '^^'), baseline);
+});
+
+test('stops on a real same-hunk conflict between dependent tasks and creates no candidate ref', t => {
+  const cwd = mkdtempSync(join(tmpdir(), 'maomao-qa-batch-shared-conflict-'));
+  t.after(() => rmSync(cwd, { recursive: true, force: true }));
+  const run = (bin, args) => execFileSync(bin, args, { cwd, encoding: 'utf8', stdio: 'pipe' }).trim();
+  const git = (...args) => run('git', args);
+  const write = (path, contents) => writeFileSync(join(cwd, path), contents);
+  git('init', '-q', '-b', 'main');
+  git('config', 'user.name', 'QA Test');
+  git('config', 'user.email', 'qa@example.invalid');
+  const baseLines = ['header', 'line-2', 'line-3', 'shared-slot', 'line-5', 'line-6', 'footer'];
+  write('shared.txt', baseLines.join('\n') + '\n');
+  git('add', 'shared.txt');
+  git('commit', '-qm', 'Baseline');
+  const baseline = git('rev-parse', 'HEAD');
+
+  git('switch', '-qc', 'task-01', baseline);
+  const firstLines = [...baseLines];
+  firstLines[3] = 'task one owns the slot';
+  write('shared.txt', firstLines.join('\n') + '\n');
+  git('add', 'shared.txt');
+  git('commit', '-qm', 'Task one conflicting change');
+  const first = {
+    id: 'TASK-01', status: 'ready', prMergeBase: baseline,
+    head: git('rev-parse', 'HEAD'), paths: ['shared.txt'], dependsOn: []
+  };
+
+  git('switch', '-qc', 'task-02', baseline);
+  const secondLines = [...baseLines];
+  secondLines[3] = 'task two owns the slot';
+  write('shared.txt', secondLines.join('\n') + '\n');
+  git('add', 'shared.txt');
+  git('commit', '-qm', 'Task two conflicting change');
+  const second = {
+    id: 'TASK-02', status: 'ready', prMergeBase: baseline,
+    head: git('rev-parse', 'HEAD'), paths: ['shared.txt'], dependsOn: ['TASK-01']
+  };
+
+  git('switch', '-q', 'main');
+  mkdirSync(join(cwd, 'records'));
+  write('records/first.json', JSON.stringify(first));
+  write('records/second.json', JSON.stringify(second));
+  const qaSourceReceipt = {
+    repository: 'Bella0960/web-runtime-lab',
+    workflow: '.github/workflows/reusable-qa-request.yml',
+    runId: 45785677703,
+    runNumber: 91,
+    runHeadSha: '9'.repeat(40),
+    sourceSha: baseline,
+    releasedAt: '2026-11-26T09:02:40Z'
+  };
+  const result = spawnSync(process.execPath, [
+    script, 'records', baseline, 'integration/shared-conflict', JSON.stringify(qaSourceReceipt)
+  ], { cwd, encoding: 'utf8' });
+
+  assert.equal(result.status, 1);
+  assert.match(result.stderr, /TASK-02 patch conflicts/);
+  assert.equal(git('branch', '--list', 'integration/shared-conflict'), '');
+  assert.equal(git('rev-parse', 'HEAD'), baseline);
+});
 
 test('reports file-directory merge conflicts and preserves all refs', t => {
   const cwd = mkdtempSync(join(tmpdir(), 'maomao-qa-batch-conflict-'));

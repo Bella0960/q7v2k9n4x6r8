@@ -99,7 +99,10 @@ jobs:
           QA_BASELINE: ${{ inputs.qa_baseline_sha }}
         run: |
           set -euo pipefail
-          result="$(npm run --silent eng:batch:auto -- "$QA_BASELINE")"
+          if ! result="$(npm run --silent eng:batch:auto -- "$QA_BASELINE" 2>&1)"; then
+            printf 'Candidate assembly failed:\n%s\n' "$result" | tee -a "$GITHUB_STEP_SUMMARY"
+            exit 2
+          fi
           printf '%s\n' "$result" | tee -a "$GITHUB_STEP_SUMMARY"
           candidate_ready="$(printf '%s\n' "$result" | node -e 'let s="";process.stdin.on("data",c=>s+=c);process.stdin.on("end",()=>{const r=JSON.parse(s);process.stdout.write(["assembled-local","pushed"].includes(r.status)?"true":"false")})')"
           echo "candidate_ready=$candidate_ready" >> "$GITHUB_OUTPUT"

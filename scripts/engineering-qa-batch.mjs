@@ -215,7 +215,6 @@ function assemble(directory, qaSha, branch, receipt) {
   const tasks = readReadyTasks(directory);
   if (!tasks.length) throw new Error('No ready tasks to assemble.');
 
-  const owners = new Map();
   const pathsByTask = new Map();
   const prMergeBasesByTask = new Map();
   for (const task of tasks) {
@@ -229,11 +228,6 @@ function assemble(directory, qaSha, branch, receipt) {
     }
     pathsByTask.set(task.id, paths);
     prMergeBasesByTask.set(task.id, prMergeBase);
-    for (const path of paths) {
-      const owner = owners.get(path);
-      if (owner) throw new Error(owner + ' and ' + task.id + ' both own ' + JSON.stringify(path) + '.');
-      owners.set(path, task.id);
-    }
   }
 
   let candidate = baseline;
@@ -274,8 +268,12 @@ function assemble(directory, qaSha, branch, receipt) {
           task.id, worktreeRoot, index);
       if (!shaPattern.test(tree)) throw new Error(task.id + ' returned an unexpected merged tree.');
       const changed = changedPaths(candidate, tree);
-      if (changed.some(path => owners.get(path) !== task.id)) {
-        throw new Error(task.id + ' would change paths outside its approved ownership.');
+      // Multiple reviewed tasks may modify one file. The three-way apply above
+      // decides whether their hunks are compatible; keep each task inside its
+      // own exact PR diff so overlapping ownership cannot expand its scope.
+      const approvedPaths = pathsByTask.get(task.id);
+      if (changed.some(path => !approvedPaths.includes(path))) {
+        throw new Error(task.id + ' would change paths outside its approved PR diff.');
       }
       if (tree !== previousTree) anyTaskChangedTree = true;
 
