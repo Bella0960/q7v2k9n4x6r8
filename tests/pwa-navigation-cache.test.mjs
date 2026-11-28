@@ -60,7 +60,7 @@ test('build lists every HTML route while the shared PWA cache keeps only public 
   assert.equal(isCacheable('./chat/chat/chat.html'), false);
   assert.equal(isCacheable('./chat/chat/chat-detail.html'), false);
   assert.equal(isCacheable('./shared/js/phone/chat-message-policy.js'), true);
-  assert.match(resourceBlock, /cache\.add\(url\)/);
+  assert.match(serviceWorker, /cache\.add\(url\)/);
 });
 
 test('private mobile navigations always revalidate the account with Worker; only sign-in has offline fallback', () => {
