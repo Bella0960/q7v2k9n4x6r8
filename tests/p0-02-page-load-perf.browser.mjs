@@ -59,9 +59,12 @@ function startServer() {
         return;
       }
       const data = await readFile(filePath);
+      // Mirror the Worker response policy: only the two public sign-in documents
+      // may be stored as HTML; all private app documents remain no-store.
+      const publicAccountHtml = urlPath === '/account/index.html' || urlPath === '/account/bootstrap.html';
       res.writeHead(200, {
         'Content-Type': MIME[path.extname(filePath).toLowerCase()] || 'application/octet-stream',
-        'Cache-Control': path.extname(filePath) === '.html' ? 'no-store' : 'public, max-age=600'
+        'Cache-Control': path.extname(filePath) === '.html' && !publicAccountHtml ? 'no-store' : 'public, max-age=600'
       });
       res.end(data);
     } catch (error) {
