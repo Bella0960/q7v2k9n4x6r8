@@ -1,10 +1,10 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { execFileSync } from 'node:child_process';
-import { mkdtempSync, rmSync, writeFileSync, renameSync } from 'node:fs';
+import { mkdirSync, mkdtempSync, rmSync, writeFileSync, renameSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
-import {buildConflictReport,hotspotKey,moduleScope,normalizeRepoPath} from '../scripts/engineering-pr-conflicts.mjs';
+import {buildConflictReport,hotspotKey,moduleScope,normalizeRepoPath,runConflictAudit} from '../scripts/engineering-pr-conflicts.mjs';
 const pull=(number,branch,files,extra={})=>({number,title:'Task '+number,state:'open',branch,files,...extra});
 
 test('normalizes repository paths and rejects traversal or absolute paths',()=>{
@@ -132,4 +132,109 @@ test('batch ownership audit can exclude only the PRs already selected for the ca
  });
  assert.equal(r.exactOverlapCount,1);
  assert.equal(r.findings[0].number,21);
+});
+
+
+test('candidate audit allows a same-file PR delta when Git three-way application is clean', t => {
+ const directory=mkdtempSync(join(tmpdir(),'maomao-conflict-audit-clean-'));
+ t.after(()=>rmSync(directory,{recursive:true,force:true}));
+ const git=(...args)=>execFileSync('git',args,{cwd:directory,encoding:'utf8',stdio:'pipe'}).trim();
+ const write=(path,content)=>writeFileSync(join(directory,path),content);
+ mkdirSync(join(directory,'chat','chat'),{recursive:true});
+ git('init','-q','-b','main');
+ git('config','user.email','test@example.invalid');
+ git('config','user.name','Test');
+ const lines=Array.from({length:15},(_,index)=>'line-'+(index+1));
+ write('chat/chat/detail.html',lines.join('\n')+'\n');
+ git('add','.');git('commit','-qm','Base');
+ const base=git('rev-parse','HEAD');
+
+ git('switch','-qc','candidate',base);
+ const candidateLines=[...lines];candidateLines[1]='candidate change';
+ write('chat/chat/detail.html',candidateLines.join('\n')+'\n');
+ git('commit','-qam','Candidate change');
+ const candidate=git('rev-parse','HEAD');
+
+ git('switch','-qc','other-pr',base);
+ const prLines=[...lines];prLines[11]='other PR change';
+ write('chat/chat/detail.html',prLines.join('\n')+'\n');
+ git('commit','-qam','Other PR change');
+ const prHead=git('rev-parse','HEAD');
+ git('switch','-q','candidate');
+
+ const payload=JSON.stringify([{
+  number:77,state:'open',title:'Other task',html_url:'https://github.com/Bella0960/q7v2k9n4x6r8/pull/77',
+  head:{ref:'other-pr',sha:prHead,repo:{full_name:'Bella0960/q7v2k9n4x6r8'}},
+  base:{sha:base}
+ }]);
+ const fetchStub='globalThis.fetch=async()=>new Response('+JSON.stringify(payload)+',{headers:{' +
+  "'content-type':'application/json'}});";
+ const moduleUrl=new URL('../scripts/engineering-pr-conflicts.mjs',import.meta.url).href;
+ const runner=[
+  'import {runConflictAudit} from '+JSON.stringify(moduleUrl)+';',
+  'const result=await runConflictAudit({repo:"Bella0960/q7v2k9n4x6r8",base:'+JSON.stringify(base)+',head:'+JSON.stringify(candidate)+',checkContentConflicts:true});',
+  'process.stdout.write(JSON.stringify(result));'
+ ].join('\n');
+ const result=execFileSync(process.execPath,[
+  '--import','data:text/javascript,'+encodeURIComponent(fetchStub),
+  '--input-type=module','-e',runner
+ ],{cwd:directory,encoding:'utf8'});
+ const report=JSON.parse(result);
+ assert.equal(report.exactOverlapCount,1);
+ assert.equal(report.contentConflictChecksPerformed,true);
+ assert.equal(report.contentConflictCount,0);
+ assert.equal(report.findings[0].contentMergeStatus,'three-way-clean');
+ assert.equal(git('rev-parse','HEAD'),candidate);
+});
+
+test('candidate audit blocks an actual same-hunk PR content conflict', t => {
+ const directory=mkdtempSync(join(tmpdir(),'maomao-conflict-audit-real-'));
+ t.after(()=>rmSync(directory,{recursive:true,force:true}));
+ const git=(...args)=>execFileSync('git',args,{cwd:directory,encoding:'utf8',stdio:'pipe'}).trim();
+ const write=(path,content)=>writeFileSync(join(directory,path),content);
+ git('init','-q','-b','main');
+ git('config','user.email','test@example.invalid');
+ git('config','user.name','Test');
+ const lines=['header','line-2','line-3','shared-slot','line-5','footer'];
+ mkdirSync(join(directory,'chat','chat'),{recursive:true});
+ write('chat/chat/detail.html',lines.join('\n')+'\n');
+ git('add','.');git('commit','-qm','Base');
+ const base=git('rev-parse','HEAD');
+
+ git('switch','-qc','candidate',base);
+ const candidateLines=[...lines];candidateLines[3]='candidate owns the slot';
+ write('chat/chat/detail.html',candidateLines.join('\n')+'\n');
+ git('commit','-qam','Candidate change');
+ const candidate=git('rev-parse','HEAD');
+
+ git('switch','-qc','other-pr',base);
+ const prLines=[...lines];prLines[3]='other PR owns the slot';
+ write('chat/chat/detail.html',prLines.join('\n')+'\n');
+ git('commit','-qam','Other PR conflicting change');
+ const prHead=git('rev-parse','HEAD');
+ git('switch','-q','candidate');
+
+ const payload=JSON.stringify([{
+  number:78,state:'open',title:'Conflicting task',html_url:'https://github.com/Bella0960/q7v2k9n4x6r8/pull/78',
+  head:{ref:'other-pr',sha:prHead,repo:{full_name:'Bella0960/q7v2k9n4x6r8'}},
+  base:{sha:base}
+ }]);
+ const fetchStub='globalThis.fetch=async()=>new Response('+JSON.stringify(payload)+',{headers:{' +
+  "'content-type':'application/json'}});";
+ const moduleUrl=new URL('../scripts/engineering-pr-conflicts.mjs',import.meta.url).href;
+ const runner=[
+  'import {runConflictAudit} from '+JSON.stringify(moduleUrl)+';',
+  'const result=await runConflictAudit({repo:"Bella0960/q7v2k9n4x6r8",base:'+JSON.stringify(base)+',head:'+JSON.stringify(candidate)+',checkContentConflicts:true});',
+  'process.stdout.write(JSON.stringify(result));'
+ ].join('\n');
+ const result=execFileSync(process.execPath,[
+  '--import','data:text/javascript,'+encodeURIComponent(fetchStub),
+  '--input-type=module','-e',runner
+ ],{cwd:directory,encoding:'utf8'});
+ const report=JSON.parse(result);
+ assert.equal(report.exactOverlapCount,1);
+ assert.equal(report.contentConflictChecksPerformed,true);
+ assert.equal(report.contentConflictCount,1);
+ assert.deepEqual(report.contentConflicts[0].paths,['chat/chat/detail.html']);
+ assert.equal(git('rev-parse','HEAD'),candidate);
 });

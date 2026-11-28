@@ -1004,3 +1004,11 @@ test('engineering-only test and script changes do not trigger unrelated app regr
   assertScoped(pwaPush, 'pwa-navigation-regression.yml', false);
   assert.ok(pwaPush.includes('pwa-navigation-regression.yml'));
 });
+
+
+test('candidate handoff uses actual three-way content conflicts, not path or hotspot overlap alone', () => {
+  const queue = readFileSync(queueScript, 'utf8');
+  assert.match(queue, /checkContentConflicts: true/);
+  assert.match(queue, /!conflicts\.contentConflictChecksPerformed \|\| conflicts\.contentConflictCount/);
+  assert.doesNotMatch(queue, /conflicts\.exactOverlapCount \|\| conflicts\.sharedHotspotCount/);
+});
